@@ -1,0 +1,436 @@
+#!/usr/bin/env python3
+"""
+House Puzzle Editor — Flask backend.
+
+Serves the interactive editor UI and exposes API endpoints for
+TIF parsing, brick merging, and blueprint generation.
+"""
+
+import argparse
+import base64
+import io
+import json
+import os
+from pathlib import Path
+
+from flask import Flask, jsonify, render_template, request, send_file, send_from_directory
+from PIL import Image, ImageDraw
+
+from tif_parser import parse_tif, extract_brick_png, extract_layers_batch
+from puzzle_engine import (
+    Brick,
+    merge_bricks,
+    pieces_to_json,
+    build_adjacency,
+)
+
+app = Flask(
+    __name__,
+    template_folder="templates",
+    static_folder="static",
+)
+
+# In-memory state
+_state = {
+    "house": None,          # HouseData
+    "bricks": [],           # list[Brick]
+    "bricks_by_id": {},     # dict[int, Brick]
+    "pieces": [],           # list[PuzzlePiece]
+    "tif_path": None,
+    "extracted_dir": None,  # temp dir with extracted PNGs
+}
+
+EXTRACT_DIR = Path("/tmp/house_puzzle_extract")
+
+
+@app.route("/")
+def index():
+    return render_template("index.html")
+
+
+@app.route("/api/list_tifs", methods=["GET"])
+def api_list_tifs():
+    """List available TIF files in the in/ directory."""
+    in_dir = Path("in")
+    if not in_dir.exists():
+        return jsonify({"tifs": []})
+
+    tifs = []
+    for f in sorted(in_dir.iterdir()):
+        if f.suffix.lower() in (".tif", ".tiff"):
+            tifs.append({
+                "name": f.name,
+                "path": str(f),
+                "size_mb": round(f.stat().st_size / (1024 * 1024), 1),
+            })
+    return jsonify({"tifs": tifs})
+
+
+@app.route("/api/load_tif", methods=["POST"])
+def api_load_tif():
+    """Load and parse a TIF file, extract brick metadata."""
+    data = request.get_json()
+    tif_path = data.get("path", "")
+
+    if not tif_path or not Path(tif_path).exists():
+        return jsonify({"error": f"File not found: {tif_path}"}), 404
+
+    try:
+        house = parse_tif(tif_path)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+    # Convert to engine Brick objects
+    bricks = []
+    for bl in house.bricks:
+        bricks.append(Brick(
+            id=bl.index,
+            x=bl.x,
+            y=bl.y,
+            width=bl.width,
+            height=bl.height,
+            brick_type=bl.layer_type,
+        ))
+
+    bricks_by_id = {b.id: b for b in bricks}
+
+    # Store state
+    _state["house"] = house
+    _state["bricks"] = bricks
+    _state["bricks_by_id"] = bricks_by_id
+    _state["tif_path"] = tif_path
+    _state["pieces"] = []
+
+    # Extract all layers as PNGs
+    extract_dir = EXTRACT_DIR / Path(tif_path).stem.replace(" ", "_")
+    extract_dir.mkdir(parents=True, exist_ok=True)
+    _state["extracted_dir"] = extract_dir
+
+    comp_path = extract_dir / "composite.png"
+    if house.composite and not comp_path.exists():
+        extract_brick_png(tif_path, house.composite.index, str(comp_path))
+
+    # Extract all brick PNGs (parallel)
+    brick_indices = [bl.index for bl in house.bricks]
+    extract_layers_batch(tif_path, brick_indices, str(extract_dir), prefix="brick")
+
+    # Also extract base layer
+    if house.base:
+        base_path = extract_dir / "base.png"
+        if not base_path.exists():
+            extract_brick_png(tif_path, house.base.index, str(base_path))
+
+    # Build adjacency for visualization
+    adj = build_adjacency(bricks)
+
+    brick_data = []
+    for b in bricks:
+        brick_data.append({
+            "id": b.id,
+            "x": b.x,
+            "y": b.y,
+            "width": b.width,
+            "height": b.height,
+            "type": b.brick_type,
+            "neighbors": list(adj.get(b.id, set())),
+        })
+
+    return jsonify({
+        "canvas": {"width": house.canvas_width, "height": house.canvas_height},
+        "total_layers": house.total_layers,
+        "num_bricks": len(bricks),
+        "bricks": brick_data,
+        "has_composite": house.composite is not None,
+        "has_base": house.base is not None,
+    })
+
+
+@app.route("/api/composite.png")
+def api_composite():
+    """Serve the composite image."""
+    if not _state["extracted_dir"]:
+        return "No TIF loaded", 404
+    comp_path = _state["extracted_dir"] / "composite.png"
+    if not comp_path.exists():
+        return "Composite not extracted", 404
+    return send_file(str(comp_path), mimetype="image/png")
+
+
+@app.route("/api/base.png")
+def api_base():
+    """Serve the base layer image."""
+    if not _state["extracted_dir"]:
+        return "No TIF loaded", 404
+    base_path = _state["extracted_dir"] / "base.png"
+    if not base_path.exists():
+        return "Base not extracted", 404
+    return send_file(str(base_path), mimetype="image/png")
+
+
+@app.route("/api/brick/<int:brick_id>.png")
+def api_brick_png(brick_id):
+    """Serve an individual brick layer as PNG."""
+    if not _state["extracted_dir"]:
+        return "No TIF loaded", 404
+    brick_path = _state["extracted_dir"] / f"brick_{brick_id:03d}.png"
+    if not brick_path.exists():
+        return f"Brick {brick_id} not found", 404
+    return send_file(str(brick_path), mimetype="image/png")
+
+
+@app.route("/api/merge", methods=["POST"])
+def api_merge():
+    """Merge bricks into puzzle pieces."""
+    data = request.get_json()
+
+    if not _state["bricks"]:
+        return jsonify({"error": "No TIF loaded"}), 400
+
+    target_count = data.get("target_count")
+    seed = data.get("seed", 42)
+    windows_separate = data.get("windows_separate", True)
+    max_width = data.get("max_width", 800)
+    max_height = data.get("max_height", 600)
+
+    pieces = merge_bricks(
+        _state["bricks"],
+        target_piece_count=target_count,
+        seed=seed,
+        windows_separate=windows_separate,
+        max_width=max_width,
+        max_height=max_height,
+    )
+
+    _state["pieces"] = pieces
+
+    pieces_json = pieces_to_json(pieces, _state["bricks_by_id"])
+
+    return jsonify({
+        "num_pieces": len(pieces),
+        "pieces": pieces_json,
+    })
+
+
+@app.route("/api/update_piece", methods=["POST"])
+def api_update_piece():
+    """Move a brick between pieces (manual correction)."""
+    data = request.get_json()
+    brick_id = data.get("brick_id")
+    from_piece_id = data.get("from_piece")
+    to_piece_id = data.get("to_piece")
+
+    if _state["pieces"] is None:
+        return jsonify({"error": "No pieces computed"}), 400
+
+    pieces = _state["pieces"]
+
+    # Find source and target pieces
+    src = next((p for p in pieces if p.id == from_piece_id), None)
+    dst = next((p for p in pieces if p.id == to_piece_id), None)
+
+    if not src or brick_id not in src.brick_ids:
+        return jsonify({"error": "Brick not found in source piece"}), 400
+
+    if not dst:
+        return jsonify({"error": "Target piece not found"}), 400
+
+    # Move brick
+    src.brick_ids.remove(brick_id)
+    dst.brick_ids.append(brick_id)
+
+    # Remove empty pieces
+    _state["pieces"] = [p for p in pieces if p.brick_ids]
+
+    # Recompute bboxes
+    from puzzle_engine import compute_piece_bbox
+    for p in _state["pieces"]:
+        p.x, p.y, p.width, p.height = compute_piece_bbox(
+            p.brick_ids, _state["bricks_by_id"]
+        )
+
+    pieces_json = pieces_to_json(_state["pieces"], _state["bricks_by_id"])
+    return jsonify({"num_pieces": len(_state["pieces"]), "pieces": pieces_json})
+
+
+@app.route("/api/blueprint", methods=["POST"])
+def api_blueprint():
+    """Generate blueprint overlay with 4px white lines on piece boundaries."""
+    if not _state["pieces"]:
+        return jsonify({"error": "No pieces computed"}), 400
+
+    house = _state["house"]
+    w, h = house.canvas_width, house.canvas_height
+
+    # Create transparent image
+    blueprint = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(blueprint)
+
+    line_width = 4
+    line_color = (255, 255, 255, 255)
+
+    for piece in _state["pieces"]:
+        bricks = [_state["bricks_by_id"][bid] for bid in piece.brick_ids]
+        if len(bricks) <= 1:
+            # Single brick = the whole piece is the boundary
+            b = bricks[0]
+            draw.rectangle(
+                [b.x, b.y, b.x + b.width, b.y + b.height],
+                outline=line_color, width=line_width,
+            )
+        else:
+            # Draw outline of the piece bounding box
+            # For accurate outlines, draw the outer boundary of the merged shape
+            # Simple approach: draw each brick's edges that are on the piece boundary
+            _draw_piece_outline(draw, bricks, line_color, line_width)
+
+    # Save to buffer
+    buf = io.BytesIO()
+    blueprint.save(buf, format="PNG")
+    buf.seek(0)
+
+    return send_file(buf, mimetype="image/png", download_name="blueprint.png")
+
+
+def _draw_piece_outline(draw, bricks, color, width):
+    """Draw the outer boundary of a group of bricks.
+
+    For each brick edge, only draw it if it's not shared with another brick
+    in the same piece (i.e., it's an external edge).
+    """
+    # Collect all edges with their brick ownership
+    # An edge is defined by two endpoints
+    h_edges = {}  # (y, x_start, x_end) -> count
+    v_edges = {}  # (x, y_start, y_end) -> count
+
+    for b in bricks:
+        # Top edge
+        key = (b.y, b.x, b.right)
+        h_edges[key] = h_edges.get(key, 0) + 1
+        # Bottom edge
+        key = (b.bottom, b.x, b.right)
+        h_edges[key] = h_edges.get(key, 0) + 1
+        # Left edge
+        key = (b.x, b.y, b.bottom)
+        v_edges[key] = v_edges.get(key, 0) + 1
+        # Right edge
+        key = (b.right, b.y, b.bottom)
+        v_edges[key] = v_edges.get(key, 0) + 1
+
+    half = width // 2
+
+    # Draw edges that appear only once (external edges)
+    for (y, x1, x2), count in h_edges.items():
+        if count == 1:
+            draw.line([(x1, y), (x2, y)], fill=color, width=width)
+
+    for (x, y1, y2), count in v_edges.items():
+        if count == 1:
+            draw.line([(x, y1), (x, y2)], fill=color, width=width)
+
+
+@app.route("/api/export", methods=["POST"])
+def api_export():
+    """Export puzzle pieces as PNG sprites + JSON manifest."""
+    if not _state["pieces"] or not _state["tif_path"]:
+        return jsonify({"error": "No puzzle computed"}), 400
+
+    import zipfile
+
+    house = _state["house"]
+    tif_path = _state["tif_path"]
+    pieces = _state["pieces"]
+
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        # Export each piece as a combined PNG
+        manifest_pieces = []
+        for piece in pieces:
+            bricks = [_state["bricks_by_id"][bid] for bid in piece.brick_ids]
+
+            # Create piece image (RGBA, size = piece bounding box)
+            piece_img = Image.new("RGBA", (piece.width, piece.height), (0, 0, 0, 0))
+
+            for b in bricks:
+                # Extract brick from TIF
+                brick_buf = io.BytesIO()
+                extract_brick_png(tif_path, b.id, f"/tmp/_brick_{b.id}.png")
+                brick_img = Image.open(f"/tmp/_brick_{b.id}.png").convert("RGBA")
+                # Paste at relative position within piece
+                rel_x = b.x - piece.x
+                rel_y = b.y - piece.y
+                piece_img.paste(brick_img, (rel_x, rel_y), brick_img)
+
+            fname = f"piece_{piece.id:03d}.png"
+            buf = io.BytesIO()
+            piece_img.save(buf, format="PNG")
+            zf.writestr(f"pieces/{fname}", buf.getvalue())
+
+            manifest_pieces.append({
+                "id": piece.id,
+                "file": fname,
+                "x": piece.x,
+                "y": piece.y,
+                "width": piece.width,
+                "height": piece.height,
+                "brick_ids": piece.brick_ids,
+                "num_bricks": len(piece.brick_ids),
+            })
+
+        # Blueprint
+        blueprint_buf = io.BytesIO()
+        _generate_blueprint(house, pieces).save(blueprint_buf, format="PNG")
+        zf.writestr("blueprint.png", blueprint_buf.getvalue())
+
+        # Composite
+        comp_path = _state["extracted_dir"] / "composite.png"
+        if comp_path.exists():
+            zf.write(str(comp_path), "composite.png")
+
+        # Manifest
+        manifest = {
+            "source": Path(tif_path).name,
+            "canvas": {"width": house.canvas_width, "height": house.canvas_height},
+            "num_pieces": len(pieces),
+            "pieces": manifest_pieces,
+        }
+        zf.writestr("manifest.json", json.dumps(manifest, indent=2))
+
+    zip_buffer.seek(0)
+    return send_file(
+        zip_buffer,
+        mimetype="application/zip",
+        as_attachment=True,
+        download_name="house_puzzle_export.zip",
+    )
+
+
+def _generate_blueprint(house, pieces):
+    """Generate blueprint image."""
+    w, h = house.canvas_width, house.canvas_height
+    blueprint = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(blueprint)
+
+    for piece in pieces:
+        bricks = [_state["bricks_by_id"][bid] for bid in piece.brick_ids]
+        if len(bricks) <= 1:
+            b = bricks[0]
+            draw.rectangle(
+                [b.x, b.y, b.x + b.width, b.y + b.height],
+                outline=(255, 255, 255, 255), width=4,
+            )
+        else:
+            _draw_piece_outline(
+                draw, bricks, (255, 255, 255, 255), 4
+            )
+
+    return blueprint
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="House Puzzle Editor")
+    parser.add_argument("--port", type=int, default=5050)
+    parser.add_argument("--host", default="0.0.0.0")
+    args = parser.parse_args()
+
+    print(f"Starting House Puzzle Editor at http://{args.host}:{args.port}")
+    app.run(host=args.host, port=args.port, debug=True)
