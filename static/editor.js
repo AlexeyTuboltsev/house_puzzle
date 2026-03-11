@@ -9,7 +9,6 @@ let selectedBrickId = -1;
 let hoveredBrickId = -1;
 let selectedPieceId = -1;
 let hoveredPieceId = -1;
-let oversizedPieceIds = new Set();
 let viewMode = 'pieces';
 
 // Piece edit mode state
@@ -190,7 +189,6 @@ async function doMerge() {
         }
 
         pieces = data.pieces;
-        oversizedPieceIds = new Set(data.oversized || []);
         selectedPieceId = -1;
         hoveredPieceId = -1;
         document.getElementById('stat_pieces').textContent = data.num_pieces;
@@ -200,11 +198,8 @@ async function doMerge() {
         buildPieceComposites();
         setView('pieces');
 
-        let info = `${canvasW}×${canvasH} | ${data.num_pieces} pieces | Hover/click to inspect`;
-        if (oversizedPieceIds.size > 0) {
-            info += ` | WARNING: ${oversizedPieceIds.size} piece(s) exceed max dimensions`;
-        }
-        document.getElementById('canvasInfo').textContent = info;
+        document.getElementById('canvasInfo').textContent =
+            `${canvasW}×${canvasH} | ${data.num_pieces} pieces | Hover/click to inspect`;
         render();
 
     } catch (err) {
@@ -395,24 +390,15 @@ function renderPieces() {
             ctx.drawImage(tint, comp.x, comp.y, comp.w, comp.h);
         }
 
-        // Warning outline for oversized pieces
-        if (oversizedPieceIds.has(piece.id)) {
-            drawPieceSilhouetteOutline(comp, 'rgba(255, 40, 40, 0.9)', 4);
-        }
-
         // Label
         if (zoom > 0.12) {
-            const isOversized = oversizedPieceIds.has(piece.id);
             ctx.fillStyle = isSelected
                 ? 'rgba(255, 96, 48, 0.95)'
-                : isOversized
-                    ? 'rgba(255, 40, 40, 0.95)'
-                    : `hsla(${hue}, 80%, 85%, 0.85)`;
+                : `hsla(${hue}, 80%, 85%, 0.85)`;
             ctx.font = `bold ${Math.round(13 / zoom)}px sans-serif`;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            const label = isOversized ? `#${piece.id} !!` : `#${piece.id}`;
-            ctx.fillText(label, comp.x + comp.w / 2, comp.y + comp.h / 2);
+            ctx.fillText(`#${piece.id}`, comp.x + comp.w / 2, comp.y + comp.h / 2);
         }
     }
 
