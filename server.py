@@ -199,7 +199,7 @@ def api_merge():
     max_height = data.get("max_height", 600)
     min_bricks = data.get("min_bricks", 1)
     max_bricks = data.get("max_bricks", 0)
-    min_border = data.get("min_border", 1)
+    min_border = data.get("min_border", 5)
 
     result = merge_bricks(
         _state["bricks"],

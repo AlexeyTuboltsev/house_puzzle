@@ -149,7 +149,7 @@ def _pixel_adjacency(border_a: set, border_b: set,
 
 
 def build_adjacency(bricks: list[Brick], gap: int = ADJACENCY_THRESHOLD,
-                    min_border: int = 1,
+                    min_border: int = 5,
                     border_pixels: dict[int, set] | None = None) -> dict[int, set[int]]:
     """Build adjacency graph.
 
@@ -234,7 +234,7 @@ def merge_bricks(bricks: list[Brick], target_piece_count: int | None = None,
                  max_height: int = DEFAULT_MAX_HEIGHT,
                  min_bricks: int = 1,
                  max_bricks: int = 0,
-                 min_border: int = 1,
+                 min_border: int = 5,
                  border_pixels: dict[int, set] | None = None,
                  attempts: int = 5) -> MergeResult:
     """
@@ -366,21 +366,28 @@ def merge_bricks(bricks: list[Brick], target_piece_count: int | None = None,
                         best_target = fallback_target
 
                     # If no adjacent mergeable piece found (e.g. only
-                    # neighbors are fixed windows), find nearest piece
-                    # by centroid distance.
-                    if best_target is None and neighbor_pids == set():
-                        cx = sum(bricks_by_id[b].cx for b in brick_ids) / len(brick_ids)
-                        cy = sum(bricks_by_id[b].cy for b in brick_ids) / len(brick_ids)
+                    # neighbors are fixed windows), find the nearest
+                    # piece by minimum brick-edge distance — but only
+                    # if close enough (3× adjacency gap) to avoid
+                    # creating disjoint pieces.
+                    if best_target is None and not neighbor_pids:
+                        max_dist = ADJACENCY_THRESHOLD * 3
                         best_dist = float('inf')
                         for opid, obids in pieces_dict.items():
                             if opid == pid:
                                 continue
-                            ocx = sum(bricks_by_id[b].cx for b in obids) / len(obids)
-                            ocy = sum(bricks_by_id[b].cy for b in obids) / len(obids)
-                            d = (cx - ocx) ** 2 + (cy - ocy) ** 2
-                            if d < best_dist:
-                                best_dist = d
-                                best_target = opid
+                            for bid_a in brick_ids:
+                                ba = bricks_by_id[bid_a]
+                                for bid_b in obids:
+                                    bb = bricks_by_id[bid_b]
+                                    dx = max(0, max(ba.x, bb.x) - min(ba.right, bb.right))
+                                    dy = max(0, max(ba.y, bb.y) - min(ba.bottom, bb.bottom))
+                                    d = (dx ** 2 + dy ** 2) ** 0.5
+                                    if d < best_dist:
+                                        best_dist = d
+                                        best_target = opid
+                        if best_dist > max_dist:
+                            best_target = None  # too far — leave undersized
 
                     if best_target is not None:
                         pieces_dict[best_target] = pieces_dict[best_target] + brick_ids
