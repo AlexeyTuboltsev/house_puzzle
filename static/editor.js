@@ -428,44 +428,40 @@ function renderPieces() {
 }
 
 function drawPieceSilhouetteOutline(comp, color, thickness) {
-    // Use shadow trick: draw the piece composite with a colored shadow,
-    // offset to create outline on all sides, then mask out the interior.
-    //
-    // Technique: draw the silhouette 4 times with shadow offsets in each direction.
-    // This creates a glow/outline that follows the actual alpha shape.
-
+    // Crisp outline: stamp a solid-color silhouette at offsets in a
+    // circle of radius `t`, then cut out the interior with destination-out.
     ctx.save();
 
-    // Create a clipping region that EXCLUDES the piece interior
-    // so only the shadow (outline) is visible outside the shape
+    const t = Math.max(1, Math.round(thickness / zoom));
+    const pad = t + 2;
     const outlineCanvas = document.createElement('canvas');
-    const pad = thickness * 2;
     outlineCanvas.width = comp.w + pad * 2;
     outlineCanvas.height = comp.h + pad * 2;
     const oCtx = outlineCanvas.getContext('2d');
 
-    // Draw shadow-expanded silhouette
-    oCtx.shadowColor = color;
-    oCtx.shadowBlur = thickness / zoom;
+    // Build a solid-color silhouette
+    const silCanvas = document.createElement('canvas');
+    silCanvas.width = comp.canvas.width;
+    silCanvas.height = comp.canvas.height;
+    const sCtx = silCanvas.getContext('2d');
+    sCtx.drawImage(comp.canvas, 0, 0);
+    sCtx.globalCompositeOperation = 'source-in';
+    sCtx.fillStyle = color;
+    sCtx.fillRect(0, 0, silCanvas.width, silCanvas.height);
 
-    // Draw from multiple offsets for uniform outline
-    const offsets = [
-        [pad, pad - 1], [pad, pad + 1],
-        [pad - 1, pad], [pad + 1, pad],
-    ];
-    for (const [ox, oy] of offsets) {
-        oCtx.drawImage(comp.canvas, ox, oy);
+    // Stamp at offsets in a circle to expand by t pixels
+    for (let dx = -t; dx <= t; dx++) {
+        for (let dy = -t; dy <= t; dy++) {
+            if (dx * dx + dy * dy > t * t) continue;
+            oCtx.drawImage(silCanvas, pad + dx, pad + dy);
+        }
     }
 
-    // Remove the interior by drawing the piece shape with destination-out
-    oCtx.shadowColor = 'transparent';
-    oCtx.shadowBlur = 0;
+    // Cut out the interior
     oCtx.globalCompositeOperation = 'destination-out';
     oCtx.drawImage(comp.canvas, pad, pad);
 
-    // Draw the outline canvas onto the main canvas
     ctx.drawImage(outlineCanvas, comp.x - pad, comp.y - pad);
-
     ctx.restore();
 }
 
