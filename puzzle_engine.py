@@ -121,16 +121,13 @@ def compute_brick_areas(bricks: list[Brick],
     return result
 
 
-def _pixel_adjacency(border_a: set, border_b: set,
-                     gap: int, min_border: int) -> bool:
-    """Check if two border pixel sets share enough common border.
+def _count_close_pixels(border_a: set, border_b: set, gap: int) -> int:
+    """Count how many pixels of border_a are within *gap* of any pixel in border_b.
 
-    Uses spatial bucketing for efficiency: bucket border_b pixels into
-    a grid of cell size `gap`, then for each border_a pixel check only
-    the 3x3 neighbourhood of grid cells.
+    Uses spatial bucketing for efficiency.
     """
     if not border_a or not border_b:
-        return False
+        return 0
 
     cell = max(gap, 1)
     buckets: dict[tuple[int, int], list[tuple[int, int]]] = defaultdict(list)
@@ -156,20 +153,25 @@ def _pixel_adjacency(border_a: set, border_b: set,
                     break
         if found:
             count += 1
-            if count >= min_border:
-                return True
-    return False
+    return count
 
 
 def build_adjacency(bricks: list[Brick], gap: int = ADJACENCY_THRESHOLD,
                     min_border: int = 5,
+                    border_gap: int = 2,
                     border_pixels: dict[int, set] | None = None) -> dict[int, set[int]]:
     """Build adjacency graph.
 
     When *border_pixels* is provided (dict mapping brick id to set of
-    (x, y) border pixel coordinates), adjacency is determined by actual
-    pixel shapes: two bricks are adjacent if at least *min_border* border
-    pixels of one are within *gap* pixels of a border pixel of the other.
+    (x, y) border pixel coordinates), adjacency uses two thresholds:
+
+    - *gap* (default 15): neighbourhood distance — two bricks are
+      potential neighbors if any border pixel of one is within *gap*
+      pixels of any border pixel of the other.
+    - *border_gap* (default 2, range 1-10): contact distance — the
+      actual shared border length is measured by counting border pixels
+      within *border_gap* pixels of the other brick.  This count must
+      reach *min_border* for the bricks to be considered adjacent.
 
     Without border_pixels, falls back to bounding-box heuristic.
     """
@@ -187,10 +189,14 @@ def build_adjacency(bricks: list[Brick], gap: int = ADJACENCY_THRESHOLD,
                 continue
 
             if border_pixels is not None:
-                # Pixel-level adjacency
                 ba = border_pixels.get(a.id, set())
                 bb = border_pixels.get(b.id, set())
-                if _pixel_adjacency(ba, bb, gap, min_border):
+                # Quick check: are they even near each other?
+                if _count_close_pixels(ba, bb, gap) == 0:
+                    continue
+                # Measure actual contact with tight gap
+                contact = _count_close_pixels(ba, bb, border_gap)
+                if contact >= min_border:
                     adj[a.id].add(b.id)
                     adj[b.id].add(a.id)
             else:
@@ -233,6 +239,7 @@ class MergeResult:
 def merge_bricks(bricks: list[Brick], target_piece_count: int | None = None,
                  seed: int = 42,
                  min_border: int = 5,
+                 border_gap: int = 2,
                  border_pixels: dict[int, set] | None = None,
                  brick_areas: dict[int, int] | None = None) -> MergeResult:
     """
@@ -251,7 +258,8 @@ def merge_bricks(bricks: list[Brick], target_piece_count: int | None = None,
     Phase 2 — Stop when the target count is reached.
     """
     bricks_by_id = {b.id: b for b in bricks}
-    adj = build_adjacency(bricks, min_border=min_border, border_pixels=border_pixels)
+    adj = build_adjacency(bricks, min_border=min_border, border_gap=border_gap,
+                          border_pixels=border_pixels)
 
     # Brick areas: use pixel areas if provided, else bounding-box area
     areas = brick_areas if brick_areas else {b.id: b.area for b in bricks}
@@ -353,6 +361,12 @@ def merge_bricks(bricks: list[Brick], target_piece_count: int | None = None,
                 score = abs(combined - target_area)
                 if combined > target_area * 1.5:
                     score += combined  # penalise way-over-target
+                # Compactness penalty: prefer merges that keep the
+                # bounding box close to square rather than elongated
+                merged_ids = pieces_dict[smallest_pid] + pieces_dict[npid]
+                _, _, bw, bh = compute_piece_bbox(merged_ids, bricks_by_id)
+                aspect = max(bw, bh) / max(min(bw, bh), 1)
+                score += target_area * (aspect - 1) * 0.3
                 if score < best_score:
                     best_score = score
                     best_nbr = npid

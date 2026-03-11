@@ -46,11 +46,80 @@ _state = {
 }
 
 EXTRACT_DIR = Path("/tmp/house_puzzle_extract")
+PRESETS_DIR = Path(__file__).parent / "presets"
+PARAM_KEYS = ["target_count", "min_border", "seed"]
 
 
 @app.route("/")
 def index():
     return render_template("index.html")
+
+
+@app.route("/manage")
+def manage():
+    return render_template("manage.html")
+
+
+# --- Preset API ---
+
+def _safe_name(name: str) -> str:
+    """Sanitize preset name for use as filename."""
+    import re
+    return re.sub(r'[^\w\s\-]', '', name).strip()
+
+
+@app.route("/api/presets")
+def api_list_presets():
+    PRESETS_DIR.mkdir(parents=True, exist_ok=True)
+    names = sorted(p.stem for p in PRESETS_DIR.glob("*.json"))
+    return jsonify({"presets": names})
+
+
+@app.route("/api/presets/<name>")
+def api_get_preset(name):
+    path = PRESETS_DIR / f"{_safe_name(name)}.json"
+    if not path.exists():
+        return jsonify({"error": "Preset not found"}), 404
+    with open(path) as f:
+        return jsonify(json.load(f))
+
+
+@app.route("/api/presets", methods=["POST"])
+def api_save_preset():
+    data = request.get_json(force=True)
+    name = _safe_name(data.get("name", ""))
+    if not name:
+        return jsonify({"error": "Name required"}), 400
+    PRESETS_DIR.mkdir(parents=True, exist_ok=True)
+    params = {k: data[k] for k in PARAM_KEYS if k in data}
+    path = PRESETS_DIR / f"{name}.json"
+    with open(path, "w") as f:
+        json.dump(params, f, indent=2)
+    return jsonify({"ok": True, "name": name})
+
+
+@app.route("/api/presets/<name>", methods=["PUT"])
+def api_rename_preset(name):
+    data = request.get_json(force=True)
+    new_name = _safe_name(data.get("new_name", ""))
+    if not new_name:
+        return jsonify({"error": "Name required"}), 400
+    old_path = PRESETS_DIR / f"{_safe_name(name)}.json"
+    new_path = PRESETS_DIR / f"{new_name}.json"
+    if not old_path.exists():
+        return jsonify({"error": "Preset not found"}), 404
+    if new_path.exists() and new_path != old_path:
+        return jsonify({"error": "A preset with that name already exists"}), 409
+    old_path.rename(new_path)
+    return jsonify({"ok": True, "name": new_name})
+
+
+@app.route("/api/presets/<name>", methods=["DELETE"])
+def api_delete_preset(name):
+    path = PRESETS_DIR / f"{_safe_name(name)}.json"
+    if path.exists():
+        path.unlink()
+    return jsonify({"ok": True})
 
 
 @app.route("/api/list_tifs", methods=["GET"])
@@ -202,12 +271,14 @@ def api_merge():
     target_count = data.get("target_count")
     seed = data.get("seed", 42)
     min_border = data.get("min_border", 5)
+    border_gap = data.get("border_gap", 2)
 
     result = merge_bricks(
         _state["bricks"],
         target_piece_count=target_count,
         seed=seed,
         min_border=min_border,
+        border_gap=border_gap,
         border_pixels=_state.get("border_pixels"),
         brick_areas=_state.get("brick_areas"),
     )

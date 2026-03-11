@@ -24,10 +24,36 @@ let pieceComposites = {};
 // View scale (fixed, fit to viewport)
 let zoom = 1;
 
+// Preset state
+let currentPresetName = '';
+let currentPresetValues = null;  // snapshot of params when preset was loaded
+const PARAM_IDS = ['target_count', 'min_border', 'seed'];
+
 const canvas = document.getElementById('houseCanvas');
 const ctx = canvas.getContext('2d');
 const canvasArea = document.getElementById('canvasArea');
 const loading = document.getElementById('loadingOverlay');
+
+// --- Persistence (localStorage) ---
+
+const STORAGE_KEY = 'housePuzzle';
+
+function saveState() {
+    const state = {
+        preset: currentPresetName,
+        params: getCurrentParamValues(),
+        tif: document.getElementById('tifSelect').value,
+        view: viewMode,
+    };
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) {}
+}
+
+function loadSavedState() {
+    try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        return raw ? JSON.parse(raw) : null;
+    } catch (e) { return null; }
+}
 
 // --- Initialization ---
 
@@ -35,6 +61,44 @@ async function init() {
     fitCanvas();
     render();
     await loadTifList();
+    await loadPresetList();
+
+    // Restore saved state
+    const saved = loadSavedState();
+    if (saved) {
+        // Restore TIF selection
+        if (saved.tif) {
+            const tifSelect = document.getElementById('tifSelect');
+            if ([...tifSelect.options].some(o => o.value === saved.tif)) {
+                tifSelect.value = saved.tif;
+            }
+        }
+        // Restore preset or raw params
+        if (saved.preset) {
+            document.getElementById('presetSelect').value = saved.preset;
+            await loadPreset(saved.preset);
+        }
+        // Apply any param overrides (dirty state)
+        if (saved.params) {
+            applyParamValues(saved.params);
+            checkPresetDirty();
+        }
+        // Restore view mode
+        if (saved.view) {
+            viewMode = saved.view;
+            document.querySelectorAll('.view-toggles button').forEach(b => b.classList.remove('active'));
+            const btnId = 'view' + saved.view.charAt(0).toUpperCase() + saved.view.slice(1);
+            const btn = document.getElementById(btnId);
+            if (btn) btn.classList.add('active');
+        }
+    } else {
+        // First visit: load Default preset
+        const presetSelect = document.getElementById('presetSelect');
+        if ([...presetSelect.options].some(o => o.value === 'Default')) {
+            presetSelect.value = 'Default';
+            await loadPreset('Default');
+        }
+    }
 }
 
 async function loadTifList() {
@@ -103,9 +167,9 @@ async function loadTif() {
 
         document.getElementById('mergeBtn').disabled = false;
         document.getElementById('exportBtn').disabled = true;
-        setView('pieces');
         document.getElementById('canvasInfo').textContent =
             `${canvasW}×${canvasH} | ${data.num_bricks} bricks | Adjust settings and click Generate Puzzle`;
+        saveState();
 
     } catch (err) {
         alert('Failed to load TIF: ' + err.message);
@@ -191,10 +255,15 @@ async function doMerge() {
         document.getElementById('exportBtn').disabled = false;
 
         buildPieceComposites();
-        setView('pieces');
 
         document.getElementById('canvasInfo').textContent =
             `${canvasW}×${canvasH} | ${data.num_pieces} pieces | Hover/click to inspect`;
+        // Re-render current view (don't switch away from blueprint)
+        if (viewMode === 'blueprint') {
+            // Clear old SVG so renderBlueprint rebuilds it
+            const svg = document.getElementById('blueprintSvg');
+            svg.innerHTML = '';
+        }
         render();
 
     } catch (err) {
@@ -206,6 +275,8 @@ async function doMerge() {
 
 // --- Export ---
 
+let _exportDirHandle = null;
+
 async function doExport() {
     if (!pieces.length) return;
     showLoading('Exporting...');
@@ -216,6 +287,27 @@ async function doExport() {
             body: JSON.stringify({}),
         });
         const blob = await resp.blob();
+
+        // Try File System Access API (remembers last save directory)
+        if (window.showSaveFilePicker) {
+            try {
+                const handle = await window.showSaveFilePicker({
+                    suggestedName: 'house_puzzle_export.zip',
+                    startIn: _exportDirHandle || 'downloads',
+                    types: [{ description: 'ZIP Archive', accept: { 'application/zip': ['.zip'] } }],
+                });
+                _exportDirHandle = handle;
+                const writable = await handle.createWritable();
+                await writable.write(blob);
+                await writable.close();
+                return;
+            } catch (e) {
+                if (e.name === 'AbortError') return; // user cancelled
+                // Fall through to classic download
+            }
+        }
+
+        // Fallback: classic download
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -245,6 +337,7 @@ function setView(mode) {
         svg.style.display = 'none';
         svg.innerHTML = '';
     }
+    saveState();
     render();
 }
 
@@ -1465,13 +1558,119 @@ canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
 document.getElementById('target_count').addEventListener('input', (e) => {
     document.getElementById('val_target_count').textContent = e.target.value;
+    checkPresetDirty();
 });
 document.getElementById('seed').addEventListener('input', (e) => {
     document.getElementById('val_seed').textContent = e.target.value;
+    checkPresetDirty();
 });
 document.getElementById('min_border').addEventListener('input', (e) => {
     document.getElementById('val_min_border').textContent = e.target.value;
+    checkPresetDirty();
 });
+
+// --- Presets ---
+
+function getCurrentParamValues() {
+    const vals = {};
+    for (const id of PARAM_IDS) {
+        const el = document.getElementById(id);
+        vals[id] = el.type === 'number' ? parseInt(el.value) : parseInt(el.value);
+    }
+    return vals;
+}
+
+function applyParamValues(vals) {
+    for (const [id, val] of Object.entries(vals)) {
+        const el = document.getElementById(id);
+        if (!el) continue;
+        el.value = val;
+        const label = document.getElementById('val_' + id);
+        if (label) label.textContent = val;
+    }
+}
+
+async function loadPresetList() {
+    try {
+        const resp = await fetch('/api/presets');
+        const data = await resp.json();
+        const select = document.getElementById('presetSelect');
+        const current = currentPresetName;
+        select.innerHTML = '<option value="">-- Preset --</option>';
+        for (const name of data.presets) {
+            const opt = document.createElement('option');
+            opt.value = name;
+            opt.textContent = name;
+            if (name === current) opt.selected = true;
+            select.appendChild(opt);
+        }
+
+    } catch (e) { /* ignore */ }
+}
+
+async function loadPreset(name) {
+    if (!name) {
+        currentPresetName = '';
+        currentPresetValues = null;
+        document.getElementById('presetReloadBtn').style.display = 'none';
+        return;
+    }
+    try {
+        const resp = await fetch('/api/presets/' + encodeURIComponent(name));
+        const data = await resp.json();
+        if (data.error) { alert(data.error); return; }
+        applyParamValues(data);
+        currentPresetName = name;
+        currentPresetValues = getCurrentParamValues();
+        document.getElementById('presetReloadBtn').style.display = 'none';
+        saveState();
+    } catch (e) {
+        alert('Failed to load preset: ' + e.message);
+    }
+}
+
+function reloadPreset() {
+    if (currentPresetName) loadPreset(currentPresetName);
+}
+
+function checkPresetDirty() {
+    if (!currentPresetValues) {
+        document.getElementById('presetReloadBtn').style.display = 'none';
+        saveState();
+        return;
+    }
+    const current = getCurrentParamValues();
+    let dirty = false;
+    for (const id of PARAM_IDS) {
+        if (current[id] !== currentPresetValues[id]) { dirty = true; break; }
+    }
+    document.getElementById('presetReloadBtn').style.display = dirty ? '' : 'none';
+    saveState();
+}
+
+async function savePresetAs() {
+    const name = prompt('Preset name:', currentPresetName || 'New Preset');
+    if (!name) return;
+    const params = getCurrentParamValues();
+    try {
+        const resp = await fetch('/api/presets', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, ...params }),
+        });
+        const data = await resp.json();
+        if (data.error) { alert(data.error); return; }
+        currentPresetName = name;
+        currentPresetValues = getCurrentParamValues();
+        await loadPresetList();
+        document.getElementById('presetSelect').value = name;
+        document.getElementById('presetReloadBtn').style.display = 'none';
+        saveState();
+    } catch (e) {
+        alert('Failed to save preset: ' + e.message);
+    }
+}
+
 
 // --- Resize ---
 

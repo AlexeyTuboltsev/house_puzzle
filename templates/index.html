@@ -76,16 +76,18 @@
             z-index: 1;
         }
         .loading-overlay {
-            position: sticky;
-            top: 0; left: 0;
-            width: 100%;
-            height: 100%;
+            position: fixed;
+            top: 48px;
+            left: 0;
+            right: 300px;
+            bottom: 0;
             background: rgba(0,0,0,0.6);
             display: none;
             align-items: center;
             justify-content: center;
             font-size: 18px;
             color: #e0a050;
+            z-index: 10;
         }
         .loading-overlay.active { display: flex; }
 
@@ -236,17 +238,26 @@
 
             <h2>Puzzle Parameters</h2>
 
+            <select class="tif-select" id="presetSelect" onchange="loadPreset(this.value)">
+                <option value="">-- Preset --</option>
+            </select>
+            <div class="preset-btn-row" style="display:flex; gap:4px; margin-bottom:8px;">
+                <button id="presetReloadBtn" onclick="reloadPreset()" style="display:none; flex:1;" title="Reload preset">Reload</button>
+                <button id="presetSaveBtn" onclick="savePresetAs()" style="flex:1;" title="Save as new preset">Save As...</button>
+                <button onclick="location.href='/manage'" style="flex:1;" title="Manage presets">Manage</button>
+            </div>
+
             <div class="param-group">
                 <label>Target Pieces <span class="value" id="val_target_count">60</span></label>
                 <input type="range" id="target_count" min="5" max="181" value="60" step="1">
             </div>
             <div class="param-group">
-                <label>Seed <span class="value" id="val_seed">42</span></label>
-                <input type="number" id="seed" value="42" min="0" max="99999">
-            </div>
-            <div class="param-group">
                 <label>Min Border <span class="value" id="val_min_border">5</span>px</label>
                 <input type="range" id="min_border" min="0" max="50" value="5" step="1">
+            </div>
+            <div class="param-group">
+                <label>Seed <span class="value" id="val_seed">42</span></label>
+                <input type="number" id="seed" value="42" min="0" max="99999">
             </div>
 
             <div class="btn-row">
