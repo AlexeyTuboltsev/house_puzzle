@@ -372,29 +372,20 @@ function renderBricks() {
 }
 
 function renderPieces() {
+    // Draw all pieces except hovered/selected (those go on top)
     for (const piece of pieces) {
+        if (piece.id === hoveredPieceId || piece.id === selectedPieceId) continue;
         const comp = pieceComposites[piece.id];
         if (!comp) continue;
 
-        const isHovered = piece.id === hoveredPieceId;
-        const isSelected = piece.id === selectedPieceId;
         const hue = (piece.id * 137.508) % 360;
-
-        // Draw the piece composite image
         ctx.drawImage(comp.canvas, comp.x, comp.y, comp.w, comp.h);
 
-        // Color tint overlay (using the composite as shape mask)
-        if (!isSelected) {
-            const tintAlpha = isHovered ? 0.3 : 0.12;
-            const tint = makeTintedCanvas(comp.canvas, hue, tintAlpha);
-            ctx.drawImage(tint, comp.x, comp.y, comp.w, comp.h);
-        }
+        const tint = makeTintedCanvas(comp.canvas, hue, 0.12);
+        ctx.drawImage(tint, comp.x, comp.y, comp.w, comp.h);
 
-        // Label
         if (zoom > 0.12) {
-            ctx.fillStyle = isSelected
-                ? 'rgba(255, 96, 48, 0.95)'
-                : `hsla(${hue}, 80%, 85%, 0.85)`;
+            ctx.fillStyle = `hsla(${hue}, 80%, 85%, 0.85)`;
             ctx.font = `bold ${Math.round(13 / zoom)}px sans-serif`;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
@@ -409,19 +400,19 @@ function renderPieces() {
             const comp = pieceComposites[piece.id];
             if (comp) {
                 ctx.drawImage(comp.canvas, comp.x, comp.y, comp.w, comp.h);
-                drawPieceSilhouetteOutline(comp, 'rgba(0, 0, 0, 0.9)', 1);
+                drawPieceSilhouetteOutline(comp, 'rgba(60, 200, 255, 0.9)', 4);
             }
         }
     }
 
-    // Draw selected piece on top for prominence
+    // Draw selected piece on top of everything
     if (selectedPieceId >= 0) {
         const piece = pieces.find(p => p.id === selectedPieceId);
         if (piece) {
             const comp = pieceComposites[piece.id];
             if (comp) {
                 ctx.drawImage(comp.canvas, comp.x, comp.y, comp.w, comp.h);
-                drawPieceSilhouetteOutline(comp, 'rgba(0, 0, 0, 0.9)', 1);
+                drawPieceSilhouetteOutline(comp, '#ff6030', 6);
 
                 ctx.fillStyle = 'rgba(255, 96, 48, 0.95)';
                 ctx.font = `bold ${Math.round(14 / zoom)}px sans-serif`;
