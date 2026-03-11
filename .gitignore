@@ -24,3 +24,12 @@ build/
 
 # Firecrawl
 .firecrawl/
+
+# Data files
+in/
+
+# Playwright MCP
+.playwright-mcp/
+
+# Screenshots (debug/test artifacts)
+*.png

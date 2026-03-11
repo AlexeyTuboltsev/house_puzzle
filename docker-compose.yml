@@ -1,0 +1,11 @@
+services:
+  editor:
+    build: .
+    ports:
+      - "5050:5050"
+    volumes:
+      - .:/app
+      - ./in:/app/in
+    environment:
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONUNBUFFERED=1

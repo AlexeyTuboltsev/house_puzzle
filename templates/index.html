@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>House Puzzle Editor</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a2e;
+            color: #e0e0e0;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 8px 16px;
+            background: #16213e;
+            border-bottom: 1px solid #333;
+            height: 48px;
+        }
+        .header h1 {
+            font-size: 16px;
+            font-weight: 600;
+            color: #e0a050;
+            margin-right: auto;
+        }
+        .header button, .sidebar button {
+            padding: 6px 16px;
+            border: 1px solid #555;
+            border-radius: 4px;
+            background: #2a2a4a;
+            color: #e0e0e0;
+            cursor: pointer;
+            font-size: 13px;
+        }
+        .header button:hover, .sidebar button:hover { background: #3a3a6a; }
+        .header button:disabled, .sidebar button:disabled { opacity: 0.4; cursor: not-allowed; }
+        .header button.primary, .sidebar button.primary {
+            background: #e0a050;
+            color: #1a1a2e;
+            border-color: #e0a050;
+            font-weight: 600;
+        }
+        .header button.primary:hover { background: #f0b060; }
+
+        .main {
+            display: flex;
+            height: calc(100vh - 48px);
+        }
+
+        .canvas-area {
+            flex: 1;
+            position: relative;
+            overflow: auto;
+            background: #111;
+        }
+        #houseCanvas {
+            display: block;
+            cursor: crosshair;
+        }
+        .canvas-info {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 4px 8px;
+            font-size: 11px;
+            color: #888;
+            background: rgba(17, 17, 17, 0.8);
+            pointer-events: none;
+            z-index: 1;
+        }
+        .loading-overlay {
+            position: fixed;
+            top: 48px;
+            left: 0;
+            right: 300px;
+            bottom: 0;
+            background: rgba(0,0,0,0.6);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            color: #e0a050;
+            z-index: 10;
+        }
+        .loading-overlay.active { display: flex; }
+
+        .sidebar {
+            width: 300px;
+            background: #16213e;
+            border-left: 1px solid #333;
+            padding: 16px;
+            overflow-y: auto;
+        }
+        .sidebar h2 {
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #888;
+            margin-bottom: 12px;
+        }
+        .sidebar h2:not(:first-child) { margin-top: 20px; }
+
+        .tif-select {
+            width: 100%;
+            padding: 6px 8px;
+            background: #2a2a4a;
+            border: 1px solid #555;
+            border-radius: 4px;
+            color: #e0e0e0;
+            font-size: 12px;
+            margin-bottom: 8px;
+        }
+        .tif-select:focus { border-color: #e0a050; outline: none; }
+
+        .param-group {
+            margin-bottom: 8px;
+        }
+        .param-group label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            margin-bottom: 4px;
+        }
+        .param-group label span.value {
+            color: #e0a050;
+            font-weight: 600;
+        }
+        .param-group input[type="range"] {
+            width: 100%;
+            accent-color: #e0a050;
+        }
+        .param-group input[type="number"] {
+            width: 70px;
+            background: #2a2a4a;
+            border: 1px solid #555;
+            color: #e0e0e0;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+
+        .checkbox-group {
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+        }
+        .checkbox-group input[type="checkbox"] {
+            accent-color: #e0a050;
+        }
+
+        .btn-row {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+        }
+        .btn-row button {
+            flex: 1;
+            padding: 8px;
+            font-size: 12px;
+        }
+
+        .stats {
+            background: #0f1629;
+            border-radius: 6px;
+            padding: 10px;
+            font-size: 12px;
+            line-height: 1.8;
+        }
+        .stats .row {
+            display: flex;
+            justify-content: space-between;
+        }
+        .stats .row .val {
+            color: #e0a050;
+            font-weight: 600;
+        }
+
+        .hint {
+            font-size: 11px;
+            color: #666;
+            margin-top: 12px;
+            line-height: 1.5;
+        }
+
+        .view-toggles {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 12px;
+        }
+        .view-toggles button {
+            flex: 1;
+            padding: 5px 4px;
+            font-size: 11px;
+            white-space: nowrap;
+        }
+        .view-toggles button.active {
+            background: #e0a050;
+            color: #1a1a2e;
+            border-color: #e0a050;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>House Puzzle Editor</h1>
+        <button class="primary" id="exportBtn" disabled onclick="doExport()">Export ZIP</button>
+    </div>
+
+    <div class="main">
+        <div class="canvas-area" id="canvasArea">
+            <canvas id="houseCanvas"></canvas>
+            <svg id="blueprintSvg" style="position:absolute;top:0;left:0;pointer-events:none;display:none;"></svg>
+            <div class="canvas-info" id="canvasInfo">Select a TIF to begin</div>
+            <div class="loading-overlay" id="loadingOverlay">Loading...</div>
+        </div>
+
+        <div class="sidebar">
+            <h2>Source TIF</h2>
+            <select class="tif-select" id="tifSelect">
+                <option value="">-- Select TIF --</option>
+            </select>
+            <button id="loadBtn" onclick="loadTif()" style="width:100%; margin-bottom:8px;">Load</button>
+
+            <h2>View</h2>
+            <div class="view-toggles">
+                <button id="viewPieces" class="active" onclick="setView('pieces')">Pieces</button>
+                <button id="viewBlueprint" onclick="setView('blueprint')">Blueprint</button>
+            </div>
+
+            <h2>Puzzle Parameters</h2>
+
+            <select class="tif-select" id="presetSelect" onchange="loadPreset(this.value)">
+                <option value="">-- Preset --</option>
+            </select>
+            <div class="preset-btn-row" style="display:flex; gap:4px; margin-bottom:8px;">
+                <button id="presetReloadBtn" onclick="reloadPreset()" style="display:none; flex:1;" title="Reload preset">Reload</button>
+                <button id="presetSaveBtn" onclick="savePresetAs()" style="flex:1;" title="Save as new preset">Save As...</button>
+                <button onclick="location.href='/manage'" style="flex:1;" title="Manage presets">Manage</button>
+            </div>
+
+            <div class="param-group">
+                <label>Target Pieces <span class="value" id="val_target_count">60</span></label>
+                <input type="range" id="target_count" min="5" max="181" value="60" step="1">
+            </div>
+            <div class="param-group">
+                <label>Min Border <span class="value" id="val_min_border">5</span>px</label>
+                <input type="range" id="min_border" min="0" max="50" value="5" step="1">
+            </div>
+            <div class="param-group">
+                <label>Seed <span class="value" id="val_seed">42</span></label>
+                <input type="number" id="seed" value="42" min="0" max="99999">
+            </div>
+
+            <div class="btn-row">
+                <button class="primary" id="mergeBtn" disabled onclick="doMerge()">Generate Puzzle</button>
+            </div>
+
+            <div class="btn-row" id="editBtnRow" style="display:none;">
+                <button id="editPieceBtn" onclick="startEditPiece()">Edit Piece</button>
+            </div>
+            <div class="btn-row" id="editActionRow" style="display:none;">
+                <button id="saveEditBtn" disabled onclick="saveEditPiece()">Save</button>
+                <button id="cancelEditBtn" onclick="cancelEditPiece()">Cancel</button>
+            </div>
+            <div class="hint" id="editHint" style="display:none; color:#e0a050; margin-top:4px;">
+                Click bricks to add/remove them from this piece.
+            </div>
+
+            <h2>Stats</h2>
+            <div class="stats" id="stats">
+                <div class="row"><span>Canvas</span><span class="val" id="stat_canvas">-</span></div>
+                <div class="row"><span>Total Bricks</span><span class="val" id="stat_bricks">-</span></div>
+                <div class="row"><span>Puzzle Pieces</span><span class="val" id="stat_pieces">-</span></div>
+                <div class="row"><span>Hovered</span><span class="val" id="stat_hovered">-</span></div>
+                <div class="row"><span>Selected</span><span class="val" id="stat_selected">-</span></div>
+            </div>
+
+            <div class="hint">
+                Load a TIF, adjust parameters, then click Generate Puzzle.
+                Hover/click pieces to inspect. Switch to Blueprint view
+                for vectorized outlines. Export ZIP for all assets.
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/editor.js"></script>
+</body>
+</html>
