@@ -22,6 +22,7 @@ from puzzle_engine import (
     merge_bricks,
     pieces_to_json,
     build_adjacency,
+    compute_all_border_pixels,
 )
 
 app = Flask(
@@ -38,6 +39,7 @@ _state = {
     "pieces": [],           # list[PuzzlePiece]
     "tif_path": None,
     "extracted_dir": None,  # temp dir with extracted PNGs
+    "border_pixels": {},    # dict[int, set[(x,y)]] per brick
 }
 
 EXTRACT_DIR = Path("/tmp/house_puzzle_extract")
@@ -120,8 +122,12 @@ def api_load_tif():
         if not base_path.exists():
             extract_brick_png(tif_path, house.base.index, str(base_path))
 
-    # Build adjacency for visualization
-    adj = build_adjacency(bricks)
+    # Compute border pixels from actual brick shapes
+    bp = compute_all_border_pixels(bricks, str(extract_dir))
+    _state["border_pixels"] = bp
+
+    # Build adjacency for visualization (using pixel shapes)
+    adj = build_adjacency(bricks, border_pixels=bp)
 
     brick_data = []
     for b in bricks:
@@ -195,7 +201,7 @@ def api_merge():
     max_bricks = data.get("max_bricks", 0)
     min_border = data.get("min_border", 1)
 
-    pieces = merge_bricks(
+    result = merge_bricks(
         _state["bricks"],
         target_piece_count=target_count,
         seed=seed,
@@ -205,15 +211,17 @@ def api_merge():
         min_bricks=min_bricks,
         max_bricks=max_bricks,
         min_border=min_border,
+        border_pixels=_state.get("border_pixels"),
     )
 
-    _state["pieces"] = pieces
+    _state["pieces"] = result.pieces
 
-    pieces_json = pieces_to_json(pieces, _state["bricks_by_id"])
+    pieces_json = pieces_to_json(result.pieces, _state["bricks_by_id"])
 
     return jsonify({
-        "num_pieces": len(pieces),
+        "num_pieces": len(result.pieces),
         "pieces": pieces_json,
+        "oversized": result.oversized,
     })
 
 

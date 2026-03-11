@@ -9,7 +9,8 @@ let selectedBrickId = -1;
 let hoveredBrickId = -1;
 let selectedPieceId = -1;
 let hoveredPieceId = -1;
-let viewMode = 'bricks';
+let oversizedPieceIds = new Set();
+let viewMode = 'pieces';
 
 // Piece edit mode state
 let editMode = false;
@@ -102,8 +103,10 @@ async function loadTif() {
         compositeImg.src = '/api/composite.png?' + Date.now();
 
         document.getElementById('mergeBtn').disabled = false;
+        document.getElementById('exportBtn').disabled = true;
+        setView('pieces');
         document.getElementById('canvasInfo').textContent =
-            `${canvasW}×${canvasH} | ${data.num_bricks} bricks | Click to select`;
+            `${canvasW}×${canvasH} | ${data.num_bricks} bricks | Adjust settings and click Generate Puzzle`;
 
     } catch (err) {
         alert('Failed to load TIF: ' + err.message);
@@ -123,7 +126,7 @@ function loadBrickImages() {
             loaded++;
             if (loaded === total) {
                 document.getElementById('canvasInfo').textContent =
-                    `${canvasW}×${canvasH} | ${total} bricks loaded | Click to select`;
+                    `${canvasW}×${canvasH} | ${total} bricks loaded | Adjust settings and click Generate Puzzle`;
                 render();
             } else if (loaded % 20 === 0) {
                 render();
@@ -162,7 +165,7 @@ function buildPieceComposites() {
 // --- Merge ---
 
 async function doMerge() {
-    showLoading('Merging bricks...');
+    showLoading('Generating puzzle...');
 
     try {
         const resp = await fetch('/api/merge', {
@@ -187,19 +190,25 @@ async function doMerge() {
         }
 
         pieces = data.pieces;
+        oversizedPieceIds = new Set(data.oversized || []);
         selectedPieceId = -1;
         hoveredPieceId = -1;
         document.getElementById('stat_pieces').textContent = data.num_pieces;
         document.getElementById('stat_selected').textContent = '-';
         document.getElementById('exportBtn').disabled = false;
-        document.getElementById('blueprintBtn').disabled = false;
 
         buildPieceComposites();
         setView('pieces');
+
+        let info = `${canvasW}×${canvasH} | ${data.num_pieces} pieces | Hover/click to inspect`;
+        if (oversizedPieceIds.size > 0) {
+            info += ` | WARNING: ${oversizedPieceIds.size} piece(s) exceed max dimensions`;
+        }
+        document.getElementById('canvasInfo').textContent = info;
         render();
 
     } catch (err) {
-        alert('Merge failed: ' + err.message);
+        alert('Generate failed: ' + err.message);
     } finally {
         hideLoading();
     }
@@ -237,20 +246,17 @@ function setView(mode) {
     viewMode = mode;
     document.querySelectorAll('.view-toggles button').forEach(b => b.classList.remove('active'));
     const btnId = 'view' + mode.charAt(0).toUpperCase() + mode.slice(1);
-    document.getElementById(btnId).classList.add('active');
+    const btn = document.getElementById(btnId);
+    if (btn) btn.classList.add('active');
     document.getElementById('editBtnRow').style.display = 'none';
-    document.getElementById('blueprintParams').style.display = mode === 'blueprint' ? 'block' : 'none';
-    document.getElementById('shapeParams').style.display = mode === 'shape' ? 'block' : 'none';
-    // Hide SVG overlay when not in blueprint/shape mode
-    if (mode !== 'blueprint' && mode !== 'shape') {
+    // Hide SVG overlay when not in blueprint mode
+    if (mode !== 'blueprint') {
         const svg = document.getElementById('blueprintSvg');
         svg.style.display = 'none';
         svg.innerHTML = '';
     }
     render();
 }
-
-function showBlueprint() { setView('blueprint'); }
 
 // --- Canvas ---
 
@@ -292,21 +298,17 @@ function render() {
 
     // Draw composite background (not for blueprint)
     if (compositeImg && compositeImg.complete && viewMode !== 'blueprint') {
-        ctx.globalAlpha = (viewMode === 'bricks') ? 0.4 : 0.7;
+        ctx.globalAlpha = pieces.length ? 0.7 : 1.0;
         ctx.drawImage(compositeImg, 0, 0, canvasW, canvasH);
         ctx.globalAlpha = 1.0;
     }
 
     if (editMode) {
         renderEditMode();
-    } else if (viewMode === 'bricks') {
-        renderBricks();
     } else if (viewMode === 'pieces') {
-        renderPieces();
+        if (pieces.length) renderPieces();
     } else if (viewMode === 'blueprint') {
         renderBlueprint();
-    } else if (viewMode === 'shape') {
-        renderShape();
     }
 
     ctx.restore();
@@ -393,15 +395,24 @@ function renderPieces() {
             ctx.drawImage(tint, comp.x, comp.y, comp.w, comp.h);
         }
 
+        // Warning outline for oversized pieces
+        if (oversizedPieceIds.has(piece.id)) {
+            drawPieceSilhouetteOutline(comp, 'rgba(255, 40, 40, 0.9)', 4);
+        }
+
         // Label
         if (zoom > 0.12) {
+            const isOversized = oversizedPieceIds.has(piece.id);
             ctx.fillStyle = isSelected
                 ? 'rgba(255, 96, 48, 0.95)'
-                : `hsla(${hue}, 80%, 85%, 0.85)`;
+                : isOversized
+                    ? 'rgba(255, 40, 40, 0.95)'
+                    : `hsla(${hue}, 80%, 85%, 0.85)`;
             ctx.font = `bold ${Math.round(13 / zoom)}px sans-serif`;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillText(`#${piece.id}`, comp.x + comp.w / 2, comp.y + comp.h / 2);
+            const label = isOversized ? `#${piece.id} !!` : `#${piece.id}`;
+            ctx.fillText(label, comp.x + comp.w / 2, comp.y + comp.h / 2);
         }
     }
 
@@ -1421,20 +1432,7 @@ canvas.addEventListener('mousemove', (e) => {
             }
             render();
         }
-    } else if (viewMode === 'bricks') {
-        const newHovered = findBrickAt(hx, hy);
-        if (newHovered !== hoveredBrickId) {
-            hoveredBrickId = newHovered;
-            if (hoveredBrickId >= 0) {
-                const b = bricks.find(br => br.id === hoveredBrickId);
-                document.getElementById('stat_hovered').textContent =
-                    `#${b.id} (${b.width}×${b.height}) [${b.type}]`;
-            } else {
-                document.getElementById('stat_hovered').textContent = '-';
-            }
-            render();
-        }
-    } else if (viewMode === 'pieces' || viewMode === 'shape') {
+    } else if (viewMode === 'pieces' && pieces.length) {
         const newHovered = findPieceAt(hx, hy);
         if (newHovered !== hoveredPieceId) {
             hoveredPieceId = newHovered;
@@ -1468,22 +1466,7 @@ canvas.addEventListener('click', (e) => {
         return;
     }
 
-    if (viewMode === 'bricks') {
-        const clickedId = findBrickAt(hx, hy);
-        if (clickedId === selectedBrickId) {
-            selectedBrickId = -1;
-            document.getElementById('stat_selected').textContent = '-';
-        } else {
-            selectedBrickId = clickedId;
-            if (clickedId >= 0) {
-                const b = bricks.find(br => br.id === clickedId);
-                document.getElementById('stat_selected').textContent =
-                    `#${b.id} (${b.width}×${b.height}) [${b.type}]`;
-            } else {
-                document.getElementById('stat_selected').textContent = '-';
-            }
-        }
-    } else if (viewMode === 'pieces' || viewMode === 'shape') {
+    if (viewMode === 'pieces' && pieces.length) {
         const clickedId = findPieceAt(hx, hy);
         if (clickedId === selectedPieceId) {
             selectedPieceId = -1;
@@ -1532,18 +1515,6 @@ document.getElementById('max_bricks').addEventListener('input', (e) => {
 });
 document.getElementById('min_border').addEventListener('input', (e) => {
     document.getElementById('val_min_border').textContent = e.target.value;
-});
-document.getElementById('smoothing').addEventListener('input', (e) => {
-    document.getElementById('val_smoothing').textContent = e.target.value;
-    if (viewMode === 'blueprint') render();
-});
-document.getElementById('targetVerts').addEventListener('input', (e) => {
-    shapeManualVerts = parseInt(e.target.value);
-    document.getElementById('val_targetVerts').textContent = e.target.value;
-    if (viewMode === 'shape') render();
-});
-document.getElementById('showVector').addEventListener('change', () => {
-    if (viewMode === 'shape') render();
 });
 
 // --- Resize ---
