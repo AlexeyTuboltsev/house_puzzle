@@ -499,18 +499,7 @@ function makeTintedCanvas(srcCanvas, hue, alpha) {
 function renderBlueprint() {
     if (!pieces.length) return;
 
-    const blueprintBlue = '#2a5da8';
-    const epsilon = parseFloat(document.getElementById('smoothing').value);
-
-    // 1. Fill all piece areas with solid blue on canvas
-    for (const piece of pieces) {
-        const comp = pieceComposites[piece.id];
-        if (!comp) continue;
-        const solid = makeSolidCanvas(comp.canvas, blueprintBlue);
-        ctx.drawImage(solid, comp.x, comp.y, comp.w, comp.h);
-    }
-
-    // 2. Trace each piece outline as a closed SVG polygon
+    // Use vectorized shapes: fill with blue, stroke with white
     const svg = document.getElementById('blueprintSvg');
     const padX = (canvas.width - canvasW * zoom) / 2;
     const padY = (canvas.height - canvasH * zoom) / 2;
@@ -518,26 +507,26 @@ function renderBlueprint() {
     svg.setAttribute('height', canvas.height);
     svg.style.display = 'block';
 
-    const strokeW = Math.max(3, 4 * zoom);
+    const strokeW = 4;
     let svgContent = '';
 
     for (const piece of pieces) {
         const comp = pieceComposites[piece.id];
         if (!comp) continue;
 
-        const contours = tracePieceContours(comp, epsilon);
+        const outline = coarseTraceSnap(comp);
+        if (outline.length < 3) continue;
+        const simplified = autoSimplify(outline, 1);
+        const refined = refineCorners(simplified, outline, 20, 1);
 
-        for (const pts of contours) {
-            if (pts.length < 3) continue;
-            let d = '';
-            for (let i = 0; i < pts.length; i++) {
-                const sx = (comp.x + pts[i][0]) * zoom + padX;
-                const sy = (comp.y + pts[i][1]) * zoom + padY;
-                d += (i === 0 ? 'M' : 'L') + sx.toFixed(1) + ',' + sy.toFixed(1);
-            }
-            d += 'Z';
-            svgContent += `<path d="${d}" fill="none" stroke="white" stroke-width="${strokeW.toFixed(1)}" stroke-linejoin="round" stroke-linecap="round"/>`;
+        let d = '';
+        for (let i = 0; i < refined.length; i++) {
+            const sx = (comp.x + refined[i][0]) * zoom + padX;
+            const sy = (comp.y + refined[i][1]) * zoom + padY;
+            d += (i === 0 ? 'M' : 'L') + sx.toFixed(1) + ',' + sy.toFixed(1);
         }
+        d += 'Z';
+        svgContent += `<path d="${d}" fill="#2a5da8" stroke="white" stroke-width="${strokeW.toFixed(1)}" stroke-linejoin="round" stroke-linecap="round" paint-order="fill stroke"/>`;
     }
 
     svg.innerHTML = svgContent;
