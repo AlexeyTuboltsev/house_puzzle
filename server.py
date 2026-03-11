@@ -24,6 +24,7 @@ from puzzle_engine import (
     build_adjacency,
     compute_all_border_pixels,
     compute_brick_areas,
+    compute_piece_bbox,
 )
 
 app = Flask(
@@ -200,22 +201,12 @@ def api_merge():
 
     target_count = data.get("target_count")
     seed = data.get("seed", 42)
-    windows_separate = data.get("windows_separate", True)
-    max_width = data.get("max_width", 800)
-    max_height = data.get("max_height", 600)
-    min_bricks = data.get("min_bricks", 1)
-    max_bricks = data.get("max_bricks", 0)
     min_border = data.get("min_border", 5)
 
     result = merge_bricks(
         _state["bricks"],
         target_piece_count=target_count,
         seed=seed,
-        windows_separate=windows_separate,
-        max_width=max_width,
-        max_height=max_height,
-        min_bricks=min_bricks,
-        max_bricks=max_bricks,
         min_border=min_border,
         border_pixels=_state.get("border_pixels"),
         brick_areas=_state.get("brick_areas"),
@@ -228,7 +219,6 @@ def api_merge():
     return jsonify({
         "num_pieces": len(result.pieces),
         "pieces": pieces_json,
-        "oversized": result.oversized,
     })
 
 
@@ -263,7 +253,6 @@ def api_update_piece():
     _state["pieces"] = [p for p in pieces if p.brick_ids]
 
     # Recompute bboxes
-    from puzzle_engine import compute_piece_bbox
     for p in _state["pieces"]:
         p.x, p.y, p.width, p.height = compute_piece_bbox(
             p.brick_ids, _state["bricks_by_id"]

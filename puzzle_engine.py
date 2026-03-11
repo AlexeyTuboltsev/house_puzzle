@@ -14,10 +14,6 @@ import numpy as np
 from PIL import Image
 
 
-# Default size constraints (pixels) — configurable via merge params
-DEFAULT_MAX_WIDTH = 800
-DEFAULT_MAX_HEIGHT = 600
-
 # Adjacency threshold: bricks within this many pixels are considered neighbors
 ADJACENCY_THRESHOLD = 15
 
@@ -229,44 +225,28 @@ def compute_piece_bbox(piece_brick_ids: list[int], bricks_by_id: dict[int, Brick
     return x, y, max(rs) - x, max(bs) - y
 
 
-def would_exceed_limits(piece_bricks: list[int], candidate_id: int,
-                        bricks_by_id: dict[int, Brick],
-                        max_w: int = DEFAULT_MAX_WIDTH,
-                        max_h: int = DEFAULT_MAX_HEIGHT) -> bool:
-    """Check if adding candidate brick would make the piece exceed max size."""
-    test_ids = piece_bricks + [candidate_id]
-    _, _, w, h = compute_piece_bbox(test_ids, bricks_by_id)
-    return w > max_w or h > max_h
-
-
 @dataclass
 class MergeResult:
     pieces: list["PuzzlePiece"]
-    oversized: list[int]  # piece IDs that exceed pixel dimensions
 
 
 def merge_bricks(bricks: list[Brick], target_piece_count: int | None = None,
-                 seed: int = 42, windows_separate: bool = True,
-                 max_width: int = DEFAULT_MAX_WIDTH,
-                 max_height: int = DEFAULT_MAX_HEIGHT,
-                 min_bricks: int = 1,
-                 max_bricks: int = 0,
+                 seed: int = 42,
                  min_border: int = 5,
                  border_pixels: dict[int, set] | None = None,
-                 brick_areas: dict[int, int] | None = None,
-                 attempts: int = 5) -> MergeResult:
+                 brick_areas: dict[int, int] | None = None) -> MergeResult:
     """
     Merge bricks into puzzle pieces using area-balanced adjacency grouping.
 
-    Uses brick pixel areas to target roughly equal-area pieces.  Always
-    merges the smallest piece first, picking the neighbor that brings the
-    combined area closest to (but not exceeding) the target.
+    Produces exactly *target_piece_count* pieces (or as close as possible
+    given connectivity constraints).  All merges require real pixel adjacency
+    — no bounding-box fallback.
 
-    Tries *attempts* seed variations and picks the result with the fewest
-    pieces that exceed the pixel dimension limits.  Brick-count constraints
-    (min_bricks / max_bricks) are always enforced; pixel dimensions are
-    soft — the best-effort result is returned with a list of oversized
-    piece IDs so the UI can warn the user.
+    Algorithm:
+    1. Start with each brick as its own piece.
+    2. Repeatedly merge the two adjacent pieces whose merge produces the
+       smallest area deviation from the target area per piece.
+    3. Stop when the target count is reached.
     """
     bricks_by_id = {b.id: b for b in bricks}
     adj = build_adjacency(bricks, min_border=min_border, border_pixels=border_pixels)
@@ -274,208 +254,115 @@ def merge_bricks(bricks: list[Brick], target_piece_count: int | None = None,
     # Brick areas: use pixel areas if provided, else bounding-box area
     areas = brick_areas if brick_areas else {b.id: b.area for b in bricks}
 
-    # Separate windows/doors if requested
-    fixed_pieces = []
-    mergeable_ids = set()
+    all_ids = set(b.id for b in bricks)
+    initial_count = len(all_ids)
 
-    for b in bricks:
-        if windows_separate and b.brick_type in ("window", "door"):
-            fixed_pieces.append(PuzzlePiece(
-                id=len(fixed_pieces),
-                brick_ids=[b.id],
-                x=b.x, y=b.y, width=b.width, height=b.height,
-            ))
-        else:
-            mergeable_ids.add(b.id)
-
-    # Target count for mergeable pieces
-    initial_count = len(mergeable_ids)
     if target_piece_count is not None:
-        target_mergeable = max(1, target_piece_count - len(fixed_pieces))
+        target_count = max(1, target_piece_count)
     else:
-        target_mergeable = max(1, initial_count // 3)
+        target_count = max(1, initial_count // 3)
 
-    # Target area per piece
-    total_area = sum(areas.get(bid, 0) for bid in mergeable_ids)
-    target_area = total_area / max(1, target_mergeable)
+    total_area = sum(areas.get(bid, 0) for bid in all_ids)
+    target_area = total_area / max(1, target_count)
 
-    best_result: MergeResult | None = None
+    rng = random.Random(seed)
 
-    for attempt in range(attempts):
-        rng = random.Random(seed + attempt)
+    # Initialize: each brick is its own piece
+    piece_of = {}
+    pieces_dict: dict[int, list[int]] = {}
+    piece_area: dict[int, int] = {}
+    for bid in all_ids:
+        piece_of[bid] = bid
+        pieces_dict[bid] = [bid]
+        piece_area[bid] = areas.get(bid, 0)
 
-        # Initialize: each mergeable brick is its own piece
-        piece_of = {}
-        pieces_dict: dict[int, list[int]] = {}
-        piece_area: dict[int, int] = {}
-        for bid in mergeable_ids:
-            piece_of[bid] = bid
-            pieces_dict[bid] = [bid]
-            piece_area[bid] = areas.get(bid, 0)
+    # Build piece-level adjacency (updated as merges happen)
+    piece_adj: dict[int, set[int]] = defaultdict(set)
+    for bid in all_ids:
+        pid = piece_of[bid]
+        for nbr in adj.get(bid, set()):
+            npid = piece_of[nbr]
+            if npid != pid:
+                piece_adj[pid].add(npid)
+                piece_adj[npid].add(pid)
 
-        # --- Phase 1: area-balanced merge ---
-        # Repeatedly pick the smallest piece and merge it with its best
-        # neighbor (the one that brings combined area closest to target).
-        for _ in range(initial_count * 2):
-            if len(pieces_dict) <= target_mergeable:
-                break
+    def _merge(keep_pid: int, absorb_pid: int):
+        """Merge absorb_pid into keep_pid, updating all bookkeeping."""
+        pieces_dict[keep_pid] = pieces_dict[keep_pid] + pieces_dict[absorb_pid]
+        piece_area[keep_pid] = piece_area[keep_pid] + piece_area[absorb_pid]
+        for bid in pieces_dict[absorb_pid]:
+            piece_of[bid] = keep_pid
 
-            # Find smallest piece
-            smallest_pid = min(pieces_dict, key=lambda p: piece_area[p])
-            cur_area = piece_area[smallest_pid]
+        # Update piece adjacency
+        for neighbor_pid in piece_adj[absorb_pid]:
+            if neighbor_pid == keep_pid:
+                continue
+            piece_adj[neighbor_pid].discard(absorb_pid)
+            piece_adj[neighbor_pid].add(keep_pid)
+            piece_adj[keep_pid].add(neighbor_pid)
+        piece_adj[keep_pid].discard(absorb_pid)
 
-            # If already at/above target, all pieces are big enough
-            if cur_area >= target_area:
-                break
+        del pieces_dict[absorb_pid]
+        del piece_area[absorb_pid]
+        del piece_adj[absorb_pid]
 
-            # Collect neighboring pieces
-            neighbor_pids = set()
-            for bid in pieces_dict[smallest_pid]:
-                for nbr in adj.get(bid, set()):
-                    if nbr in mergeable_ids:
-                        npid = piece_of[nbr]
-                        if npid != smallest_pid:
-                            neighbor_pids.add(npid)
+    # --- Phase 1: merge down to target count ---
+    # Repeatedly merge the smallest piece with its best neighbor
+    # (the one producing combined area closest to target_area).
+    while len(pieces_dict) > target_count:
+        # Find the smallest piece that has at least one neighbor
+        candidates = sorted(pieces_dict.keys(), key=lambda p: piece_area[p])
 
-            if not neighbor_pids:
-                # No neighbors — skip, try next smallest
-                # Mark as "done" by inflating its area temporarily
-                piece_area[smallest_pid] = int(target_area)
+        merged = False
+        for smallest_pid in candidates:
+            neighbors = piece_adj.get(smallest_pid, set())
+            if not neighbors:
                 continue
 
-            # Score each neighbor: prefer merge that lands closest to
-            # target_area, with tie-breaking by randomness
+            # Score each neighbor
+            cur_area = piece_area[smallest_pid]
             best_nbr = None
             best_score = float('inf')
-            candidates = list(neighbor_pids)
-            rng.shuffle(candidates)
+            nbr_list = list(neighbors)
+            rng.shuffle(nbr_list)
 
-            for npid in candidates:
-                merged_ids = pieces_dict[smallest_pid] + pieces_dict[npid]
-                if max_bricks > 0 and len(merged_ids) > max_bricks:
-                    continue
-                _, _, w, h = compute_piece_bbox(merged_ids, bricks_by_id)
-                if w > max_width or h > max_height:
+            for npid in nbr_list:
+                if npid not in pieces_dict:
                     continue
                 combined = cur_area + piece_area[npid]
                 score = abs(combined - target_area)
                 if combined > target_area * 1.5:
-                    score += combined  # penalise way-over-target merges
+                    score += combined  # penalise way-over-target
                 if score < best_score:
                     best_score = score
                     best_nbr = npid
 
-            if best_nbr is None:
-                # Can't merge with any neighbor within constraints
-                piece_area[smallest_pid] = int(target_area)
-                continue
+            if best_nbr is not None:
+                _merge(smallest_pid, best_nbr)
+                merged = True
+                break
 
-            # Merge
-            pieces_dict[smallest_pid] = pieces_dict[smallest_pid] + pieces_dict[best_nbr]
-            piece_area[smallest_pid] = cur_area + piece_area[best_nbr]
-            for bid in pieces_dict[best_nbr]:
-                piece_of[bid] = smallest_pid
-            del pieces_dict[best_nbr]
-            del piece_area[best_nbr]
+        if not merged:
+            # No more merges possible (disconnected components)
+            break
 
-        # --- Phase 2: enforce min_bricks (ignore pixel dims, only max_bricks) ---
-        if min_bricks > 1:
-            changed = True
-            while changed:
-                changed = False
-                for pid in list(pieces_dict.keys()):
-                    if pid not in pieces_dict:
-                        continue
-                    brick_ids = pieces_dict[pid]
-                    if len(brick_ids) >= min_bricks:
-                        continue
+    # --- Phase 2: absorb remaining tiny isolated pieces ---
+    # Some pieces may have no adjacency neighbors (isolated bricks).
+    # Leave them as-is — never merge non-adjacent pieces.
 
-                    # Find neighboring pieces
-                    neighbor_pids = set()
-                    for bid in brick_ids:
-                        for nbr in adj.get(bid, set()):
-                            if nbr in mergeable_ids and piece_of.get(nbr) != pid:
-                                neighbor_pids.add(piece_of[nbr])
+    # --- Build result ---
+    result_pieces = []
+    for pid, brick_ids in pieces_dict.items():
+        x, y, w, h = compute_piece_bbox(brick_ids, bricks_by_id)
+        result_pieces.append(PuzzlePiece(
+            id=len(result_pieces),
+            brick_ids=brick_ids,
+            x=x, y=y, width=w, height=h,
+        ))
+    for i, piece in enumerate(result_pieces):
+        piece.id = i
 
-                    # Pick smallest neighbor that fits max_bricks; if none,
-                    # pick the smallest neighbor anyway (min_bricks is hard)
-                    best_target = None
-                    best_size = float('inf')
-                    fallback_target = None
-                    fallback_size = float('inf')
-                    for npid in neighbor_pids:
-                        if npid not in pieces_dict:
-                            continue
-                        nsize = len(pieces_dict[npid])
-                        candidate_size = nsize + len(brick_ids)
-                        if max_bricks > 0 and candidate_size > max_bricks:
-                            # Track as fallback
-                            if nsize < fallback_size:
-                                fallback_size = nsize
-                                fallback_target = npid
-                            continue
-                        if nsize < best_size:
-                            best_size = nsize
-                            best_target = npid
-                    if best_target is None:
-                        best_target = fallback_target
-
-                    # If no adjacent mergeable piece found (e.g. only
-                    # neighbors are fixed windows), find the nearest
-                    # piece by minimum brick-edge distance — but only
-                    # if close enough (3× adjacency gap) to avoid
-                    # creating disjoint pieces.
-                    if best_target is None and not neighbor_pids:
-                        max_dist = ADJACENCY_THRESHOLD * 3
-                        best_dist = float('inf')
-                        for opid, obids in pieces_dict.items():
-                            if opid == pid:
-                                continue
-                            for bid_a in brick_ids:
-                                ba = bricks_by_id[bid_a]
-                                for bid_b in obids:
-                                    bb = bricks_by_id[bid_b]
-                                    dx = max(0, max(ba.x, bb.x) - min(ba.right, bb.right))
-                                    dy = max(0, max(ba.y, bb.y) - min(ba.bottom, bb.bottom))
-                                    d = (dx ** 2 + dy ** 2) ** 0.5
-                                    if d < best_dist:
-                                        best_dist = d
-                                        best_target = opid
-                        if best_dist > max_dist:
-                            best_target = None  # too far — leave undersized
-
-                    if best_target is not None:
-                        pieces_dict[best_target] = pieces_dict[best_target] + brick_ids
-                        for bid in brick_ids:
-                            piece_of[bid] = best_target
-                        del pieces_dict[pid]
-                        changed = True
-
-        # --- Build result and score it ---
-        result_pieces = list(fixed_pieces)
-        for pid, brick_ids in pieces_dict.items():
-            x, y, w, h = compute_piece_bbox(brick_ids, bricks_by_id)
-            result_pieces.append(PuzzlePiece(
-                id=len(result_pieces),
-                brick_ids=brick_ids,
-                x=x, y=y, width=w, height=h,
-            ))
-        for i, piece in enumerate(result_pieces):
-            piece.id = i
-
-        oversized = [
-            p.id for p in result_pieces
-            if p.width > max_width or p.height > max_height
-        ]
-
-        candidate = MergeResult(pieces=result_pieces, oversized=oversized)
-
-        if best_result is None or len(oversized) < len(best_result.oversized):
-            best_result = candidate
-            if not oversized:
-                break  # perfect — no need to try more
-
-    return best_result
+    return MergeResult(pieces=result_pieces)
 
 
 def pieces_to_json(pieces: list[PuzzlePiece], bricks_by_id: dict[int, Brick]) -> list[dict]:
