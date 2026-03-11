@@ -417,6 +417,7 @@ def api_export():
 
     import zipfile
 
+    data = request.get_json(force=True) or {}
     house = _state["house"]
     tif_path = _state["tif_path"]
     pieces = _state["pieces"]
@@ -467,12 +468,14 @@ def api_export():
         if comp_path.exists():
             zf.write(str(comp_path), "composite.png")
 
-        # Manifest
+        # Manifest (include wave data if provided)
+        waves_data = data.get("waves", [])
         manifest = {
             "source": Path(tif_path).name,
             "canvas": {"width": house.canvas_width, "height": house.canvas_height},
             "num_pieces": len(pieces),
             "pieces": manifest_pieces,
+            "waves": waves_data,
         }
         zf.writestr("manifest.json", json.dumps(manifest, indent=2))
 
