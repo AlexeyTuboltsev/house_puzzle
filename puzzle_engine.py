@@ -243,10 +243,12 @@ def merge_bricks(bricks: list[Brick], target_piece_count: int | None = None,
     — no bounding-box fallback.
 
     Algorithm:
-    1. Start with each brick as its own piece.
-    2. Repeatedly merge the two adjacent pieces whose merge produces the
-       smallest area deviation from the target area per piece.
-    3. Stop when the target count is reached.
+    Phase 0 — Exclude oversized bricks whose area already exceeds the
+              target area per piece; they become fixed solo pieces.
+    Phase 1 — Among remaining bricks, repeatedly merge the smallest piece
+              with the adjacent neighbor that brings the combined area
+              closest to the (recomputed) target.
+    Phase 2 — Stop when the target count is reached.
     """
     bricks_by_id = {b.id: b for b in bricks}
     adj = build_adjacency(bricks, min_border=min_border, border_pixels=border_pixels)
@@ -255,32 +257,50 @@ def merge_bricks(bricks: list[Brick], target_piece_count: int | None = None,
     areas = brick_areas if brick_areas else {b.id: b.area for b in bricks}
 
     all_ids = set(b.id for b in bricks)
-    initial_count = len(all_ids)
 
     if target_piece_count is not None:
         target_count = max(1, target_piece_count)
     else:
-        target_count = max(1, initial_count // 3)
+        target_count = max(1, len(all_ids) // 3)
 
+    # --- Phase 0: exclude oversized bricks ---
+    # Any brick whose area alone >= target_area becomes a fixed solo piece.
+    # Iterate until stable (excluding bricks changes target_area).
     total_area = sum(areas.get(bid, 0) for bid in all_ids)
-    target_area = total_area / max(1, target_count)
+    fixed_ids: set[int] = set()
+    for _ in range(10):  # converge quickly
+        target_area = total_area / max(1, target_count)
+        new_fixed = set(bid for bid in all_ids if areas.get(bid, 0) >= target_area)
+        if new_fixed == fixed_ids:
+            break
+        fixed_ids = new_fixed
+        mergeable_area = sum(areas.get(bid, 0) for bid in all_ids if bid not in fixed_ids)
+        target_mergeable = max(1, target_count - len(fixed_ids))
+        target_area = mergeable_area / target_mergeable if target_mergeable > 0 else target_area
+
+    mergeable_ids = all_ids - fixed_ids
+    target_mergeable = max(1, target_count - len(fixed_ids))
+    mergeable_area = sum(areas.get(bid, 0) for bid in mergeable_ids)
+    target_area = mergeable_area / max(1, target_mergeable)
 
     rng = random.Random(seed)
 
-    # Initialize: each brick is its own piece
+    # Initialize: each mergeable brick is its own piece
     piece_of = {}
     pieces_dict: dict[int, list[int]] = {}
     piece_area: dict[int, int] = {}
-    for bid in all_ids:
+    for bid in mergeable_ids:
         piece_of[bid] = bid
         pieces_dict[bid] = [bid]
         piece_area[bid] = areas.get(bid, 0)
 
-    # Build piece-level adjacency (updated as merges happen)
+    # Build piece-level adjacency (only among mergeable bricks)
     piece_adj: dict[int, set[int]] = defaultdict(set)
-    for bid in all_ids:
+    for bid in mergeable_ids:
         pid = piece_of[bid]
         for nbr in adj.get(bid, set()):
+            if nbr not in mergeable_ids:
+                continue
             npid = piece_of[nbr]
             if npid != pid:
                 piece_adj[pid].add(npid)
@@ -306,10 +326,10 @@ def merge_bricks(bricks: list[Brick], target_piece_count: int | None = None,
         del piece_area[absorb_pid]
         del piece_adj[absorb_pid]
 
-    # --- Phase 1: merge down to target count ---
+    # --- Phase 1: merge down to target_mergeable ---
     # Repeatedly merge the smallest piece with its best neighbor
     # (the one producing combined area closest to target_area).
-    while len(pieces_dict) > target_count:
+    while len(pieces_dict) > target_mergeable:
         # Find the smallest piece that has at least one neighbor
         candidates = sorted(pieces_dict.keys(), key=lambda p: piece_area[p])
 
@@ -346,12 +366,17 @@ def merge_bricks(bricks: list[Brick], target_piece_count: int | None = None,
             # No more merges possible (disconnected components)
             break
 
-    # --- Phase 2: absorb remaining tiny isolated pieces ---
-    # Some pieces may have no adjacency neighbors (isolated bricks).
-    # Leave them as-is — never merge non-adjacent pieces.
+    # --- Build result: fixed solo pieces + merged pieces ---
+    result_pieces: list[PuzzlePiece] = []
 
-    # --- Build result ---
-    result_pieces = []
+    for bid in sorted(fixed_ids):
+        b = bricks_by_id[bid]
+        result_pieces.append(PuzzlePiece(
+            id=len(result_pieces),
+            brick_ids=[bid],
+            x=b.x, y=b.y, width=b.width, height=b.height,
+        ))
+
     for pid, brick_ids in pieces_dict.items():
         x, y, w, h = compute_piece_bbox(brick_ids, bricks_by_id)
         result_pieces.append(PuzzlePiece(
@@ -359,6 +384,7 @@ def merge_bricks(bricks: list[Brick], target_piece_count: int | None = None,
             brick_ids=brick_ids,
             x=x, y=y, width=w, height=h,
         ))
+
     for i, piece in enumerate(result_pieces):
         piece.id = i
 
