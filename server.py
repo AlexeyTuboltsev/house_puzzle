@@ -191,6 +191,9 @@ def api_merge():
     windows_separate = data.get("windows_separate", True)
     max_width = data.get("max_width", 800)
     max_height = data.get("max_height", 600)
+    min_bricks = data.get("min_bricks", 1)
+    max_bricks = data.get("max_bricks", 0)
+    min_border = data.get("min_border", 1)
 
     pieces = merge_bricks(
         _state["bricks"],
@@ -199,6 +202,9 @@ def api_merge():
         windows_separate=windows_separate,
         max_width=max_width,
         max_height=max_height,
+        min_bricks=min_bricks,
+        max_bricks=max_bricks,
+        min_border=min_border,
     )
 
     _state["pieces"] = pieces

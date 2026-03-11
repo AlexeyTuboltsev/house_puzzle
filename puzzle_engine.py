@@ -65,9 +65,11 @@ def _edges_overlap(a_start, a_end, b_start, b_end, threshold=0):
     return overlap > threshold
 
 
-def build_adjacency(bricks: list[Brick], gap: int = ADJACENCY_THRESHOLD) -> dict[int, set[int]]:
+def build_adjacency(bricks: list[Brick], gap: int = ADJACENCY_THRESHOLD,
+                    min_border: int = 1) -> dict[int, set[int]]:
     """Build adjacency graph: two bricks are neighbors if their bounding boxes
-    overlap or are within `gap` pixels of each other."""
+    are within `gap` pixels of each other AND share a common border of at least
+    `min_border` pixels (prevents corner-only touching from being adjacent)."""
     adj = defaultdict(set)
     n = len(bricks)
 
@@ -77,8 +79,22 @@ def build_adjacency(bricks: list[Brick], gap: int = ADJACENCY_THRESHOLD) -> dict
             b = bricks[j]
 
             # Check if bboxes are close (overlap or within gap)
-            if (a.x - gap < b.right and a.right + gap > b.x and
-                a.y - gap < b.bottom and a.bottom + gap > b.y):
+            if not (a.x - gap < b.right and a.right + gap > b.x and
+                    a.y - gap < b.bottom and a.bottom + gap > b.y):
+                continue
+
+            # Check for minimum shared border length
+            # Horizontal adjacency: check vertical overlap
+            h_gap = max(0, max(a.x, b.x) - min(a.right, b.right))
+            v_overlap = min(a.bottom, b.bottom) - max(a.y, b.y)
+
+            # Vertical adjacency: check horizontal overlap
+            v_gap = max(0, max(a.y, b.y) - min(a.bottom, b.bottom))
+            h_overlap = min(a.right, b.right) - max(a.x, b.x)
+
+            # Adjacent if close enough AND share enough border
+            if (h_gap <= gap and v_overlap >= min_border) or \
+               (v_gap <= gap and h_overlap >= min_border):
                 adj[a.id].add(b.id)
                 adj[b.id].add(a.id)
 
@@ -115,7 +131,10 @@ def would_exceed_limits(piece_bricks: list[int], candidate_id: int,
 def merge_bricks(bricks: list[Brick], target_piece_count: int | None = None,
                  seed: int = 42, windows_separate: bool = True,
                  max_width: int = DEFAULT_MAX_WIDTH,
-                 max_height: int = DEFAULT_MAX_HEIGHT) -> list[PuzzlePiece]:
+                 max_height: int = DEFAULT_MAX_HEIGHT,
+                 min_bricks: int = 1,
+                 max_bricks: int = 0,
+                 min_border: int = 1) -> list[PuzzlePiece]:
     """
     Merge bricks into puzzle pieces using random adjacency-based grouping.
 
@@ -124,10 +143,13 @@ def merge_bricks(bricks: list[Brick], target_piece_count: int | None = None,
         target_piece_count: Desired number of pieces (None = auto)
         seed: Random seed for reproducibility
         windows_separate: If True, windows/doors are always separate pieces
+        min_bricks: Minimum bricks per piece (post-merge enforcement)
+        max_bricks: Maximum bricks per piece (0 = no limit)
+        min_border: Minimum shared border in pixels for adjacency
     """
     rng = random.Random(seed)
     bricks_by_id = {b.id: b for b in bricks}
-    adj = build_adjacency(bricks)
+    adj = build_adjacency(bricks, min_border=min_border)
 
     # Separate windows/doors if requested
     fixed_pieces = []
@@ -198,7 +220,11 @@ def merge_bricks(bricks: list[Brick], target_piece_count: int | None = None,
             piece_a = pieces_dict[pa]
             piece_b = pieces_dict[pb]
 
+            # Check max bricks constraint
             merged_ids = piece_a + piece_b
+            if max_bricks > 0 and len(merged_ids) > max_bricks:
+                continue
+
             _, _, w, h = compute_piece_bbox(merged_ids, bricks_by_id)
             if w > max_width or h > max_height:
                 continue
@@ -212,6 +238,49 @@ def merge_bricks(bricks: list[Brick], target_piece_count: int | None = None,
 
         if not merged_any:
             break
+
+    # Enforce min_bricks: merge undersized pieces into their best neighbor
+    if min_bricks > 1:
+        changed = True
+        while changed:
+            changed = False
+            for pid in list(pieces_dict.keys()):
+                if pid not in pieces_dict:
+                    continue
+                brick_ids = pieces_dict[pid]
+                if len(brick_ids) >= min_bricks:
+                    continue
+
+                # Find neighboring pieces to merge into
+                neighbor_pids = set()
+                for bid in brick_ids:
+                    for nbr in adj.get(bid, set()):
+                        if nbr in mergeable_ids and piece_of.get(nbr) != pid:
+                            neighbor_pids.add(piece_of[nbr])
+
+                # Pick the smallest neighbor that won't exceed limits
+                best_target = None
+                best_size = float('inf')
+                for npid in neighbor_pids:
+                    if npid not in pieces_dict:
+                        continue
+                    nsize = len(pieces_dict[npid])
+                    candidate = pieces_dict[npid] + brick_ids
+                    if max_bricks > 0 and len(candidate) > max_bricks:
+                        continue
+                    _, _, w, h = compute_piece_bbox(candidate, bricks_by_id)
+                    if w > max_width or h > max_height:
+                        continue
+                    if nsize < best_size:
+                        best_size = nsize
+                        best_target = npid
+
+                if best_target is not None:
+                    pieces_dict[best_target] = pieces_dict[best_target] + brick_ids
+                    for bid in brick_ids:
+                        piece_of[bid] = best_target
+                    del pieces_dict[pid]
+                    changed = True
 
     # Build final pieces list
     result = list(fixed_pieces)

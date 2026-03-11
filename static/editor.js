@@ -174,6 +174,9 @@ async function doMerge() {
                 windows_separate: document.getElementById('windows_separate').checked,
                 max_width: parseInt(document.getElementById('max_width').value),
                 max_height: parseInt(document.getElementById('max_height').value),
+                min_bricks: parseInt(document.getElementById('min_bricks').value),
+                max_bricks: parseInt(document.getElementById('max_bricks').value),
+                min_border: parseInt(document.getElementById('min_border').value),
             }),
         });
         const data = await resp.json();
@@ -1520,6 +1523,15 @@ document.getElementById('max_width').addEventListener('input', (e) => {
 });
 document.getElementById('max_height').addEventListener('input', (e) => {
     document.getElementById('val_max_height').textContent = e.target.value;
+});
+document.getElementById('min_bricks').addEventListener('input', (e) => {
+    document.getElementById('val_min_bricks').textContent = e.target.value;
+});
+document.getElementById('max_bricks').addEventListener('input', (e) => {
+    document.getElementById('val_max_bricks').textContent = e.target.value;
+});
+document.getElementById('min_border').addEventListener('input', (e) => {
+    document.getElementById('val_min_border').textContent = e.target.value;
 });
 document.getElementById('smoothing').addEventListener('input', (e) => {
     document.getElementById('val_smoothing').textContent = e.target.value;
