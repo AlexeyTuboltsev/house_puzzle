@@ -13,6 +13,7 @@ let viewMode = 'bricks';
 
 // Piece edit mode state
 let editMode = false;
+let shapeManualVerts = 0; // 0 = auto, >0 = manual override from slider
 let editPieceId = -1;
 let editBrickIds = [];        // working copy of brick_ids being edited
 let originalBrickIds = [];    // snapshot to detect changes / revert
@@ -236,8 +237,9 @@ function setView(mode) {
     document.getElementById(btnId).classList.add('active');
     document.getElementById('editBtnRow').style.display = 'none';
     document.getElementById('blueprintParams').style.display = mode === 'blueprint' ? 'block' : 'none';
-    // Hide SVG overlay when not in blueprint mode
-    if (mode !== 'blueprint') {
+    document.getElementById('shapeParams').style.display = mode === 'shape' ? 'block' : 'none';
+    // Hide SVG overlay when not in blueprint/shape mode
+    if (mode !== 'blueprint' && mode !== 'shape') {
         const svg = document.getElementById('blueprintSvg');
         svg.style.display = 'none';
         svg.innerHTML = '';
@@ -300,6 +302,8 @@ function render() {
         renderPieces();
     } else if (viewMode === 'blueprint') {
         renderBlueprint();
+    } else if (viewMode === 'shape') {
+        renderShape();
     }
 
     ctx.restore();
@@ -433,17 +437,27 @@ function renderPieces() {
 }
 
 function drawPieceSilhouetteOutline(comp, color, thickness) {
+    // Use shadow trick: draw the piece composite with a colored shadow,
+    // offset to create outline on all sides, then mask out the interior.
+    //
+    // Technique: draw the silhouette 4 times with shadow offsets in each direction.
+    // This creates a glow/outline that follows the actual alpha shape.
+
     ctx.save();
 
+    // Create a clipping region that EXCLUDES the piece interior
+    // so only the shadow (outline) is visible outside the shape
     const outlineCanvas = document.createElement('canvas');
     const pad = thickness * 2;
     outlineCanvas.width = comp.w + pad * 2;
     outlineCanvas.height = comp.h + pad * 2;
     const oCtx = outlineCanvas.getContext('2d');
 
+    // Draw shadow-expanded silhouette
     oCtx.shadowColor = color;
     oCtx.shadowBlur = thickness / zoom;
 
+    // Draw from multiple offsets for uniform outline
     const offsets = [
         [pad, pad - 1], [pad, pad + 1],
         [pad - 1, pad], [pad + 1, pad],
@@ -452,24 +466,29 @@ function drawPieceSilhouetteOutline(comp, color, thickness) {
         oCtx.drawImage(comp.canvas, ox, oy);
     }
 
+    // Remove the interior by drawing the piece shape with destination-out
     oCtx.shadowColor = 'transparent';
     oCtx.shadowBlur = 0;
     oCtx.globalCompositeOperation = 'destination-out';
     oCtx.drawImage(comp.canvas, pad, pad);
 
+    // Draw the outline canvas onto the main canvas
     ctx.drawImage(outlineCanvas, comp.x - pad, comp.y - pad);
 
     ctx.restore();
 }
 
 function makeTintedCanvas(srcCanvas, hue, alpha) {
+    // Create a tinted version of the source canvas (preserving alpha shape)
     const tint = document.createElement('canvas');
     tint.width = srcCanvas.width;
     tint.height = srcCanvas.height;
     const tCtx = tint.getContext('2d');
 
+    // Draw source to get the alpha mask
     tCtx.drawImage(srcCanvas, 0, 0);
 
+    // Apply color using source-in compositing
     tCtx.globalCompositeOperation = 'source-in';
     tCtx.fillStyle = `hsla(${hue}, 60%, 50%, ${alpha})`;
     tCtx.fillRect(0, 0, tint.width, tint.height);
@@ -545,6 +564,7 @@ function tracePieceContours(comp, epsilon) {
 
     // Build directed boundary edges between grid vertices (0..W, 0..H).
     // Convention: opaque cell is on the RIGHT side of travel direction.
+    // This ensures following edges traces a CW contour around opaque regions.
     const edgeMap = new Map(); // "x,y" -> [{tx, ty, used}]
 
     function addEdge(fx, fy, tx, ty) {
@@ -628,8 +648,11 @@ function tracePieceContours(comp, epsilon) {
 }
 
 function douglasPeuckerClosed(points, epsilon) {
+    // For closed polygons: find the two farthest points, split into two
+    // open polylines, simplify each, and recombine.
     if (points.length <= 4 || epsilon <= 0) return points;
 
+    // Find the two points with maximum distance
     let maxDist = 0, idxA = 0, idxB = 1;
     for (let i = 0; i < points.length; i++) {
         for (let j = i + 1; j < points.length; j++) {
@@ -642,12 +665,14 @@ function douglasPeuckerClosed(points, epsilon) {
         }
     }
 
+    // Split into two halves
     const half1 = points.slice(idxA, idxB + 1);
     const half2 = points.slice(idxB).concat(points.slice(0, idxA + 1));
 
     const s1 = douglasPeucker(half1, epsilon);
     const s2 = douglasPeucker(half2, epsilon);
 
+    // Combine (remove duplicate junction points)
     return s1.slice(0, -1).concat(s2.slice(0, -1));
 }
 
@@ -679,12 +704,431 @@ function douglasPeucker(points, epsilon) {
     return [points[0], points[points.length - 1]];
 }
 
+// --- Shape view: single piece vectorization ---
+
+function coarseTraceSnap(comp) {
+    // 1. Build binary mask from piece composite
+    // 2. Downscale to coarse grid — any cell with opaque pixels → filled
+    // 3. Trace outer contour of coarse grid
+    // 4. Scale back up and snap to nearest original boundary pixel
+    const W = comp.w, H = comp.h;
+    const CELL = 5; // cell size — gaps smaller than this are bridged
+    const PAD = 3;   // padding cells around the grid for exterior flood fill
+    const GW = Math.ceil(W / CELL) + PAD * 2;
+    const GH = Math.ceil(H / CELL) + PAD * 2;
+
+    const c = document.createElement('canvas');
+    c.width = W; c.height = H;
+    const cCtx = c.getContext('2d');
+    cCtx.drawImage(comp.canvas, 0, 0);
+    const data = cCtx.getImageData(0, 0, W, H).data;
+
+    // Collect original boundary pixels (for snapping later)
+    const boundaryPts = [];
+    for (let y = 0; y < H; y++) {
+        for (let x = 0; x < W; x++) {
+            if (data[(y * W + x) * 4 + 3] <= 30) continue;
+            let isBnd = false;
+            for (const [dx, dy] of [[-1,0],[1,0],[0,-1],[0,1]]) {
+                const nx = x + dx, ny = y + dy;
+                if (nx < 0 || nx >= W || ny < 0 || ny >= H ||
+                    data[(ny * W + nx) * 4 + 3] <= 30) {
+                    isBnd = true; break;
+                }
+            }
+            if (isBnd) boundaryPts.push([x, y]);
+        }
+    }
+
+    // Build coarse grid (with 1-cell padding so contour tracing has clear exterior)
+    const grid = new Uint8Array(GW * GH);
+    for (let y = 0; y < H; y++) {
+        for (let x = 0; x < W; x++) {
+            if (data[(y * W + x) * 4 + 3] > 30) {
+                const gx = Math.floor(x / CELL) + PAD;
+                const gy = Math.floor(y / CELL) + PAD;
+                grid[gy * GW + gx] = 1;
+            }
+        }
+    }
+
+    // Dilate coarse grid by 1 cell to bridge small gaps between bricks
+    const dilGrid = new Uint8Array(GW * GH);
+    for (let gy = 0; gy < GH; gy++) {
+        for (let gx = 0; gx < GW; gx++) {
+            if (grid[gy * GW + gx]) {
+                for (let dy = -1; dy <= 1; dy++) {
+                    for (let dx = -1; dx <= 1; dx++) {
+                        const nx = gx + dx, ny = gy + dy;
+                        if (nx >= 0 && nx < GW && ny >= 0 && ny < GH) {
+                            dilGrid[ny * GW + nx] = 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Flood fill exterior from border
+    const exterior = new Uint8Array(GW * GH);
+    const q = [];
+    for (let x = 0; x < GW; x++) {
+        if (!dilGrid[x]) { exterior[x] = 1; q.push(x); }
+        const bi = (GH - 1) * GW + x;
+        if (!dilGrid[bi]) { exterior[bi] = 1; q.push(bi); }
+    }
+    for (let y = 0; y < GH; y++) {
+        const li = y * GW;
+        if (!dilGrid[li]) { exterior[li] = 1; q.push(li); }
+        const ri = y * GW + GW - 1;
+        if (!dilGrid[ri]) { exterior[ri] = 1; q.push(ri); }
+    }
+    let qi = 0;
+    while (qi < q.length) {
+        const idx = q[qi++];
+        const gx = idx % GW, gy = (idx - gx) / GW;
+        for (const [dx, dy] of [[-1,0],[1,0],[0,-1],[0,1]]) {
+            const nx = gx + dx, ny = gy + dy;
+            if (nx < 0 || nx >= GW || ny < 0 || ny >= GH) continue;
+            const ni = ny * GW + nx;
+            if (!exterior[ni] && !dilGrid[ni]) { exterior[ni] = 1; q.push(ni); }
+        }
+    }
+
+    // Solid = everything not exterior
+    const solid = new Uint8Array(GW * GH);
+    for (let i = 0; i < GW * GH; i++) solid[i] = exterior[i] ? 0 : 1;
+
+    // Moore neighborhood boundary tracing on the solid grid
+    // This produces a properly ordered, non-self-intersecting contour
+    // 8-connected neighbors clockwise: right, down-right, down, down-left, left, up-left, up, up-right
+    const mooreX = [1, 1, 0, -1, -1, -1, 0, 1];
+    const mooreY = [0, 1, 1, 1, 0, -1, -1, -1];
+
+    // Find topmost-leftmost solid cell as start
+    let startX = -1, startY = -1;
+    outer: for (let gy = 0; gy < GH; gy++) {
+        for (let gx = 0; gx < GW; gx++) {
+            if (solid[gy * GW + gx]) {
+                startX = gx; startY = gy;
+                break outer;
+            }
+        }
+    }
+    if (startX < 0) return [];
+
+    // Trace boundary using Moore neighborhood
+    const traced = [];
+    const visited = new Set();
+    let curX = startX, curY = startY;
+    // We entered from the left (since it's the leftmost in its row), so backtrack direction is 4 (left)
+    let backDir = 4; // direction index pointing to the cell we came from
+
+    do {
+        const key = curY * GW + curX;
+        if (!visited.has(key)) {
+            traced.push([curX, curY]);
+            visited.add(key);
+        }
+
+        // Scan clockwise starting from (backDir + 1) % 8
+        let found = false;
+        for (let i = 1; i <= 8; i++) {
+            const dir = (backDir + i) % 8;
+            const nx = curX + mooreX[dir];
+            const ny = curY + mooreY[dir];
+            if (nx >= 0 && nx < GW && ny >= 0 && ny < GH && solid[ny * GW + nx]) {
+                // backtrack direction for next cell = opposite of dir
+                backDir = (dir + 4) % 8;
+                curX = nx;
+                curY = ny;
+                found = true;
+                break;
+            }
+        }
+        if (!found) break;
+    } while (curX !== startX || curY !== startY);
+
+    if (traced.length < 3) return [];
+
+    // Filter to only boundary cells (adjacent to exterior) to remove interior path segments
+    const boundaryTraced = traced.filter(([gx, gy]) => {
+        for (const [dx, dy] of [[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[1,-1],[-1,1],[1,1]]) {
+            const nx = gx + dx, ny = gy + dy;
+            if (nx < 0 || nx >= GW || ny < 0 || ny >= GH || exterior[ny * GW + nx]) {
+                return true;
+            }
+        }
+        return false;
+    });
+
+    if (boundaryTraced.length < 3) return [];
+
+    // Convert to pixel coords and snap to nearest original boundary pixel
+    const snapped = boundaryTraced.map(([gx, gy]) => {
+        const px = (gx - PAD + 0.5) * CELL, py = (gy - PAD + 0.5) * CELL;
+        let bestDist = Infinity, bestX = px, bestY = py;
+        for (const [bx, by] of boundaryPts) {
+            const d = (bx - px) * (bx - px) + (by - py) * (by - py);
+            if (d < bestDist) {
+                bestDist = d; bestX = bx; bestY = by;
+            }
+        }
+        return [bestX, bestY];
+    });
+
+    return snapped;
+}
+
+// Compute max distance from any point in `pts` to the nearest edge of polygon `poly`
+function hausdorffToPoly(pts, poly) {
+    let maxDist = 0;
+    for (const [px, py] of pts) {
+        let minD = Infinity;
+        for (let i = 0; i < poly.length; i++) {
+            const j = (i + 1) % poly.length;
+            const [ax, ay] = poly[i], [bx, by] = poly[j];
+            // Point-to-segment distance squared
+            const dx = bx - ax, dy = by - ay;
+            const lenSq = dx * dx + dy * dy;
+            let t = lenSq > 0 ? ((px - ax) * dx + (py - ay) * dy) / lenSq : 0;
+            t = Math.max(0, Math.min(1, t));
+            const cx = ax + t * dx, cy = ay + t * dy;
+            const d = (px - cx) * (px - cx) + (py - cy) * (py - cy);
+            if (d < minD) minD = d;
+        }
+        if (minD > maxDist) maxDist = minD;
+    }
+    return Math.sqrt(maxDist);
+}
+
+// Collapse close vertex pairs at concave corners into a single corner apex vertex
+// When two consecutive vertices are close, they likely straddle a concave corner.
+// Replace them with the outline point deepest into the corner (furthest from the
+// line connecting their neighbors).
+function refineCorners(simplified, outline, threshold, maxDeviation) {
+    if (simplified.length <= 4) return simplified;
+    let pts = simplified.map(p => [...p]);
+    let changed = true;
+    while (changed) {
+        changed = false;
+        for (let i = 0; i < pts.length && pts.length > 4; i++) {
+            const j = (i + 1) % pts.length;
+            const dx = pts[i][0] - pts[j][0];
+            const dy = pts[i][1] - pts[j][1];
+            if (Math.sqrt(dx * dx + dy * dy) > threshold) continue;
+
+            // Close pair found — find the concave corner apex
+            const prevIdx = (i - 1 + pts.length) % pts.length;
+            const nextIdx = (j + 1) % pts.length;
+            const prev = pts[prevIdx];
+            const next = pts[nextIdx];
+
+            // Search outline points near the midpoint of the pair
+            const mid = [(pts[i][0] + pts[j][0]) / 2, (pts[i][1] + pts[j][1]) / 2];
+            const searchR2 = (threshold * 3) * (threshold * 3);
+
+            // Line prev→next direction
+            const lx = next[0] - prev[0], ly = next[1] - prev[1];
+            const lineLen = Math.sqrt(lx * lx + ly * ly);
+
+            let maxDist = -1;
+            let bestPt = mid;
+            for (const op of outline) {
+                const dm2 = (op[0] - mid[0]) ** 2 + (op[1] - mid[1]) ** 2;
+                if (dm2 > searchR2) continue;
+                if (lineLen > 0) {
+                    // Perpendicular distance from line(prev, next)
+                    const d = Math.abs(lx * (prev[1] - op[1]) - ly * (prev[0] - op[0])) / lineLen;
+                    if (d > maxDist) {
+                        maxDist = d;
+                        bestPt = op;
+                    }
+                }
+            }
+
+            // Try the collapse and check if it worsens the fit
+            const candidate = [...pts];
+            candidate[i] = [...bestPt];
+            if (j > i) {
+                candidate.splice(j, 1);
+            } else {
+                candidate.splice(0, 1);
+            }
+            const newDist = hausdorffToPoly(outline, candidate);
+            if (newDist > maxDeviation) continue; // skip — would worsen fit too much
+
+            // Accept the collapse
+            pts = candidate;
+            changed = true;
+            break; // restart scan after modification
+        }
+    }
+    return pts;
+}
+
+// Find minimum vertices where max deviation from full outline stays within tolerance
+function autoSimplify(outline, tolerance) {
+    if (outline.length <= 3) return outline;
+
+    // Binary search: find smallest n where hausdorff <= tolerance
+    let lo = 3, hi = outline.length;
+    while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        const simplified = visvalingamWhyatt(outline, mid);
+        const dist = hausdorffToPoly(outline, simplified);
+        if (dist <= tolerance) {
+            hi = mid;
+        } else {
+            lo = mid + 1;
+        }
+    }
+    return visvalingamWhyatt(outline, lo);
+}
+
+function renderShape() {
+    if (!pieces.length) return;
+
+    // Find the piece to show — use selected piece, or first piece
+    const pieceId = selectedPieceId >= 0 ? selectedPieceId : pieces[0].id;
+    const piece = pieces.find(p => p.id === pieceId);
+    if (!piece) return;
+    const comp = pieceComposites[piece.id];
+    if (!comp) return;
+
+    // Draw the piece composite as black silhouette
+    const silCanvas = document.createElement('canvas');
+    silCanvas.width = comp.w; silCanvas.height = comp.h;
+    const silCtx = silCanvas.getContext('2d');
+    silCtx.drawImage(comp.canvas, 0, 0);
+    silCtx.globalCompositeOperation = 'source-in';
+    silCtx.fillStyle = 'black';
+    silCtx.fillRect(0, 0, comp.w, comp.h);
+    ctx.drawImage(silCanvas, comp.x, comp.y);
+
+    // Draw the precise raster outline (white) as reference
+    drawPieceSilhouetteOutline(comp, 'white', 2);
+
+    // Coarse grid trace + snap to boundary
+    const outline = coarseTraceSnap(comp);
+    if (outline.length < 3) return;
+
+    const slider = document.getElementById('targetVerts');
+    let simplified;
+    if (shapeManualVerts > 0) {
+        // Manual slider override
+        simplified = visvalingamWhyatt(outline, shapeManualVerts);
+    } else {
+        // Auto-optimize: find min vertices within tolerance
+        simplified = autoSimplify(outline, 1);
+    }
+    // Collapse close vertex pairs at concave corners (threshold = 4 * CELL, max deviation = 1px)
+    simplified = refineCorners(simplified, outline, 20, 1);
+    slider.value = simplified.length;
+    document.getElementById('val_targetVerts').textContent = simplified.length;
+
+    // Draw the simplified shape as SVG overlay (if checkbox enabled)
+    const svg = document.getElementById('blueprintSvg');
+    const showVector = document.getElementById('showVector').checked;
+    if (!showVector) {
+        svg.style.display = 'none';
+        return;
+    }
+    const padX = (canvas.width - canvasW * zoom) / 2;
+    const padY = (canvas.height - canvasH * zoom) / 2;
+    svg.setAttribute('width', canvas.width);
+    svg.setAttribute('height', canvas.height);
+    svg.style.display = 'block';
+
+    const strokeW = Math.max(2, 3 * zoom);
+
+    // Build path
+    let d = '';
+    for (let i = 0; i < simplified.length; i++) {
+        const sx = (comp.x + simplified[i][0]) * zoom + padX;
+        const sy = (comp.y + simplified[i][1]) * zoom + padY;
+        d += (i === 0 ? 'M' : 'L') + sx.toFixed(1) + ',' + sy.toFixed(1);
+    }
+    d += 'Z';
+
+    // Draw filled shape + outline + vertex dots
+    let svgContent = `<path d="${d}" fill="rgba(42,93,168,0.3)" stroke="#ff6030" stroke-width="${strokeW.toFixed(1)}" stroke-linejoin="round"/>`;
+
+    // Draw vertex markers
+    const dotR = Math.max(3, 4 * zoom);
+    for (let i = 0; i < simplified.length; i++) {
+        const sx = (comp.x + simplified[i][0]) * zoom + padX;
+        const sy = (comp.y + simplified[i][1]) * zoom + padY;
+        const fillColor = i === 0 ? '#00ff80' : '#ff6030';
+        svgContent += `<circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="${dotR.toFixed(1)}" fill="${fillColor}" stroke="white" stroke-width="1"/>`;
+        const fs = Math.max(9, 11 * zoom);
+        svgContent += `<text x="${(sx + dotR + 2).toFixed(1)}" y="${(sy - dotR - 1).toFixed(1)}" fill="yellow" font-size="${fs}" font-weight="bold">${i}</text>`;
+    }
+
+    // Label with vertex count
+    const labelX = (comp.x + comp.w / 2) * zoom + padX;
+    const labelY = (comp.y - 10) * zoom + padY;
+    svgContent += `<text x="${labelX.toFixed(1)}" y="${labelY.toFixed(1)}" fill="#ff6030" font-size="${Math.max(14, 16 * zoom)}" text-anchor="middle" font-weight="bold">Piece #${piece.id} — ${simplified.length} vertices</text>`;
+
+    svg.innerHTML = svgContent;
+}
+
+function visvalingamWhyatt(points, targetCount) {
+    if (points.length <= targetCount) return points;
+
+    // Work with indices so we can efficiently remove points
+    // For closed polygon: each point has neighbors wrapping around
+    let pts = points.map((p, i) => ({ x: p[0], y: p[1], idx: i, removed: false }));
+    let n = pts.length;
+
+    function triangleArea(a, b, c) {
+        return Math.abs((b.x - a.x) * (c.y - a.y) - (c.x - a.x) * (b.y - a.y)) / 2;
+    }
+
+    // Build linked list for efficient neighbor access
+    for (let i = 0; i < pts.length; i++) {
+        pts[i].prev = (i - 1 + pts.length) % pts.length;
+        pts[i].next = (i + 1) % pts.length;
+    }
+
+    function getArea(i) {
+        return triangleArea(pts[pts[i].prev], pts[i], pts[pts[i].next]);
+    }
+
+    while (n > targetCount) {
+        // Find point with smallest triangle area
+        let minArea = Infinity;
+        let minIdx = -1;
+        for (let i = 0; i < pts.length; i++) {
+            if (pts[i].removed) continue;
+            const area = getArea(i);
+            if (area < minArea) {
+                minArea = area;
+                minIdx = i;
+            }
+        }
+        if (minIdx < 0) break;
+
+        // Remove it
+        pts[minIdx].removed = true;
+        const prevI = pts[minIdx].prev;
+        const nextI = pts[minIdx].next;
+        pts[prevI].next = nextI;
+        pts[nextI].prev = prevI;
+        n--;
+    }
+
+    return pts.filter(p => !p.removed).map(p => [p.x, p.y]);
+}
+
 function makeSolidCanvas(srcCanvas, color) {
     const c = document.createElement('canvas');
     c.width = srcCanvas.width;
     c.height = srcCanvas.height;
     const cCtx = c.getContext('2d');
+    // Draw source to get the alpha mask
     cCtx.drawImage(srcCanvas, 0, 0);
+    // Fill with solid color, keeping only the alpha shape
     cCtx.globalCompositeOperation = 'source-in';
     cCtx.fillStyle = color;
     cCtx.fillRect(0, 0, c.width, c.height);
@@ -698,12 +1142,14 @@ function erodeCanvas(srcCanvas, amount) {
     result.width = w;
     result.height = h;
     const rCtx = result.getContext('2d');
+    // Start with original shape
     rCtx.drawImage(srcCanvas, 0, 0);
+    // Intersect with shifted copies — each shift erodes one edge
     rCtx.globalCompositeOperation = 'destination-in';
-    rCtx.drawImage(srcCanvas, amount, 0);
-    rCtx.drawImage(srcCanvas, -amount, 0);
-    rCtx.drawImage(srcCanvas, 0, amount);
-    rCtx.drawImage(srcCanvas, 0, -amount);
+    rCtx.drawImage(srcCanvas, amount, 0);   // erode left edge
+    rCtx.drawImage(srcCanvas, -amount, 0);  // erode right edge
+    rCtx.drawImage(srcCanvas, 0, amount);   // erode top edge
+    rCtx.drawImage(srcCanvas, 0, -amount);  // erode bottom edge
     return result;
 }
 
@@ -746,9 +1192,11 @@ function saveEditPiece() {
     const piece = pieces.find(p => p.id === editPieceId);
     if (!piece) { cancelEditPiece(); return; }
 
+    // Find bricks removed from the edited piece — they need new solo pieces
     const newSet = new Set(editBrickIds);
     const removedBrickIds = originalBrickIds.filter(bid => !newSet.has(bid));
 
+    // Remove newly-added bricks from their old pieces (stolen from other pieces)
     for (const other of pieces) {
         if (other.id === editPieceId) continue;
         other.brick_ids = other.brick_ids.filter(bid => !newSet.has(bid));
@@ -756,6 +1204,7 @@ function saveEditPiece() {
         other.num_bricks = other.brick_ids.length;
     }
 
+    // Update the edited piece
     piece.brick_ids = [...editBrickIds];
     piece.bricks = editBrickIds.map(bid => {
         const b = bricks.find(br => br.id === bid);
@@ -763,6 +1212,7 @@ function saveEditPiece() {
     }).filter(Boolean);
     piece.num_bricks = piece.brick_ids.length;
 
+    // Create new solo pieces for removed bricks
     for (const bid of removedBrickIds) {
         const b = bricks.find(br => br.id === bid);
         if (!b) continue;
@@ -775,6 +1225,7 @@ function saveEditPiece() {
         });
     }
 
+    // Recompute bounding boxes for modified pieces
     for (const p of pieces) {
         if (p.brick_ids.length === 0) continue;
         const pBricks = p.brick_ids.map(bid => bricks.find(br => br.id === bid)).filter(Boolean);
@@ -786,15 +1237,20 @@ function saveEditPiece() {
         p.height = maxB - p.y;
     }
 
+    // Remove empty pieces
     pieces = pieces.filter(p => p.brick_ids.length > 0);
+
+    // Re-index
     pieces.forEach((p, i) => p.id = i);
 
+    // Find the new id of our edited piece
     const newPiece = pieces.find(p =>
         editBrickIds.length > 0 && p.brick_ids.includes(editBrickIds[0])
     );
     selectedPieceId = newPiece ? newPiece.id : -1;
     editPieceId = selectedPieceId;
 
+    // Rebuild composites
     buildPieceComposites();
 
     document.getElementById('stat_pieces').textContent = pieces.length;
@@ -804,6 +1260,7 @@ function saveEditPiece() {
             `Piece #${sp.id} (${sp.num_bricks} bricks, ${sp.width}×${sp.height})`;
     }
 
+    // Exit edit mode
     editMode = false;
     editPieceId = -1;
     editBrickIds = [];
@@ -821,12 +1278,14 @@ function toggleBrickInEdit(brickId) {
     if (!editMode) return;
     const idx = editBrickIds.indexOf(brickId);
     if (idx >= 0) {
+        // Don't allow removing the last brick
         if (editBrickIds.length <= 1) return;
         editBrickIds.splice(idx, 1);
     } else {
         editBrickIds.push(brickId);
     }
 
+    // Check if changed from original
     const changed = !arraysEqual(editBrickIds, originalBrickIds);
     document.getElementById('saveEditBtn').disabled = !changed;
     render();
@@ -840,6 +1299,7 @@ function arraysEqual(a, b) {
 }
 
 function renderEditMode() {
+    // Draw all bricks dimmed, highlight ones in the edited piece
     const editSet = new Set(editBrickIds);
 
     for (const brick of bricks) {
@@ -852,6 +1312,7 @@ function renderEditMode() {
         ctx.globalAlpha = 1.0;
     }
 
+    // Draw outlines for bricks in the piece
     for (const bid of editBrickIds) {
         const brick = bricks.find(b => b.id === bid);
         if (!brick) continue;
@@ -859,6 +1320,7 @@ function renderEditMode() {
         if (comp) drawPieceSilhouetteOutline(comp, 'rgba(80, 255, 120, 0.8)', 3);
     }
 
+    // Draw hover outline on top
     if (hoveredBrickId >= 0) {
         const brick = bricks.find(b => b.id === hoveredBrickId);
         if (brick) {
@@ -867,12 +1329,14 @@ function renderEditMode() {
             const inPiece = editSet.has(brick.id);
             const comp = getBrickComp(brick);
             if (comp) {
+                // Red outline if would be removed, green if would be added
                 const color = inPiece ? 'rgba(255, 80, 80, 0.9)' : 'rgba(80, 255, 120, 0.9)';
                 drawPieceSilhouetteOutline(comp, color, 4);
             }
         }
     }
 
+    // Label
     const piece = pieces.find(p => p.id === editPieceId);
     if (piece) {
         ctx.fillStyle = 'rgba(80, 255, 120, 0.95)';
@@ -929,6 +1393,7 @@ function isPixelOpaque(img, x, y) {
 }
 
 function findPieceAt(hx, hy) {
+    // Use piece composites for pixel-accurate hit testing
     for (const piece of pieces) {
         const comp = pieceComposites[piece.id];
         if (!comp) continue;
@@ -937,6 +1402,7 @@ function findPieceAt(hx, hy) {
         const ly = hy - comp.y;
         if (lx < 0 || ly < 0 || lx >= comp.w || ly >= comp.h) continue;
 
+        // Check alpha in composite canvas
         try {
             const cCtx = comp.canvas.getContext('2d');
             const pixel = cCtx.getImageData(Math.round(lx), Math.round(ly), 1, 1).data;
@@ -976,7 +1442,7 @@ canvas.addEventListener('mousemove', (e) => {
             }
             render();
         }
-    } else if (viewMode === 'pieces') {
+    } else if (viewMode === 'pieces' || viewMode === 'shape') {
         const newHovered = findPieceAt(hx, hy);
         if (newHovered !== hoveredPieceId) {
             hoveredPieceId = newHovered;
@@ -1025,7 +1491,7 @@ canvas.addEventListener('click', (e) => {
                 document.getElementById('stat_selected').textContent = '-';
             }
         }
-    } else if (viewMode === 'pieces') {
+    } else if (viewMode === 'pieces' || viewMode === 'shape') {
         const clickedId = findPieceAt(hx, hy);
         if (clickedId === selectedPieceId) {
             selectedPieceId = -1;
@@ -1033,11 +1499,14 @@ canvas.addEventListener('click', (e) => {
             document.getElementById('editBtnRow').style.display = 'none';
         } else {
             selectedPieceId = clickedId;
+            shapeManualVerts = 0; // reset to auto on new piece selection
             if (clickedId >= 0) {
                 const p = pieces.find(pc => pc.id === clickedId);
                 document.getElementById('stat_selected').textContent =
                     `Piece #${p.id} (${p.num_bricks} bricks, ${p.width}×${p.height})`;
-                document.getElementById('editBtnRow').style.display = 'flex';
+                if (viewMode === 'pieces') {
+                    document.getElementById('editBtnRow').style.display = 'flex';
+                }
             } else {
                 document.getElementById('stat_selected').textContent = '-';
                 document.getElementById('editBtnRow').style.display = 'none';
@@ -1066,6 +1535,14 @@ document.getElementById('max_height').addEventListener('input', (e) => {
 document.getElementById('smoothing').addEventListener('input', (e) => {
     document.getElementById('val_smoothing').textContent = e.target.value;
     if (viewMode === 'blueprint') render();
+});
+document.getElementById('targetVerts').addEventListener('input', (e) => {
+    shapeManualVerts = parseInt(e.target.value);
+    document.getElementById('val_targetVerts').textContent = e.target.value;
+    if (viewMode === 'shape') render();
+});
+document.getElementById('showVector').addEventListener('change', () => {
+    if (viewMode === 'shape') render();
 });
 
 // --- Resize ---

@@ -30,3 +30,6 @@ in/
 
 # Playwright MCP
 .playwright-mcp/
+
+# Screenshots (debug/test artifacts)
+*.png
