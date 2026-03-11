@@ -23,6 +23,7 @@ from puzzle_engine import (
     pieces_to_json,
     build_adjacency,
     compute_all_border_pixels,
+    compute_brick_areas,
 )
 
 app = Flask(
@@ -40,6 +41,7 @@ _state = {
     "tif_path": None,
     "extracted_dir": None,  # temp dir with extracted PNGs
     "border_pixels": {},    # dict[int, set[(x,y)]] per brick
+    "brick_areas": {},      # dict[int, int] pixel area per brick
 }
 
 EXTRACT_DIR = Path("/tmp/house_puzzle_extract")
@@ -125,6 +127,10 @@ def api_load_tif():
     # Compute border pixels from actual brick shapes
     bp = compute_all_border_pixels(bricks, str(extract_dir))
     _state["border_pixels"] = bp
+
+    # Compute pixel areas for area-balanced merging
+    ba = compute_brick_areas(bricks, str(extract_dir))
+    _state["brick_areas"] = ba
 
     # Build adjacency for visualization (using pixel shapes)
     adj = build_adjacency(bricks, border_pixels=bp)
@@ -212,6 +218,7 @@ def api_merge():
         max_bricks=max_bricks,
         min_border=min_border,
         border_pixels=_state.get("border_pixels"),
+        brick_areas=_state.get("brick_areas"),
     )
 
     _state["pieces"] = result.pieces
