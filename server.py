@@ -63,10 +63,14 @@ else:
 PRESETS_DIR = _app_dir / "presets"
 PARAM_KEYS = ["target_count", "min_border", "seed"]
 
+# Version
+_version_file = _base_dir / "VERSION"
+APP_VERSION = _version_file.read_text().strip() if _version_file.exists() else "dev"
+
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return render_template("index.html", version=APP_VERSION)
 
 
 @app.route("/manage")
