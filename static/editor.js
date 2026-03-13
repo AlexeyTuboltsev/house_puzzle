@@ -71,11 +71,15 @@ const loading = document.getElementById('loadingOverlay');
 
 const STORAGE_KEY = 'housePuzzle';
 
+let loadedTifPath = '';   // server path of currently loaded TIF
+let loadedTifName = '';   // display name
+
 function saveState() {
     const state = {
         preset: currentPresetName,
         params: getCurrentParamValues(),
-        tif: document.getElementById('tifSelect').value,
+        tifPath: loadedTifPath,
+        tifName: loadedTifName,
         view: viewMode,
         waves: waves,
         nextWaveId: nextWaveId,
@@ -95,18 +99,18 @@ function loadSavedState() {
 async function init() {
     fitCanvas();
     render();
-    await loadTifList();
     await loadPresetList();
 
     // Restore saved state
     const saved = loadSavedState();
     if (saved) {
-        // Restore TIF selection
-        if (saved.tif) {
-            const tifSelect = document.getElementById('tifSelect');
-            if ([...tifSelect.options].some(o => o.value === saved.tif)) {
-                tifSelect.value = saved.tif;
-            }
+        // Restore loaded TIF — auto-reload from server
+        if (saved.tifPath) {
+            loadedTifPath = saved.tifPath;
+            loadedTifName = saved.tifName || '';
+            updateTifLabel();
+            // Defer the actual load so the rest of init finishes first
+            setTimeout(() => loadTifByPath(saved.tifPath), 0);
         }
         // Restore preset or raw params
         if (saved.preset) {
@@ -142,28 +146,61 @@ async function init() {
     renderWavesPanel();
 }
 
-async function loadTifList() {
-    const resp = await fetch('/api/list_tifs');
-    const data = await resp.json();
-    const select = document.getElementById('tifSelect');
-    select.innerHTML = '<option value="">-- Select TIF --</option>';
-    data.tifs.forEach(t => {
-        const opt = document.createElement('option');
-        opt.value = t.path;
-        opt.textContent = `${t.name} (${t.size_mb} MB)`;
-        select.appendChild(opt);
-    });
+function updateTifLabel() {
+    const label = document.getElementById('tifLabel');
+    if (loadedTifName) {
+        label.textContent = loadedTifName;
+        label.title = loadedTifPath;
+        label.style.display = 'block';
+    } else {
+        label.style.display = 'none';
+    }
 }
 
 // --- TIF Loading ---
 
 let _loading = false; // double-click guard
 
-async function loadTif() {
-    const path = document.getElementById('tifSelect').value;
-    if (!path || _loading) return;
-    _loading = true;
+async function openTifDialog() {
+    if (_loading) return;
+    document.getElementById('tifFileInput').click();
+}
 
+async function onTifFileSelected(input) {
+    const file = input.files[0];
+    if (!file) return;
+    input.value = '';
+    await uploadTifFile(file);
+}
+
+async function uploadTifFile(file) {
+    if (_loading) return;
+    _loading = true;
+    showLoading('Uploading TIF...');
+
+    try {
+        const formData = new FormData();
+        formData.append('file', file);
+        const upResp = await fetch('/api/upload_tif', { method: 'POST', body: formData });
+        const upData = await upResp.json();
+        if (upData.error) {
+            alert(upData.error);
+            return;
+        }
+        loadedTifPath = upData.path;
+        loadedTifName = upData.name;
+        updateTifLabel();
+
+        await loadTifByPath(upData.path);
+    } catch (err) {
+        alert('Failed to upload TIF: ' + err.message);
+    } finally {
+        _loading = false;
+        hideLoading();
+    }
+}
+
+async function loadTifByPath(path) {
     showLoading('Parsing TIF & extracting layers...');
 
     try {
@@ -220,7 +257,6 @@ async function loadTif() {
     } catch (err) {
         alert('Failed to load TIF: ' + err.message);
     } finally {
-        _loading = false;
         hideLoading();
     }
 }

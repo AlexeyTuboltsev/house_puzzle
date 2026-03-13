@@ -198,8 +198,8 @@
         .loading-overlay {
             position: fixed;
             top: 48px;
-            left: 260px;
-            right: 280px;
+            left: 0;
+            right: 0;
             bottom: 0;
             background: rgba(0,0,0,0.6);
             display: none;
@@ -442,10 +442,9 @@
         <!-- Column 1: Settings -->
         <div class="sidebar">
             <h2>Source TIF</h2>
-            <select class="tif-select" id="tifSelect">
-                <option value="">-- Select TIF --</option>
-            </select>
-            <button id="loadBtn" onclick="loadTif()" style="width:100%; margin-bottom:6px;">Load</button>
+            <input type="file" id="tifFileInput" accept=".tif,.tiff" style="display:none;" onchange="onTifFileSelected(this)">
+            <button id="loadBtn" onclick="openTifDialog()" style="width:100%; margin-bottom:4px;">Open TIF...</button>
+            <div id="tifLabel" style="display:none; font-size:11px; color:#e0a050; margin-bottom:6px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></div>
 
             <h2>View</h2>
             <div class="view-toggles">

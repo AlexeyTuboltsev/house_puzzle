@@ -11,6 +11,10 @@ import base64
 import io
 import json
 import os
+import sys
+import tempfile
+import threading
+import webbrowser
 from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request, send_file, send_from_directory
@@ -27,10 +31,16 @@ from puzzle_engine import (
     compute_piece_bbox,
 )
 
+# Support PyInstaller bundled paths
+if getattr(sys, 'frozen', False):
+    _base_dir = Path(sys._MEIPASS)
+else:
+    _base_dir = Path(__file__).parent
+
 app = Flask(
     __name__,
-    template_folder="templates",
-    static_folder="static",
+    template_folder=str(_base_dir / "templates"),
+    static_folder=str(_base_dir / "static"),
 )
 
 # In-memory state
@@ -45,8 +55,13 @@ _state = {
     "brick_areas": {},      # dict[int, int] pixel area per brick
 }
 
-EXTRACT_DIR = Path("/tmp/house_puzzle_extract")
-PRESETS_DIR = Path(__file__).parent / "presets"
+EXTRACT_DIR = Path(tempfile.gettempdir()) / "house_puzzle_extract"
+# Presets must be writable → use the directory the exe/script lives in
+if getattr(sys, 'frozen', False):
+    _app_dir = Path(sys.executable).parent
+else:
+    _app_dir = Path(__file__).parent
+PRESETS_DIR = _app_dir / "presets"
 PARAM_KEYS = ["target_count", "min_border", "seed"]
 
 
@@ -138,6 +153,32 @@ def api_list_tifs():
                 "size_mb": round(f.stat().st_size / (1024 * 1024), 1),
             })
     return jsonify({"tifs": tifs})
+
+
+@app.route("/api/upload_tif", methods=["POST"])
+def api_upload_tif():
+    """Upload a TIF file and save it to the in/ directory."""
+    if "file" not in request.files:
+        return jsonify({"error": "No file provided"}), 400
+
+    f = request.files["file"]
+    if not f.filename:
+        return jsonify({"error": "No file selected"}), 400
+
+    ext = Path(f.filename).suffix.lower()
+    if ext not in (".tif", ".tiff"):
+        return jsonify({"error": "Only .tif/.tiff files are supported"}), 400
+
+    in_dir = Path("in")
+    in_dir.mkdir(parents=True, exist_ok=True)
+    dest = in_dir / f.filename
+    f.save(str(dest))
+
+    return jsonify({
+        "path": str(dest),
+        "name": f.filename,
+        "size_mb": round(dest.stat().st_size / (1024 * 1024), 1),
+    })
 
 
 @app.route("/api/load_tif", methods=["POST"])
@@ -434,9 +475,9 @@ def api_export():
 
             for b in bricks:
                 # Extract brick from TIF
-                brick_buf = io.BytesIO()
-                extract_brick_png(tif_path, b.id, f"/tmp/_brick_{b.id}.png")
-                brick_img = Image.open(f"/tmp/_brick_{b.id}.png").convert("RGBA")
+                tmp_brick = str(Path(tempfile.gettempdir()) / f"_brick_{b.id}.png")
+                extract_brick_png(tif_path, b.id, tmp_brick)
+                brick_img = Image.open(tmp_brick).convert("RGBA")
                 # Paste at relative position within piece
                 rel_x = b.x - piece.x
                 rel_y = b.y - piece.y
@@ -514,7 +555,15 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="House Puzzle Editor")
     parser.add_argument("--port", type=int, default=5050)
     parser.add_argument("--host", default="0.0.0.0")
+    parser.add_argument("--no-browser", action="store_true", help="Don't auto-open browser")
     args = parser.parse_args()
 
-    print(f"Starting House Puzzle Editor at http://{args.host}:{args.port}")
-    app.run(host=args.host, port=args.port, debug=True)
+    url = f"http://localhost:{args.port}"
+    print(f"Starting House Puzzle Editor at {url}")
+
+    is_frozen = getattr(sys, 'frozen', False)
+
+    if not args.no_browser:
+        threading.Timer(1.0, lambda: webbrowser.open(url)).start()
+
+    app.run(host=args.host, port=args.port, debug=not is_frozen)

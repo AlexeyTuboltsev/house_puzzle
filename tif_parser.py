@@ -5,6 +5,7 @@ Reads layer positions/sizes from ImageMagick-style identify data,
 and extracts pixel data for each layer using PIL/Pillow.
 """
 
+import os
 import re
 import struct
 import subprocess
@@ -12,6 +13,17 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from PIL import Image
+
+
+def _magick_cmd(tool: str) -> list[str]:
+    """Return the ImageMagick command for the current platform.
+
+    On Windows, ImageMagick v7 uses 'magick identify' / 'magick convert'.
+    On Linux, the standalone 'identify' / 'convert' commands are available.
+    """
+    if os.name == "nt":
+        return ["magick", tool]
+    return [tool]
 
 
 @dataclass
@@ -41,7 +53,7 @@ class HouseData:
 def identify_layers(tif_path: str) -> list[dict]:
     """Use ImageMagick identify to get layer geometry."""
     result = subprocess.run(
-        ["identify", tif_path],
+        [*_magick_cmd("identify"), tif_path],
         capture_output=True, text=True, timeout=30,
     )
     layers = []
@@ -157,7 +169,7 @@ def extract_brick_png(tif_path: str, layer_index: int, output_path: str):
     """Extract a single layer as a PNG using ImageMagick convert."""
     subprocess.run(
         [
-            "convert",
+            *_magick_cmd("convert"),
             f"{tif_path}[{layer_index}]",
             "-background", "none",
             output_path,
@@ -179,7 +191,7 @@ def extract_layers_batch(tif_path: str, layer_indices: list[int],
         if output_path.exists():
             return
         subprocess.run(
-            ["convert", f"{tif_path}[{idx}]", "-background", "none",
+            [*_magick_cmd("convert"), f"{tif_path}[{idx}]", "-background", "none",
              str(output_path)],
             check=True, timeout=60,
         )
