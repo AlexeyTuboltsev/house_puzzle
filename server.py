@@ -26,8 +26,7 @@ from puzzle_engine import (
     merge_bricks,
     pieces_to_json,
     build_adjacency,
-    compute_all_border_pixels,
-    compute_brick_areas,
+    compute_borders_and_areas,
     compute_piece_bbox,
 )
 
@@ -235,12 +234,9 @@ def api_load_tif():
         if not base_path.exists():
             extract_brick_png(tif_path, house.base.index, str(base_path))
 
-    # Compute border pixels from actual brick shapes
-    bp = compute_all_border_pixels(bricks, str(extract_dir))
+    # Compute border pixels and areas in one pass (single PNG read per brick)
+    bp, ba = compute_borders_and_areas(bricks, str(extract_dir))
     _state["border_pixels"] = bp
-
-    # Compute pixel areas for area-balanced merging
-    ba = compute_brick_areas(bricks, str(extract_dir))
     _state["brick_areas"] = ba
 
     # Build adjacency for visualization (using pixel shapes)
