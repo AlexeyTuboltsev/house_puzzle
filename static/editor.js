@@ -493,7 +493,13 @@ function render() {
     const w = canvas.width;
     const h = canvas.height;
     ctx.clearRect(0, 0, w, h);
-    if (!canvasW) return;
+    if (!canvasW) {
+        if (viewMode === 'blueprint') {
+            ctx.fillStyle = '#2a5da8';
+            ctx.fillRect(0, 0, w, h);
+        }
+        return;
+    }
 
     ctx.save();
     const padX = (canvas.width - canvasW * zoom) / 2;
@@ -519,6 +525,10 @@ function render() {
     } else if (viewMode === 'pieces') {
         if (pieces.length) renderPieces();
     } else if (viewMode === 'blueprint') {
+        if (!pieces.length) {
+            ctx.fillStyle = '#2a5da8';
+            ctx.fillRect(0, 0, canvasW, canvasH);
+        }
         renderBlueprint();
     }
 
@@ -777,19 +787,14 @@ function renderBlueprint() {
     const strokeW = 4;
     let svgContent = '';
 
-    for (const piece of pieces) {
-        const comp = pieceComposites[piece.id];
-        if (!comp) continue;
-
-        const outline = coarseTraceSnap(comp);
-        if (outline.length < 3) continue;
-        const simplified = autoSimplify(outline, 1);
-        const refined = refineCorners(simplified, outline, 20, 1);
+    // Reuse cached outline paths (already computed in buildOutlinePaths after merge)
+    for (const path of cachedOutlinePaths) {
+        if (path.points.length < 3) continue;
 
         let d = '';
-        for (let i = 0; i < refined.length; i++) {
-            const sx = (comp.x + refined[i][0]) * zoom + padX;
-            const sy = (comp.y + refined[i][1]) * zoom + padY_;
+        for (let i = 0; i < path.points.length; i++) {
+            const sx = path.points[i][0] * zoom + padX;
+            const sy = path.points[i][1] * zoom + padY_;
             d += (i === 0 ? 'M' : 'L') + sx.toFixed(1) + ',' + sy.toFixed(1);
         }
         d += 'Z';
