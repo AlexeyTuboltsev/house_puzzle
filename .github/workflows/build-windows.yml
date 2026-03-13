@@ -1,0 +1,45 @@
+name: Build Windows Binary
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - 'feat/**'
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt pyinstaller
+
+      - name: Build with PyInstaller
+        run: pyinstaller house_puzzle.spec --noconfirm
+
+      - name: Bundle presets into dist
+        run: |
+          Copy-Item -Recurse presets dist\house_puzzle\presets -ErrorAction SilentlyContinue
+
+      - name: Create ZIP
+        run: Compress-Archive -Path dist\house_puzzle\* -DestinationPath house_puzzle_windows.zip
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: house_puzzle_windows
+          path: house_puzzle_windows.zip
+
+      - name: Upload to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: house_puzzle_windows.zip

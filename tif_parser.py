@@ -1,13 +1,11 @@
 """
 Parse Photoshop multi-layer TIF files and extract brick layers.
 
-Reads layer positions/sizes from ImageMagick-style identify data,
-and extracts pixel data for each layer using PIL/Pillow.
+Uses Pillow to read layer geometry and pixel data — no external
+dependencies (ImageMagick is NOT required).
 """
 
-import re
 import struct
-import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -39,26 +37,63 @@ class HouseData:
 
 
 def identify_layers(tif_path: str) -> list[dict]:
-    """Use ImageMagick identify to get layer geometry."""
-    result = subprocess.run(
-        ["identify", tif_path],
-        capture_output=True, text=True, timeout=30,
-    )
+    """Read layer geometry from a multi-page TIFF using Pillow.
+
+    For each page/frame, extracts width, height, and pixel offset
+    (XPosition/YPosition tags multiplied by resolution).
+    """
+    img = Image.open(tif_path)
     layers = []
-    for line in result.stdout.strip().split("\n"):
-        m = re.search(
-            r"\[(\d+)\] TIFF (\d+)x(\d+) (\d+)x(\d+)\+(\d+)\+(\d+)", line
-        )
-        if not m:
-            continue
+    idx = 0
+
+    while True:
+        try:
+            img.seek(idx)
+        except EOFError:
+            break
+
+        w, h = img.size
+        tags = getattr(img, "tag_v2", {})
+
+        # XPosition (286) and YPosition (287) are rationals in resolution units.
+        # Multiply by XResolution (282) / YResolution (283) to get pixels.
+        x_res = _rational_to_float(tags.get(282, 1))
+        y_res = _rational_to_float(tags.get(283, 1))
+        x_pos = _rational_to_float(tags.get(286, 0))
+        y_pos = _rational_to_float(tags.get(287, 0))
+
+        px_x = round(x_pos * x_res) if x_res else 0
+        px_y = round(y_pos * y_res) if y_res else 0
+
         layers.append({
-            "idx": int(m.group(1)),
-            "w": int(m.group(2)),
-            "h": int(m.group(3)),
-            "x": int(m.group(6)),
-            "y": int(m.group(7)),
+            "idx": idx,
+            "w": w,
+            "h": h,
+            "x": px_x,
+            "y": px_y,
         })
+        idx += 1
+
     return layers
+
+
+def _rational_to_float(val) -> float:
+    """Convert a TIFF rational tag value to a float."""
+    if val is None:
+        return 0.0
+    if isinstance(val, (int, float)):
+        return float(val)
+    if isinstance(val, tuple):
+        # IFDRational or (numerator, denominator)
+        if len(val) == 2 and val[1] != 0:
+            return val[0] / val[1]
+        if len(val) >= 1:
+            return float(val[0])
+    # Pillow IFDRational objects support float()
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def extract_layer_names(tif_path: str) -> list[str]:
@@ -154,38 +189,33 @@ def parse_tif(tif_path: str) -> HouseData:
 
 
 def extract_brick_png(tif_path: str, layer_index: int, output_path: str):
-    """Extract a single layer as a PNG using ImageMagick convert."""
-    subprocess.run(
-        [
-            "convert",
-            f"{tif_path}[{layer_index}]",
-            "-background", "none",
-            output_path,
-        ],
-        check=True, timeout=60,
-    )
+    """Extract a single layer as a PNG using Pillow."""
+    img = Image.open(tif_path)
+    img.seek(layer_index)
+    # Convert to RGBA to preserve transparency
+    rgba = img.convert("RGBA")
+    rgba.save(output_path, format="PNG")
 
 
 def extract_layers_batch(tif_path: str, layer_indices: list[int],
                          output_dir: str, prefix: str = "brick"):
-    """Extract multiple layers in parallel using concurrent processes."""
-    import concurrent.futures
+    """Extract multiple layers as PNGs.
 
+    Opens the TIF once and seeks to each requested frame to avoid
+    repeatedly opening a large file.
+    """
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
 
-    def extract_one(idx):
+    img = Image.open(tif_path)
+
+    for idx in layer_indices:
         output_path = out / f"{prefix}_{idx:03d}.png"
         if output_path.exists():
-            return
-        subprocess.run(
-            ["convert", f"{tif_path}[{idx}]", "-background", "none",
-             str(output_path)],
-            check=True, timeout=60,
-        )
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
-        executor.map(extract_one, layer_indices)
+            continue
+        img.seek(idx)
+        rgba = img.convert("RGBA")
+        rgba.save(str(output_path), format="PNG")
 
 
 def extract_all_bricks(tif_path: str, house: HouseData, output_dir: str) -> dict:

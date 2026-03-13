@@ -18,16 +18,49 @@ let editPieceId = -1;
 let editBrickIds = [];        // working copy of brick_ids being edited
 let originalBrickIds = [];    // snapshot to detect changes / revert
 
-// Pre-rendered piece composites: pieceId -> { canvas, x, y }
+// Pre-rendered piece composites: pieceId -> { canvas, x, y, w, h }
 let pieceComposites = {};
 
 // View scale (fixed, fit to viewport)
 let zoom = 1;
 
+// Cached vectorized outline paths (in house coords) for overlay
+// Array of { pieceId, points: [[x,y], ...] }
+let cachedOutlinePaths = [];
+let showOutlineOverlay = true;
+
+// Canvas pan (for tall houses / scrolling)
+let panY = 0;
+let isPanning = false;
+let panStartY = 0;
+let panStartPanY = 0;
+
 // Preset state
 let currentPresetName = '';
 let currentPresetValues = null;  // snapshot of params when preset was loaded
 const PARAM_IDS = ['target_count', 'min_border', 'seed'];
+
+// --- Wave system ---
+let waves = [];           // [{ id, name, pieceIds: [] }, ...]
+let nextWaveId = 1;
+let selectedWaveId = -1;  // which wave is active for assignment
+let assignMode = false;   // lasso assign mode
+let hiddenWaveIds = new Set(); // waves whose pieces are hidden on canvas
+
+// Lasso state
+let isLassoing = false;
+let lassoWasDrag = false; // true if mouse moved > threshold during lasso
+let lassoStartX = 0;
+let lassoStartY = 0;
+let lassoEndX = 0;
+let lassoEndY = 0;
+
+// Highlight: pieces highlighted from wave panel or lasso selection
+let highlightedPieceIds = new Set();  // multiple pieces can be highlighted
+
+// Drag piece between waves
+let dragPieceId = -1;
+let dragSourceWaveId = null; // null = unassigned
 
 const canvas = document.getElementById('houseCanvas');
 const ctx = canvas.getContext('2d');
@@ -38,12 +71,18 @@ const loading = document.getElementById('loadingOverlay');
 
 const STORAGE_KEY = 'housePuzzle';
 
+let loadedTifPath = '';   // server path of currently loaded TIF
+let loadedTifName = '';   // display name
+
 function saveState() {
     const state = {
         preset: currentPresetName,
         params: getCurrentParamValues(),
-        tif: document.getElementById('tifSelect').value,
+        tifPath: loadedTifPath,
+        tifName: loadedTifName,
         view: viewMode,
+        waves: waves,
+        nextWaveId: nextWaveId,
     };
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) {}
 }
@@ -60,18 +99,18 @@ function loadSavedState() {
 async function init() {
     fitCanvas();
     render();
-    await loadTifList();
     await loadPresetList();
 
     // Restore saved state
     const saved = loadSavedState();
     if (saved) {
-        // Restore TIF selection
-        if (saved.tif) {
-            const tifSelect = document.getElementById('tifSelect');
-            if ([...tifSelect.options].some(o => o.value === saved.tif)) {
-                tifSelect.value = saved.tif;
-            }
+        // Restore loaded TIF — auto-reload from server
+        if (saved.tifPath) {
+            loadedTifPath = saved.tifPath;
+            loadedTifName = saved.tifName || '';
+            updateTifLabel();
+            // Defer the actual load so the rest of init finishes first
+            setTimeout(() => loadTifByPath(saved.tifPath), 0);
         }
         // Restore preset or raw params
         if (saved.preset) {
@@ -91,6 +130,11 @@ async function init() {
             const btn = document.getElementById(btnId);
             if (btn) btn.classList.add('active');
         }
+        // Restore waves
+        if (saved.waves) {
+            waves = saved.waves;
+            nextWaveId = saved.nextWaveId || (waves.length ? Math.max(...waves.map(w => w.id)) + 1 : 1);
+        }
     } else {
         // First visit: load Default preset
         const presetSelect = document.getElementById('presetSelect');
@@ -99,27 +143,64 @@ async function init() {
             await loadPreset('Default');
         }
     }
+    renderWavesPanel();
 }
 
-async function loadTifList() {
-    const resp = await fetch('/api/list_tifs');
-    const data = await resp.json();
-    const select = document.getElementById('tifSelect');
-    select.innerHTML = '<option value="">-- Select TIF --</option>';
-    data.tifs.forEach(t => {
-        const opt = document.createElement('option');
-        opt.value = t.path;
-        opt.textContent = `${t.name} (${t.size_mb} MB)`;
-        select.appendChild(opt);
-    });
+function updateTifLabel() {
+    const label = document.getElementById('tifLabel');
+    if (loadedTifName) {
+        label.textContent = loadedTifName;
+        label.title = loadedTifPath;
+        label.style.display = 'block';
+    } else {
+        label.style.display = 'none';
+    }
 }
 
 // --- TIF Loading ---
 
-async function loadTif() {
-    const path = document.getElementById('tifSelect').value;
-    if (!path) return;
+let _loading = false; // double-click guard
 
+async function openTifDialog() {
+    if (_loading) return;
+    document.getElementById('tifFileInput').click();
+}
+
+async function onTifFileSelected(input) {
+    const file = input.files[0];
+    if (!file) return;
+    input.value = '';
+    await uploadTifFile(file);
+}
+
+async function uploadTifFile(file) {
+    if (_loading) return;
+    _loading = true;
+    showLoading('Uploading TIF...');
+
+    try {
+        const formData = new FormData();
+        formData.append('file', file);
+        const upResp = await fetch('/api/upload_tif', { method: 'POST', body: formData });
+        const upData = await upResp.json();
+        if (upData.error) {
+            alert(upData.error);
+            return;
+        }
+        loadedTifPath = upData.path;
+        loadedTifName = upData.name;
+        updateTifLabel();
+
+        await loadTifByPath(upData.path);
+    } catch (err) {
+        alert('Failed to upload TIF: ' + err.message);
+    } finally {
+        _loading = false;
+        hideLoading();
+    }
+}
+
+async function loadTifByPath(path) {
     showLoading('Parsing TIF & extracting layers...');
 
     try {
@@ -144,6 +225,8 @@ async function loadTif() {
         hoveredBrickId = -1;
         selectedPieceId = -1;
         hoveredPieceId = -1;
+        highlightedPieceIds.clear();
+        panY = 0;
         brickImages = {};
         // Clear brick composite cache
         for (const key of Object.keys(getBrickComp)) {
@@ -228,6 +311,8 @@ function buildPieceComposites() {
 // --- Merge ---
 
 async function doMerge() {
+    if (_loading) return;
+    _loading = true;
     showLoading('Generating puzzle...');
 
     try {
@@ -250,25 +335,37 @@ async function doMerge() {
         pieces = data.pieces;
         selectedPieceId = -1;
         hoveredPieceId = -1;
+        highlightedPieceIds.clear();
         document.getElementById('stat_pieces').textContent = data.num_pieces;
         document.getElementById('stat_selected').textContent = '-';
         document.getElementById('exportBtn').disabled = false;
 
         buildPieceComposites();
 
+        // Clear waves on regenerate — piece IDs change completely
+        waves = [];
+        nextWaveId = 1;
+        selectedWaveId = -1;
+        if (assignMode) toggleAssignMode();
+        hiddenWaveIds.clear();
+
+        // Cache vectorized outlines for overlay
+        cachedOutlinePaths = buildOutlinePaths();
+
         document.getElementById('canvasInfo').textContent =
             `${canvasW}×${canvasH} | ${data.num_pieces} pieces | Hover/click to inspect`;
         // Re-render current view (don't switch away from blueprint)
         if (viewMode === 'blueprint') {
-            // Clear old SVG so renderBlueprint rebuilds it
             const svg = document.getElementById('blueprintSvg');
             svg.innerHTML = '';
         }
         render();
+        renderWavesPanel();
 
     } catch (err) {
         alert('Generate failed: ' + err.message);
     } finally {
+        _loading = false;
         hideLoading();
     }
 }
@@ -302,8 +399,7 @@ async function doExport() {
                 await writable.close();
                 return;
             } catch (e) {
-                if (e.name === 'AbortError') return; // user cancelled
-                // Fall through to classic download
+                if (e.name === 'AbortError') return;
             }
         }
 
@@ -341,6 +437,11 @@ function setView(mode) {
     render();
 }
 
+function toggleOutlines(checked) {
+    showOutlineOverlay = checked;
+    render();
+}
+
 // --- Canvas ---
 
 function fitCanvas() {
@@ -354,16 +455,32 @@ function fitCanvas() {
     const infoBar = document.getElementById('canvasInfo');
     const infoH = infoBar ? infoBar.offsetHeight : 0;
     const pad = 16;
-    // Fit to viewport: use whichever dimension is more constraining
     const zoomW = (rect.width - pad * 2) / canvasW;
     const zoomH = (rect.height - pad * 2 - infoH) / canvasH;
     zoom = Math.min(zoomW, zoomH);
     canvas.width = rect.width;
     canvas.height = rect.height;
-    canvasArea.style.overflow = 'hidden';
+    // Allow vertical scrolling for tall houses
+    const scaledH = canvasH * zoom;
+    const availH = rect.height - infoH;
+    if (scaledH > availH) {
+        canvasArea.style.overflow = 'hidden';
+    } else {
+        canvasArea.style.overflow = 'hidden';
+    }
+    // Clamp panY
+    clampPan();
+}
+
+function clampPan() {
+    const rect = canvasArea.getBoundingClientRect();
+    const scaledH = canvasH * zoom;
+    const maxPan = Math.max(0, scaledH - rect.height + 40);
+    panY = Math.max(0, Math.min(panY, maxPan));
 }
 
 function resetView() {
+    panY = 0;
     fitCanvas();
 }
 
@@ -375,15 +492,21 @@ function render() {
 
     ctx.save();
     const padX = (canvas.width - canvasW * zoom) / 2;
-    const padY = (canvas.height - canvasH * zoom) / 2;
-    ctx.translate(padX, padY);
+    const padY_ = (canvas.height - canvasH * zoom) / 2;
+    const effectivePadY = padY_ - panY;
+    ctx.translate(padX, effectivePadY);
     ctx.scale(zoom, zoom);
 
-    // Draw composite background (not for blueprint)
+    // Draw blueprint background behind everything (visible through hidden-wave holes)
+    if (viewMode !== 'blueprint' && pieces.length && hiddenWaveIds.size > 0) {
+        renderBlueprintBackground();
+    }
+
+    // Draw composite background (only when no pieces yet; not for blueprint)
     if (compositeImg && compositeImg.complete && viewMode !== 'blueprint') {
-        ctx.globalAlpha = pieces.length ? 0.7 : 1.0;
-        ctx.drawImage(compositeImg, 0, 0, canvasW, canvasH);
-        ctx.globalAlpha = 1.0;
+        if (!pieces.length) {
+            ctx.drawImage(compositeImg, 0, 0, canvasW, canvasH);
+        }
     }
 
     if (editMode) {
@@ -394,14 +517,33 @@ function render() {
         renderBlueprint();
     }
 
+    // Draw outline overlay on pieces view (not blueprint — it has its own strokes)
+    if (showOutlineOverlay && viewMode !== 'blueprint' && pieces.length) {
+        renderOutlineOverlay();
+    }
+
+    // Draw lasso rectangle if active
+    if (isLassoing && assignMode) {
+        ctx.save();
+        ctx.strokeStyle = '#e0a050';
+        ctx.lineWidth = 2 / zoom;
+        ctx.setLineDash([6 / zoom, 4 / zoom]);
+        ctx.fillStyle = 'rgba(224, 160, 80, 0.1)';
+        const lx = Math.min(lassoStartX, lassoEndX);
+        const ly = Math.min(lassoStartY, lassoEndY);
+        const lw = Math.abs(lassoEndX - lassoStartX);
+        const lh = Math.abs(lassoEndY - lassoStartY);
+        ctx.fillRect(lx, ly, lw, lh);
+        ctx.strokeRect(lx, ly, lw, lh);
+        ctx.restore();
+    }
+
     ctx.restore();
 }
 
 function getBrickComp(brick) {
-    // Wrap a brick image as a composite object compatible with drawPieceSilhouetteOutline
     const img = brickImages[brick.id];
     if (!img) return null;
-    // Use a cached offscreen canvas per brick
     const key = '_brickComp_' + brick.id;
     if (!getBrickComp[key]) {
         const off = document.createElement('canvas');
@@ -426,7 +568,6 @@ function renderBricks() {
         ctx.globalAlpha = 1.0;
     }
 
-    // Draw hover outline on top of all bricks
     if (hoveredBrickId >= 0 && hoveredBrickId !== selectedBrickId) {
         const brick = bricks.find(b => b.id === hoveredBrickId);
         if (brick) {
@@ -437,7 +578,6 @@ function renderBricks() {
         }
     }
 
-    // Draw selected brick outline on top of everything
     if (selectedBrickId >= 0) {
         const brick = bricks.find(b => b.id === selectedBrickId);
         if (brick) {
@@ -460,9 +600,12 @@ function renderBricks() {
 }
 
 function renderPieces() {
-    // Draw all pieces except hovered/selected (those go on top)
+    const hiddenPids = getHiddenPieceIds();
+
+    // Draw all pieces except hovered/selected/highlighted/hidden (those go on top or are invisible)
     for (const piece of pieces) {
-        if (piece.id === hoveredPieceId || piece.id === selectedPieceId) continue;
+        if (hiddenPids.has(piece.id)) continue;
+        if (piece.id === hoveredPieceId || piece.id === selectedPieceId || highlightedPieceIds.has(piece.id)) continue;
         const comp = pieceComposites[piece.id];
         if (!comp) continue;
 
@@ -481,8 +624,22 @@ function renderPieces() {
         }
     }
 
+    // Highlighted pieces (from wave panel or lasso selection)
+    for (const hpId of highlightedPieceIds) {
+        if (hiddenPids.has(hpId)) continue;
+        if (hpId === selectedPieceId || hpId === hoveredPieceId) continue;
+        const piece = pieces.find(p => p.id === hpId);
+        if (piece) {
+            const comp = pieceComposites[piece.id];
+            if (comp) {
+                ctx.drawImage(comp.canvas, comp.x, comp.y, comp.w, comp.h);
+                drawPieceSilhouetteOutline(comp, '#e0a050', 5);
+            }
+        }
+    }
+
     // Draw hover outline on top of all pieces
-    if (hoveredPieceId >= 0 && hoveredPieceId !== selectedPieceId) {
+    if (hoveredPieceId >= 0 && hoveredPieceId !== selectedPieceId && !hiddenPids.has(hoveredPieceId)) {
         const piece = pieces.find(p => p.id === hoveredPieceId);
         if (piece) {
             const comp = pieceComposites[piece.id];
@@ -494,7 +651,7 @@ function renderPieces() {
     }
 
     // Draw selected piece on top of everything
-    if (selectedPieceId >= 0) {
+    if (selectedPieceId >= 0 && !hiddenPids.has(selectedPieceId)) {
         const piece = pieces.find(p => p.id === selectedPieceId);
         if (piece) {
             const comp = pieceComposites[piece.id];
@@ -516,8 +673,6 @@ function renderPieces() {
 }
 
 function drawPieceSilhouetteOutline(comp, color, thickness) {
-    // Crisp outline: stamp a solid-color silhouette at offsets in a
-    // circle of radius `t`, then cut out the interior with destination-out.
     ctx.save();
 
     const t = Math.max(1, Math.round(thickness / zoom));
@@ -527,7 +682,6 @@ function drawPieceSilhouetteOutline(comp, color, thickness) {
     outlineCanvas.height = comp.h + pad * 2;
     const oCtx = outlineCanvas.getContext('2d');
 
-    // Build a solid-color silhouette
     const silCanvas = document.createElement('canvas');
     silCanvas.width = comp.canvas.width;
     silCanvas.height = comp.canvas.height;
@@ -537,7 +691,6 @@ function drawPieceSilhouetteOutline(comp, color, thickness) {
     sCtx.fillStyle = color;
     sCtx.fillRect(0, 0, silCanvas.width, silCanvas.height);
 
-    // Stamp at offsets in a circle to expand by t pixels
     for (let dx = -t; dx <= t; dx++) {
         for (let dy = -t; dy <= t; dy++) {
             if (dx * dx + dy * dy > t * t) continue;
@@ -545,7 +698,6 @@ function drawPieceSilhouetteOutline(comp, color, thickness) {
         }
     }
 
-    // Cut out the interior
     oCtx.globalCompositeOperation = 'destination-out';
     oCtx.drawImage(comp.canvas, pad, pad);
 
@@ -554,16 +706,12 @@ function drawPieceSilhouetteOutline(comp, color, thickness) {
 }
 
 function makeTintedCanvas(srcCanvas, hue, alpha) {
-    // Create a tinted version of the source canvas (preserving alpha shape)
     const tint = document.createElement('canvas');
     tint.width = srcCanvas.width;
     tint.height = srcCanvas.height;
     const tCtx = tint.getContext('2d');
 
-    // Draw source to get the alpha mask
     tCtx.drawImage(srcCanvas, 0, 0);
-
-    // Apply color using source-in compositing
     tCtx.globalCompositeOperation = 'source-in';
     tCtx.fillStyle = `hsla(${hue}, 60%, 50%, ${alpha})`;
     tCtx.fillRect(0, 0, tint.width, tint.height);
@@ -574,10 +722,9 @@ function makeTintedCanvas(srcCanvas, hue, alpha) {
 function renderBlueprint() {
     if (!pieces.length) return;
 
-    // Use vectorized shapes: fill with blue, stroke with white
     const svg = document.getElementById('blueprintSvg');
     const padX = (canvas.width - canvasW * zoom) / 2;
-    const padY = (canvas.height - canvasH * zoom) / 2;
+    const padY_ = (canvas.height - canvasH * zoom) / 2 - panY;
     svg.setAttribute('width', canvas.width);
     svg.setAttribute('height', canvas.height);
     svg.style.display = 'block';
@@ -597,7 +744,7 @@ function renderBlueprint() {
         let d = '';
         for (let i = 0; i < refined.length; i++) {
             const sx = (comp.x + refined[i][0]) * zoom + padX;
-            const sy = (comp.y + refined[i][1]) * zoom + padY;
+            const sy = (comp.y + refined[i][1]) * zoom + padY_;
             d += (i === 0 ? 'M' : 'L') + sx.toFixed(1) + ',' + sy.toFixed(1);
         }
         d += 'Z';
@@ -607,8 +754,82 @@ function renderBlueprint() {
     svg.innerHTML = svgContent;
 }
 
+function getHiddenPieceIds() {
+    const hidden = new Set();
+    for (const waveId of hiddenWaveIds) {
+        const wave = waves.find(w => w.id === waveId);
+        if (wave) {
+            for (const pid of wave.pieceIds) hidden.add(pid);
+        }
+    }
+    return hidden;
+}
+
+function renderBlueprintBackground() {
+    // Draw blueprint-style shapes for hidden pieces so they show through
+    if (!cachedOutlinePaths.length) return;
+    const hiddenPids = getHiddenPieceIds();
+    if (hiddenPids.size === 0) return;
+
+    ctx.save();
+    for (const path of cachedOutlinePaths) {
+        if (!hiddenPids.has(path.pieceId)) continue;
+        if (path.points.length < 3) continue;
+        ctx.beginPath();
+        ctx.moveTo(path.points[0][0], path.points[0][1]);
+        for (let i = 1; i < path.points.length; i++) {
+            ctx.lineTo(path.points[i][0], path.points[i][1]);
+        }
+        ctx.closePath();
+        ctx.fillStyle = '#2a5da8';
+        ctx.fill();
+        ctx.strokeStyle = 'white';
+        ctx.lineWidth = 4 / zoom;
+        ctx.lineJoin = 'round';
+        ctx.stroke();
+    }
+    ctx.restore();
+}
+
+function buildOutlinePaths() {
+    // Pre-compute vectorized outlines for all pieces (house coords)
+    const paths = [];
+    for (const piece of pieces) {
+        const comp = pieceComposites[piece.id];
+        if (!comp) continue;
+        const outline = coarseTraceSnap(comp);
+        if (outline.length < 3) continue;
+        const simplified = autoSimplify(outline, 1);
+        const refined = refineCorners(simplified, outline, 20, 1);
+        // Store as absolute house coords
+        const absPoints = refined.map(([x, y]) => [comp.x + x, comp.y + y]);
+        paths.push({ pieceId: piece.id, points: absPoints });
+    }
+    return paths;
+}
+
+function renderOutlineOverlay() {
+    // Draw thin outline paths on the canvas (already in house-coord transform)
+    if (!cachedOutlinePaths.length) return;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(120, 120, 120, 0.7)';
+    ctx.lineWidth = 1 / zoom;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    for (const path of cachedOutlinePaths) {
+        if (path.points.length < 3) continue;
+        ctx.beginPath();
+        ctx.moveTo(path.points[0][0], path.points[0][1]);
+        for (let i = 1; i < path.points.length; i++) {
+            ctx.lineTo(path.points[i][0], path.points[i][1]);
+        }
+        ctx.closePath();
+        ctx.stroke();
+    }
+    ctx.restore();
+}
+
 function tracePieceContours(comp, epsilon) {
-    // Create thresholded binary mask
     const W = comp.w, H = comp.h;
     const mCanvas = document.createElement('canvas');
     mCanvas.width = W;
@@ -626,10 +847,7 @@ function tracePieceContours(comp, epsilon) {
         return (x >= 0 && x < W && y >= 0 && y < H) ? mask[y * W + x] : 0;
     }
 
-    // Build directed boundary edges between grid vertices (0..W, 0..H).
-    // Convention: opaque cell is on the RIGHT side of travel direction.
-    // This ensures following edges traces a CW contour around opaque regions.
-    const edgeMap = new Map(); // "x,y" -> [{tx, ty, used}]
+    const edgeMap = new Map();
 
     function addEdge(fx, fy, tx, ty) {
         const k = fx + ',' + fy;
@@ -637,7 +855,6 @@ function tracePieceContours(comp, epsilon) {
         edgeMap.get(k).push({tx, ty, used: false});
     }
 
-    // Horizontal edges: between vertex (x,y) and (x+1,y)
     for (let y = 0; y <= H; y++) {
         for (let x = 0; x < W; x++) {
             const above = cell(x, y - 1), below = cell(x, y);
@@ -646,7 +863,6 @@ function tracePieceContours(comp, epsilon) {
         }
     }
 
-    // Vertical edges: between vertex (x,y) and (x,y+1)
     for (let x = 0; x <= W; x++) {
         for (let y = 0; y < H; y++) {
             const left = cell(x - 1, y), right = cell(x, y);
@@ -655,8 +871,6 @@ function tracePieceContours(comp, epsilon) {
         }
     }
 
-    // Chain directed edges into closed loops.
-    // At junctions (saddle points with 2+ outgoing edges), prefer right turns.
     const contours = [];
 
     for (const [startK, startEdges] of edgeMap) {
@@ -676,12 +890,11 @@ function tracePieceContours(comp, epsilon) {
                 const outs = edgeMap.get(cx + ',' + cy);
                 if (!outs) break;
 
-                // Pick next edge: prefer right turn, then straight, then left
                 const turns = [
-                    [-dy, dx],   // right (CW 90)
-                    [dx, dy],    // straight
-                    [dy, -dx],   // left (CCW 90)
-                    [-dx, -dy],  // u-turn
+                    [-dy, dx],
+                    [dx, dy],
+                    [dy, -dx],
+                    [-dx, -dy],
                 ];
 
                 let picked = null;
@@ -707,16 +920,12 @@ function tracePieceContours(comp, epsilon) {
         }
     }
 
-    // Simplify each contour
     return contours.map(c => douglasPeuckerClosed(c, epsilon));
 }
 
 function douglasPeuckerClosed(points, epsilon) {
-    // For closed polygons: find the two farthest points, split into two
-    // open polylines, simplify each, and recombine.
     if (points.length <= 4 || epsilon <= 0) return points;
 
-    // Find the two points with maximum distance
     let maxDist = 0, idxA = 0, idxB = 1;
     for (let i = 0; i < points.length; i++) {
         for (let j = i + 1; j < points.length; j++) {
@@ -729,14 +938,12 @@ function douglasPeuckerClosed(points, epsilon) {
         }
     }
 
-    // Split into two halves
     const half1 = points.slice(idxA, idxB + 1);
     const half2 = points.slice(idxB).concat(points.slice(0, idxA + 1));
 
     const s1 = douglasPeucker(half1, epsilon);
     const s2 = douglasPeucker(half2, epsilon);
 
-    // Combine (remove duplicate junction points)
     return s1.slice(0, -1).concat(s2.slice(0, -1));
 }
 
@@ -771,13 +978,9 @@ function douglasPeucker(points, epsilon) {
 // --- Shape view: single piece vectorization ---
 
 function coarseTraceSnap(comp) {
-    // 1. Build binary mask from piece composite
-    // 2. Downscale to coarse grid — any cell with opaque pixels → filled
-    // 3. Trace outer contour of coarse grid
-    // 4. Scale back up and snap to nearest original boundary pixel
     const W = comp.w, H = comp.h;
-    const CELL = 5; // cell size — gaps smaller than this are bridged
-    const PAD = 3;   // padding cells around the grid for exterior flood fill
+    const CELL = 5;
+    const PAD = 3;
     const GW = Math.ceil(W / CELL) + PAD * 2;
     const GH = Math.ceil(H / CELL) + PAD * 2;
 
@@ -787,7 +990,6 @@ function coarseTraceSnap(comp) {
     cCtx.drawImage(comp.canvas, 0, 0);
     const data = cCtx.getImageData(0, 0, W, H).data;
 
-    // Collect original boundary pixels (for snapping later)
     const boundaryPts = [];
     for (let y = 0; y < H; y++) {
         for (let x = 0; x < W; x++) {
@@ -804,7 +1006,6 @@ function coarseTraceSnap(comp) {
         }
     }
 
-    // Build coarse grid (with 1-cell padding so contour tracing has clear exterior)
     const grid = new Uint8Array(GW * GH);
     for (let y = 0; y < H; y++) {
         for (let x = 0; x < W; x++) {
@@ -816,7 +1017,6 @@ function coarseTraceSnap(comp) {
         }
     }
 
-    // Dilate coarse grid by 1 cell to bridge small gaps between bricks
     const dilGrid = new Uint8Array(GW * GH);
     for (let gy = 0; gy < GH; gy++) {
         for (let gx = 0; gx < GW; gx++) {
@@ -833,7 +1033,6 @@ function coarseTraceSnap(comp) {
         }
     }
 
-    // Flood fill exterior from border
     const exterior = new Uint8Array(GW * GH);
     const q = [];
     for (let x = 0; x < GW; x++) {
@@ -859,17 +1058,12 @@ function coarseTraceSnap(comp) {
         }
     }
 
-    // Solid = everything not exterior
     const solid = new Uint8Array(GW * GH);
     for (let i = 0; i < GW * GH; i++) solid[i] = exterior[i] ? 0 : 1;
 
-    // Moore neighborhood boundary tracing on the solid grid
-    // This produces a properly ordered, non-self-intersecting contour
-    // 8-connected neighbors clockwise: right, down-right, down, down-left, left, up-left, up, up-right
     const mooreX = [1, 1, 0, -1, -1, -1, 0, 1];
     const mooreY = [0, 1, 1, 1, 0, -1, -1, -1];
 
-    // Find topmost-leftmost solid cell as start
     let startX = -1, startY = -1;
     outer: for (let gy = 0; gy < GH; gy++) {
         for (let gx = 0; gx < GW; gx++) {
@@ -881,12 +1075,10 @@ function coarseTraceSnap(comp) {
     }
     if (startX < 0) return [];
 
-    // Trace boundary using Moore neighborhood
     const traced = [];
     const visited = new Set();
     let curX = startX, curY = startY;
-    // We entered from the left (since it's the leftmost in its row), so backtrack direction is 4 (left)
-    let backDir = 4; // direction index pointing to the cell we came from
+    let backDir = 4;
 
     do {
         const key = curY * GW + curX;
@@ -895,14 +1087,12 @@ function coarseTraceSnap(comp) {
             visited.add(key);
         }
 
-        // Scan clockwise starting from (backDir + 1) % 8
         let found = false;
         for (let i = 1; i <= 8; i++) {
             const dir = (backDir + i) % 8;
             const nx = curX + mooreX[dir];
             const ny = curY + mooreY[dir];
             if (nx >= 0 && nx < GW && ny >= 0 && ny < GH && solid[ny * GW + nx]) {
-                // backtrack direction for next cell = opposite of dir
                 backDir = (dir + 4) % 8;
                 curX = nx;
                 curY = ny;
@@ -915,7 +1105,6 @@ function coarseTraceSnap(comp) {
 
     if (traced.length < 3) return [];
 
-    // Filter to only boundary cells (adjacent to exterior) to remove interior path segments
     const boundaryTraced = traced.filter(([gx, gy]) => {
         for (const [dx, dy] of [[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[1,-1],[-1,1],[1,1]]) {
             const nx = gx + dx, ny = gy + dy;
@@ -928,7 +1117,6 @@ function coarseTraceSnap(comp) {
 
     if (boundaryTraced.length < 3) return [];
 
-    // Convert to pixel coords and snap to nearest original boundary pixel
     const snapped = boundaryTraced.map(([gx, gy]) => {
         const px = (gx - PAD + 0.5) * CELL, py = (gy - PAD + 0.5) * CELL;
         let bestDist = Infinity, bestX = px, bestY = py;
@@ -944,7 +1132,6 @@ function coarseTraceSnap(comp) {
     return snapped;
 }
 
-// Compute max distance from any point in `pts` to the nearest edge of polygon `poly`
 function hausdorffToPoly(pts, poly) {
     let maxDist = 0;
     for (const [px, py] of pts) {
@@ -952,7 +1139,6 @@ function hausdorffToPoly(pts, poly) {
         for (let i = 0; i < poly.length; i++) {
             const j = (i + 1) % poly.length;
             const [ax, ay] = poly[i], [bx, by] = poly[j];
-            // Point-to-segment distance squared
             const dx = bx - ax, dy = by - ay;
             const lenSq = dx * dx + dy * dy;
             let t = lenSq > 0 ? ((px - ax) * dx + (py - ay) * dy) / lenSq : 0;
@@ -966,10 +1152,6 @@ function hausdorffToPoly(pts, poly) {
     return Math.sqrt(maxDist);
 }
 
-// Collapse close vertex pairs at concave corners into a single corner apex vertex
-// When two consecutive vertices are close, they likely straddle a concave corner.
-// Replace them with the outline point deepest into the corner (furthest from the
-// line connecting their neighbors).
 function refineCorners(simplified, outline, threshold, maxDeviation) {
     if (simplified.length <= 4) return simplified;
     let pts = simplified.map(p => [...p]);
@@ -982,17 +1164,14 @@ function refineCorners(simplified, outline, threshold, maxDeviation) {
             const dy = pts[i][1] - pts[j][1];
             if (Math.sqrt(dx * dx + dy * dy) > threshold) continue;
 
-            // Close pair found — find the concave corner apex
             const prevIdx = (i - 1 + pts.length) % pts.length;
             const nextIdx = (j + 1) % pts.length;
             const prev = pts[prevIdx];
             const next = pts[nextIdx];
 
-            // Search outline points near the midpoint of the pair
             const mid = [(pts[i][0] + pts[j][0]) / 2, (pts[i][1] + pts[j][1]) / 2];
             const searchR2 = (threshold * 3) * (threshold * 3);
 
-            // Line prev→next direction
             const lx = next[0] - prev[0], ly = next[1] - prev[1];
             const lineLen = Math.sqrt(lx * lx + ly * ly);
 
@@ -1002,7 +1181,6 @@ function refineCorners(simplified, outline, threshold, maxDeviation) {
                 const dm2 = (op[0] - mid[0]) ** 2 + (op[1] - mid[1]) ** 2;
                 if (dm2 > searchR2) continue;
                 if (lineLen > 0) {
-                    // Perpendicular distance from line(prev, next)
                     const d = Math.abs(lx * (prev[1] - op[1]) - ly * (prev[0] - op[0])) / lineLen;
                     if (d > maxDist) {
                         maxDist = d;
@@ -1011,7 +1189,6 @@ function refineCorners(simplified, outline, threshold, maxDeviation) {
                 }
             }
 
-            // Try the collapse and check if it worsens the fit
             const candidate = [...pts];
             candidate[i] = [...bestPt];
             if (j > i) {
@@ -1020,22 +1197,19 @@ function refineCorners(simplified, outline, threshold, maxDeviation) {
                 candidate.splice(0, 1);
             }
             const newDist = hausdorffToPoly(outline, candidate);
-            if (newDist > maxDeviation) continue; // skip — would worsen fit too much
+            if (newDist > maxDeviation) continue;
 
-            // Accept the collapse
             pts = candidate;
             changed = true;
-            break; // restart scan after modification
+            break;
         }
     }
     return pts;
 }
 
-// Find minimum vertices where max deviation from full outline stays within tolerance
 function autoSimplify(outline, tolerance) {
     if (outline.length <= 3) return outline;
 
-    // Binary search: find smallest n where hausdorff <= tolerance
     let lo = 3, hi = outline.length;
     while (lo < hi) {
         const mid = (lo + hi) >> 1;
@@ -1050,98 +1224,9 @@ function autoSimplify(outline, tolerance) {
     return visvalingamWhyatt(outline, lo);
 }
 
-function renderShape() {
-    if (!pieces.length) return;
-
-    // Find the piece to show — use selected piece, or first piece
-    const pieceId = selectedPieceId >= 0 ? selectedPieceId : pieces[0].id;
-    const piece = pieces.find(p => p.id === pieceId);
-    if (!piece) return;
-    const comp = pieceComposites[piece.id];
-    if (!comp) return;
-
-    // Draw the piece composite as black silhouette
-    const silCanvas = document.createElement('canvas');
-    silCanvas.width = comp.w; silCanvas.height = comp.h;
-    const silCtx = silCanvas.getContext('2d');
-    silCtx.drawImage(comp.canvas, 0, 0);
-    silCtx.globalCompositeOperation = 'source-in';
-    silCtx.fillStyle = 'black';
-    silCtx.fillRect(0, 0, comp.w, comp.h);
-    ctx.drawImage(silCanvas, comp.x, comp.y);
-
-    // Draw the precise raster outline (white) as reference
-    drawPieceSilhouetteOutline(comp, 'white', 2);
-
-    // Coarse grid trace + snap to boundary
-    const outline = coarseTraceSnap(comp);
-    if (outline.length < 3) return;
-
-    const slider = document.getElementById('targetVerts');
-    let simplified;
-    if (shapeManualVerts > 0) {
-        // Manual slider override
-        simplified = visvalingamWhyatt(outline, shapeManualVerts);
-    } else {
-        // Auto-optimize: find min vertices within tolerance
-        simplified = autoSimplify(outline, 1);
-    }
-    // Collapse close vertex pairs at concave corners (threshold = 4 * CELL, max deviation = 1px)
-    simplified = refineCorners(simplified, outline, 20, 1);
-    slider.value = simplified.length;
-    document.getElementById('val_targetVerts').textContent = simplified.length;
-
-    // Draw the simplified shape as SVG overlay (if checkbox enabled)
-    const svg = document.getElementById('blueprintSvg');
-    const showVector = document.getElementById('showVector').checked;
-    if (!showVector) {
-        svg.style.display = 'none';
-        return;
-    }
-    const padX = (canvas.width - canvasW * zoom) / 2;
-    const padY = (canvas.height - canvasH * zoom) / 2;
-    svg.setAttribute('width', canvas.width);
-    svg.setAttribute('height', canvas.height);
-    svg.style.display = 'block';
-
-    const strokeW = Math.max(2, 3 * zoom);
-
-    // Build path
-    let d = '';
-    for (let i = 0; i < simplified.length; i++) {
-        const sx = (comp.x + simplified[i][0]) * zoom + padX;
-        const sy = (comp.y + simplified[i][1]) * zoom + padY;
-        d += (i === 0 ? 'M' : 'L') + sx.toFixed(1) + ',' + sy.toFixed(1);
-    }
-    d += 'Z';
-
-    // Draw filled shape + outline + vertex dots
-    let svgContent = `<path d="${d}" fill="rgba(42,93,168,0.3)" stroke="#ff6030" stroke-width="${strokeW.toFixed(1)}" stroke-linejoin="round"/>`;
-
-    // Draw vertex markers
-    const dotR = Math.max(3, 4 * zoom);
-    for (let i = 0; i < simplified.length; i++) {
-        const sx = (comp.x + simplified[i][0]) * zoom + padX;
-        const sy = (comp.y + simplified[i][1]) * zoom + padY;
-        const fillColor = i === 0 ? '#00ff80' : '#ff6030';
-        svgContent += `<circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="${dotR.toFixed(1)}" fill="${fillColor}" stroke="white" stroke-width="1"/>`;
-        const fs = Math.max(9, 11 * zoom);
-        svgContent += `<text x="${(sx + dotR + 2).toFixed(1)}" y="${(sy - dotR - 1).toFixed(1)}" fill="yellow" font-size="${fs}" font-weight="bold">${i}</text>`;
-    }
-
-    // Label with vertex count
-    const labelX = (comp.x + comp.w / 2) * zoom + padX;
-    const labelY = (comp.y - 10) * zoom + padY;
-    svgContent += `<text x="${labelX.toFixed(1)}" y="${labelY.toFixed(1)}" fill="#ff6030" font-size="${Math.max(14, 16 * zoom)}" text-anchor="middle" font-weight="bold">Piece #${piece.id} — ${simplified.length} vertices</text>`;
-
-    svg.innerHTML = svgContent;
-}
-
 function visvalingamWhyatt(points, targetCount) {
     if (points.length <= targetCount) return points;
 
-    // Work with indices so we can efficiently remove points
-    // For closed polygon: each point has neighbors wrapping around
     let pts = points.map((p, i) => ({ x: p[0], y: p[1], idx: i, removed: false }));
     let n = pts.length;
 
@@ -1149,7 +1234,6 @@ function visvalingamWhyatt(points, targetCount) {
         return Math.abs((b.x - a.x) * (c.y - a.y) - (c.x - a.x) * (b.y - a.y)) / 2;
     }
 
-    // Build linked list for efficient neighbor access
     for (let i = 0; i < pts.length; i++) {
         pts[i].prev = (i - 1 + pts.length) % pts.length;
         pts[i].next = (i + 1) % pts.length;
@@ -1160,7 +1244,6 @@ function visvalingamWhyatt(points, targetCount) {
     }
 
     while (n > targetCount) {
-        // Find point with smallest triangle area
         let minArea = Infinity;
         let minIdx = -1;
         for (let i = 0; i < pts.length; i++) {
@@ -1173,7 +1256,6 @@ function visvalingamWhyatt(points, targetCount) {
         }
         if (minIdx < 0) break;
 
-        // Remove it
         pts[minIdx].removed = true;
         const prevI = pts[minIdx].prev;
         const nextI = pts[minIdx].next;
@@ -1190,9 +1272,7 @@ function makeSolidCanvas(srcCanvas, color) {
     c.width = srcCanvas.width;
     c.height = srcCanvas.height;
     const cCtx = c.getContext('2d');
-    // Draw source to get the alpha mask
     cCtx.drawImage(srcCanvas, 0, 0);
-    // Fill with solid color, keeping only the alpha shape
     cCtx.globalCompositeOperation = 'source-in';
     cCtx.fillStyle = color;
     cCtx.fillRect(0, 0, c.width, c.height);
@@ -1206,14 +1286,12 @@ function erodeCanvas(srcCanvas, amount) {
     result.width = w;
     result.height = h;
     const rCtx = result.getContext('2d');
-    // Start with original shape
     rCtx.drawImage(srcCanvas, 0, 0);
-    // Intersect with shifted copies — each shift erodes one edge
     rCtx.globalCompositeOperation = 'destination-in';
-    rCtx.drawImage(srcCanvas, amount, 0);   // erode left edge
-    rCtx.drawImage(srcCanvas, -amount, 0);  // erode right edge
-    rCtx.drawImage(srcCanvas, 0, amount);   // erode top edge
-    rCtx.drawImage(srcCanvas, 0, -amount);  // erode bottom edge
+    rCtx.drawImage(srcCanvas, amount, 0);
+    rCtx.drawImage(srcCanvas, -amount, 0);
+    rCtx.drawImage(srcCanvas, 0, amount);
+    rCtx.drawImage(srcCanvas, 0, -amount);
     return result;
 }
 
@@ -1256,11 +1334,9 @@ function saveEditPiece() {
     const piece = pieces.find(p => p.id === editPieceId);
     if (!piece) { cancelEditPiece(); return; }
 
-    // Find bricks removed from the edited piece — they need new solo pieces
     const newSet = new Set(editBrickIds);
     const removedBrickIds = originalBrickIds.filter(bid => !newSet.has(bid));
 
-    // Remove newly-added bricks from their old pieces (stolen from other pieces)
     for (const other of pieces) {
         if (other.id === editPieceId) continue;
         other.brick_ids = other.brick_ids.filter(bid => !newSet.has(bid));
@@ -1268,7 +1344,6 @@ function saveEditPiece() {
         other.num_bricks = other.brick_ids.length;
     }
 
-    // Update the edited piece
     piece.brick_ids = [...editBrickIds];
     piece.bricks = editBrickIds.map(bid => {
         const b = bricks.find(br => br.id === bid);
@@ -1276,7 +1351,6 @@ function saveEditPiece() {
     }).filter(Boolean);
     piece.num_bricks = piece.brick_ids.length;
 
-    // Create new solo pieces for removed bricks
     for (const bid of removedBrickIds) {
         const b = bricks.find(br => br.id === bid);
         if (!b) continue;
@@ -1289,7 +1363,6 @@ function saveEditPiece() {
         });
     }
 
-    // Recompute bounding boxes for modified pieces
     for (const p of pieces) {
         if (p.brick_ids.length === 0) continue;
         const pBricks = p.brick_ids.map(bid => bricks.find(br => br.id === bid)).filter(Boolean);
@@ -1301,20 +1374,20 @@ function saveEditPiece() {
         p.height = maxB - p.y;
     }
 
-    // Remove empty pieces
     pieces = pieces.filter(p => p.brick_ids.length > 0);
-
-    // Re-index
     pieces.forEach((p, i) => p.id = i);
 
-    // Find the new id of our edited piece
+    // Update wave references after re-indexing
+    // Build old-to-new mapping: not straightforward since ids changed
+    // Instead, rebuild wave pieceIds based on brick membership
+    rebuildWaveIdsAfterReindex();
+
     const newPiece = pieces.find(p =>
         editBrickIds.length > 0 && p.brick_ids.includes(editBrickIds[0])
     );
     selectedPieceId = newPiece ? newPiece.id : -1;
     editPieceId = selectedPieceId;
 
-    // Rebuild composites
     buildPieceComposites();
 
     document.getElementById('stat_pieces').textContent = pieces.length;
@@ -1324,7 +1397,6 @@ function saveEditPiece() {
             `Piece #${sp.id} (${sp.num_bricks} bricks, ${sp.width}×${sp.height})`;
     }
 
-    // Exit edit mode
     editMode = false;
     editPieceId = -1;
     editBrickIds = [];
@@ -1336,20 +1408,28 @@ function saveEditPiece() {
         document.getElementById('editBtnRow').style.display = 'flex';
     }
     render();
+    renderWavesPanel();
+}
+
+function rebuildWaveIdsAfterReindex() {
+    // After pieces are re-indexed, wave pieceIds become stale.
+    // We can't easily map old to new, so we clear stale ones.
+    const validIds = new Set(pieces.map(p => p.id));
+    for (const wave of waves) {
+        wave.pieceIds = wave.pieceIds.filter(id => validIds.has(id));
+    }
 }
 
 function toggleBrickInEdit(brickId) {
     if (!editMode) return;
     const idx = editBrickIds.indexOf(brickId);
     if (idx >= 0) {
-        // Don't allow removing the last brick
         if (editBrickIds.length <= 1) return;
         editBrickIds.splice(idx, 1);
     } else {
         editBrickIds.push(brickId);
     }
 
-    // Check if changed from original
     const changed = !arraysEqual(editBrickIds, originalBrickIds);
     document.getElementById('saveEditBtn').disabled = !changed;
     render();
@@ -1363,7 +1443,6 @@ function arraysEqual(a, b) {
 }
 
 function renderEditMode() {
-    // Draw all bricks dimmed, highlight ones in the edited piece
     const editSet = new Set(editBrickIds);
 
     for (const brick of bricks) {
@@ -1376,7 +1455,6 @@ function renderEditMode() {
         ctx.globalAlpha = 1.0;
     }
 
-    // Draw outlines for bricks in the piece
     for (const bid of editBrickIds) {
         const brick = bricks.find(b => b.id === bid);
         if (!brick) continue;
@@ -1384,7 +1462,6 @@ function renderEditMode() {
         if (comp) drawPieceSilhouetteOutline(comp, 'rgba(80, 255, 120, 0.8)', 3);
     }
 
-    // Draw hover outline on top
     if (hoveredBrickId >= 0) {
         const brick = bricks.find(b => b.id === hoveredBrickId);
         if (brick) {
@@ -1393,14 +1470,12 @@ function renderEditMode() {
             const inPiece = editSet.has(brick.id);
             const comp = getBrickComp(brick);
             if (comp) {
-                // Red outline if would be removed, green if would be added
                 const color = inPiece ? 'rgba(255, 80, 80, 0.9)' : 'rgba(80, 255, 120, 0.9)';
                 drawPieceSilhouetteOutline(comp, color, 4);
             }
         }
     }
 
-    // Label
     const piece = pieces.find(p => p.id === editPieceId);
     if (piece) {
         ctx.fillStyle = 'rgba(80, 255, 120, 0.95)';
@@ -1421,8 +1496,8 @@ function screenToHouse(clientX, clientY) {
     const sx = clientX - rect.left;
     const sy = clientY - rect.top;
     const padX = (canvas.width - canvasW * zoom) / 2;
-    const padY = (canvas.height - canvasH * zoom) / 2;
-    return [(sx - padX) / zoom, (sy - padY) / zoom];
+    const padY_ = (canvas.height - canvasH * zoom) / 2 - panY;
+    return [(sx - padX) / zoom, (sy - padY_) / zoom];
 }
 
 function findBrickAt(hx, hy) {
@@ -1457,7 +1532,6 @@ function isPixelOpaque(img, x, y) {
 }
 
 function findPieceAt(hx, hy) {
-    // Use piece composites for pixel-accurate hit testing
     for (const piece of pieces) {
         const comp = pieceComposites[piece.id];
         if (!comp) continue;
@@ -1466,7 +1540,6 @@ function findPieceAt(hx, hy) {
         const ly = hy - comp.y;
         if (lx < 0 || ly < 0 || lx >= comp.w || ly >= comp.h) continue;
 
-        // Check alpha in composite canvas
         try {
             const cCtx = comp.canvas.getContext('2d');
             const pixel = cCtx.getImageData(Math.round(lx), Math.round(ly), 1, 1).data;
@@ -1477,6 +1550,27 @@ function findPieceAt(hx, hy) {
 }
 
 canvas.addEventListener('mousemove', (e) => {
+    // Handle lasso drag
+    if (isLassoing && assignMode) {
+        const [hx, hy] = screenToHouse(e.clientX, e.clientY);
+        lassoEndX = hx;
+        lassoEndY = hy;
+        const dx = Math.abs(lassoEndX - lassoStartX);
+        const dy = Math.abs(lassoEndY - lassoStartY);
+        if (dx > 5 || dy > 5) lassoWasDrag = true;
+        render();
+        return;
+    }
+
+    // Handle middle-button panning
+    if (isPanning) {
+        const dy = e.clientY - panStartY;
+        panY = panStartPanY - dy;
+        clampPan();
+        render();
+        return;
+    }
+
     const [hx, hy] = screenToHouse(e.clientX, e.clientY);
 
     if (editMode) {
@@ -1516,7 +1610,51 @@ canvas.addEventListener('mouseleave', () => {
     render();
 });
 
+canvas.addEventListener('mousedown', (e) => {
+    // Middle mouse button: pan
+    if (e.button === 1) {
+        e.preventDefault();
+        isPanning = true;
+        panStartY = e.clientY;
+        panStartPanY = panY;
+        canvas.style.cursor = 'grabbing';
+        return;
+    }
+
+    // Left click in assign mode: start lasso
+    if (e.button === 0 && assignMode && selectedWaveId >= 0 && !editMode) {
+        const [hx, hy] = screenToHouse(e.clientX, e.clientY);
+        isLassoing = true;
+        lassoWasDrag = false;
+        lassoStartX = hx;
+        lassoStartY = hy;
+        lassoEndX = hx;
+        lassoEndY = hy;
+        return;
+    }
+});
+
+canvas.addEventListener('mouseup', (e) => {
+    // End panning
+    if (e.button === 1 && isPanning) {
+        isPanning = false;
+        canvas.style.cursor = 'crosshair';
+        return;
+    }
+
+    // End lasso
+    if (e.button === 0 && isLassoing) {
+        isLassoing = false;
+        finishLasso();
+        render();
+        return;
+    }
+});
+
 canvas.addEventListener('click', (e) => {
+    // If lasso drag just ended, don't process as click
+    if (assignMode && lassoWasDrag) return;
+
     const [hx, hy] = screenToHouse(e.clientX, e.clientY);
 
     if (editMode) {
@@ -1527,15 +1665,26 @@ canvas.addEventListener('click', (e) => {
         return;
     }
 
+    // Single click in assign/select mode: toggle piece in selected wave
+    if (assignMode && selectedWaveId >= 0 && viewMode === 'pieces' && pieces.length) {
+        const clickedId = findPieceAt(hx, hy);
+        if (clickedId >= 0) {
+            togglePieceInWave(clickedId, selectedWaveId);
+        }
+        return;
+    }
+
     if (viewMode === 'pieces' && pieces.length) {
         const clickedId = findPieceAt(hx, hy);
         if (clickedId === selectedPieceId) {
             selectedPieceId = -1;
+            highlightedPieceIds.clear();
             document.getElementById('stat_selected').textContent = '-';
             document.getElementById('editBtnRow').style.display = 'none';
         } else {
             selectedPieceId = clickedId;
-            shapeManualVerts = 0; // reset to auto on new piece selection
+            highlightedPieceIds.clear();
+            shapeManualVerts = 0;
             if (clickedId >= 0) {
                 const p = pieces.find(pc => pc.id === clickedId);
                 document.getElementById('stat_selected').textContent =
@@ -1543,6 +1692,7 @@ canvas.addEventListener('click', (e) => {
                 if (viewMode === 'pieces') {
                     document.getElementById('editBtnRow').style.display = 'flex';
                 }
+                highlightPieceInPanel(clickedId);
             } else {
                 document.getElementById('stat_selected').textContent = '-';
                 document.getElementById('editBtnRow').style.display = 'none';
@@ -1553,6 +1703,523 @@ canvas.addEventListener('click', (e) => {
 });
 
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+// Mouse wheel for vertical pan
+canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    panY += e.deltaY;
+    clampPan();
+    render();
+}, { passive: false });
+
+// --- Wave system ---
+
+function clearPieceSelection() {
+    selectedPieceId = -1;
+    highlightedPieceIds.clear();
+    document.getElementById('stat_selected').textContent = '-';
+    document.getElementById('editBtnRow').style.display = 'none';
+    render();
+}
+
+function addWave() {
+    clearPieceSelection();
+    const wave = {
+        id: nextWaveId++,
+        name: `Wave ${waves.length + 1}`,
+        pieceIds: [],
+    };
+    waves.push(wave);
+    selectedWaveId = wave.id;
+    saveState();
+    renderWavesPanel();
+}
+
+function removeWave(waveId) {
+    waves = waves.filter(w => w.id !== waveId);
+    if (selectedWaveId === waveId) {
+        selectedWaveId = waves.length > 0 ? waves[waves.length - 1].id : -1;
+    }
+    // Rename waves sequentially
+    waves.forEach((w, i) => w.name = `Wave ${i + 1}`);
+    saveState();
+    renderWavesPanel();
+}
+
+function selectWave(waveId) {
+    selectedWaveId = waveId;
+    renderWavesPanel();
+}
+
+function moveWave(waveId, direction) {
+    const idx = waves.findIndex(w => w.id === waveId);
+    if (idx < 0) return;
+    const newIdx = idx + direction;
+    if (newIdx < 0 || newIdx >= waves.length) return;
+    [waves[idx], waves[newIdx]] = [waves[newIdx], waves[idx]];
+    waves.forEach((w, i) => w.name = `Wave ${i + 1}`);
+    saveState();
+    renderWavesPanel();
+}
+
+function toggleWaveVisibility(waveId) {
+    if (hiddenWaveIds.has(waveId)) {
+        hiddenWaveIds.delete(waveId);
+    } else {
+        hiddenWaveIds.add(waveId);
+    }
+    renderWavesPanel();
+    requestAnimationFrame(drawThumbCanvases);
+    render();
+}
+
+function updateSelectButtonState() {
+    const btn = document.getElementById('assignModeBtn');
+    btn.disabled = waves.length === 0;
+    if (waves.length === 0 && assignMode) {
+        assignMode = false;
+        btn.classList.remove('active');
+        document.getElementById('assignHint').style.display = 'none';
+    }
+}
+
+function toggleAssignMode() {
+    assignMode = !assignMode;
+    clearPieceSelection();
+    const btn = document.getElementById('assignModeBtn');
+    const hint = document.getElementById('assignHint');
+    if (assignMode) {
+        btn.classList.add('active');
+        hint.style.display = 'block';
+        canvas.style.cursor = 'crosshair';
+        if (selectedWaveId < 0 && waves.length > 0) {
+            selectedWaveId = waves[0].id;
+            renderWavesPanel();
+        }
+    } else {
+        btn.classList.remove('active');
+        hint.style.display = 'none';
+        canvas.style.cursor = 'crosshair';
+    }
+}
+
+function finishLasso() {
+    if (selectedWaveId < 0) return;
+
+    const wave = waves.find(w => w.id === selectedWaveId);
+    if (!wave) return;
+
+    const lx = Math.min(lassoStartX, lassoEndX);
+    const ly = Math.min(lassoStartY, lassoEndY);
+    const lw = Math.abs(lassoEndX - lassoStartX);
+    const lh = Math.abs(lassoEndY - lassoStartY);
+
+    // Too small = accidental click, ignore
+    if (lw < 5 && lh < 5) return;
+
+    // Find pieces whose center falls within the lasso rectangle
+    const assignedInOtherWaves = new Set();
+    for (const w of waves) {
+        for (const pid of w.pieceIds) assignedInOtherWaves.add(pid);
+    }
+
+    let changed = false;
+    highlightedPieceIds.clear();
+    for (const piece of pieces) {
+        const cx = piece.x + piece.width / 2;
+        const cy = piece.y + piece.height / 2;
+        if (cx >= lx && cx <= lx + lw && cy >= ly && cy <= ly + lh) {
+            // Remove from any other wave
+            for (const w of waves) {
+                if (w.id !== selectedWaveId) {
+                    const idx = w.pieceIds.indexOf(piece.id);
+                    if (idx >= 0) w.pieceIds.splice(idx, 1);
+                }
+            }
+            // Add to selected wave if not already there
+            if (!wave.pieceIds.includes(piece.id)) {
+                wave.pieceIds.push(piece.id);
+                changed = true;
+            }
+            // Highlight selected pieces on canvas
+            highlightedPieceIds.add(piece.id);
+        }
+    }
+
+    if (changed || highlightedPieceIds.size > 0) {
+        saveState();
+        renderWavesPanel();
+        render();
+    }
+}
+
+function togglePieceInWave(pieceId, waveId) {
+    const wave = waves.find(w => w.id === waveId);
+    if (!wave) return;
+
+    const idx = wave.pieceIds.indexOf(pieceId);
+    if (idx >= 0) {
+        // Remove from wave (deselect)
+        wave.pieceIds.splice(idx, 1);
+        highlightedPieceIds.delete(pieceId);
+    } else {
+        // Remove from any other wave first
+        for (const w of waves) {
+            if (w.id !== waveId) {
+                const i = w.pieceIds.indexOf(pieceId);
+                if (i >= 0) w.pieceIds.splice(i, 1);
+            }
+        }
+        // Add to this wave
+        wave.pieceIds.push(pieceId);
+        highlightedPieceIds.add(pieceId);
+    }
+
+    saveState();
+    renderWavesPanel();
+    requestAnimationFrame(drawThumbCanvases);
+    render();
+}
+
+function removePieceFromWave(waveId, pieceId) {
+    const wave = waves.find(w => w.id === waveId);
+    if (!wave) return;
+    wave.pieceIds = wave.pieceIds.filter(id => id !== pieceId);
+    saveState();
+    renderWavesPanel();
+}
+
+function getUnassignedPieces() {
+    const assigned = new Set();
+    for (const wave of waves) {
+        for (const pid of wave.pieceIds) assigned.add(pid);
+    }
+    return pieces.filter(p => !assigned.has(p.id));
+}
+
+// --- Wave panel rendering ---
+
+const THUMB_MAX_H = 52; // max thumbnail height in px
+
+function computeThumbScale(piecesArr) {
+    // Compute a uniform scale so the tallest piece fits THUMB_MAX_H,
+    // preserving relative sizes among all pieces in the group.
+    if (!piecesArr.length) return 1;
+    const maxH = Math.max(...piecesArr.map(p => p.height));
+    return maxH > 0 ? THUMB_MAX_H / maxH : 1;
+}
+
+function renderWavesPanel() {
+    const body = document.getElementById('wavesBody');
+    const unassigned = getUnassignedPieces();
+
+    // Update piece count
+    const countEl = document.getElementById('wavePieceCount');
+    if (pieces.length) {
+        const assignedCount = waves.reduce((sum, w) => sum + w.pieceIds.length, 0);
+        countEl.textContent = `${assignedCount}/${pieces.length}`;
+    } else {
+        countEl.textContent = '';
+    }
+
+    let html = '';
+
+    // Unassigned pieces row
+    if (unassigned.length > 0) {
+        const uScale = computeThumbScale(unassigned);
+        html += `<div class="wave-row" data-wave-id="unassigned">`;
+        html += `<div class="wave-row-header" onclick="selectWave(-1)">`;
+        html += `<span class="wave-label unassigned-label">Unassigned</span>`;
+        html += `<span class="wave-piece-count">${unassigned.length} pcs</span>`;
+        html += `</div>`;
+        html += `<div class="wave-pieces" data-wave-id="unassigned">`;
+        for (const piece of unassigned) {
+            html += renderPieceThumb(piece, null, uScale);
+        }
+        html += `</div></div>`;
+    }
+
+    // Wave rows
+    for (const wave of waves) {
+        const isSelected = wave.id === selectedWaveId;
+        // Collect pieces for this wave to compute uniform scale
+        const wavePieces = wave.pieceIds.map(pid => pieces.find(p => p.id === pid)).filter(Boolean);
+        const wScale = computeThumbScale(wavePieces);
+        const isHidden = hiddenWaveIds.has(wave.id);
+        html += `<div class="wave-row${isSelected ? ' selected' : ''}" data-wave-id="${wave.id}">`;
+        html += `<div class="wave-row-header" onclick="selectWave(${wave.id})">`;
+        html += `<span class="wave-eye${isHidden ? ' hidden' : ''}" onclick="event.stopPropagation(); toggleWaveVisibility(${wave.id})" title="${isHidden ? 'Show' : 'Hide'} pieces">${isHidden ? '&#9673;' : '&#9678;'}</span>`;
+        html += `<span class="wave-label">${wave.name}</span>`;
+        html += `<span class="wave-piece-count">${wave.pieceIds.length} pcs</span>`;
+        html += `<span class="wave-actions">`;
+        const wIdx = waves.indexOf(wave);
+        if (wIdx > 0) {
+            html += `<button onclick="event.stopPropagation(); moveWave(${wave.id}, -1)" title="Move up">&#9650;</button>`;
+        }
+        if (wIdx < waves.length - 1) {
+            html += `<button onclick="event.stopPropagation(); moveWave(${wave.id}, 1)" title="Move down">&#9660;</button>`;
+        }
+        html += `<button onclick="event.stopPropagation(); removeWave(${wave.id})" title="Delete wave">&#10005;</button>`;
+        html += `</span>`;
+        html += `</div>`;
+        html += `<div class="wave-pieces" data-wave-id="${wave.id}">`;
+        for (const piece of wavePieces) {
+            html += renderPieceThumb(piece, wave.id, wScale);
+        }
+        if (wave.pieceIds.length === 0) {
+            html += `<span style="color:#555; font-size:10px; padding:4px;">Drop pieces here</span>`;
+        }
+        html += `</div></div>`;
+    }
+
+    if (waves.length === 0 && unassigned.length === 0) {
+        html += `<div style="padding:16px; color:#555; font-size:12px; text-align:center;">
+            Generate a puzzle first, then create waves to organize pieces.
+        </div>`;
+    }
+
+    body.innerHTML = html;
+
+    // Set up drag and drop
+    setupWaveDragDrop();
+    updateSelectButtonState();
+}
+
+function renderPieceThumb(piece, waveId, thumbScale) {
+    // thumbScale is pixels-per-house-pixel, uniform across a wave row
+    const thumbW = Math.max(8, Math.round(piece.width * thumbScale));
+    const thumbH = Math.max(8, Math.round(piece.height * thumbScale));
+
+    const isHighlighted = highlightedPieceIds.has(piece.id);
+    const isSelected = piece.id === selectedPieceId;
+
+    let cls = 'piece-thumb';
+    if (isSelected) cls += ' selected';
+    if (isHighlighted) cls += ' highlighted';
+
+    const waveAttr = waveId !== null ? `data-wave-id="${waveId}"` : 'data-wave-id="unassigned"';
+
+    return `<div class="${cls}" data-piece-id="${piece.id}" ${waveAttr}
+        draggable="true"
+        onmouseenter="onThumbHover(${piece.id})"
+        onmouseleave="onThumbLeave(${piece.id})"
+        onclick="onThumbClick(${piece.id})"
+        title="Piece #${piece.id} (${piece.num_bricks} bricks, ${piece.width}x${piece.height})">
+        <canvas width="${thumbW}" height="${thumbH}" data-piece-id="${piece.id}"></canvas>
+        <div class="piece-thumb-label">#${piece.id}</div>
+    </div>`;
+}
+
+// Draw piece thumbnails after DOM insertion
+function drawThumbCanvases() {
+    const thumbs = document.querySelectorAll('.piece-thumb canvas[data-piece-id]');
+    for (const thumbCanvas of thumbs) {
+        const pid = parseInt(thumbCanvas.dataset.pieceId);
+        const comp = pieceComposites[pid];
+        if (!comp) continue;
+
+        const tCtx = thumbCanvas.getContext('2d');
+        const scale = thumbCanvas.height / Math.max(comp.h, 1);
+        tCtx.clearRect(0, 0, thumbCanvas.width, thumbCanvas.height);
+        tCtx.drawImage(comp.canvas, 0, 0, comp.w * scale, comp.h * scale);
+    }
+}
+
+// Observer: draw canvases when they appear in DOM
+const thumbObserver = new MutationObserver(() => {
+    drawThumbCanvases();
+});
+thumbObserver.observe(document.getElementById('wavesBody'), { childList: true, subtree: true });
+
+// Also draw on initial render
+function renderWavesPanelAndThumbs() {
+    renderWavesPanel();
+    requestAnimationFrame(drawThumbCanvases);
+}
+
+// --- Piece thumb interactions ---
+
+function onThumbHover(pieceId) {
+    highlightedPieceIds.add(pieceId);
+    render();
+}
+
+function onThumbLeave(pieceId) {
+    highlightedPieceIds.delete(pieceId);
+    render();
+}
+
+function onThumbClick(pieceId) {
+    // Clear all multi-selection highlights, select just this one
+    selectedPieceId = pieceId;
+    highlightedPieceIds.clear();
+
+    const p = pieces.find(pc => pc.id === pieceId);
+    if (p) {
+        document.getElementById('stat_selected').textContent =
+            `Piece #${p.id} (${p.num_bricks} bricks, ${p.width}×${p.height})`;
+        scrollCanvasToPiece(p);
+    }
+    render();
+    // Re-render wave panel so all thumbs update their CSS classes
+    renderWavesPanel();
+    requestAnimationFrame(drawThumbCanvases);
+}
+
+function highlightPieceInPanel(pieceId) {
+    // Scroll the wave panel to show the piece
+    const thumb = document.querySelector(`.piece-thumb[data-piece-id="${pieceId}"]`);
+    if (thumb) {
+        thumb.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+        // Flash highlight
+        document.querySelectorAll('.piece-thumb').forEach(el => {
+            el.classList.toggle('selected', parseInt(el.dataset.pieceId) === pieceId);
+        });
+    }
+}
+
+function scrollCanvasToPiece(piece) {
+    // Calculate where the piece center is and adjust panY to center it
+    const rect = canvasArea.getBoundingClientRect();
+    const pieceCenterY = piece.y + piece.height / 2;
+    const screenCenterY = rect.height / 2;
+    const padY_ = (rect.height - canvasH * zoom) / 2;
+    const targetPanY = (pieceCenterY * zoom + padY_) - screenCenterY;
+
+    if (targetPanY > 0) {
+        panY = targetPanY;
+        clampPan();
+        render();
+    }
+}
+
+// --- Drag and drop for wave pieces ---
+
+function clearDropMarkers() {
+    document.querySelectorAll('.piece-thumb.drop-before').forEach(el => el.classList.remove('drop-before'));
+    document.querySelectorAll('.piece-thumb.drop-after').forEach(el => el.classList.remove('drop-after'));
+    document.querySelectorAll('.wave-pieces.drop-target-inside').forEach(el => el.classList.remove('drop-target-inside'));
+    document.querySelectorAll('.wave-row.drop-target').forEach(el => el.classList.remove('drop-target'));
+}
+
+// Find the insertion index within a wave-pieces container based on cursor X
+function getDropIndex(container, clientX) {
+    const thumbs = container.querySelectorAll('.piece-thumb');
+    if (thumbs.length === 0) return 0;
+
+    for (let i = 0; i < thumbs.length; i++) {
+        const rect = thumbs[i].getBoundingClientRect();
+        const mid = rect.left + rect.width / 2;
+        if (clientX < mid) return i;
+    }
+    return thumbs.length;
+}
+
+function showDropMarker(container, clientX) {
+    clearDropMarkers();
+    const thumbs = container.querySelectorAll('.piece-thumb');
+    if (thumbs.length === 0) {
+        container.classList.add('drop-target-inside');
+        return;
+    }
+
+    const idx = getDropIndex(container, clientX);
+    if (idx === 0) {
+        thumbs[0].classList.add('drop-before');
+    } else {
+        thumbs[idx - 1].classList.add('drop-after');
+    }
+    container.closest('.wave-row').classList.add('drop-target');
+}
+
+function setupWaveDragDrop() {
+    const thumbs = document.querySelectorAll('.piece-thumb[draggable="true"]');
+    const wavePiecesContainers = document.querySelectorAll('.wave-pieces');
+
+    for (const thumb of thumbs) {
+        thumb.addEventListener('dragstart', (e) => {
+            dragPieceId = parseInt(thumb.dataset.pieceId);
+            dragSourceWaveId = thumb.dataset.waveId === 'unassigned' ? null : parseInt(thumb.dataset.waveId);
+            thumb.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', String(dragPieceId));
+        });
+
+        thumb.addEventListener('dragend', () => {
+            thumb.classList.remove('dragging');
+            dragPieceId = -1;
+            dragSourceWaveId = null;
+            clearDropMarkers();
+        });
+    }
+
+    for (const container of wavePiecesContainers) {
+        container.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            showDropMarker(container, e.clientX);
+        });
+
+        container.addEventListener('dragleave', (e) => {
+            // Only clear if we actually left the container
+            if (!container.contains(e.relatedTarget)) {
+                clearDropMarkers();
+            }
+        });
+
+        container.addEventListener('drop', (e) => {
+            e.preventDefault();
+            const targetWaveId = container.dataset.waveId === 'unassigned' ? null : parseInt(container.dataset.waveId);
+            const insertIdx = getDropIndex(container, e.clientX);
+            clearDropMarkers();
+            if (dragPieceId < 0) return;
+
+            movePieceToWaveAt(dragPieceId, dragSourceWaveId, targetWaveId, insertIdx);
+        });
+    }
+}
+
+function movePieceToWaveAt(pieceId, fromWaveId, toWaveId, insertIdx) {
+    // Remove from source wave
+    if (fromWaveId !== null) {
+        const srcWave = waves.find(w => w.id === fromWaveId);
+        if (srcWave) {
+            const srcIdx = srcWave.pieceIds.indexOf(pieceId);
+            if (srcIdx >= 0) {
+                srcWave.pieceIds.splice(srcIdx, 1);
+                // If moving within the same wave and removing before insert point, adjust index
+                if (fromWaveId === toWaveId && srcIdx < insertIdx) {
+                    insertIdx--;
+                }
+            }
+        }
+    }
+    // Also remove from any other wave
+    for (const w of waves) {
+        if (toWaveId !== null && w.id !== toWaveId) {
+            w.pieceIds = w.pieceIds.filter(id => id !== pieceId);
+        }
+        if (toWaveId === null) {
+            w.pieceIds = w.pieceIds.filter(id => id !== pieceId);
+        }
+    }
+
+    // Insert at position in target wave
+    if (toWaveId !== null) {
+        const dstWave = waves.find(w => w.id === toWaveId);
+        if (dstWave) {
+            // Remove if somehow already there (shouldn't be after above cleanup)
+            dstWave.pieceIds = dstWave.pieceIds.filter(id => id !== pieceId);
+            // Clamp index
+            const idx = Math.max(0, Math.min(insertIdx, dstWave.pieceIds.length));
+            dstWave.pieceIds.splice(idx, 0, pieceId);
+        }
+    }
+
+    saveState();
+    renderWavesPanel();
+    requestAnimationFrame(drawThumbCanvases);
+}
 
 // --- Slider updates ---
 
@@ -1689,6 +2356,41 @@ function showLoading(msg) {
 function hideLoading() {
     loading.classList.remove('active');
 }
+
+// --- Waves panel resize ---
+
+(function setupWavesResize() {
+    const handle = document.getElementById('wavesResizeHandle');
+    const panel = document.getElementById('wavesPanel');
+    let startX = 0;
+    let startW = 0;
+
+    handle.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        startX = e.clientX;
+        startW = panel.offsetWidth;
+        handle.classList.add('active');
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+    });
+
+    function onMove(e) {
+        // Dragging left = making panel wider (panel is on the right)
+        const delta = startX - e.clientX;
+        const newW = Math.max(180, Math.min(600, startW + delta));
+        panel.style.width = newW + 'px';
+        fitCanvas();
+        render();
+    }
+
+    function onUp() {
+        handle.classList.remove('active');
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        renderWavesPanel();
+        requestAnimationFrame(drawThumbCanvases);
+    }
+})();
 
 // --- Start ---
 

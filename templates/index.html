@@ -29,7 +29,7 @@
             color: #e0a050;
             margin-right: auto;
         }
-        .header button, .sidebar button {
+        .header button, .sidebar button, .waves-panel button {
             padding: 6px 16px;
             border: 1px solid #555;
             border-radius: 4px;
@@ -38,26 +38,146 @@
             cursor: pointer;
             font-size: 13px;
         }
-        .header button:hover, .sidebar button:hover { background: #3a3a6a; }
-        .header button:disabled, .sidebar button:disabled { opacity: 0.4; cursor: not-allowed; }
-        .header button.primary, .sidebar button.primary {
+        .header button:hover, .sidebar button:hover, .waves-panel button:hover { background: #3a3a6a; }
+        .header button:disabled, .sidebar button:disabled, .waves-panel button:disabled { opacity: 0.4; cursor: not-allowed; }
+        .header button.primary, .sidebar button.primary, .waves-panel button.primary {
             background: #e0a050;
             color: #1a1a2e;
             border-color: #e0a050;
             font-weight: 600;
         }
-        .header button.primary:hover { background: #f0b060; }
+        .header button.primary:hover, .waves-panel button.primary:hover { background: #f0b060; }
 
         .main {
             display: flex;
             height: calc(100vh - 48px);
         }
 
+        /* Column 1: Settings sidebar (left) */
+        .sidebar {
+            width: 260px;
+            min-width: 260px;
+            background: #16213e;
+            border-right: 1px solid #333;
+            padding: 12px;
+            overflow-y: auto;
+        }
+        .sidebar h2 {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #888;
+            margin-bottom: 8px;
+        }
+        .sidebar h2:not(:first-child) { margin-top: 14px; }
+
+        .tif-select {
+            width: 100%;
+            padding: 5px 8px;
+            background: #2a2a4a;
+            border: 1px solid #555;
+            border-radius: 4px;
+            color: #e0e0e0;
+            font-size: 12px;
+            margin-bottom: 6px;
+        }
+        .tif-select:focus { border-color: #e0a050; outline: none; }
+
+        .param-group {
+            margin-bottom: 6px;
+        }
+        .param-group label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            margin-bottom: 2px;
+        }
+        .param-group label span.value {
+            color: #e0a050;
+            font-weight: 600;
+        }
+        .param-group input[type="range"] {
+            width: 100%;
+            accent-color: #e0a050;
+        }
+        .param-group input[type="number"] {
+            width: 70px;
+            background: #2a2a4a;
+            border: 1px solid #555;
+            color: #e0e0e0;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+
+        .checkbox-group {
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 11px;
+        }
+        .checkbox-group input[type="checkbox"] {
+            accent-color: #e0a050;
+        }
+
+        .btn-row {
+            display: flex;
+            gap: 6px;
+            margin-top: 8px;
+        }
+        .btn-row button {
+            flex: 1;
+            padding: 6px;
+            font-size: 12px;
+        }
+
+        .stats {
+            background: #0f1629;
+            border-radius: 6px;
+            padding: 8px;
+            font-size: 11px;
+            line-height: 1.7;
+        }
+        .stats .row {
+            display: flex;
+            justify-content: space-between;
+        }
+        .stats .row .val {
+            color: #e0a050;
+            font-weight: 600;
+        }
+
+        .hint {
+            font-size: 10px;
+            color: #666;
+            margin-top: 8px;
+            line-height: 1.4;
+        }
+
+        .view-toggles {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 8px;
+        }
+        .view-toggles button {
+            flex: 1;
+            padding: 4px 4px;
+            font-size: 11px;
+            white-space: nowrap;
+        }
+        .view-toggles button.active {
+            background: #e0a050;
+            color: #1a1a2e;
+            border-color: #e0a050;
+        }
+
+        /* Column 2: Canvas (center) */
         .canvas-area {
             flex: 1;
             position: relative;
-            overflow: auto;
-            background: #111;
+            overflow: hidden;
+            background: #000;
         }
         #houseCanvas {
             display: block;
@@ -79,7 +199,7 @@
             position: fixed;
             top: 48px;
             left: 0;
-            right: 300px;
+            right: 0;
             bottom: 0;
             background: rgba(0,0,0,0.6);
             display: none;
@@ -91,121 +211,224 @@
         }
         .loading-overlay.active { display: flex; }
 
-        .sidebar {
-            width: 300px;
-            background: #16213e;
-            border-left: 1px solid #333;
-            padding: 16px;
-            overflow-y: auto;
-        }
-        .sidebar h2 {
-            font-size: 13px;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            color: #888;
-            margin-bottom: 12px;
-        }
-        .sidebar h2:not(:first-child) { margin-top: 20px; }
-
-        .tif-select {
-            width: 100%;
-            padding: 6px 8px;
-            background: #2a2a4a;
-            border: 1px solid #555;
-            border-radius: 4px;
-            color: #e0e0e0;
-            font-size: 12px;
-            margin-bottom: 8px;
-        }
-        .tif-select:focus { border-color: #e0a050; outline: none; }
-
-        .param-group {
-            margin-bottom: 8px;
-        }
-        .param-group label {
+        /* Column 3: Waves panel (right, resizable) */
+        .waves-panel-wrapper {
             display: flex;
-            justify-content: space-between;
-            font-size: 12px;
-            margin-bottom: 4px;
+            flex-shrink: 0;
         }
-        .param-group label span.value {
-            color: #e0a050;
-            font-weight: 600;
+        .waves-resize-handle {
+            width: 5px;
+            cursor: col-resize;
+            background: #333;
+            flex-shrink: 0;
+            transition: background 0.15s;
         }
-        .param-group input[type="range"] {
-            width: 100%;
-            accent-color: #e0a050;
+        .waves-resize-handle:hover,
+        .waves-resize-handle.active {
+            background: #e0a050;
         }
-        .param-group input[type="number"] {
-            width: 70px;
-            background: #2a2a4a;
-            border: 1px solid #555;
-            color: #e0e0e0;
-            padding: 2px 6px;
-            border-radius: 3px;
-            font-size: 12px;
+        .waves-panel {
+            width: 600px;
+            min-width: 180px;
+            background: #16213e;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
         }
-
-        .checkbox-group {
-            margin-bottom: 8px;
+        .waves-header {
+            padding: 8px 12px;
+            border-bottom: 1px solid #333;
             display: flex;
             align-items: center;
             gap: 8px;
+        }
+        .waves-header h2 {
             font-size: 12px;
-        }
-        .checkbox-group input[type="checkbox"] {
-            accent-color: #e0a050;
-        }
-
-        .btn-row {
-            display: flex;
-            gap: 8px;
-            margin-top: 12px;
-        }
-        .btn-row button {
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #888;
+            margin: 0;
             flex: 1;
-            padding: 8px;
-            font-size: 12px;
         }
-
-        .stats {
-            background: #0f1629;
-            border-radius: 6px;
-            padding: 10px;
-            font-size: 12px;
-            line-height: 1.8;
-        }
-        .stats .row {
-            display: flex;
-            justify-content: space-between;
-        }
-        .stats .row .val {
+        .waves-header .wave-count {
             color: #e0a050;
+            font-size: 12px;
             font-weight: 600;
         }
-
-        .hint {
-            font-size: 11px;
-            color: #666;
-            margin-top: 12px;
-            line-height: 1.5;
-        }
-
-        .view-toggles {
-            display: flex;
-            gap: 4px;
-            margin-bottom: 12px;
-        }
-        .view-toggles button {
+        .waves-body {
             flex: 1;
-            padding: 5px 4px;
-            font-size: 11px;
-            white-space: nowrap;
+            overflow-y: auto;
+            padding: 0;
         }
-        .view-toggles button.active {
+
+        /* Wave assign mode toolbar */
+        .wave-toolbar {
+            padding: 6px 12px;
+            border-bottom: 1px solid #333;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            flex-wrap: wrap;
+        }
+        .wave-toolbar button {
+            padding: 4px 10px;
+            font-size: 11px;
+        }
+        .wave-toolbar button.active {
             background: #e0a050;
             color: #1a1a2e;
             border-color: #e0a050;
+        }
+        .wave-toolbar .assign-hint {
+            color: #888;
+            font-size: 10px;
+            width: 100%;
+        }
+
+        /* Individual wave row */
+        .wave-row {
+            border-bottom: 1px solid #222;
+            padding: 4px 0;
+        }
+        .wave-row.drop-target {
+            background: rgba(224, 160, 80, 0.1);
+        }
+        .wave-row-header {
+            display: flex;
+            align-items: center;
+            padding: 2px 10px;
+            gap: 6px;
+            font-size: 12px;
+            cursor: pointer;
+            user-select: none;
+        }
+        .wave-row-header:hover {
+            background: rgba(255,255,255,0.03);
+        }
+        .wave-row-header .wave-eye {
+            cursor: pointer;
+            font-size: 14px;
+            color: #e0a050;
+            opacity: 0.8;
+            user-select: none;
+            line-height: 1;
+        }
+        .wave-row-header .wave-eye:hover { opacity: 1; }
+        .wave-row-header .wave-eye.hidden {
+            color: #555;
+            opacity: 0.5;
+        }
+        .wave-row-header .wave-label {
+            font-weight: 600;
+            color: #e0a050;
+            min-width: 60px;
+        }
+        .wave-row-header .wave-label.unassigned-label {
+            color: #888;
+        }
+        .wave-row-header .wave-piece-count {
+            color: #888;
+            font-size: 11px;
+            flex: 1;
+        }
+        .wave-row-header .wave-actions {
+            display: flex;
+            gap: 4px;
+        }
+        .wave-row-header .wave-actions button {
+            padding: 1px 6px;
+            font-size: 10px;
+            border-radius: 3px;
+        }
+        .wave-row.selected > .wave-row-header {
+            background: rgba(224, 160, 80, 0.15);
+        }
+
+        /* Piece thumbnails row (horizontal scroll) */
+        .wave-pieces {
+            display: flex;
+            gap: 4px;
+            padding: 4px 10px;
+            overflow-x: auto;
+            overflow-y: hidden;
+            min-height: 56px;
+            align-items: center;
+        }
+        .wave-pieces::-webkit-scrollbar {
+            height: 4px;
+        }
+        .wave-pieces::-webkit-scrollbar-track {
+            background: #0f1629;
+            border-radius: 2px;
+        }
+        .wave-pieces::-webkit-scrollbar-thumb {
+            background: #444;
+            border-radius: 2px;
+        }
+
+        .piece-thumb {
+            flex-shrink: 0;
+            cursor: pointer;
+            border: 2px solid transparent;
+            border-radius: 3px;
+            padding: 2px;
+            position: relative;
+            transition: border-color 0.15s;
+        }
+        .piece-thumb:hover {
+            border-color: rgba(60, 200, 255, 0.6);
+        }
+        .piece-thumb.selected {
+            border-color: #ff6030;
+        }
+        .piece-thumb.highlighted {
+            border-color: #e0a050;
+            background: rgba(224, 160, 80, 0.15);
+        }
+        .piece-thumb canvas {
+            display: block;
+        }
+        .piece-thumb .piece-thumb-label {
+            font-size: 9px;
+            color: #aaa;
+            text-align: center;
+            margin-top: 1px;
+        }
+        .piece-thumb.dragging {
+            opacity: 0.4;
+        }
+        .piece-thumb.drop-before {
+            border-left: 3px solid #e0a050;
+        }
+        .piece-thumb.drop-after {
+            border-right: 3px solid #e0a050;
+        }
+        /* Insertion marker when dragging into empty wave or at edges */
+        .wave-pieces.drop-target-inside {
+            outline: 1px dashed #e0a050;
+            outline-offset: -1px;
+        }
+
+        /* Lasso overlay on canvas */
+        .lasso-overlay {
+            position: absolute;
+            border: 2px dashed #e0a050;
+            background: rgba(224, 160, 80, 0.08);
+            pointer-events: none;
+            z-index: 5;
+            display: none;
+        }
+
+        .preset-btn-row {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 6px;
+        }
+        .preset-btn-row button {
+            flex: 1;
+            font-size: 11px;
+            padding: 4px;
         }
     </style>
 </head>
@@ -216,19 +439,12 @@
     </div>
 
     <div class="main">
-        <div class="canvas-area" id="canvasArea">
-            <canvas id="houseCanvas"></canvas>
-            <svg id="blueprintSvg" style="position:absolute;top:0;left:0;pointer-events:none;display:none;"></svg>
-            <div class="canvas-info" id="canvasInfo">Select a TIF to begin</div>
-            <div class="loading-overlay" id="loadingOverlay">Loading...</div>
-        </div>
-
+        <!-- Column 1: Settings -->
         <div class="sidebar">
             <h2>Source TIF</h2>
-            <select class="tif-select" id="tifSelect">
-                <option value="">-- Select TIF --</option>
-            </select>
-            <button id="loadBtn" onclick="loadTif()" style="width:100%; margin-bottom:8px;">Load</button>
+            <input type="file" id="tifFileInput" accept=".tif,.tiff" style="display:none;" onchange="onTifFileSelected(this)">
+            <button id="loadBtn" onclick="openTifDialog()" style="width:100%; margin-bottom:4px;">Open TIF...</button>
+            <div id="tifLabel" style="display:none; font-size:11px; color:#e0a050; margin-bottom:6px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></div>
 
             <h2>View</h2>
             <div class="view-toggles">
@@ -236,15 +452,20 @@
                 <button id="viewBlueprint" onclick="setView('blueprint')">Blueprint</button>
             </div>
 
+            <div class="checkbox-group">
+                <input type="checkbox" id="showOutlines" checked onchange="toggleOutlines(this.checked)">
+                <label for="showOutlines">Show piece outlines</label>
+            </div>
+
             <h2>Puzzle Parameters</h2>
 
             <select class="tif-select" id="presetSelect" onchange="loadPreset(this.value)">
                 <option value="">-- Preset --</option>
             </select>
-            <div class="preset-btn-row" style="display:flex; gap:4px; margin-bottom:8px;">
+            <div class="preset-btn-row">
                 <button id="presetReloadBtn" onclick="reloadPreset()" style="display:none; flex:1;" title="Reload preset">Reload</button>
                 <button id="presetSaveBtn" onclick="savePresetAs()" style="flex:1;" title="Save as new preset">Save As...</button>
-                <button onclick="location.href='/manage'" style="flex:1;" title="Manage presets">Manage</button>
+                <button onclick="window.open('/manage','_blank')" style="flex:1;" title="Manage presets">Manage</button>
             </div>
 
             <div class="param-group">
@@ -285,11 +506,41 @@
             </div>
 
             <div class="hint">
-                Load a TIF, adjust parameters, then click Generate Puzzle.
-                Hover/click pieces to inspect. Switch to Blueprint view
-                for vectorized outlines. Export ZIP for all assets.
+                Load a TIF, adjust parameters, then Generate Puzzle.
+                Hover/click pieces to inspect. Use the Waves panel
+                to assign pieces to build order waves.
             </div>
         </div>
+
+        <!-- Column 2: Canvas -->
+        <div class="canvas-area" id="canvasArea">
+            <canvas id="houseCanvas"></canvas>
+            <svg id="blueprintSvg" style="position:absolute;top:0;left:0;pointer-events:none;display:none;"></svg>
+            <div class="lasso-overlay" id="lassoOverlay"></div>
+            <div class="canvas-info" id="canvasInfo">Select a TIF to begin</div>
+            <div class="loading-overlay" id="loadingOverlay">Loading...</div>
+        </div>
+
+        <!-- Column 3: Waves (resizable) -->
+        <div class="waves-panel-wrapper">
+        <div class="waves-resize-handle" id="wavesResizeHandle"></div>
+        <div class="waves-panel" id="wavesPanel">
+            <div class="waves-header">
+                <h2>Waves</h2>
+                <span class="wave-count" id="wavePieceCount"></span>
+            </div>
+            <div class="wave-toolbar" id="waveToolbar">
+                <button onclick="addWave()">+ Wave</button>
+                <button id="assignModeBtn" onclick="toggleAssignMode()">Select</button>
+                <div class="assign-hint" id="assignHint" style="display:none;">
+                    Select a wave, then drag on the house to lasso pieces into it.
+                </div>
+            </div>
+            <div class="waves-body" id="wavesBody">
+                <!-- Wave rows rendered by JS -->
+            </div>
+        </div>
+        </div><!-- /waves-panel-wrapper -->
     </div>
 
     <script src="/static/editor.js"></script>
