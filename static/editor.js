@@ -28,6 +28,8 @@ let zoom = 1;
 // Array of { pieceId, points: [[x,y], ...] }
 let cachedOutlinePaths = [];
 let showOutlineOverlay = true;
+let showGrid = false;
+const GRID_STEP = 211; // height of brick #9 (first stone right of entrance, bottom row)
 
 // Canvas pan (for tall houses / scrolling)
 let panY = 0;
@@ -433,6 +435,9 @@ function setView(mode) {
         svg.style.display = 'none';
         svg.innerHTML = '';
     }
+    // Hide outlines checkbox in blueprint view (blueprint has its own strokes)
+    document.getElementById('showOutlines').parentElement.style.display =
+        mode === 'blueprint' ? 'none' : '';
     saveState();
     render();
 }
@@ -522,6 +527,11 @@ function render() {
         renderOutlineOverlay();
     }
 
+    // Draw grid overlay (canvas version — blueprint mode draws grid in SVG)
+    if (showGrid && canvasW && viewMode !== 'blueprint') {
+        renderGrid();
+    }
+
     // Draw lasso rectangle if active
     if (isLassoing && assignMode) {
         ctx.save();
@@ -539,6 +549,41 @@ function render() {
     }
 
     ctx.restore();
+}
+
+function renderGrid() {
+    ctx.save();
+    ctx.strokeStyle = '#ff0000';
+    ctx.lineWidth = 1 / zoom;
+    // Horizontal lines: start from bottom edge, go up
+    for (let y = canvasH; y >= 0; y -= GRID_STEP) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(canvasW, y);
+        ctx.stroke();
+    }
+    // Vertical lines: start from center, expand outward both sides
+    const cx = canvasW / 2;
+    // Right from center
+    for (let x = cx; x <= canvasW; x += GRID_STEP) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, canvasH);
+        ctx.stroke();
+    }
+    // Left from center
+    for (let x = cx - GRID_STEP; x >= 0; x -= GRID_STEP) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, canvasH);
+        ctx.stroke();
+    }
+    ctx.restore();
+}
+
+function toggleGrid(on) {
+    showGrid = on;
+    render();
 }
 
 function getBrickComp(brick) {
@@ -749,6 +794,32 @@ function renderBlueprint() {
         }
         d += 'Z';
         svgContent += `<path d="${d}" fill="#2a5da8" stroke="white" stroke-width="${strokeW.toFixed(1)}" stroke-linejoin="round" stroke-linecap="round" paint-order="fill stroke"/>`;
+    }
+
+    // Grid overlay on blueprint SVG
+    if (showGrid && canvasW) {
+        const sw = 1;  // 1px stroke
+        // Horizontal lines: bottom to top
+        for (let y = canvasH; y >= 0; y -= GRID_STEP) {
+            const sy = y * zoom + padY_;
+            const x1 = 0 * zoom + padX;
+            const x2 = canvasW * zoom + padX;
+            svgContent += `<line x1="${x1.toFixed(1)}" y1="${sy.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${sy.toFixed(1)}" stroke="#ff0000" stroke-width="${sw}"/>`;
+        }
+        // Vertical lines: center outward
+        const cx = canvasW / 2;
+        for (let x = cx; x <= canvasW; x += GRID_STEP) {
+            const sx = x * zoom + padX;
+            const y1 = 0 * zoom + padY_;
+            const y2 = canvasH * zoom + padY_;
+            svgContent += `<line x1="${sx.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${sx.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="#ff0000" stroke-width="${sw}"/>`;
+        }
+        for (let x = cx - GRID_STEP; x >= 0; x -= GRID_STEP) {
+            const sx = x * zoom + padX;
+            const y1 = 0 * zoom + padY_;
+            const y2 = canvasH * zoom + padY_;
+            svgContent += `<line x1="${sx.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${sx.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="#ff0000" stroke-width="${sw}"/>`;
+        }
     }
 
     svg.innerHTML = svgContent;
