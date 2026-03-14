@@ -552,18 +552,26 @@ def _generate_blueprint(house, pieces):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="House Puzzle Editor")
-    parser.add_argument("--port", type=int, default=5050)
-    parser.add_argument("--host", default="0.0.0.0")
-    parser.add_argument("--no-browser", action="store_true", help="Don't auto-open browser")
-    args = parser.parse_args()
+    try:
+        parser = argparse.ArgumentParser(description="House Puzzle Editor")
+        parser.add_argument("--port", type=int, default=5050)
+        parser.add_argument("--host", default="0.0.0.0")
+        parser.add_argument("--no-browser", action="store_true", help="Don't auto-open browser")
+        args = parser.parse_args()
 
-    url = f"http://localhost:{args.port}"
-    print(f"Starting House Puzzle Editor at {url}")
+        url = f"http://localhost:{args.port}"
+        print(f"House Puzzle Editor v{APP_VERSION}")
+        print(f"Starting at {url}")
 
-    is_frozen = getattr(sys, 'frozen', False)
+        is_frozen = getattr(sys, 'frozen', False)
 
-    if not args.no_browser:
-        threading.Timer(1.0, lambda: webbrowser.open(url)).start()
+        if not args.no_browser:
+            threading.Timer(1.0, lambda: webbrowser.open(url)).start()
 
-    app.run(host=args.host, port=args.port, debug=not is_frozen)
+        app.run(host=args.host, port=args.port, debug=not is_frozen)
+    except Exception as e:
+        print(f"\nERROR: {e}")
+        import traceback
+        traceback.print_exc()
+        if getattr(sys, 'frozen', False):
+            input("\nPress Enter to close...")
