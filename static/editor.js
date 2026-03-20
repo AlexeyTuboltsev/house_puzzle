@@ -383,7 +383,12 @@ async function doExport() {
         const resp = await fetch('/api/export', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({}),
+            body: JSON.stringify({
+                waves: waves.map((w, idx) => ({
+                    wave: idx + 1,
+                    pieceIds: w.pieceIds,
+                })),
+            }),
         });
         const blob = await resp.blob();
 

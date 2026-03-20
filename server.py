@@ -21,6 +21,7 @@ from flask import Flask, jsonify, render_template, request, send_file, send_from
 from PIL import Image, ImageDraw
 
 from tif_parser import parse_tif, extract_brick_png, extract_layers_batch
+from unity_export import build_house_data
 from puzzle_engine import (
     Brick,
     merge_bricks,
@@ -463,41 +464,30 @@ def api_export():
     tif_path = _state["tif_path"]
     pieces = _state["pieces"]
 
+    waves_data = data.get("waves", [])
+
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-        # Export each piece as a combined PNG
-        manifest_pieces = []
+        # Build piece images and write PNGs
+        piece_images = {}
         for piece in pieces:
-            bricks = [_state["bricks_by_id"][bid] for bid in piece.brick_ids]
-
-            # Create piece image (RGBA, size = piece bounding box)
             piece_img = Image.new("RGBA", (piece.width, piece.height), (0, 0, 0, 0))
 
-            for b in bricks:
-                # Extract brick from TIF
+            for bid in piece.brick_ids:
+                b = _state["bricks_by_id"][bid]
                 tmp_brick = str(Path(tempfile.gettempdir()) / f"_brick_{b.id}.png")
                 extract_brick_png(tif_path, b.id, tmp_brick)
                 brick_img = Image.open(tmp_brick).convert("RGBA")
-                # Paste at relative position within piece
                 rel_x = b.x - piece.x
                 rel_y = b.y - piece.y
                 piece_img.paste(brick_img, (rel_x, rel_y), brick_img)
+
+            piece_images[piece.id] = piece_img
 
             fname = f"piece_{piece.id:03d}.png"
             buf = io.BytesIO()
             piece_img.save(buf, format="PNG")
             zf.writestr(f"pieces/{fname}", buf.getvalue())
-
-            manifest_pieces.append({
-                "id": piece.id,
-                "file": fname,
-                "x": piece.x,
-                "y": piece.y,
-                "width": piece.width,
-                "height": piece.height,
-                "brick_ids": piece.brick_ids,
-                "num_bricks": len(piece.brick_ids),
-            })
 
         # Blueprint
         blueprint_buf = io.BytesIO()
@@ -509,16 +499,16 @@ def api_export():
         if comp_path.exists():
             zf.write(str(comp_path), "composite.png")
 
-        # Manifest (include wave data if provided)
-        waves_data = data.get("waves", [])
-        manifest = {
-            "source": Path(tif_path).name,
-            "canvas": {"width": house.canvas_width, "height": house.canvas_height},
-            "num_pieces": len(pieces),
-            "pieces": manifest_pieces,
-            "waves": waves_data,
-        }
-        zf.writestr("manifest.json", json.dumps(manifest, indent=2))
+        # Unity house_data.json (blocks, colliders, steps)
+        house_data = build_house_data(
+            pieces=pieces,
+            bricks_by_id=_state["bricks_by_id"],
+            canvas_width=house.canvas_width,
+            canvas_height=house.canvas_height,
+            piece_images=piece_images,
+            waves=waves_data,
+        )
+        zf.writestr("house_data.json", json.dumps(house_data, indent=2))
 
     zip_buffer.seek(0)
     return send_file(
