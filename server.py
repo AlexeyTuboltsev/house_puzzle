@@ -500,6 +500,7 @@ def api_export():
             zf.write(str(comp_path), "composite.png")
 
         # Unity house_data.json (blocks, colliders, steps)
+        placement = data.get("placement", {})
         house_data = build_house_data(
             pieces=pieces,
             bricks_by_id=_state["bricks_by_id"],
@@ -507,6 +508,9 @@ def api_export():
             canvas_height=house.canvas_height,
             piece_images=piece_images,
             waves=waves_data,
+            location=placement.get("location", "Rome"),
+            position_in_location=placement.get("position", 0),
+            house_name=placement.get("houseName", "NewHouse"),
         )
         zf.writestr("house_data.json", json.dumps(house_data, indent=2))
 

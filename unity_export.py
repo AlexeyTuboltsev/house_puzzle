@@ -220,6 +220,9 @@ def build_house_data(
     waves: list,  # [{"wave": 1, "pieceIds": [0, 3, 7]}, ...]
     ppu: int = 100,
     epsilon: float = 1.5,
+    location: str = "Rome",
+    position_in_location: int = 0,
+    house_name: str = "NewHouse",
 ) -> dict:
     """Build the complete house_data.json dict for Unity import.
 
@@ -267,10 +270,10 @@ def build_house_data(
             for contour in raw_contours:
                 simplified = douglas_peucker_closed(contour, epsilon)
                 if len(simplified) >= 3:
-                    path = contour_to_collider_path(
+                    points = contour_to_collider_path(
                         simplified, piece.width, piece.height, ppu
                     )
-                    paths.append(path)
+                    paths.append({"Points": points})
 
         colliders.append({
             "name": name,
@@ -280,18 +283,33 @@ def build_house_data(
 
     # Build steps from waves
     # piece.id == index in blocks array (pieces are ordered 0..N-1)
+    # All pieces must be in a step; unassigned pieces go into a final step
+    all_piece_ids = set(range(len(pieces)))
+    assigned_ids = set()
     steps = []
     for w in waves:
-        wave_num = w.get("wave", 0)
         piece_ids = w.get("pieceIds", [])
+        assigned_ids.update(piece_ids)
         steps.append({
-            "wave": wave_num,
+            "wave": w.get("wave", len(steps) + 1),
             "blockIndices": piece_ids,
         })
+    unassigned = sorted(all_piece_ids - assigned_ids)
+    if unassigned:
+        if not steps:
+            steps.append({"wave": 1, "blockIndices": unassigned})
+        else:
+            # Add unassigned pieces to the last step
+            steps[-1]["blockIndices"] = steps[-1]["blockIndices"] + unassigned
 
     return {
         "ppu": ppu,
         "canvas": {"width": canvas_width, "height": canvas_height},
+        "placement": {
+            "location": location,
+            "position": position_in_location,
+            "houseName": house_name,
+        },
         "blocks": blocks,
         "colliders": colliders,
         "steps": steps,
