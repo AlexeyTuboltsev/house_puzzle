@@ -20,6 +20,7 @@ Thumbs.db
 # Build
 dist/
 build/
+builds/
 *.egg-info/
 
 # Firecrawl

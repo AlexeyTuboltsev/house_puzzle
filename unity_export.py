@@ -8,7 +8,7 @@ Generates house_data.json with:
 
 Coordinate conventions:
 - Unity Y-up, canvas Y-down → flip Y
-- Unity units = pixels / PPU (default 100)
+- Unity units = pixels / PPU (auto-calculated as canvas_width / 12)
 - Sprite pivot = center → collider paths relative to sprite center
 """
 
@@ -211,42 +211,76 @@ def contour_to_collider_path(
 # Main orchestrator
 # ---------------------------------------------------------------------------
 
+def _auto_waves_by_y(
+    blocks: list[dict], piece_ids: list[int], num_waves: int = 3
+) -> list[dict]:
+    """Split piece IDs into waves by ascending block Y position.
+
+    Bottom blocks (lowest Y) go into wave 1 so they form a physical
+    foundation before upper blocks become available.
+    """
+    # Sort by Y position (ascending = bottom first)
+    sorted_ids = sorted(piece_ids, key=lambda i: blocks[i]["position"]["y"])
+    wave_size = max(1, len(sorted_ids) // num_waves)
+    steps = []
+    for w in range(num_waves):
+        start = w * wave_size
+        end = start + wave_size if w < num_waves - 1 else len(sorted_ids)
+        if start >= len(sorted_ids):
+            break
+        steps.append({
+            "wave": w + 1,
+            "blockIndices": sorted_ids[start:end],
+        })
+    return steps
+
+
 def build_house_data(
     pieces: list,
     bricks_by_id: dict,
     canvas_width: int,
     canvas_height: int,
-    piece_images: dict,  # piece_id -> PIL Image
     waves: list,  # [{"wave": 1, "pieceIds": [0, 3, 7]}, ...]
-    ppu: int = 100,
-    epsilon: float = 1.5,
+    ppu: int = 50,
+    scale: float = 1.0,
     location: str = "Rome",
     position_in_location: int = 0,
     house_name: str = "NewHouse",
+    piece_images: dict | None = None,  # {piece_id: PIL Image} for collider gen
+    dp_epsilon: float = 2.0,  # Douglas-Peucker simplification tolerance (pixels)
 ) -> dict:
     """Build the complete house_data.json dict for Unity import.
 
     Args:
         pieces: list of PuzzlePiece objects
         bricks_by_id: dict mapping brick_id -> Brick
-        canvas_width, canvas_height: full TIF dimensions in pixels
-        piece_images: dict mapping piece_id -> PIL RGBA Image (cropped to piece bbox)
+        canvas_width, canvas_height: full TIF dimensions in pixels (original)
         waves: wave/step data from frontend
-        ppu: pixels per Unity unit (default 100)
-        epsilon: Douglas-Peucker simplification tolerance in pixels
+        ppu: pixels per Unity unit (applied after scaling)
+        scale: factor applied to all pixel coords (sprites are resized by this)
     """
+    # Apply scale to canvas dimensions (sprites are resized in the export)
+    scaled_w = round(canvas_width * scale)
+    scaled_h = round(canvas_height * scale)
     blocks = []
-    colliders = []
+
+    # Center X on canvas midpoint; Y bottom-aligned (Y=0 at canvas bottom)
+    canvas_center_x = scaled_w / 2.0 / ppu
 
     for piece in pieces:
         name = f"piece_{piece.id:03d}"
 
-        # Position = center of bounding box in Unity world coords
-        center_px_x = piece.x + piece.width / 2.0
-        center_px_y = piece.y + piece.height / 2.0
-        position = pixel_to_unity_position(
-            center_px_x, center_px_y, canvas_height, ppu
+        # Position = center of bounding box in scaled pixel coords
+        center_px_x = (piece.x + piece.width / 2.0) * scale
+        center_px_y = (piece.y + piece.height / 2.0) * scale
+        abs_pos = pixel_to_unity_position(
+            center_px_x, center_px_y, scaled_h, ppu
         )
+        position = {
+            "x": round(abs_pos["x"] - canvas_center_x, 6),
+            "y": round(abs_pos["y"], 6),  # bottom-aligned, no Y offset
+            "z": 0.0,
+        }
 
         # Determine isChimney from brick types
         brick_types = set()
@@ -260,25 +294,6 @@ def build_house_data(
             "name": name,
             "position": position,
             "isChimney": is_chimney,
-        })
-
-        # Generate polygon collider from piece image
-        img = piece_images.get(piece.id)
-        paths = []
-        if img is not None:
-            raw_contours = trace_alpha_contours(img)
-            for contour in raw_contours:
-                simplified = douglas_peucker_closed(contour, epsilon)
-                if len(simplified) >= 3:
-                    points = contour_to_collider_path(
-                        simplified, piece.width, piece.height, ppu
-                    )
-                    paths.append({"Points": points})
-
-        colliders.append({
-            "name": name,
-            "offset": {"x": 0.0, "y": 0.0},
-            "paths": paths,
         })
 
     # Build steps from waves
@@ -297,21 +312,58 @@ def build_house_data(
     unassigned = sorted(all_piece_ids - assigned_ids)
     if unassigned:
         if not steps:
-            steps.append({"wave": 1, "blockIndices": unassigned})
+            # Auto-assign waves by Y position (bottom → top).
+            # The game requires blocks to be physically supported during
+            # placement: bottom blocks must form a foundation before upper
+            # blocks become available.  Split into 3 waves by Y terciles.
+            steps = _auto_waves_by_y(blocks, unassigned, num_waves=3)
         else:
             # Add unassigned pieces to the last step
             steps[-1]["blockIndices"] = steps[-1]["blockIndices"] + unassigned
 
-    return {
+    # Generate colliders from piece images (trace + simplify)
+    colliders = []
+    if piece_images:
+        for piece in pieces:
+            img = piece_images.get(piece.id)
+            if img is None:
+                colliders.append({"paths": []})
+                continue
+            contours = trace_alpha_contours(img)
+            paths = []
+            for contour in contours:
+                simplified = douglas_peucker_closed(contour, dp_epsilon)
+                if len(simplified) < 3:
+                    continue
+                points = contour_to_collider_path(
+                    simplified, img.width, img.height, ppu
+                )
+                paths.append({"points": points})
+            colliders.append({"paths": paths})
+
+    # ScalingFactor controls UI tray piece sizing.
+    # Existing houses keep ScalingFactor * PPU ≈ 100:
+    #   PPU=50 → SF=2, PPU=100 → SF=1.
+    scaling_factor = round(100 / ppu, 1)
+
+    # Spacing: first house in location (position=0) sits at origin;
+    # subsequent houses are offset by ~12 Unity units.
+    spacing = 0.0 if position_in_location == 0 else 12.0
+
+    result = {
         "ppu": ppu,
-        "canvas": {"width": canvas_width, "height": canvas_height},
+        "scalingFactor": scaling_factor,
+        "spacing": spacing,
+        "canvas": {"width": scaled_w, "height": scaled_h},
         "placement": {
             "location": location,
             "position": position_in_location,
             "houseName": house_name,
         },
         "blocks": blocks,
-        "colliders": colliders,
         "steps": steps,
         "spriteFolder": "pieces/",
     }
+    if colliders:
+        result["colliders"] = colliders
+    return result

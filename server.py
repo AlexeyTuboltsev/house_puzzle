@@ -466,9 +466,16 @@ def api_export():
 
     waves_data = data.get("waves", [])
 
+    # Resize sprites to target PPU=50 to match existing houses.
+    # Existing houses: ~600px wide canvas at PPU=50 → ~12 Unity units wide.
+    TARGET_PPU = 50
+    TARGET_WORLD_WIDTH = 12.0
+    target_canvas_w = TARGET_PPU * TARGET_WORLD_WIDTH  # 600
+    scale = target_canvas_w / house.canvas_width
+
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-        # Build piece images and write PNGs
+        # Build piece images, resize to target scale, and write PNGs
         piece_images = {}
         for piece in pieces:
             piece_img = Image.new("RGBA", (piece.width, piece.height), (0, 0, 0, 0))
@@ -482,6 +489,10 @@ def api_export():
                 rel_y = b.y - piece.y
                 piece_img.paste(brick_img, (rel_x, rel_y), brick_img)
 
+            # Resize to target scale
+            new_w = max(1, round(piece_img.width * scale))
+            new_h = max(1, round(piece_img.height * scale))
+            piece_img = piece_img.resize((new_w, new_h), Image.LANCZOS)
             piece_images[piece.id] = piece_img
 
             fname = f"piece_{piece.id:03d}.png"
@@ -489,28 +500,40 @@ def api_export():
             piece_img.save(buf, format="PNG")
             zf.writestr(f"pieces/{fname}", buf.getvalue())
 
-        # Blueprint
+        # Blueprint (resize to target scale)
+        blueprint = _generate_blueprint(house, pieces)
+        bp_w = max(1, round(blueprint.width * scale))
+        bp_h = max(1, round(blueprint.height * scale))
+        blueprint = blueprint.resize((bp_w, bp_h), Image.LANCZOS)
         blueprint_buf = io.BytesIO()
-        _generate_blueprint(house, pieces).save(blueprint_buf, format="PNG")
+        blueprint.save(blueprint_buf, format="PNG")
         zf.writestr("blueprint.png", blueprint_buf.getvalue())
 
-        # Composite
+        # Composite (resize to target scale)
         comp_path = _state["extracted_dir"] / "composite.png"
         if comp_path.exists():
-            zf.write(str(comp_path), "composite.png")
+            comp_img = Image.open(str(comp_path)).convert("RGBA")
+            comp_w = max(1, round(comp_img.width * scale))
+            comp_h = max(1, round(comp_img.height * scale))
+            comp_img = comp_img.resize((comp_w, comp_h), Image.LANCZOS)
+            comp_buf = io.BytesIO()
+            comp_img.save(comp_buf, format="PNG")
+            zf.writestr("composite.png", comp_buf.getvalue())
 
-        # Unity house_data.json (blocks, colliders, steps)
+        # Unity house_data.json (blocks, steps, colliders)
         placement = data.get("placement", {})
         house_data = build_house_data(
             pieces=pieces,
             bricks_by_id=_state["bricks_by_id"],
             canvas_width=house.canvas_width,
             canvas_height=house.canvas_height,
-            piece_images=piece_images,
             waves=waves_data,
+            ppu=TARGET_PPU,
+            scale=scale,
             location=placement.get("location", "Rome"),
             position_in_location=placement.get("position", 0),
             house_name=placement.get("houseName", "NewHouse"),
+            piece_images=piece_images,
         )
         zf.writestr("house_data.json", json.dumps(house_data, indent=2))
 
