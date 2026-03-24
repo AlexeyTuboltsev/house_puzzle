@@ -293,6 +293,7 @@ def build_house_data(
         blocks.append({
             "name": name,
             "position": position,
+            "orderInLayer": 0,
             "isChimney": is_chimney,
         })
 
@@ -342,9 +343,8 @@ def build_house_data(
             colliders.append({"paths": paths})
 
     # ScalingFactor controls UI tray piece sizing.
-    # Existing houses keep ScalingFactor * PPU ≈ 100:
-    #   PPU=50 → SF=2, PPU=100 → SF=1.
-    scaling_factor = round(100 / ppu, 1)
+    # All existing houses use ScalingFactor=1 regardless of PPU.
+    scaling_factor = 1.0
 
     # Spacing: first house in location (position=0) sits at origin;
     # subsequent houses are offset by ~12 Unity units.
@@ -354,6 +354,7 @@ def build_house_data(
         "ppu": ppu,
         "scalingFactor": scaling_factor,
         "spacing": spacing,
+        "reward": 100,
         "canvas": {"width": scaled_w, "height": scaled_h},
         "placement": {
             "location": location,

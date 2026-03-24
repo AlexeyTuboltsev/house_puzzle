@@ -475,7 +475,9 @@ def api_export():
 
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-        # Build piece images, resize to target scale, and write PNGs
+        # Build piece images at ORIGINAL resolution (for asset generation),
+        # then scale for piece PNGs in the ZIP
+        piece_images_orig = {}
         piece_images = {}
         for piece in pieces:
             piece_img = Image.new("RGBA", (piece.width, piece.height), (0, 0, 0, 0))
@@ -489,36 +491,50 @@ def api_export():
                 rel_y = b.y - piece.y
                 piece_img.paste(brick_img, (rel_x, rel_y), brick_img)
 
-            # Resize to target scale
+            piece_images_orig[piece.id] = piece_img
+
+            # Resize to target scale for piece PNGs
             new_w = max(1, round(piece_img.width * scale))
             new_h = max(1, round(piece_img.height * scale))
-            piece_img = piece_img.resize((new_w, new_h), Image.LANCZOS)
-            piece_images[piece.id] = piece_img
+            scaled_img = piece_img.resize((new_w, new_h), Image.LANCZOS)
+            piece_images[piece.id] = scaled_img
 
             fname = f"piece_{piece.id:03d}.png"
             buf = io.BytesIO()
-            piece_img.save(buf, format="PNG")
+            scaled_img.save(buf, format="PNG")
             zf.writestr(f"pieces/{fname}", buf.getvalue())
 
-        # Blueprint (resize to target scale)
-        blueprint = _generate_blueprint(house, pieces)
-        bp_w = max(1, round(blueprint.width * scale))
-        bp_h = max(1, round(blueprint.height * scale))
-        blueprint = blueprint.resize((bp_w, bp_h), Image.LANCZOS)
-        blueprint_buf = io.BytesIO()
-        blueprint.save(blueprint_buf, format="PNG")
-        zf.writestr("blueprint.png", blueprint_buf.getvalue())
-
-        # Composite (resize to target scale)
+        # Load composite source image
         comp_path = _state["extracted_dir"] / "composite.png"
+        comp_src = None
         if comp_path.exists():
-            comp_img = Image.open(str(comp_path)).convert("RGBA")
-            comp_w = max(1, round(comp_img.width * scale))
-            comp_h = max(1, round(comp_img.height * scale))
-            comp_img = comp_img.resize((comp_w, comp_h), Image.LANCZOS)
-            comp_buf = io.BytesIO()
-            comp_img.save(comp_buf, format="PNG")
-            zf.writestr("composite.png", comp_buf.getvalue())
+            comp_src = Image.open(str(comp_path)).convert("RGBA")
+
+        def _write_scaled(zf, name, img):
+            """Resize to target scale and write to ZIP."""
+            sw = max(1, round(img.width * scale))
+            sh = max(1, round(img.height * scale))
+            img = img.resize((sw, sh), Image.LANCZOS)
+            buf = io.BytesIO()
+            img.save(buf, format="PNG")
+            zf.writestr(name, buf.getvalue())
+
+        # scheme.png — all white piece boundary lines (Scheme sprite)
+        scheme = _generate_scheme(pieces, piece_images_orig)
+        _write_scaled(zf, "scheme.png", scheme)
+
+        # light.png — white outline around house perimeter only (Outline sprite)
+        light = _generate_light(pieces, piece_images_orig)
+        _write_scaled(zf, "light.png", light)
+
+        # blue.png — solid blue fill in house shape (Background sprite)
+        blue = _generate_blue(pieces, piece_images_orig)
+        _write_scaled(zf, "blue.png", blue)
+
+        # flat.png — composite clipped to house shape (FullHouse sprite)
+        if comp_src:
+            flat = _generate_flat(pieces, piece_images_orig, comp_src)
+            _write_scaled(zf, "flat.png", flat)
 
         # Unity house_data.json (blocks, steps, colliders)
         placement = data.get("placement", {})
@@ -566,6 +582,196 @@ def _generate_blueprint(house, pieces):
             )
 
     return blueprint
+
+
+def _trace_piece_outlines(piece_images):
+    """Trace vectorized contour polygons for each piece using alpha contour tracing.
+
+    Returns list of (piece_id, contours) where contours is a list of simplified
+    polygon loops in piece-local pixel coords.
+    """
+    from unity_export import trace_alpha_contours, douglas_peucker_closed
+
+    result = []
+    for pid, img in piece_images.items():
+        contours = trace_alpha_contours(img)
+        simplified = []
+        for contour in contours:
+            s = douglas_peucker_closed(contour, 2.0)
+            if len(s) >= 3:
+                simplified.append(s)
+        result.append((pid, simplified))
+    return result
+
+
+def _build_house_mask(piece_images, pieces, canvas_w, canvas_h):
+    """Build a house silhouette mask by compositing all piece alpha channels."""
+    import numpy as np
+
+    mask = np.zeros((canvas_h, canvas_w), dtype=np.uint8)
+    for piece in pieces:
+        img = piece_images.get(piece.id)
+        if img is None:
+            continue
+        alpha = np.array(img.split()[3])
+        x, y = round(piece.x), round(piece.y)
+        h, w = alpha.shape
+        # Clip to canvas bounds
+        sx = max(0, -x)
+        sy = max(0, -y)
+        ex = min(w, canvas_w - x)
+        ey = min(h, canvas_h - y)
+        if sx >= ex or sy >= ey:
+            continue
+        region = alpha[sy:ey, sx:ex]
+        mask[y + sy:y + ey, x + sx:x + ex] = np.maximum(
+            mask[y + sy:y + ey, x + sx:x + ex], region
+        )
+    return mask
+
+
+def _generate_scheme(pieces, piece_images):
+    """Generate scheme.png — piece boundary lines for wave fill shader.
+
+    Existing houses use very low-alpha anti-aliased lines (alpha ~1) because
+    the SchemeMaterial shader reads alpha as a mask pattern.
+    We draw white lines at full alpha matching existing houses.
+    """
+    canvas_w, canvas_h = _state["house"].canvas_width, _state["house"].canvas_height
+    img = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    outlines = _trace_piece_outlines(piece_images)
+
+    for pid, contours in outlines:
+        piece = next(p for p in pieces if p.id == pid)
+        ox, oy = piece.x, piece.y
+        for contour in contours:
+            # Convert piece-local coords to canvas coords
+            pts = [(p[0] + ox, p[1] + oy) for p in contour]
+            if len(pts) >= 3:
+                draw.polygon(pts, outline=(255, 255, 255, 255))
+                for i in range(len(pts)):
+                    draw.line(
+                        [pts[i], pts[(i + 1) % len(pts)]],
+                        fill=(255, 255, 255, 255), width=6
+                    )
+
+    return img
+
+
+def _generate_light(pieces, piece_images):
+    """Generate light.png — white outline around house perimeter only.
+
+    Traces the combined house silhouette (all pieces composited) to get
+    only the outer boundary. No internal piece lines.
+    Matches existing houses' Outline sprite (e.g. Rome/10/light.png).
+    """
+    from unity_export import trace_alpha_contours, douglas_peucker_closed
+
+    canvas_w, canvas_h = _state["house"].canvas_width, _state["house"].canvas_height
+
+    # Build full house composite, close inter-piece gaps, then trace outer boundary
+    import numpy as np
+    from PIL import ImageFilter
+    house_composite = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
+    for piece in pieces:
+        pimg = piece_images.get(piece.id)
+        if pimg is None:
+            continue
+        house_composite.paste(pimg, (round(piece.x), round(piece.y)), pimg)
+
+    # Morphological close on alpha to eliminate inter-piece gaps
+    alpha = np.array(house_composite.split()[3])
+    mask_binary = Image.fromarray((alpha > 30).astype(np.uint8) * 255)
+    mask_closed = mask_binary.filter(ImageFilter.MaxFilter(7))
+    mask_closed = mask_closed.filter(ImageFilter.MinFilter(7))
+    # Rebuild composite with closed alpha for contour tracing
+    solid = Image.new("RGBA", (canvas_w, canvas_h), (255, 255, 255, 255))
+    solid.putalpha(mask_closed)
+
+    contours = trace_alpha_contours(solid)
+    img = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+
+    # Only keep contours with significant perimeter (skip tiny specks)
+    for contour in contours:
+        simplified = douglas_peucker_closed(contour, 2.0)
+        if len(simplified) < 10:
+            continue
+        for i in range(len(simplified)):
+            draw.line(
+                [simplified[i], simplified[(i + 1) % len(simplified)]],
+                fill=(255, 255, 255, 255), width=8
+            )
+
+    return img
+
+
+def _generate_blue(pieces, piece_images):
+    """Generate blue.png — solid blue fill in the shape of the house silhouette.
+
+    Uses traced SVG contours to create a filled blue shape matching the
+    actual house outline (not rectangles).
+    Matches existing houses' Background sprite (e.g. Rome/10/blue.png).
+    """
+    from unity_export import trace_alpha_contours, douglas_peucker_closed
+
+    canvas_w, canvas_h = _state["house"].canvas_width, _state["house"].canvas_height
+
+    # Build full house composite to trace outer boundary
+    house_composite = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
+    for piece in pieces:
+        pimg = piece_images.get(piece.id)
+        if pimg is None:
+            continue
+        house_composite.paste(pimg, (round(piece.x), round(piece.y)), pimg)
+
+    # Use alpha mask from composite, dilate to close inter-piece gaps
+    import numpy as np
+    from PIL import ImageFilter
+    mask = np.array(house_composite.split()[3])
+    mask_binary = Image.fromarray((mask > 30).astype(np.uint8) * 255)
+    # Dilate (MaxFilter) then erode (MinFilter) = morphological close
+    mask_closed = mask_binary.filter(ImageFilter.MaxFilter(5))
+    mask_closed = mask_closed.filter(ImageFilter.MinFilter(5))
+
+    blue = Image.new("RGBA", (canvas_w, canvas_h), (51, 85, 204, 255))
+    blue.putalpha(mask_closed)
+    return blue
+
+
+def _generate_flat(pieces, piece_images, comp_img):
+    """Generate flat.png — composite image clipped to house silhouette.
+
+    Matches existing houses' FullHouse sprite (e.g. Rome/10/flat.png).
+    """
+    import numpy as np
+
+    canvas_w, canvas_h = _state["house"].canvas_width, _state["house"].canvas_height
+
+    # Build house mask from piece alphas
+    house_composite = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
+    for piece in pieces:
+        pimg = piece_images.get(piece.id)
+        if pimg is None:
+            continue
+        house_composite.paste(pimg, (round(piece.x), round(piece.y)), pimg)
+
+    mask = np.array(house_composite.split()[3])
+    mask_binary = Image.fromarray((mask > 30).astype(np.uint8) * 255)
+    # Morphological close to fill inter-piece gaps
+    from PIL import ImageFilter
+    mask_closed = mask_binary.filter(ImageFilter.MaxFilter(5))
+    mask_closed = mask_closed.filter(ImageFilter.MinFilter(5))
+    mask = np.array(mask_closed)
+
+    if comp_img.size != (canvas_w, canvas_h):
+        comp_img = comp_img.resize((canvas_w, canvas_h), Image.LANCZOS)
+    result = comp_img.copy().convert("RGBA")
+    a = np.array(result.split()[3])
+    combined = np.minimum(a, mask)
+    result.putalpha(Image.fromarray(combined))
+    return result
 
 
 if __name__ == "__main__":
