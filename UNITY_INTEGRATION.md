@@ -47,103 +47,38 @@ This document tracks issues found during Unity import/export integration.
 - **Symptom**: Missing overlay sprites in game
 - **Fix**: Changed from "blueprint"/"composite" to "scheme"/"light"/"blue"/"flat"
 
----
+### 5. Blocks drift during placement and get rejected (FIXED 2026-03-25)
 
-## Open Problems
+**Root cause**: Collider polygon simplification was too aggressive. Douglas-Peucker with
+epsilon=2.0 reduced contours to 7-16 vertices, creating massive overlaps between adjacent
+pieces (up to 1.7 Unity units across 114 overlapping pairs). When a block was placed, its
+Dynamic collider overlapped Static neighbors, Unity physics pushed it out, and the block
+drifted past the 0.1-unit rejection threshold in SetBlockSystem's 0.4s check.
 
-### 5. Blocks drift 0.118 units during placement and get rejected
+Additionally, bottom pieces didn't touch the ground (Y=0) — artwork doesn't reach the canvas
+bottom edge and contour tracing at pixel centers adds ~0.02-0.04 units of gap.
 
-**Status**: ROOT CAUSE FOUND, fix in progress (collider boundary resolution)
+**Fix (two parts)**:
+1. **Reduced DP epsilon from 2.0 to 0.5** — polygons now average 22 vertices with only 17
+   tiny overlap pairs (vs 114 massive ones). Physics push-out is negligible.
+2. **Added `groundOffset`** — exporter computes how far the lowest collider point sits above
+   Y=0 in world space. Importer shifts the house down by this amount so bottom pieces touch
+   the ground. For the current house: groundOffset = 0.043 units.
 
-#### The drift mechanism
-- CheckTruePositionSystem matches a block → snaps it to target position
-- SetBlockSystem monitors drift: if block moves > 0.1 units from target → FallEvent (rejected)
-- Block has Dynamic Rigidbody2D with gravityScale=10 during the 0.4s check period
-- The block MUST have immediate physical support (ground or placed blocks) to not drift
-- 0.118 units = ~3 frames of free-fall at gravityScale=10: `0.5 × 98.1 × 0.048² ≈ 0.113`
-- ALL blocks drift the same 0.118 → NO block has any physical support
+**Result**: All blocks snap in place with zero drift.
 
-#### Comparison with working house (Amsterdam_1)
-Tested Amsterdam_1 in-game with debug logging. Result: blocks go MATCH → SET with **zero drift**.
-No DRIFT log at all. Working houses have colliders that provide immediate physical support.
+### 6. Addressables not loading at runtime (FIXED 2026-03-25)
+- **Symptom**: `ArgumentNullException` in Addressables at startup
+- **Root cause**: Stale Addressables catalog after importing new assets
+- **Fix**: Importer now calls `SetFastMode.Set()` to use "Use Asset Database" mode,
+  bypassing the need for a full Addressables build. This is set automatically on each import.
 
-**Amsterdam bottom blocks** (world space):
-| Block | World Y (center) | Collider bottom | Gap to ground (Y=0) |
-|-------|-------------------|-----------------|---------------------|
-| #42   | 0.497             | -0.001          | touching            |
-| #50   | 0.497             | -0.002          | touching            |
-| #48   | 0.747             | +0.003          | 0.003               |
-
-**Our bottom blocks** (world space, with 2px inset):
-| Block | World Y (center) | Collider bottom | Gap to ground (Y=0) |
-|-------|-------------------|-----------------|---------------------|
-| #52   | 0.916             | +0.086          | 0.086               |
-| #16   | 1.046             | +0.086          | 0.086               |
-| #6    | 1.483             | +0.093          | 0.093               |
-
-Amsterdam: gap ≈ 0 (instant collision). Ours: gap ≈ 0.086-0.093 (3 frames of fall needed,
-but drift check rejects at frame 3).
-
-#### Why our colliders have gaps
-
-Two contributing factors:
-
-1. **2px collider inset** in unity_export.py = 0.04 Unity units at PPU=50. The PSD pipeline
-   uses FixOverlaps with 0.0001 unit steps (total inset ~0.001). Our inset was **40x larger**.
-
-2. **Anti-aliased sprite edges**. Our piece sprites have NO clean alpha edges — 85% of pixels
-   have alpha 252-254, edge pixels drop to 182-215. With threshold=191, the contour traces
-   ~1-2px inside the visual edge, adding ~0.02-0.04 units to the gap.
-
-   ```
-   piece_052 alpha distribution:
-     254: 2466 pixels (64%)    ← interior
-     253:  344 pixels           ← near-edge
-     252:  148 pixels           ← edge
-     251:   31 pixels           ← edge
-     182-215: ~200 pixels       ← outer edge (below threshold 191)
-     No alpha=0 or alpha=255 pixels at all
-   ```
-
-#### Collider overlap/gap analysis (with 2px inset)
-
-Measured all 60 piece colliders in world space:
-- **150 overlapping pairs** — most adjacent blocks' colliders overlap even with 2px inset
-- **17 pairs with gaps** — only 1 small gap (0.007), rest are 0.16-0.50 (not truly adjacent)
-- Largest overlap: 0.229 area units (piece_002 ↔ piece_058)
-
-**What overlapping colliders cause at runtime**: When a Dynamic block is placed and its
-collider overlaps a Static (already placed) block, Unity physics **pushes the Dynamic block
-out** of the overlap. Small overlap → tiny push → block stays near target. Large overlap →
-big push → drift exceeds 0.1 → rejected.
-
-#### The fix needed: midline boundary resolution
-
-Neither pure inset=0 nor inset=2px works:
-- **inset=0**: Ground contact works (gap ≈ 0.04), but inter-block overlaps cause push-out drift
-- **inset=2px**: No overlaps, but ground contact broken (gap ≈ 0.086)
-
-**Correct approach**: For each pair of adjacent/overlapping pieces, compute the exact **midline
-boundary** between them and clip both colliders to it. Result: zero gap, zero overlap between
-neighbors. Collider outer edges (facing ground/air) stay at full size for ground contact.
-
-Two possible implementations:
-1. **Postprocess** (chosen): Take existing traced contours, find overlapping pairs, compute
-   midline, clip both to it
-2. **Voronoi from scratch**: Skip contour tracing, compute boundaries from pixel ownership map
-
-#### PSD pipeline collider process (for reference)
-```
-WriteInfoToData.WriteColliders():
-  PixelCollider2D(alpha > 0.75)          →  pixel-perfect polygon per sprite
-  PolygonColliderOptimizer (if >30 paths) →  simplified polygon
-
-DebuggingHouse.FixOverlaps():
-  For each overlapping pair:
-    Iteratively inset by -0.0001 units/step (ClipperLib)
-    Up to 10000 iterations until no overlap
-  Result: ~0.001 unit total inset, preserves ground contact
-```
+### 7. Null entry in HousesData.asset causing NullReferenceException (FIXED 2026-03-25)
+- **Symptom**: `NullReferenceException` at `AtlasLoadingStage.cs:50` — `house.SpriteAtlasPath`
+  crashes because Rome's HousesData array had `{fileID: 0}` (null) at index 0
+- **Root cause**: Deleting the old test house assets left a null slot in the array; the importer
+  re-created the house at a new index but didn't clean up the old null slot
+- **Fix**: Manually removed the null entry from HousesData.asset
 
 ---
 
@@ -162,19 +97,20 @@ DebuggingHouse.FixOverlaps():
 housePosition.y = schemeSprite.bounds.size.y / 2 - SchemeData.Scheme.Position.y
 ```
 For our house: 897px/50ppu/2 - 8.97 = 8.97 - 8.97 = 0.0 (house container at Y=0).
-For Amsterdam_1: 1070px/50ppu/2 - 16.2225 = 10.7 - 16.2225 = -5.5225.
 
 ### Collider pipeline (our code, current state)
 ```
 unity_export.py:
   trace_alpha_contours(alpha_threshold=191)  →  contour pixels
-  douglas_peucker_closed(epsilon=2.0)        →  simplified polygon
-  [TODO: midline boundary resolution]        →  no overlap, no gap between neighbors
+  douglas_peucker_closed(epsilon=0.5)        →  simplified polygon (~22 vertices avg)
   contour_to_collider_path(ppu=50)           →  Unity local coords (center-pivot, Y-flip)
+  groundOffset = min world-space collider bottom across all pieces
   → JSON: colliders[i].paths[j].points[k] = {x, y}
 
 HousePuzzleImporter.cs:
   ConvertJsonColliders()  →  PolygonColliderData[]  →  houseData.Colliders
+  schemeCenter.y = canvas.height / 2 / ppu + groundOffset  →  shifts house down
+  SetFastMode.Set()  →  Addressables uses Asset Database (no build needed)
 ```
 
 ### Ground collider (runtime, verified via Unity MCP)

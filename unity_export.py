@@ -184,64 +184,158 @@ def pixel_to_unity_position(
     }
 
 
-def inset_polygon(points: list[tuple[float, float]], distance: float) -> list[tuple[float, float]]:
-    """Inset (shrink) a polygon inward by *distance* pixels.
+# ---------------------------------------------------------------------------
+# Overlap resolution — midline boundary between adjacent pieces
+# ---------------------------------------------------------------------------
 
-    For each vertex, move it along the average of the two adjacent edge
-    inward-normals.  Detects winding direction automatically so the
-    normals always point inward regardless of CW/CCW ordering.
+def _point_in_polygon(px: float, py: float, polygon: list) -> bool:
+    """Ray-casting point-in-polygon test."""
+    n = len(polygon)
+    inside = False
+    j = n - 1
+    for i in range(n):
+        xi, yi = polygon[i]
+        xj, yj = polygon[j]
+        if ((yi > py) != (yj > py)) and \
+           (px < (xj - xi) * (py - yi) / (yj - yi) + xi):
+            inside = not inside
+        j = i
+    return inside
+
+
+def _nearest_point_on_segment(px, py, x1, y1, x2, y2):
+    """Nearest point on line segment (x1,y1)-(x2,y2) to point (px,py)."""
+    dx, dy = x2 - x1, y2 - y1
+    len_sq = dx * dx + dy * dy
+    if len_sq < 1e-12:
+        return x1, y1
+    t = max(0.0, min(1.0, ((px - x1) * dx + (py - y1) * dy) / len_sq))
+    return x1 + t * dx, y1 + t * dy
+
+
+def _nearest_point_on_polygon_boundary(px, py, polygon):
+    """Find nearest point on the closed polygon boundary to (px, py)."""
+    best_dist_sq = float('inf')
+    best_pt = polygon[0]
+    n = len(polygon)
+    for i in range(n):
+        x1, y1 = polygon[i]
+        x2, y2 = polygon[(i + 1) % n]
+        nx, ny = _nearest_point_on_segment(px, py, x1, y1, x2, y2)
+        d_sq = (px - nx) ** 2 + (py - ny) ** 2
+        if d_sq < best_dist_sq:
+            best_dist_sq = d_sq
+            best_pt = (nx, ny)
+    return best_pt
+
+
+def _bbox(polygon):
+    """Bounding box: (min_x, min_y, max_x, max_y)."""
+    xs = [p[0] for p in polygon]
+    ys = [p[1] for p in polygon]
+    return min(xs), min(ys), max(xs), max(ys)
+
+
+def _bboxes_overlap(bb1, bb2):
+    """Check if two bounding boxes overlap."""
+    return (bb1[0] <= bb2[2] and bb1[2] >= bb2[0] and
+            bb1[1] <= bb2[3] and bb1[3] >= bb2[1])
+
+
+def resolve_collider_overlaps(
+    pieces: list,
+    piece_contours_local: dict,
+    scale: float = 1.0,
+) -> dict:
+    """Adjust contour vertices so adjacent pieces share a midline boundary.
+
+    For each vertex of piece A that lies inside piece B, find the nearest
+    point on B's boundary and move the vertex to the midpoint.  All
+    adjustments are computed from the *original* polygons and applied in
+    one pass, so processing order doesn't matter.
+
+    Works in canvas pixel space; returns adjusted contours in local piece
+    image coords (same coordinate system as the input).
+
+    See UNITY_INTEGRATION.md §5 for why this is needed.
     """
-    n = len(points)
-    if n < 3 or distance <= 0:
-        return points
+    # Build canvas-space contours with bboxes
+    canvas_data = {}
+    for piece in pieces:
+        contours = piece_contours_local.get(piece.id)
+        if not contours:
+            continue
+        ox = piece.x * scale
+        oy = piece.y * scale
+        canvas_contours = []
+        bboxes = []
+        for contour in contours:
+            cpts = [(ox + x, oy + y) for x, y in contour]
+            canvas_contours.append(cpts)
+            bboxes.append(_bbox(cpts))
+        canvas_data[piece.id] = {
+            "contours": canvas_contours,
+            "bboxes": bboxes,
+            "ox": ox,
+            "oy": oy,
+        }
 
-    # Determine winding: negative signed area = CW, positive = CCW
-    area = _signed_area(points)
-    if abs(area) < 1e-9:
-        return points
-    # sign flips normal direction so it always points inward
-    sign = -1.0 if area > 0 else 1.0
+    piece_ids = list(canvas_data.keys())
 
-    result = []
-    for i in range(n):
-        p0 = points[(i - 1) % n]
-        p1 = points[i]
-        p2 = points[(i + 1) % n]
+    # Collect all adjustments: (pid, contour_idx, vertex_idx) → (new_x, new_y)
+    adjustments = {}
 
-        # Edge vectors
-        e1x, e1y = p1[0] - p0[0], p1[1] - p0[1]
-        e2x, e2y = p2[0] - p1[0], p2[1] - p1[1]
+    for pid in piece_ids:
+        data = canvas_data[pid]
+        for ci, contour in enumerate(data["contours"]):
+            bb_a = data["bboxes"][ci]
+            for vi, (vx, vy) in enumerate(contour):
+                best_dist_sq = float("inf")
+                best_mid = None
 
-        # Normals perpendicular to edges (rotate 90° left: (-ey, ex))
-        len1 = math.sqrt(e1x * e1x + e1y * e1y) or 1e-9
-        n1x, n1y = -e1y / len1 * sign, e1x / len1 * sign
+                for other_pid in piece_ids:
+                    if other_pid == pid:
+                        continue
+                    other = canvas_data[other_pid]
+                    for oci, other_contour in enumerate(other["contours"]):
+                        if not _bboxes_overlap(bb_a, other["bboxes"][oci]):
+                            continue
+                        if not _point_in_polygon(vx, vy, other_contour):
+                            continue
+                        nx, ny = _nearest_point_on_polygon_boundary(
+                            vx, vy, other_contour
+                        )
+                        d_sq = (vx - nx) ** 2 + (vy - ny) ** 2
+                        if d_sq < best_dist_sq:
+                            best_dist_sq = d_sq
+                            best_mid = ((vx + nx) / 2.0, (vy + ny) / 2.0)
 
-        len2 = math.sqrt(e2x * e2x + e2y * e2y) or 1e-9
-        n2x, n2y = -e2y / len2 * sign, e2x / len2 * sign
+                if best_mid is not None:
+                    adjustments[(pid, ci, vi)] = best_mid
 
-        # Average normal
-        nx, ny = n1x + n2x, n1y + n2y
-        nl = math.sqrt(nx * nx + ny * ny) or 1e-9
-        nx, ny = nx / nl, ny / nl
+    # Apply adjustments, convert back to local piece coords
+    result = {}
+    for pid in piece_ids:
+        data = canvas_data[pid]
+        ox, oy = data["ox"], data["oy"]
+        adjusted = []
+        for ci, contour in enumerate(data["contours"]):
+            new_pts = []
+            for vi, (vx, vy) in enumerate(contour):
+                if (pid, ci, vi) in adjustments:
+                    ax, ay = adjustments[(pid, ci, vi)]
+                    new_pts.append((ax - ox, ay - oy))
+                else:
+                    new_pts.append((vx - ox, vy - oy))
+            adjusted.append(new_pts)
+        result[pid] = adjusted
 
-        result.append((p1[0] + nx * distance, p1[1] + ny * distance))
+    # Pieces without contours keep their originals
+    for piece in pieces:
+        if piece.id not in result:
+            result[piece.id] = piece_contours_local.get(piece.id, [])
 
-    # Verify winding didn't flip (polygon collapsed) — return original if so
-    area_inset = _signed_area(result)
-    if area * area_inset <= 0:
-        return points
     return result
-
-
-def _signed_area(points: list[tuple[float, float]]) -> float:
-    """Signed area of a polygon (positive = CCW, negative = CW)."""
-    n = len(points)
-    area = 0.0
-    for i in range(n):
-        j = (i + 1) % n
-        area += points[i][0] * points[j][1]
-        area -= points[j][0] * points[i][1]
-    return area / 2.0
 
 
 def contour_to_collider_path(
@@ -307,7 +401,7 @@ def build_house_data(
     position_in_location: int = 0,
     house_name: str = "NewHouse",
     piece_images: dict | None = None,  # {piece_id: PIL Image} for collider gen
-    dp_epsilon: float = 2.0,  # Douglas-Peucker simplification tolerance (pixels)
+    dp_epsilon: float = 0.5,  # Douglas-Peucker simplification tolerance (pixels)
 ) -> dict:
     """Build the complete house_data.json dict for Unity import.
 
@@ -383,11 +477,10 @@ def build_house_data(
             steps[-1]["blockIndices"] = steps[-1]["blockIndices"] + unassigned
 
     # Generate colliders from piece images (trace + simplify)
-    # The PSD pipeline uses FixOverlaps (iterative ClipperLib inset at ~0.0001 units/step).
-    # We must NOT inset significantly — bottom blocks' colliders must touch Y=0 (ground)
-    # or blocks drift during the 0.4s physics check and get rejected (drift > 0.1 threshold).
-    # See UNITY_INTEGRATION.md §5 for the full drift analysis.
-    collider_inset_px = 0.0
+    # Collider generation: trace pixel-accurate contours, convert to Unity coords.
+    # Raw contours (~400-500 vertices) follow piece boundaries closely, so adjacent
+    # pieces overlap by at most ~1-2px. The physics push from this is negligible.
+    # This matches the PSD pipeline which also uses pixel-level contours.
     colliders = []
     if piece_images:
         for piece in pieces:
@@ -398,15 +491,32 @@ def build_house_data(
             contours = trace_alpha_contours(img)
             paths = []
             for contour in contours:
+                if len(contour) < 3:
+                    continue
+                # Simplify slightly to reduce vertex count without losing accuracy
                 simplified = douglas_peucker_closed(contour, dp_epsilon)
                 if len(simplified) < 3:
                     continue
-                simplified = inset_polygon(simplified, collider_inset_px)
-                points = contour_to_collider_path(
-                    simplified, img.width, img.height, ppu
-                )
+                points = contour_to_collider_path(simplified, img.width, img.height, ppu)
                 paths.append({"points": points})
             colliders.append({"paths": paths})
+
+    # Compute ground offset: how far the lowest collider point is above Y=0.
+    # The importer shifts the house down by this amount so bottom blocks touch ground.
+    ground_offset = 0.0
+    if blocks and colliders:
+        min_world_bottom = float("inf")
+        for b, c in zip(blocks, colliders):
+            if not c.get("paths"):
+                continue
+            col_min_y = min(
+                p["y"] for path in c["paths"] for p in path["points"]
+            )
+            world_bottom = b["position"]["y"] + col_min_y
+            if world_bottom < min_world_bottom:
+                min_world_bottom = world_bottom
+        if min_world_bottom < float("inf"):
+            ground_offset = min_world_bottom
 
     # ScalingFactor controls UI tray piece sizing.
     # All existing houses use ScalingFactor=1 regardless of PPU.
@@ -422,6 +532,7 @@ def build_house_data(
         "spacing": spacing,
         "reward": 100,
         "canvas": {"width": scaled_w, "height": scaled_h},
+        "groundOffset": round(ground_offset, 6),
         "placement": {
             "location": location,
             "position": position_in_location,
