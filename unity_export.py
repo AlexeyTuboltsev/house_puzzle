@@ -400,6 +400,7 @@ def build_house_data(
     location: str = "Rome",
     position_in_location: int = 0,
     house_name: str = "NewHouse",
+    spacing: float = 12.0,  # gap before this house in scrollable list (Unity units)
     piece_images: dict | None = None,  # {piece_id: PIL Image} for collider gen
     dp_epsilon: float = 0.5,  # Douglas-Peucker simplification tolerance (pixels)
 ) -> dict:
@@ -518,13 +519,17 @@ def build_house_data(
         if min_world_bottom < float("inf"):
             ground_offset = min_world_bottom
 
-    # ScalingFactor controls UI tray piece sizing.
-    # All existing houses use ScalingFactor=1 regardless of PPU.
-    scaling_factor = 1.0
+    # ScalingFactor controls UI tray piece sizing (multiplied by sprite pixel size).
+    # Compute from average sprite width to target ~220px in the tray.
+    # Existing houses: SF=1 with ~200px sprites, SF=2 with ~110px sprites.
+    if piece_images:
+        avg_w = sum(img.width for img in piece_images.values()) / len(piece_images)
+        scaling_factor = max(1.0, round(220.0 / avg_w))
+    else:
+        scaling_factor = 2.0
 
-    # Spacing: first house in location (position=0) sits at origin;
-    # subsequent houses are offset by ~12 Unity units.
-    spacing = 0.0 if position_in_location == 0 else 12.0
+    # Spacing is passed as a parameter (default 12.0 Unity units).
+    # Caller can override for first-in-location (0) or custom gaps.
 
     result = {
         "ppu": ppu,

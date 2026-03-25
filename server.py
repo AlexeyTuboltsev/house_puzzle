@@ -468,9 +468,10 @@ def api_export():
 
     # Resize sprites to target PPU=50 to match existing houses.
     # Existing houses: ~600px wide canvas at PPU=50 → ~12 Unity units wide.
+    # Slightly smaller (570px) so tray piece sizes match existing houses.
     TARGET_PPU = 50
-    TARGET_WORLD_WIDTH = 12.0
-    target_canvas_w = TARGET_PPU * TARGET_WORLD_WIDTH  # 600
+    TARGET_WORLD_WIDTH = 11.4
+    target_canvas_w = TARGET_PPU * TARGET_WORLD_WIDTH  # 570
     scale = target_canvas_w / house.canvas_width
 
     zip_buffer = io.BytesIO()
@@ -519,22 +520,40 @@ def api_export():
             img.save(buf, format="PNG")
             zf.writestr(name, buf.getvalue())
 
-        # scheme.png — all white piece boundary lines (Scheme sprite)
-        scheme = _generate_scheme(pieces, piece_images_orig)
+        # scheme.png — rasterize the vetted SVG outline paths from the frontend.
+        # These are the exact paths the user sees and approves in the blueprint view.
+        frontend_outlines = data.get("outlines", [])
+        scheme = _rasterize_outlines(
+            frontend_outlines, house.canvas_width, house.canvas_height
+        )
         _write_scaled(zf, "scheme.png", scheme)
 
-        # light.png — white outline around house perimeter only (Outline sprite)
-        light = _generate_light(pieces, piece_images_orig)
+        # light.png — outer house outline from SVG paths (same source as scheme)
+        light = _rasterize_outline_boundary(
+            frontend_outlines, house.canvas_width, house.canvas_height
+        )
         _write_scaled(zf, "light.png", light)
 
-        # blue.png — solid blue fill in house shape (Background sprite)
-        blue = _generate_blue(pieces, piece_images_orig)
-        _write_scaled(zf, "blue.png", blue)
-
         # flat.png — composite clipped to house shape (FullHouse sprite)
+        # blue.png — same silhouette filled with blue (Background sprite)
         if comp_src:
             flat = _generate_flat(pieces, piece_images_orig, comp_src)
             _write_scaled(zf, "flat.png", flat)
+
+        # blue.png — house silhouette filled with blue (same mask as flat)
+        import numpy as np
+        from PIL import ImageFilter
+        mask_raw = _build_house_mask(
+            piece_images_orig, pieces,
+            house.canvas_width, house.canvas_height,
+        )
+        mask_bin = Image.fromarray((mask_raw > 30).astype(np.uint8) * 255)
+        mask_closed = mask_bin.filter(ImageFilter.MaxFilter(5))
+        mask_closed = mask_closed.filter(ImageFilter.MinFilter(5))
+        blue = Image.new("RGBA", (house.canvas_width, house.canvas_height),
+                         (51, 85, 204, 255))
+        blue.putalpha(mask_closed)
+        _write_scaled(zf, "blue.png", blue)
 
         # Unity house_data.json (blocks, steps, colliders)
         placement = data.get("placement", {})
@@ -549,6 +568,7 @@ def api_export():
             location=placement.get("location", "Rome"),
             position_in_location=placement.get("position", 0),
             house_name=placement.get("houseName", "NewHouse"),
+            spacing=float(placement.get("spacing", 12.0)),
             piece_images=piece_images,
         )
         zf.writestr("house_data.json", json.dumps(house_data, indent=2))
@@ -560,6 +580,71 @@ def api_export():
         as_attachment=True,
         download_name="house_puzzle_export.zip",
     )
+
+
+def _rasterize_outline_boundary(outlines, canvas_w, canvas_h):
+    """Rasterize only the outer boundary of the house from SVG outline paths.
+
+    Draws all piece outlines as filled polygons to get the house silhouette,
+    then extracts the outer edge as a white stroke.
+    """
+    import numpy as np
+    from PIL import ImageFilter
+
+    # Fill all piece outlines to get house silhouette
+    silhouette = Image.new("L", (canvas_w, canvas_h), 0)
+    draw = ImageDraw.Draw(silhouette)
+    for outline in outlines:
+        pts = outline.get("points", [])
+        if len(pts) < 3:
+            continue
+        coords = [(p[0], p[1]) for p in pts]
+        draw.polygon(coords, fill=255)
+
+    # Morphological close to fill gaps
+    silhouette = silhouette.filter(ImageFilter.MaxFilter(5))
+    silhouette = silhouette.filter(ImageFilter.MinFilter(5))
+
+    # Extract outer edge: dilate - original
+    dilated = silhouette.filter(ImageFilter.MaxFilter(9))
+    edge = np.array(dilated).astype(np.int16) - np.array(silhouette).astype(np.int16)
+    edge = np.clip(edge, 0, 255).astype(np.uint8)
+
+    img = Image.new("RGBA", (canvas_w, canvas_h), (255, 255, 255, 255))
+    img.putalpha(Image.fromarray(edge))
+    return img
+
+
+def _rasterize_outlines(outlines, canvas_w, canvas_h):
+    """Rasterize frontend SVG outline paths into a scheme image.
+
+    Args:
+        outlines: list of {pieceId, points: [[x,y], ...]} from the frontend
+        canvas_w, canvas_h: original canvas dimensions
+    Returns:
+        PIL Image with white outline strokes on transparent background.
+    """
+    img = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    stroke_width = 4
+
+    for outline in outlines:
+        pts = outline.get("points", [])
+        if len(pts) < 3:
+            continue
+        coords = [(p[0], p[1]) for p in pts]
+        # Draw polygon outline (closed path) with round joins
+        draw.polygon(coords, outline=(255, 255, 255, 255))
+        # Draw thicker lines to match SVG stroke-width=4
+        for i in range(len(coords)):
+            draw.line(
+                [coords[i], coords[(i + 1) % len(coords)]],
+                fill=(255, 255, 255, 255),
+                width=stroke_width,
+                joint="curve",
+            )
+
+    return img
 
 
 def _generate_blueprint(house, pieces):

@@ -21,6 +21,13 @@
 Техдолг:
 1. Сделать полностью программный export API (без браузера) — чтобы /api/export покрывал весь функционал включая генерацию outline paths серверно, без необходимости открывать фронтенд
 
+## Bugs
+
+### Dragged piece renders under already-placed pieces
+When the user drags a piece from the tray toward the house, it floats underneath
+pieces that are already placed. The dragged piece should be on the topmost sorting
+layer so it's always visible above the house.
+
 ## Unity export improvements
 
 ### Bottom piece collider vectorization
@@ -32,3 +39,28 @@ This makes the collider flush with the ground by construction, no offset needed.
 **Why**: groundOffset is a global shift that only helps the single lowest piece. If multiple
 bottom pieces have different gaps, some still won't be perfectly flush. Per-piece bottom
 clamping would make every bottom piece individually correct.
+
+### ScalingFactor: principled formula instead of heuristic
+Replace the empirical `round(220 / avg_sprite_width)` in the exporter with the formula
+derived from camera/canvas geometry:
+
+```
+ScalingFactor = round(refHeight / (PPU × 2 × orthoSize))
+```
+
+**Known values** (from Game.unity scene):
+- `refHeight = 2868` (CanvasScaler reference resolution Y)
+- `PPU = 50` (sprite pixels per unit)
+- `orthoSize = 14.33` (orthographic camera size)
+- Result: `2868 / (50 × 28.66) = 2.001 ≈ 2`
+
+**Why it works**: a tray piece at `spriteWidth × SF` canvas units must appear the same
+screen size as the world-space sprite at `spriteWidth / PPU` world units. At the reference
+resolution the canvas scale factor is 1.0, so the formula reduces to the ratio above.
+Holds for any sprite size; holds for devices with the same aspect ratio as the reference
+(~0.46, standard portrait phones). Drifts slightly on very different aspect ratios due
+to `matchWidthOrHeight = 0.5`.
+
+**Expose as settings**: add `orthoSize` and `refResolution` as optional export parameters
+(alongside `ppu`) so the formula adapts if camera/canvas settings change in Unity.
+Currently these are hardcoded in the scene, but exposing them avoids silent breakage.

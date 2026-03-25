@@ -80,6 +80,16 @@ bottom edge and contour tracing at pixel centers adds ~0.02-0.04 units of gap.
   re-created the house at a new index but didn't clean up the old null slot
 - **Fix**: Manually removed the null entry from HousesData.asset
 
+### 8. House overlapping in scrollable list — Spacing=0 (FIXED 2026-03-25)
+- **Symptom**: NewHouse appeared directly on top of the previous house in the
+  game's scrollable house list (both at x≈86)
+- **Root cause**: The `Spacing` field in HouseData was exported as 0. The exporter
+  computed spacing from `position_in_location`: position=0 → spacing=0 (intended
+  for the first house in a location). But the default position was 0, so every
+  export got spacing=0 regardless of actual insertion point.
+- **Fix**: Made `spacing` an independent parameter (default 12.0) in both
+  `unity_export.py` and `server.py`. It no longer depends on position.
+
 ---
 
 ## Architecture Reference
@@ -122,3 +132,84 @@ HousePuzzleImporter.cs:
 - `HousePuzzleImporter.cs` — Unity importer, reads JSON colliders
 - `server.py` — `/api/export` endpoint
 - `UNITY_INTEGRATION.md` — this file (read before making changes!)
+
+---
+
+## Import / Re-import Procedure
+
+**Follow these steps exactly when importing or re-importing a house.**
+
+### Prerequisites
+- Unity Editor open, NOT in Play mode
+- Docker container running (`docker compose up` in house_puzzle/)
+- TIF loaded and pieces merged in the web UI
+
+### Step-by-step
+
+1. **Export from web UI**: Click "Export" in the puzzle editor → produces ZIP at
+   `in/house_export.zip`. Export config (placement) is sent via the API and
+   controls location, position, spacing, and house name.
+
+2. **Copy ZIP to import location**:
+   ```
+   cp in/house_export.zip /tmp/house_puzzle_export.zip
+   ```
+
+3. **If re-importing (house already exists)**: The importer detects existing
+   `NewHouse.asset` and reuses the sprite folder. It updates the asset in place
+   and skips the HousesData insert. No manual cleanup needed.
+   If you want a clean slate, delete:
+   - `Assets/Data/Houses/Rome/NewHouse.asset`
+   - `Assets/Visual/Sprites/Houses/Rome/11/` (the sprite folder)
+   - The NewHouse entry from `HousesData.asset` (Rome's HousesData array)
+
+4. **Trigger import**: In Unity menu: `Tools > House > Import From Temp ZIP`
+   (or via MCP: `execute_menu_item("Tools/House/Import From Temp ZIP")`)
+
+5. **Verify HousesData.asset**: Check that:
+   - NewHouse was appended at the END of the location's HousesData array
+   - NO existing houses were removed, reordered, or duplicated
+   - The GUID count matches expectations (count entries, compare with before)
+   **NEVER manually edit the HousesData order** — the game's save data
+   (gameData.json) maps indices 1:1 to this array. Changing order breaks saves.
+
+6. **Reset gameData.json** (ONLY while game is STOPPED — the running game
+   overwrites this file!):
+   - Set `CurrentLocation` to the location ID (e.g., `1` for Rome)
+   - Set that location's `CurrentHouse` to the NewHouse index in HousesData
+   - Ensure the save entry at that index has `IsCompleted: false`,
+     `BlockIndexes: []`. If there are fewer save entries than needed, the game
+     creates them on first launch.
+   - File: `~/.config/unity3d/mishmashroom/House Art_ Building Puzzle/gameData.json`
+
+7. **Start Play mode** and wait ~10 minutes. Monitor console:
+   - Look for `Start: LevelType: Rome, LevelNumber: XX, LevelName: Rome_YY`
+     to confirm the correct house loaded
+   - Look for `PosContainer` GameObjects to confirm house is fully set up
+   - Check for errors (ignore known assembly warnings and
+     "Target platform misconfiguration")
+
+### Export parameters (house_data.json)
+
+| Field     | Default | Description |
+|-----------|---------|-------------|
+| `spacing` | 12.0    | Gap (Unity units) before this house in the scrollable list. Set to 0 only for the first house in a location. Existing houses use 8–13. |
+| `placement.position` | 0 | Insertion index hint. The importer always appends at the end regardless. |
+| `placement.location` | "Rome" | Target location name (must match LocationsData). |
+| `placement.houseName` | "NewHouse" | Asset name. Determines re-import detection. |
+
+### Common pitfalls
+- **Spacing=0 makes houses overlap**: The `Spacing` field in HouseData controls
+  the gap between houses in the scrollable list. If 0, the house appears on top
+  of the previous one. Always export with spacing=12 unless it's the first house.
+  (Fixed 2026-03-25: spacing is now an independent parameter, default 12.)
+- **Game overwrites gameData.json**: ALWAYS stop Play mode before editing the
+  save file. Editing during play is silently reverted.
+- **Null entries in HousesData**: Removing a house asset without removing its
+  entry from HousesData leaves `{fileID: 0}` → NullReferenceException in
+  AtlasLoadingStage.cs:50.
+- **Never reorder HousesData**: The gameData save array maps indices 1:1 to
+  HousesData. Changing order (inserting/removing in the middle, restoring from
+  git) breaks all save data for that location.
+- **Save index vs HousesData index**: If the save has MORE entries than
+  HousesData (from previous states), the extra entries are harmless but stale.
