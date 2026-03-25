@@ -23,7 +23,7 @@ from PIL import Image
 # ---------------------------------------------------------------------------
 
 def trace_alpha_contours(
-    img: Image.Image, alpha_threshold: int = 30
+    img: Image.Image, alpha_threshold: int = 191
 ) -> list[list[tuple[int, int]]]:
     """Trace closed contour polygons from the alpha channel of an RGBA image.
 
@@ -184,6 +184,66 @@ def pixel_to_unity_position(
     }
 
 
+def inset_polygon(points: list[tuple[float, float]], distance: float) -> list[tuple[float, float]]:
+    """Inset (shrink) a polygon inward by *distance* pixels.
+
+    For each vertex, move it along the average of the two adjacent edge
+    inward-normals.  Detects winding direction automatically so the
+    normals always point inward regardless of CW/CCW ordering.
+    """
+    n = len(points)
+    if n < 3 or distance <= 0:
+        return points
+
+    # Determine winding: negative signed area = CW, positive = CCW
+    area = _signed_area(points)
+    if abs(area) < 1e-9:
+        return points
+    # sign flips normal direction so it always points inward
+    sign = -1.0 if area > 0 else 1.0
+
+    result = []
+    for i in range(n):
+        p0 = points[(i - 1) % n]
+        p1 = points[i]
+        p2 = points[(i + 1) % n]
+
+        # Edge vectors
+        e1x, e1y = p1[0] - p0[0], p1[1] - p0[1]
+        e2x, e2y = p2[0] - p1[0], p2[1] - p1[1]
+
+        # Normals perpendicular to edges (rotate 90° left: (-ey, ex))
+        len1 = math.sqrt(e1x * e1x + e1y * e1y) or 1e-9
+        n1x, n1y = -e1y / len1 * sign, e1x / len1 * sign
+
+        len2 = math.sqrt(e2x * e2x + e2y * e2y) or 1e-9
+        n2x, n2y = -e2y / len2 * sign, e2x / len2 * sign
+
+        # Average normal
+        nx, ny = n1x + n2x, n1y + n2y
+        nl = math.sqrt(nx * nx + ny * ny) or 1e-9
+        nx, ny = nx / nl, ny / nl
+
+        result.append((p1[0] + nx * distance, p1[1] + ny * distance))
+
+    # Verify winding didn't flip (polygon collapsed) — return original if so
+    area_inset = _signed_area(result)
+    if area * area_inset <= 0:
+        return points
+    return result
+
+
+def _signed_area(points: list[tuple[float, float]]) -> float:
+    """Signed area of a polygon (positive = CCW, negative = CW)."""
+    n = len(points)
+    area = 0.0
+    for i in range(n):
+        j = (i + 1) % n
+        area += points[i][0] * points[j][1]
+        area -= points[j][0] * points[i][1]
+    return area / 2.0
+
+
 def contour_to_collider_path(
     contour: list[tuple[float, float]],
     piece_width: int,
@@ -323,6 +383,11 @@ def build_house_data(
             steps[-1]["blockIndices"] = steps[-1]["blockIndices"] + unassigned
 
     # Generate colliders from piece images (trace + simplify)
+    # The PSD pipeline uses FixOverlaps (iterative ClipperLib inset at ~0.0001 units/step).
+    # We must NOT inset significantly — bottom blocks' colliders must touch Y=0 (ground)
+    # or blocks drift during the 0.4s physics check and get rejected (drift > 0.1 threshold).
+    # See UNITY_INTEGRATION.md §5 for the full drift analysis.
+    collider_inset_px = 0.0
     colliders = []
     if piece_images:
         for piece in pieces:
@@ -336,6 +401,7 @@ def build_house_data(
                 simplified = douglas_peucker_closed(contour, dp_epsilon)
                 if len(simplified) < 3:
                     continue
+                simplified = inset_polygon(simplified, collider_inset_px)
                 points = contour_to_collider_path(
                     simplified, img.width, img.height, ppu
                 )

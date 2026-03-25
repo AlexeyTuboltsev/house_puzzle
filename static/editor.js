@@ -388,6 +388,10 @@ async function doExport() {
                     wave: idx + 1,
                     pieceIds: w.pieceIds,
                 })),
+                outlines: cachedOutlinePaths.map(p => ({
+                    pieceId: p.pieceId,
+                    points: p.points,
+                })),
             }),
         });
         const blob = await resp.blob();
