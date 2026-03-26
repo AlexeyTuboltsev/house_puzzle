@@ -121,6 +121,47 @@ def compute_brick_areas(bricks: list[Brick],
     return result
 
 
+def compute_borders_and_areas(bricks: list[Brick],
+                              extract_dir: str,
+                              prefix: str = "brick") -> tuple[dict[int, set[tuple[int, int]]], dict[int, int]]:
+    """Compute border pixels AND pixel areas in a single pass (one PNG read per brick)."""
+    borders = {}
+    areas = {}
+    extract_path = Path(extract_dir)
+    for b in bricks:
+        png_path = extract_path / f"{prefix}_{b.id:03d}.png"
+        if not png_path.exists():
+            borders[b.id] = set()
+            areas[b.id] = b.width * b.height
+            continue
+
+        img = Image.open(str(png_path)).convert("RGBA")
+        alpha = np.array(img.split()[3])
+        opaque = alpha > 30
+
+        # Area
+        areas[b.id] = int(opaque.sum())
+
+        # Border pixels
+        h, w = opaque.shape
+        if not opaque.any():
+            borders[b.id] = set()
+            continue
+
+        padded = np.zeros((h + 2, w + 2), dtype=bool)
+        padded[1:-1, 1:-1] = opaque
+        border_mask = opaque & (
+            ~padded[:-2, 1:-1] |
+            ~padded[2:, 1:-1] |
+            ~padded[1:-1, :-2] |
+            ~padded[1:-1, 2:]
+        )
+        ys, xs = np.where(border_mask)
+        borders[b.id] = set(zip((xs + b.x).tolist(), (ys + b.y).tolist()))
+
+    return borders, areas
+
+
 def _count_close_pixels(border_a: set, border_b: set, gap: int) -> int:
     """Count how many pixels of border_a are within *gap* of any pixel in border_b.
 

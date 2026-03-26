@@ -4,10 +4,7 @@
 # Build:  pyinstaller house_puzzle.spec
 # Result: dist/house_puzzle/house_puzzle.exe (Windows) or dist/house_puzzle/house_puzzle (Linux)
 #
-# Prerequisites on the target machine:
-#   - ImageMagick installed and on PATH
-#     Windows: https://imagemagick.org/script/download.php#windows
-#     Linux:   apt install imagemagick
+# No external dependencies required (pure Python TIF parsing).
 
 import sys
 from pathlib import Path
@@ -22,6 +19,7 @@ a = Analysis(
         ('templates', 'templates'),
         ('static', 'static'),
         ('presets', 'presets'),
+        ('VERSION', '.'),
     ],
     hiddenimports=[],
     hookspath=[],

@@ -21,13 +21,13 @@ from flask import Flask, jsonify, render_template, request, send_file, send_from
 from PIL import Image, ImageDraw
 
 from tif_parser import parse_tif, extract_brick_png, extract_layers_batch
+from unity_export import build_house_data
 from puzzle_engine import (
     Brick,
     merge_bricks,
     pieces_to_json,
     build_adjacency,
-    compute_all_border_pixels,
-    compute_brick_areas,
+    compute_borders_and_areas,
     compute_piece_bbox,
 )
 
@@ -64,10 +64,14 @@ else:
 PRESETS_DIR = _app_dir / "presets"
 PARAM_KEYS = ["target_count", "min_border", "seed"]
 
+# Version
+_version_file = _base_dir / "VERSION"
+APP_VERSION = _version_file.read_text().strip() if _version_file.exists() else "dev"
+
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return render_template("index.html", version=APP_VERSION)
 
 
 @app.route("/manage")
@@ -235,12 +239,9 @@ def api_load_tif():
         if not base_path.exists():
             extract_brick_png(tif_path, house.base.index, str(base_path))
 
-    # Compute border pixels from actual brick shapes
-    bp = compute_all_border_pixels(bricks, str(extract_dir))
+    # Compute border pixels and areas in one pass (single PNG read per brick)
+    bp, ba = compute_borders_and_areas(bricks, str(extract_dir))
     _state["border_pixels"] = bp
-
-    # Compute pixel areas for area-balanced merging
-    ba = compute_brick_areas(bricks, str(extract_dir))
     _state["brick_areas"] = ba
 
     # Build adjacency for visualization (using pixel shapes)
@@ -463,62 +464,114 @@ def api_export():
     tif_path = _state["tif_path"]
     pieces = _state["pieces"]
 
+    waves_data = data.get("waves", [])
+
+    # Resize sprites to target PPU=50 to match existing houses.
+    # Existing houses: ~600px wide canvas at PPU=50 → ~12 Unity units wide.
+    # Slightly smaller (570px) so tray piece sizes match existing houses.
+    TARGET_PPU = 50
+    TARGET_WORLD_WIDTH = 11.4
+    target_canvas_w = TARGET_PPU * TARGET_WORLD_WIDTH  # 570
+    scale = target_canvas_w / house.canvas_width
+
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-        # Export each piece as a combined PNG
-        manifest_pieces = []
+        # Build piece images at ORIGINAL resolution (for asset generation),
+        # then scale for piece PNGs in the ZIP
+        piece_images_orig = {}
+        piece_images = {}
         for piece in pieces:
-            bricks = [_state["bricks_by_id"][bid] for bid in piece.brick_ids]
-
-            # Create piece image (RGBA, size = piece bounding box)
             piece_img = Image.new("RGBA", (piece.width, piece.height), (0, 0, 0, 0))
 
-            for b in bricks:
-                # Extract brick from TIF
+            for bid in piece.brick_ids:
+                b = _state["bricks_by_id"][bid]
                 tmp_brick = str(Path(tempfile.gettempdir()) / f"_brick_{b.id}.png")
                 extract_brick_png(tif_path, b.id, tmp_brick)
                 brick_img = Image.open(tmp_brick).convert("RGBA")
-                # Paste at relative position within piece
                 rel_x = b.x - piece.x
                 rel_y = b.y - piece.y
                 piece_img.paste(brick_img, (rel_x, rel_y), brick_img)
 
+            piece_images_orig[piece.id] = piece_img
+
+            # Resize to target scale for piece PNGs
+            new_w = max(1, round(piece_img.width * scale))
+            new_h = max(1, round(piece_img.height * scale))
+            scaled_img = piece_img.resize((new_w, new_h), Image.LANCZOS)
+            piece_images[piece.id] = scaled_img
+
             fname = f"piece_{piece.id:03d}.png"
             buf = io.BytesIO()
-            piece_img.save(buf, format="PNG")
+            scaled_img.save(buf, format="PNG")
             zf.writestr(f"pieces/{fname}", buf.getvalue())
 
-            manifest_pieces.append({
-                "id": piece.id,
-                "file": fname,
-                "x": piece.x,
-                "y": piece.y,
-                "width": piece.width,
-                "height": piece.height,
-                "brick_ids": piece.brick_ids,
-                "num_bricks": len(piece.brick_ids),
-            })
-
-        # Blueprint
-        blueprint_buf = io.BytesIO()
-        _generate_blueprint(house, pieces).save(blueprint_buf, format="PNG")
-        zf.writestr("blueprint.png", blueprint_buf.getvalue())
-
-        # Composite
+        # Load composite source image
         comp_path = _state["extracted_dir"] / "composite.png"
+        comp_src = None
         if comp_path.exists():
-            zf.write(str(comp_path), "composite.png")
+            comp_src = Image.open(str(comp_path)).convert("RGBA")
 
-        # Manifest (include wave data if provided)
-        waves_data = data.get("waves", [])
-        manifest = {
-            "source": Path(tif_path).name,
-            "canvas": {"width": house.canvas_width, "height": house.canvas_height},
-            "num_pieces": len(pieces),
-            "pieces": manifest_pieces,
-            "waves": waves_data,
-        }
-        zf.writestr("manifest.json", json.dumps(manifest, indent=2))
+        def _write_scaled(zf, name, img):
+            """Resize to target scale and write to ZIP."""
+            sw = max(1, round(img.width * scale))
+            sh = max(1, round(img.height * scale))
+            img = img.resize((sw, sh), Image.LANCZOS)
+            buf = io.BytesIO()
+            img.save(buf, format="PNG")
+            zf.writestr(name, buf.getvalue())
+
+        # scheme.png — rasterize the vetted SVG outline paths from the frontend.
+        # These are the exact paths the user sees and approves in the blueprint view.
+        frontend_outlines = data.get("outlines", [])
+        scheme = _rasterize_outlines(
+            frontend_outlines, house.canvas_width, house.canvas_height
+        )
+        _write_scaled(zf, "scheme.png", scheme)
+
+        # light.png — outer house outline from SVG paths (same source as scheme)
+        light = _rasterize_outline_boundary(
+            frontend_outlines, house.canvas_width, house.canvas_height
+        )
+        _write_scaled(zf, "light.png", light)
+
+        # flat.png — composite clipped to house shape (FullHouse sprite)
+        # blue.png — same silhouette filled with blue (Background sprite)
+        if comp_src:
+            flat = _generate_flat(pieces, piece_images_orig, comp_src)
+            _write_scaled(zf, "flat.png", flat)
+
+        # blue.png — house silhouette filled with blue (same mask as flat)
+        import numpy as np
+        from PIL import ImageFilter
+        mask_raw = _build_house_mask(
+            piece_images_orig, pieces,
+            house.canvas_width, house.canvas_height,
+        )
+        mask_bin = Image.fromarray((mask_raw > 30).astype(np.uint8) * 255)
+        mask_closed = mask_bin.filter(ImageFilter.MaxFilter(5))
+        mask_closed = mask_closed.filter(ImageFilter.MinFilter(5))
+        blue = Image.new("RGBA", (house.canvas_width, house.canvas_height),
+                         (51, 85, 204, 255))
+        blue.putalpha(mask_closed)
+        _write_scaled(zf, "blue.png", blue)
+
+        # Unity house_data.json (blocks, steps, colliders)
+        placement = data.get("placement", {})
+        house_data = build_house_data(
+            pieces=pieces,
+            bricks_by_id=_state["bricks_by_id"],
+            canvas_width=house.canvas_width,
+            canvas_height=house.canvas_height,
+            waves=waves_data,
+            ppu=TARGET_PPU,
+            scale=scale,
+            location=placement.get("location", "Rome"),
+            position_in_location=placement.get("position", 0),
+            house_name=placement.get("houseName", "NewHouse"),
+            spacing=float(placement.get("spacing", 12.0)),
+            piece_images=piece_images,
+        )
+        zf.writestr("house_data.json", json.dumps(house_data, indent=2))
 
     zip_buffer.seek(0)
     return send_file(
@@ -527,6 +580,71 @@ def api_export():
         as_attachment=True,
         download_name="house_puzzle_export.zip",
     )
+
+
+def _rasterize_outline_boundary(outlines, canvas_w, canvas_h):
+    """Rasterize only the outer boundary of the house from SVG outline paths.
+
+    Draws all piece outlines as filled polygons to get the house silhouette,
+    then extracts the outer edge as a white stroke.
+    """
+    import numpy as np
+    from PIL import ImageFilter
+
+    # Fill all piece outlines to get house silhouette
+    silhouette = Image.new("L", (canvas_w, canvas_h), 0)
+    draw = ImageDraw.Draw(silhouette)
+    for outline in outlines:
+        pts = outline.get("points", [])
+        if len(pts) < 3:
+            continue
+        coords = [(p[0], p[1]) for p in pts]
+        draw.polygon(coords, fill=255)
+
+    # Morphological close to fill gaps
+    silhouette = silhouette.filter(ImageFilter.MaxFilter(5))
+    silhouette = silhouette.filter(ImageFilter.MinFilter(5))
+
+    # Extract outer edge: dilate - original
+    dilated = silhouette.filter(ImageFilter.MaxFilter(15))
+    edge = np.array(dilated).astype(np.int16) - np.array(silhouette).astype(np.int16)
+    edge = np.clip(edge, 0, 255).astype(np.uint8)
+
+    img = Image.new("RGBA", (canvas_w, canvas_h), (255, 255, 255, 255))
+    img.putalpha(Image.fromarray(edge))
+    return img
+
+
+def _rasterize_outlines(outlines, canvas_w, canvas_h):
+    """Rasterize frontend SVG outline paths into a scheme image.
+
+    Args:
+        outlines: list of {pieceId, points: [[x,y], ...]} from the frontend
+        canvas_w, canvas_h: original canvas dimensions
+    Returns:
+        PIL Image with white outline strokes on transparent background.
+    """
+    img = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    stroke_width = 4
+
+    for outline in outlines:
+        pts = outline.get("points", [])
+        if len(pts) < 3:
+            continue
+        coords = [(p[0], p[1]) for p in pts]
+        # Draw polygon outline (closed path) with round joins
+        draw.polygon(coords, outline=(255, 255, 255, 255))
+        # Draw thicker lines to match SVG stroke-width=4
+        for i in range(len(coords)):
+            draw.line(
+                [coords[i], coords[(i + 1) % len(coords)]],
+                fill=(255, 255, 255, 255),
+                width=stroke_width,
+                joint="curve",
+            )
+
+    return img
 
 
 def _generate_blueprint(house, pieces):
@@ -551,19 +669,217 @@ def _generate_blueprint(house, pieces):
     return blueprint
 
 
+def _trace_piece_outlines(piece_images):
+    """Trace vectorized contour polygons for each piece using alpha contour tracing.
+
+    Returns list of (piece_id, contours) where contours is a list of simplified
+    polygon loops in piece-local pixel coords.
+    """
+    from unity_export import trace_alpha_contours, douglas_peucker_closed
+
+    result = []
+    for pid, img in piece_images.items():
+        contours = trace_alpha_contours(img)
+        simplified = []
+        for contour in contours:
+            s = douglas_peucker_closed(contour, 2.0)
+            if len(s) >= 3:
+                simplified.append(s)
+        result.append((pid, simplified))
+    return result
+
+
+def _build_house_mask(piece_images, pieces, canvas_w, canvas_h):
+    """Build a house silhouette mask by compositing all piece alpha channels."""
+    import numpy as np
+
+    mask = np.zeros((canvas_h, canvas_w), dtype=np.uint8)
+    for piece in pieces:
+        img = piece_images.get(piece.id)
+        if img is None:
+            continue
+        alpha = np.array(img.split()[3])
+        x, y = round(piece.x), round(piece.y)
+        h, w = alpha.shape
+        # Clip to canvas bounds
+        sx = max(0, -x)
+        sy = max(0, -y)
+        ex = min(w, canvas_w - x)
+        ey = min(h, canvas_h - y)
+        if sx >= ex or sy >= ey:
+            continue
+        region = alpha[sy:ey, sx:ex]
+        mask[y + sy:y + ey, x + sx:x + ex] = np.maximum(
+            mask[y + sy:y + ey, x + sx:x + ex], region
+        )
+    return mask
+
+
+def _generate_scheme(pieces, piece_images):
+    """Generate scheme.png — piece boundary lines for wave fill shader.
+
+    Existing houses use very low-alpha anti-aliased lines (alpha ~1) because
+    the SchemeMaterial shader reads alpha as a mask pattern.
+    We draw white lines at full alpha matching existing houses.
+    """
+    canvas_w, canvas_h = _state["house"].canvas_width, _state["house"].canvas_height
+    img = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    outlines = _trace_piece_outlines(piece_images)
+
+    for pid, contours in outlines:
+        piece = next(p for p in pieces if p.id == pid)
+        ox, oy = piece.x, piece.y
+        for contour in contours:
+            # Convert piece-local coords to canvas coords
+            pts = [(p[0] + ox, p[1] + oy) for p in contour]
+            if len(pts) >= 3:
+                draw.polygon(pts, outline=(255, 255, 255, 255))
+                for i in range(len(pts)):
+                    draw.line(
+                        [pts[i], pts[(i + 1) % len(pts)]],
+                        fill=(255, 255, 255, 255), width=6
+                    )
+
+    return img
+
+
+def _generate_light(pieces, piece_images):
+    """Generate light.png — white outline around house perimeter only.
+
+    Traces the combined house silhouette (all pieces composited) to get
+    only the outer boundary. No internal piece lines.
+    Matches existing houses' Outline sprite (e.g. Rome/10/light.png).
+    """
+    from unity_export import trace_alpha_contours, douglas_peucker_closed
+
+    canvas_w, canvas_h = _state["house"].canvas_width, _state["house"].canvas_height
+
+    # Build full house composite, close inter-piece gaps, then trace outer boundary
+    import numpy as np
+    from PIL import ImageFilter
+    house_composite = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
+    for piece in pieces:
+        pimg = piece_images.get(piece.id)
+        if pimg is None:
+            continue
+        house_composite.paste(pimg, (round(piece.x), round(piece.y)), pimg)
+
+    # Morphological close on alpha to eliminate inter-piece gaps
+    alpha = np.array(house_composite.split()[3])
+    mask_binary = Image.fromarray((alpha > 30).astype(np.uint8) * 255)
+    mask_closed = mask_binary.filter(ImageFilter.MaxFilter(7))
+    mask_closed = mask_closed.filter(ImageFilter.MinFilter(7))
+    # Rebuild composite with closed alpha for contour tracing
+    solid = Image.new("RGBA", (canvas_w, canvas_h), (255, 255, 255, 255))
+    solid.putalpha(mask_closed)
+
+    contours = trace_alpha_contours(solid)
+    img = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+
+    # Only keep contours with significant perimeter (skip tiny specks)
+    for contour in contours:
+        simplified = douglas_peucker_closed(contour, 2.0)
+        if len(simplified) < 10:
+            continue
+        for i in range(len(simplified)):
+            draw.line(
+                [simplified[i], simplified[(i + 1) % len(simplified)]],
+                fill=(255, 255, 255, 255), width=8
+            )
+
+    return img
+
+
+def _generate_blue(pieces, piece_images):
+    """Generate blue.png — solid blue fill in the shape of the house silhouette.
+
+    Uses traced SVG contours to create a filled blue shape matching the
+    actual house outline (not rectangles).
+    Matches existing houses' Background sprite (e.g. Rome/10/blue.png).
+    """
+    from unity_export import trace_alpha_contours, douglas_peucker_closed
+
+    canvas_w, canvas_h = _state["house"].canvas_width, _state["house"].canvas_height
+
+    # Build full house composite to trace outer boundary
+    house_composite = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
+    for piece in pieces:
+        pimg = piece_images.get(piece.id)
+        if pimg is None:
+            continue
+        house_composite.paste(pimg, (round(piece.x), round(piece.y)), pimg)
+
+    # Use alpha mask from composite, dilate to close inter-piece gaps
+    import numpy as np
+    from PIL import ImageFilter
+    mask = np.array(house_composite.split()[3])
+    mask_binary = Image.fromarray((mask > 30).astype(np.uint8) * 255)
+    # Dilate (MaxFilter) then erode (MinFilter) = morphological close
+    mask_closed = mask_binary.filter(ImageFilter.MaxFilter(5))
+    mask_closed = mask_closed.filter(ImageFilter.MinFilter(5))
+
+    blue = Image.new("RGBA", (canvas_w, canvas_h), (51, 85, 204, 255))
+    blue.putalpha(mask_closed)
+    return blue
+
+
+def _generate_flat(pieces, piece_images, comp_img):
+    """Generate flat.png — composite image clipped to house silhouette.
+
+    Matches existing houses' FullHouse sprite (e.g. Rome/10/flat.png).
+    """
+    import numpy as np
+
+    canvas_w, canvas_h = _state["house"].canvas_width, _state["house"].canvas_height
+
+    # Build house mask from piece alphas
+    house_composite = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
+    for piece in pieces:
+        pimg = piece_images.get(piece.id)
+        if pimg is None:
+            continue
+        house_composite.paste(pimg, (round(piece.x), round(piece.y)), pimg)
+
+    mask = np.array(house_composite.split()[3])
+    mask_binary = Image.fromarray((mask > 30).astype(np.uint8) * 255)
+    # Morphological close to fill inter-piece gaps
+    from PIL import ImageFilter
+    mask_closed = mask_binary.filter(ImageFilter.MaxFilter(5))
+    mask_closed = mask_closed.filter(ImageFilter.MinFilter(5))
+    mask = np.array(mask_closed)
+
+    if comp_img.size != (canvas_w, canvas_h):
+        comp_img = comp_img.resize((canvas_w, canvas_h), Image.LANCZOS)
+    result = comp_img.copy().convert("RGBA")
+    a = np.array(result.split()[3])
+    combined = np.minimum(a, mask)
+    result.putalpha(Image.fromarray(combined))
+    return result
+
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="House Puzzle Editor")
-    parser.add_argument("--port", type=int, default=5050)
-    parser.add_argument("--host", default="0.0.0.0")
-    parser.add_argument("--no-browser", action="store_true", help="Don't auto-open browser")
-    args = parser.parse_args()
+    try:
+        parser = argparse.ArgumentParser(description="House Puzzle Editor")
+        parser.add_argument("--port", type=int, default=5050)
+        parser.add_argument("--host", default="0.0.0.0")
+        parser.add_argument("--no-browser", action="store_true", help="Don't auto-open browser")
+        args = parser.parse_args()
 
-    url = f"http://localhost:{args.port}"
-    print(f"Starting House Puzzle Editor at {url}")
+        url = f"http://localhost:{args.port}"
+        print(f"House Puzzle Editor v{APP_VERSION}")
+        print(f"Starting at {url}")
 
-    is_frozen = getattr(sys, 'frozen', False)
+        is_frozen = getattr(sys, 'frozen', False)
 
-    if not args.no_browser:
-        threading.Timer(1.0, lambda: webbrowser.open(url)).start()
+        if not args.no_browser:
+            threading.Timer(1.0, lambda: webbrowser.open(url)).start()
 
-    app.run(host=args.host, port=args.port, debug=not is_frozen)
+        app.run(host=args.host, port=args.port, debug=not is_frozen)
+    except Exception as e:
+        print(f"\nERROR: {e}")
+        import traceback
+        traceback.print_exc()
+        if getattr(sys, 'frozen', False):
+            input("\nPress Enter to close...")

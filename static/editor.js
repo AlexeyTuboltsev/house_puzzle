@@ -28,6 +28,8 @@ let zoom = 1;
 // Array of { pieceId, points: [[x,y], ...] }
 let cachedOutlinePaths = [];
 let showOutlineOverlay = true;
+let showGrid = false;
+const GRID_STEP = 211; // height of brick #9 (first stone right of entrance, bottom row)
 
 // Canvas pan (for tall houses / scrolling)
 let panY = 0;
@@ -338,8 +340,6 @@ async function doMerge() {
         highlightedPieceIds.clear();
         document.getElementById('stat_pieces').textContent = data.num_pieces;
         document.getElementById('stat_selected').textContent = '-';
-        document.getElementById('exportBtn').disabled = false;
-
         buildPieceComposites();
 
         // Clear waves on regenerate — piece IDs change completely
@@ -381,7 +381,16 @@ async function doExport() {
         const resp = await fetch('/api/export', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({}),
+            body: JSON.stringify({
+                waves: waves.map((w, idx) => ({
+                    wave: idx + 1,
+                    pieceIds: w.pieceIds,
+                })),
+                outlines: cachedOutlinePaths.map(p => ({
+                    pieceId: p.pieceId,
+                    points: p.points,
+                })),
+            }),
         });
         const blob = await resp.blob();
 
@@ -433,6 +442,9 @@ function setView(mode) {
         svg.style.display = 'none';
         svg.innerHTML = '';
     }
+    // Hide outlines checkbox in blueprint view (blueprint has its own strokes)
+    document.getElementById('showOutlines').parentElement.style.display =
+        mode === 'blueprint' ? 'none' : '';
     saveState();
     render();
 }
@@ -488,7 +500,13 @@ function render() {
     const w = canvas.width;
     const h = canvas.height;
     ctx.clearRect(0, 0, w, h);
-    if (!canvasW) return;
+    if (!canvasW) {
+        if (viewMode === 'blueprint') {
+            ctx.fillStyle = '#2a5da8';
+            ctx.fillRect(0, 0, w, h);
+        }
+        return;
+    }
 
     ctx.save();
     const padX = (canvas.width - canvasW * zoom) / 2;
@@ -514,12 +532,21 @@ function render() {
     } else if (viewMode === 'pieces') {
         if (pieces.length) renderPieces();
     } else if (viewMode === 'blueprint') {
+        if (!pieces.length) {
+            ctx.fillStyle = '#2a5da8';
+            ctx.fillRect(0, 0, canvasW, canvasH);
+        }
         renderBlueprint();
     }
 
     // Draw outline overlay on pieces view (not blueprint — it has its own strokes)
     if (showOutlineOverlay && viewMode !== 'blueprint' && pieces.length) {
         renderOutlineOverlay();
+    }
+
+    // Draw grid overlay (canvas version — blueprint mode draws grid in SVG)
+    if (showGrid && canvasW && viewMode !== 'blueprint') {
+        renderGrid();
     }
 
     // Draw lasso rectangle if active
@@ -539,6 +566,41 @@ function render() {
     }
 
     ctx.restore();
+}
+
+function renderGrid() {
+    ctx.save();
+    ctx.strokeStyle = '#ff0000';
+    ctx.lineWidth = 1 / zoom;
+    // Horizontal lines: start from bottom edge, go up
+    for (let y = canvasH; y >= 0; y -= GRID_STEP) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(canvasW, y);
+        ctx.stroke();
+    }
+    // Vertical lines: start from center, expand outward both sides
+    const cx = canvasW / 2;
+    // Right from center
+    for (let x = cx; x <= canvasW; x += GRID_STEP) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, canvasH);
+        ctx.stroke();
+    }
+    // Left from center
+    for (let x = cx - GRID_STEP; x >= 0; x -= GRID_STEP) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, canvasH);
+        ctx.stroke();
+    }
+    ctx.restore();
+}
+
+function toggleGrid(on) {
+    showGrid = on;
+    render();
 }
 
 function getBrickComp(brick) {
@@ -732,23 +794,44 @@ function renderBlueprint() {
     const strokeW = 4;
     let svgContent = '';
 
-    for (const piece of pieces) {
-        const comp = pieceComposites[piece.id];
-        if (!comp) continue;
-
-        const outline = coarseTraceSnap(comp);
-        if (outline.length < 3) continue;
-        const simplified = autoSimplify(outline, 1);
-        const refined = refineCorners(simplified, outline, 20, 1);
+    // Reuse cached outline paths (already computed in buildOutlinePaths after merge)
+    for (const path of cachedOutlinePaths) {
+        if (path.points.length < 3) continue;
 
         let d = '';
-        for (let i = 0; i < refined.length; i++) {
-            const sx = (comp.x + refined[i][0]) * zoom + padX;
-            const sy = (comp.y + refined[i][1]) * zoom + padY_;
+        for (let i = 0; i < path.points.length; i++) {
+            const sx = path.points[i][0] * zoom + padX;
+            const sy = path.points[i][1] * zoom + padY_;
             d += (i === 0 ? 'M' : 'L') + sx.toFixed(1) + ',' + sy.toFixed(1);
         }
         d += 'Z';
         svgContent += `<path d="${d}" fill="#2a5da8" stroke="white" stroke-width="${strokeW.toFixed(1)}" stroke-linejoin="round" stroke-linecap="round" paint-order="fill stroke"/>`;
+    }
+
+    // Grid overlay on blueprint SVG
+    if (showGrid && canvasW) {
+        const sw = 1;  // 1px stroke
+        // Horizontal lines: bottom to top
+        for (let y = canvasH; y >= 0; y -= GRID_STEP) {
+            const sy = y * zoom + padY_;
+            const x1 = 0 * zoom + padX;
+            const x2 = canvasW * zoom + padX;
+            svgContent += `<line x1="${x1.toFixed(1)}" y1="${sy.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${sy.toFixed(1)}" stroke="#ff0000" stroke-width="${sw}"/>`;
+        }
+        // Vertical lines: center outward
+        const cx = canvasW / 2;
+        for (let x = cx; x <= canvasW; x += GRID_STEP) {
+            const sx = x * zoom + padX;
+            const y1 = 0 * zoom + padY_;
+            const y2 = canvasH * zoom + padY_;
+            svgContent += `<line x1="${sx.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${sx.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="#ff0000" stroke-width="${sw}"/>`;
+        }
+        for (let x = cx - GRID_STEP; x >= 0; x -= GRID_STEP) {
+            const sx = x * zoom + padX;
+            const y1 = 0 * zoom + padY_;
+            const y2 = canvasH * zoom + padY_;
+            svgContent += `<line x1="${sx.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${sx.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="#ff0000" stroke-width="${sw}"/>`;
+        }
     }
 
     svg.innerHTML = svgContent;
@@ -1983,6 +2066,15 @@ function renderWavesPanel() {
     // Set up drag and drop
     setupWaveDragDrop();
     updateSelectButtonState();
+    updateExportBtn();
+}
+
+function updateExportBtn() {
+    const btn = document.getElementById('exportBtn');
+    if (!btn) return;
+    const allAssigned = pieces.length > 0 && getUnassignedPieces().length === 0;
+    btn.disabled = !allAssigned;
+    btn.title = allAssigned ? '' : 'Assign all pieces to waves before exporting';
 }
 
 function renderPieceThumb(piece, waveId, thumbScale) {
