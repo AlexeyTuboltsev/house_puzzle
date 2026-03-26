@@ -7185,8 +7185,8 @@ var $author$project$Main$viewPieceOutline = function (piece) {
 					$elm$svg$Svg$Attributes$height(
 					$elm$core$String$fromFloat(piece.height)),
 					$elm$svg$Svg$Attributes$fill('transparent'),
-					$elm$svg$Svg$Attributes$stroke('white'),
-					$elm$svg$Svg$Attributes$strokeWidth('2'),
+					$elm$svg$Svg$Attributes$stroke('#555'),
+					$elm$svg$Svg$Attributes$strokeWidth('1'),
 					A2($elm$html$Html$Attributes$attribute, 'vector-effect', 'non-scaling-stroke'),
 					$elm$svg$Svg$Attributes$class('piece-outline')
 				]),
@@ -7209,8 +7209,8 @@ var $author$project$Main$viewPieceOutline = function (piece) {
 				[
 					$elm$svg$Svg$Attributes$points(pointsAttr),
 					$elm$svg$Svg$Attributes$fill('transparent'),
-					$elm$svg$Svg$Attributes$stroke('white'),
-					$elm$svg$Svg$Attributes$strokeWidth('2'),
+					$elm$svg$Svg$Attributes$stroke('#555'),
+					$elm$svg$Svg$Attributes$strokeWidth('1'),
 					$elm$svg$Svg$Attributes$strokeLinejoin('round'),
 					A2($elm$html$Html$Attributes$attribute, 'vector-effect', 'non-scaling-stroke'),
 					$elm$svg$Svg$Attributes$class('piece-outline')
@@ -7244,25 +7244,50 @@ var $author$project$Main$viewPieceOverlay = F2(
 			selectedId,
 			$elm$core$Maybe$Just(piece.id));
 		var fillColor = isSelected ? 'rgba(64,120,255,0.35)' : 'transparent';
-		return A2(
-			$elm$svg$Svg$rect,
-			_List_fromArray(
-				[
-					$elm$svg$Svg$Attributes$x(
-					$elm$core$String$fromFloat(piece.x)),
-					$elm$svg$Svg$Attributes$y(
-					$elm$core$String$fromFloat(piece.y)),
-					$elm$svg$Svg$Attributes$width(
-					$elm$core$String$fromFloat(piece.width)),
-					$elm$svg$Svg$Attributes$height(
-					$elm$core$String$fromFloat(piece.height)),
-					$elm$svg$Svg$Attributes$fill(fillColor),
-					$elm$svg$Svg$Attributes$class(
-					isSelected ? 'piece-overlay selected' : 'piece-overlay'),
-					$elm$html$Html$Events$onClick(
-					$author$project$Main$SelectPiece(piece.id))
-				]),
-			_List_Nil);
+		var cls = isSelected ? 'piece-overlay selected' : 'piece-overlay';
+		if ($elm$core$List$isEmpty(piece.polygon)) {
+			return A2(
+				$elm$svg$Svg$rect,
+				_List_fromArray(
+					[
+						$elm$svg$Svg$Attributes$x(
+						$elm$core$String$fromFloat(piece.x)),
+						$elm$svg$Svg$Attributes$y(
+						$elm$core$String$fromFloat(piece.y)),
+						$elm$svg$Svg$Attributes$width(
+						$elm$core$String$fromFloat(piece.width)),
+						$elm$svg$Svg$Attributes$height(
+						$elm$core$String$fromFloat(piece.height)),
+						$elm$svg$Svg$Attributes$fill(fillColor),
+						$elm$svg$Svg$Attributes$class(cls),
+						$elm$html$Html$Events$onClick(
+						$author$project$Main$SelectPiece(piece.id))
+					]),
+				_List_Nil);
+		} else {
+			var pointsAttr = A2(
+				$elm$core$String$join,
+				' ',
+				A2(
+					$elm$core$List$map,
+					function (_v0) {
+						var x = _v0.a;
+						var y = _v0.b;
+						return $elm$core$String$fromFloat(x) + (',' + $elm$core$String$fromFloat(y));
+					},
+					piece.polygon));
+			return A2(
+				$elm$svg$Svg$polygon,
+				_List_fromArray(
+					[
+						$elm$svg$Svg$Attributes$points(pointsAttr),
+						$elm$svg$Svg$Attributes$fill(fillColor),
+						$elm$svg$Svg$Attributes$class(cls),
+						$elm$html$Html$Events$onClick(
+						$author$project$Main$SelectPiece(piece.id))
+					]),
+				_List_Nil);
+		}
 	});
 var $author$project$Main$viewMainSvg = F2(
 	function (response, model) {
@@ -7312,8 +7337,8 @@ var $author$project$Main$viewMainSvg = F2(
 				_Utils_ap(
 					compositeOverlays,
 					_Utils_ap(
-						gridLayer,
-						_Utils_ap(outlineLayer, pieceOverlays)))));
+						outlineLayer,
+						_Utils_ap(gridLayer, pieceOverlays)))));
 	});
 var $author$project$Main$viewCanvasArea = function (model) {
 	return A2(

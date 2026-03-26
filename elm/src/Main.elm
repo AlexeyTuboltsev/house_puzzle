@@ -865,8 +865,8 @@ viewMainSvg response model =
         ]
         (baseLayer
             ++ compositeOverlays
-            ++ gridLayer
             ++ outlineLayer
+            ++ gridLayer
             ++ pieceOverlays
         )
 
@@ -1082,8 +1082,8 @@ viewPieceOutline piece =
             , SA.width (String.fromFloat piece.width)
             , SA.height (String.fromFloat piece.height)
             , SA.fill "transparent"
-            , SA.stroke "white"
-            , SA.strokeWidth "2"
+            , SA.stroke "#555"
+            , SA.strokeWidth "1"
             , attribute "vector-effect" "non-scaling-stroke"
             , SA.class "piece-outline"
             ]
@@ -1099,8 +1099,8 @@ viewPieceOutline piece =
         Svg.polygon
             [ SA.points pointsAttr
             , SA.fill "transparent"
-            , SA.stroke "white"
-            , SA.strokeWidth "2"
+            , SA.stroke "#555"
+            , SA.strokeWidth "1"
             , SA.strokeLinejoin "round"
             , attribute "vector-effect" "non-scaling-stroke"
             , SA.class "piece-outline"
@@ -1120,23 +1120,40 @@ viewPieceOverlay selectedId piece =
 
             else
                 "transparent"
-    in
-    Svg.rect
-        [ SA.x (String.fromFloat piece.x)
-        , SA.y (String.fromFloat piece.y)
-        , SA.width (String.fromFloat piece.width)
-        , SA.height (String.fromFloat piece.height)
-        , SA.fill fillColor
-        , SA.class
-            (if isSelected then
+
+        cls =
+            if isSelected then
                 "piece-overlay selected"
 
-             else
+            else
                 "piece-overlay"
-            )
-        , onClick (SelectPiece piece.id)
-        ]
-        []
+    in
+    if List.isEmpty piece.polygon then
+        Svg.rect
+            [ SA.x (String.fromFloat piece.x)
+            , SA.y (String.fromFloat piece.y)
+            , SA.width (String.fromFloat piece.width)
+            , SA.height (String.fromFloat piece.height)
+            , SA.fill fillColor
+            , SA.class cls
+            , onClick (SelectPiece piece.id)
+            ]
+            []
+
+    else
+        let
+            pointsAttr =
+                piece.polygon
+                    |> List.map (\( x, y ) -> String.fromFloat x ++ "," ++ String.fromFloat y)
+                    |> String.join " "
+        in
+        Svg.polygon
+            [ SA.points pointsAttr
+            , SA.fill fillColor
+            , SA.class cls
+            , onClick (SelectPiece piece.id)
+            ]
+            []
 
 
 viewWavesPanel : Model -> Html Msg
