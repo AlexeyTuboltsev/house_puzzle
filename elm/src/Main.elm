@@ -128,7 +128,7 @@ init : () -> ( Model, Cmd Msg )
 init _ =
     ( { selectedFileName = ""
       , loadState = Idle
-      , targetCount = 10
+      , targetCount = 60
       , minBorder = 5
       , seed = 42
       , generateState = NotGenerated

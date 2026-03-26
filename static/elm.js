@@ -5521,7 +5521,7 @@ var $elm$core$Platform$Cmd$batch = _Platform_batch;
 var $elm$core$Platform$Cmd$none = $elm$core$Platform$Cmd$batch(_List_Nil);
 var $author$project$Main$init = function (_v0) {
 	return _Utils_Tuple2(
-		{bricksById: $elm$core$Dict$empty, generateState: $author$project$Main$NotGenerated, loadState: $author$project$Main$Idle, minBorder: 5, nextWaveId: 1, pieceImages: $elm$core$Dict$empty, pieces: _List_Nil, seed: 42, selectedFileName: '', selectedPieceId: $elm$core$Maybe$Nothing, showGrid: false, showOutlines: true, targetCount: 10, viewMode: $author$project$Main$ViewPieces, waves: _List_Nil},
+		{bricksById: $elm$core$Dict$empty, generateState: $author$project$Main$NotGenerated, loadState: $author$project$Main$Idle, minBorder: 5, nextWaveId: 1, pieceImages: $elm$core$Dict$empty, pieces: _List_Nil, seed: 42, selectedFileName: '', selectedPieceId: $elm$core$Maybe$Nothing, showGrid: false, showOutlines: true, targetCount: 60, viewMode: $author$project$Main$ViewPieces, waves: _List_Nil},
 		$elm$core$Platform$Cmd$none);
 };
 var $author$project$Main$GotPieceImages = function (a) {
