@@ -170,6 +170,7 @@ body {
     align-items: center;
     justify-content: center;
     padding: 16px;
+    position: relative;
 }
 .canvas-info {
     color: #555;
@@ -304,6 +305,27 @@ body {
 }
 .piece-thumb:hover { border-color: rgba(60,200,255,0.6); }
 .piece-thumb-label { font-size: 9px; color: #aaa; text-align: center; margin-top: 1px; }
+
+/* Canvas recomputing spinner overlay */
+.canvas-spinner-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0,0,0,0.35);
+    pointer-events: none;
+    z-index: 10;
+}
+.canvas-spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid rgba(224,160,80,0.3);
+    border-top-color: #e0a050;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
 
 /* Not-built banner */
 #not-built {

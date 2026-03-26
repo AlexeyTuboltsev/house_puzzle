@@ -124,6 +124,7 @@ type alias Model =
     , editMode : Bool
     , editBrickIds : List Int
     , editOriginalBrickIds : List Int
+    , recomputing : Bool
     }
 
 
@@ -147,6 +148,7 @@ init _ =
       , editMode = False
       , editBrickIds = []
       , editOriginalBrickIds = []
+      , recomputing = False
       }
     , Cmd.none
     )
@@ -213,6 +215,7 @@ update msg model =
                 , editMode = False
                 , editBrickIds = []
                 , editOriginalBrickIds = []
+                , recomputing = False
               }
             , uploadTif file
             )
@@ -274,6 +277,7 @@ update msg model =
                         , editMode = False
                         , editBrickIds = []
                         , editOriginalBrickIds = []
+                        , recomputing = False
                       }
                     , mergeBricks model.targetCount model.minBorder model.seed
                     )
@@ -293,7 +297,7 @@ update msg model =
             case D.decodeValue decodePieceImages val of
                 Ok images ->
                     ( { model
-                        | pieceImages = Dict.fromList images
+                        | pieceImages = Dict.union (Dict.fromList images) model.pieceImages
                         , generateState = Generated
                       }
                     , Cmd.none
@@ -452,28 +456,15 @@ update msg model =
                                 )
                                 removedBrickIds
 
-                        -- Combine, filter empty, recalculate bboxes, re-index
-                        reindexed =
+                        -- Combine, filter empty, recalculate bboxes (keep original IDs)
+                        allPieces =
                             (updatedExisting ++ newSinglePieces)
                                 |> List.filter (\p -> not (List.isEmpty p.brickIds))
                                 |> List.map (recalcPieceBbox model.bricksById)
-                                |> List.indexedMap (\i p -> { p | id = i })
-
-                        -- Find new selected piece (whichever contains first brick of newBrickIds)
-                        newSelectedId =
-                            newBrickIds
-                                |> List.head
-                                |> Maybe.andThen
-                                    (\firstBid ->
-                                        reindexed
-                                            |> List.filter (\p -> List.member firstBid p.brickIds)
-                                            |> List.head
-                                            |> Maybe.map .id
-                                    )
 
                         -- Prune stale wave piece references
                         validIds =
-                            List.map .id reindexed
+                            List.map .id allPieces
 
                         updatedWaves =
                             List.map
@@ -481,18 +472,18 @@ update msg model =
                                 model.waves
                     in
                     ( { model
-                        | pieces = reindexed
+                        | pieces = allPieces
                         , waves = updatedWaves
                         , editMode = False
                         , editBrickIds = []
                         , editOriginalBrickIds = []
-                        , generateState = Compositing
-                        , pieceImages = Dict.empty
-                        , selectedPieceId = newSelectedId
+                        , generateState = Generated
+                        , recomputing = True
+                        , selectedPieceId = Just editedPieceId
                       }
                     , Cmd.batch
-                        [ compositePieces (encodePieceList reindexed)
-                        , recomputePiecePolygons reindexed
+                        [ compositePieces (encodePieceList allPieces)
+                        , recomputePiecePolygons allPieces
                         ]
                     )
 
@@ -522,10 +513,10 @@ update msg model =
                         )
                         model.pieces
             in
-            ( { model | pieces = updatedPieces }, Cmd.none )
+            ( { model | pieces = updatedPieces, recomputing = False }, Cmd.none )
 
         GotPiecePolygons (Err _) ->
-            ( model, Cmd.none )
+            ( { model | recomputing = False }, Cmd.none )
 
 
 
@@ -943,7 +934,7 @@ viewSidebar model =
                         , div [ class "btn-row" ]
                             [ button
                                 [ onClick StartEdit
-                                , disabled (model.selectedPieceId == Nothing || model.generateState /= Generated)
+                                , disabled (model.selectedPieceId == Nothing || model.generateState /= Generated || model.recomputing)
                                 ]
                                 [ text
                                     (case model.selectedPieceId of
@@ -1079,13 +1070,20 @@ viewStats model =
 viewCanvasArea : Model -> Html Msg
 viewCanvasArea model =
     div [ class "canvas-area" ]
-        [ case model.loadState of
+        (case model.loadState of
             Loaded response ->
-                viewMainSvg response model
+                [ viewMainSvg response model
+                , if model.recomputing then
+                    div [ class "canvas-spinner-overlay" ]
+                        [ div [ class "canvas-spinner" ] [] ]
+
+                  else
+                    text ""
+                ]
 
             _ ->
-                div [ class "canvas-info" ] [ text "Select a TIF to begin" ]
-        ]
+                [ div [ class "canvas-info" ] [ text "Select a TIF to begin" ] ]
+        )
 
 
 viewMainSvg : LoadResponse -> Model -> Html Msg
@@ -1355,19 +1353,7 @@ viewBrickEditOverlay editBrickIds brick =
 viewPieceBlueprintPath : Piece -> Svg.Svg Msg
 viewPieceBlueprintPath piece =
     if List.isEmpty piece.polygon then
-        Svg.rect
-            [ SA.x (String.fromFloat piece.x)
-            , SA.y (String.fromFloat piece.y)
-            , SA.width (String.fromFloat piece.width)
-            , SA.height (String.fromFloat piece.height)
-            , SA.fill "#2a5da8"
-            , SA.stroke "white"
-            , SA.strokeWidth "4"
-            , attribute "vector-effect" "non-scaling-stroke"
-            , attribute "paint-order" "fill stroke"
-            , SA.class "brick-path"
-            ]
-            []
+        Svg.g [] []
 
     else
         let
@@ -1393,18 +1379,7 @@ viewPieceBlueprintPath piece =
 viewPieceOutline : Piece -> Svg.Svg Msg
 viewPieceOutline piece =
     if List.isEmpty piece.polygon then
-        Svg.rect
-            [ SA.x (String.fromFloat piece.x)
-            , SA.y (String.fromFloat piece.y)
-            , SA.width (String.fromFloat piece.width)
-            , SA.height (String.fromFloat piece.height)
-            , SA.fill "transparent"
-            , SA.stroke "#555"
-            , SA.strokeWidth "1"
-            , attribute "vector-effect" "non-scaling-stroke"
-            , SA.class "piece-outline"
-            ]
-            []
+        Svg.g [] []
 
     else
         let
@@ -1446,16 +1421,7 @@ viewPieceOverlay selectedId piece =
                 "piece-overlay"
     in
     if List.isEmpty piece.polygon then
-        Svg.rect
-            [ SA.x (String.fromFloat piece.x)
-            , SA.y (String.fromFloat piece.y)
-            , SA.width (String.fromFloat piece.width)
-            , SA.height (String.fromFloat piece.height)
-            , SA.fill fillColor
-            , SA.class cls
-            , onClick (SelectPiece piece.id)
-            ]
-            []
+        Svg.g [] []
 
     else
         let

@@ -5521,7 +5521,7 @@ var $elm$core$Platform$Cmd$batch = _Platform_batch;
 var $elm$core$Platform$Cmd$none = $elm$core$Platform$Cmd$batch(_List_Nil);
 var $author$project$Main$init = function (_v0) {
 	return _Utils_Tuple2(
-		{bricksById: $elm$core$Dict$empty, editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, generateState: $author$project$Main$NotGenerated, loadState: $author$project$Main$Idle, minBorder: 5, nextWaveId: 1, pieceImages: $elm$core$Dict$empty, pieces: _List_Nil, seed: 42, selectedFileName: '', selectedPieceId: $elm$core$Maybe$Nothing, showGrid: false, showOutlines: true, targetCount: 60, viewMode: $author$project$Main$ViewPieces, waves: _List_Nil},
+		{bricksById: $elm$core$Dict$empty, editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, generateState: $author$project$Main$NotGenerated, loadState: $author$project$Main$Idle, minBorder: 5, nextWaveId: 1, pieceImages: $elm$core$Dict$empty, pieces: _List_Nil, recomputing: false, seed: 42, selectedFileName: '', selectedPieceId: $elm$core$Maybe$Nothing, showGrid: false, showOutlines: true, targetCount: 60, viewMode: $author$project$Main$ViewPieces, waves: _List_Nil},
 		$elm$core$Platform$Cmd$none);
 };
 var $author$project$Main$GotPieceImages = function (a) {
@@ -5549,15 +5549,6 @@ var $author$project$Main$Loaded = function (a) {
 };
 var $author$project$Main$Loading = {$: 'Loading'};
 var $author$project$Main$Uploading = {$: 'Uploading'};
-var $elm$core$Maybe$andThen = F2(
-	function (callback, maybeValue) {
-		if (maybeValue.$ === 'Just') {
-			var value = maybeValue.a;
-			return callback(value);
-		} else {
-			return $elm$core$Maybe$Nothing;
-		}
-	});
 var $author$project$Main$compositePieces = _Platform_outgoingPort('compositePieces', $elm$core$Basics$identity);
 var $elm$json$Json$Decode$field = _Json_decodeField;
 var $elm$json$Json$Decode$int = _Json_decodeInt;
@@ -6814,6 +6805,35 @@ var $author$project$Main$recomputePiecePolygons = function (pieces) {
 			url: '/api/merge'
 		});
 };
+var $elm$core$Dict$foldl = F3(
+	function (func, acc, dict) {
+		foldl:
+		while (true) {
+			if (dict.$ === 'RBEmpty_elm_builtin') {
+				return acc;
+			} else {
+				var key = dict.b;
+				var value = dict.c;
+				var left = dict.d;
+				var right = dict.e;
+				var $temp$func = func,
+					$temp$acc = A3(
+					func,
+					key,
+					value,
+					A3($elm$core$Dict$foldl, func, acc, left)),
+					$temp$dict = right;
+				func = $temp$func;
+				acc = $temp$acc;
+				dict = $temp$dict;
+				continue foldl;
+			}
+		}
+	});
+var $elm$core$Dict$union = F2(
+	function (t1, t2) {
+		return A3($elm$core$Dict$foldl, $elm$core$Dict$insert, t2, t1);
+	});
 var $author$project$Main$GotUploadResponse = function (a) {
 	return {$: 'GotUploadResponse', a: a};
 };
@@ -6873,6 +6893,7 @@ var $author$project$Main$update = F2(
 							nextWaveId: 1,
 							pieceImages: $elm$core$Dict$empty,
 							pieces: _List_Nil,
+							recomputing: false,
 							selectedFileName: $elm$file$File$name(file),
 							selectedPieceId: $elm$core$Maybe$Nothing,
 							waves: _List_Nil
@@ -6974,7 +6995,7 @@ var $author$project$Main$update = F2(
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
-							{editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, generateState: $author$project$Main$Compositing, nextWaveId: 1, pieceImages: $elm$core$Dict$empty, pieces: _List_Nil, selectedPieceId: $elm$core$Maybe$Nothing, waves: _List_Nil}),
+							{editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, generateState: $author$project$Main$Compositing, nextWaveId: 1, pieceImages: $elm$core$Dict$empty, pieces: _List_Nil, recomputing: false, selectedPieceId: $elm$core$Maybe$Nothing, waves: _List_Nil}),
 						A3($author$project$Main$mergeBricks, model.targetCount, model.minBorder, model.seed));
 				} else {
 					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
@@ -7005,7 +7026,10 @@ var $author$project$Main$update = F2(
 							model,
 							{
 								generateState: $author$project$Main$Generated,
-								pieceImages: $elm$core$Dict$fromList(images)
+								pieceImages: A2(
+									$elm$core$Dict$union,
+									$elm$core$Dict$fromList(images),
+									model.pieceImages)
 							}),
 						$elm$core$Platform$Cmd$none);
 				} else {
@@ -7215,46 +7239,21 @@ var $author$project$Main$update = F2(
 								}
 							}),
 						removedBrickIds);
-					var reindexed = A2(
-						$elm$core$List$indexedMap,
-						F2(
-							function (i, p) {
-								return _Utils_update(
-									p,
-									{id: i});
-							}),
+					var allPieces = A2(
+						$elm$core$List$map,
+						$author$project$Main$recalcPieceBbox(model.bricksById),
 						A2(
-							$elm$core$List$map,
-							$author$project$Main$recalcPieceBbox(model.bricksById),
-							A2(
-								$elm$core$List$filter,
-								function (p) {
-									return !$elm$core$List$isEmpty(p.brickIds);
-								},
-								_Utils_ap(updatedExisting, newSinglePieces))));
-					var newSelectedId = A2(
-						$elm$core$Maybe$andThen,
-						function (firstBid) {
-							return A2(
-								$elm$core$Maybe$map,
-								function ($) {
-									return $.id;
-								},
-								$elm$core$List$head(
-									A2(
-										$elm$core$List$filter,
-										function (p) {
-											return A2($elm$core$List$member, firstBid, p.brickIds);
-										},
-										reindexed)));
-						},
-						$elm$core$List$head(newBrickIds));
+							$elm$core$List$filter,
+							function (p) {
+								return !$elm$core$List$isEmpty(p.brickIds);
+							},
+							_Utils_ap(updatedExisting, newSinglePieces)));
 					var validIds = A2(
 						$elm$core$List$map,
 						function ($) {
 							return $.id;
 						},
-						reindexed);
+						allPieces);
 					var updatedWaves = A2(
 						$elm$core$List$map,
 						function (w) {
@@ -7273,13 +7272,22 @@ var $author$project$Main$update = F2(
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
-							{editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, generateState: $author$project$Main$Compositing, pieceImages: $elm$core$Dict$empty, pieces: reindexed, selectedPieceId: newSelectedId, waves: updatedWaves}),
+							{
+								editBrickIds: _List_Nil,
+								editMode: false,
+								editOriginalBrickIds: _List_Nil,
+								generateState: $author$project$Main$Generated,
+								pieces: allPieces,
+								recomputing: true,
+								selectedPieceId: $elm$core$Maybe$Just(editedPieceId),
+								waves: updatedWaves
+							}),
 						$elm$core$Platform$Cmd$batch(
 							_List_fromArray(
 								[
 									$author$project$Main$compositePieces(
-									$author$project$Main$encodePieceList(reindexed)),
-									$author$project$Main$recomputePiecePolygons(reindexed)
+									$author$project$Main$encodePieceList(allPieces)),
+									$author$project$Main$recomputePiecePolygons(allPieces)
 								])));
 				}
 			case 'CancelEdit':
@@ -7309,10 +7317,14 @@ var $author$project$Main$update = F2(
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
-							{pieces: updatedPieces}),
+							{pieces: updatedPieces, recomputing: false}),
 						$elm$core$Platform$Cmd$none);
 				} else {
-					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{recomputing: false}),
+						$elm$core$Platform$Cmd$none);
 				}
 		}
 	});
@@ -7593,28 +7605,10 @@ var $author$project$Main$viewGrid = F3(
 			A2($elm$core$List$range, 1, numV));
 		return _Utils_ap(vLines, hLines);
 	});
+var $elm$svg$Svg$g = $elm$svg$Svg$trustedNode('g');
 var $author$project$Main$viewPieceBlueprintPath = function (piece) {
 	if ($elm$core$List$isEmpty(piece.polygon)) {
-		return A2(
-			$elm$svg$Svg$rect,
-			_List_fromArray(
-				[
-					$elm$svg$Svg$Attributes$x(
-					$elm$core$String$fromFloat(piece.x)),
-					$elm$svg$Svg$Attributes$y(
-					$elm$core$String$fromFloat(piece.y)),
-					$elm$svg$Svg$Attributes$width(
-					$elm$core$String$fromFloat(piece.width)),
-					$elm$svg$Svg$Attributes$height(
-					$elm$core$String$fromFloat(piece.height)),
-					$elm$svg$Svg$Attributes$fill('#2a5da8'),
-					$elm$svg$Svg$Attributes$stroke('white'),
-					$elm$svg$Svg$Attributes$strokeWidth('4'),
-					A2($elm$html$Html$Attributes$attribute, 'vector-effect', 'non-scaling-stroke'),
-					A2($elm$html$Html$Attributes$attribute, 'paint-order', 'fill stroke'),
-					$elm$svg$Svg$Attributes$class('brick-path')
-				]),
-			_List_Nil);
+		return A2($elm$svg$Svg$g, _List_Nil, _List_Nil);
 	} else {
 		var pointsAttr = A2(
 			$elm$core$String$join,
@@ -7686,25 +7680,7 @@ var $author$project$Main$viewPieceImage = F2(
 	});
 var $author$project$Main$viewPieceOutline = function (piece) {
 	if ($elm$core$List$isEmpty(piece.polygon)) {
-		return A2(
-			$elm$svg$Svg$rect,
-			_List_fromArray(
-				[
-					$elm$svg$Svg$Attributes$x(
-					$elm$core$String$fromFloat(piece.x)),
-					$elm$svg$Svg$Attributes$y(
-					$elm$core$String$fromFloat(piece.y)),
-					$elm$svg$Svg$Attributes$width(
-					$elm$core$String$fromFloat(piece.width)),
-					$elm$svg$Svg$Attributes$height(
-					$elm$core$String$fromFloat(piece.height)),
-					$elm$svg$Svg$Attributes$fill('transparent'),
-					$elm$svg$Svg$Attributes$stroke('#555'),
-					$elm$svg$Svg$Attributes$strokeWidth('1'),
-					A2($elm$html$Html$Attributes$attribute, 'vector-effect', 'non-scaling-stroke'),
-					$elm$svg$Svg$Attributes$class('piece-outline')
-				]),
-			_List_Nil);
+		return A2($elm$svg$Svg$g, _List_Nil, _List_Nil);
 	} else {
 		var pointsAttr = A2(
 			$elm$core$String$join,
@@ -7743,24 +7719,7 @@ var $author$project$Main$viewPieceOverlay = F2(
 		var fillColor = isSelected ? 'rgba(64,120,255,0.35)' : 'transparent';
 		var cls = isSelected ? 'piece-overlay selected' : 'piece-overlay';
 		if ($elm$core$List$isEmpty(piece.polygon)) {
-			return A2(
-				$elm$svg$Svg$rect,
-				_List_fromArray(
-					[
-						$elm$svg$Svg$Attributes$x(
-						$elm$core$String$fromFloat(piece.x)),
-						$elm$svg$Svg$Attributes$y(
-						$elm$core$String$fromFloat(piece.y)),
-						$elm$svg$Svg$Attributes$width(
-						$elm$core$String$fromFloat(piece.width)),
-						$elm$svg$Svg$Attributes$height(
-						$elm$core$String$fromFloat(piece.height)),
-						$elm$svg$Svg$Attributes$fill(fillColor),
-						$elm$svg$Svg$Attributes$class(cls),
-						$elm$html$Html$Events$onClick(
-						$author$project$Main$SelectPiece(piece.id))
-					]),
-				_List_Nil);
+			return A2($elm$svg$Svg$g, _List_Nil, _List_Nil);
 		} else {
 			var pointsAttr = A2(
 				$elm$core$String$join,
@@ -7861,15 +7820,34 @@ var $author$project$Main$viewCanvasArea = function (model) {
 			[
 				$elm$html$Html$Attributes$class('canvas-area')
 			]),
-		_List_fromArray(
-			[
-				function () {
-				var _v0 = model.loadState;
-				if (_v0.$ === 'Loaded') {
-					var response = _v0.a;
-					return A2($author$project$Main$viewMainSvg, response, model);
-				} else {
-					return A2(
+		function () {
+			var _v0 = model.loadState;
+			if (_v0.$ === 'Loaded') {
+				var response = _v0.a;
+				return _List_fromArray(
+					[
+						A2($author$project$Main$viewMainSvg, response, model),
+						model.recomputing ? A2(
+						$elm$html$Html$div,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('canvas-spinner-overlay')
+							]),
+						_List_fromArray(
+							[
+								A2(
+								$elm$html$Html$div,
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$class('canvas-spinner')
+									]),
+								_List_Nil)
+							])) : $elm$html$Html$text('')
+					]);
+			} else {
+				return _List_fromArray(
+					[
+						A2(
 						$elm$html$Html$div,
 						_List_fromArray(
 							[
@@ -7878,10 +7856,10 @@ var $author$project$Main$viewCanvasArea = function (model) {
 						_List_fromArray(
 							[
 								$elm$html$Html$text('Select a TIF to begin')
-							]));
-				}
-			}()
-			]));
+							]))
+					]);
+			}
+		}());
 };
 var $elm$html$Html$button = _VirtualDom_node('button');
 var $elm$json$Json$Encode$bool = _Json_wrap;
@@ -8588,7 +8566,7 @@ var $author$project$Main$viewSidebar = function (model) {
 											[
 												$elm$html$Html$Events$onClick($author$project$Main$StartEdit),
 												$elm$html$Html$Attributes$disabled(
-												_Utils_eq(model.selectedPieceId, $elm$core$Maybe$Nothing) || (!_Utils_eq(model.generateState, $author$project$Main$Generated)))
+												_Utils_eq(model.selectedPieceId, $elm$core$Maybe$Nothing) || ((!_Utils_eq(model.generateState, $author$project$Main$Generated)) || model.recomputing))
 											]),
 										_List_fromArray(
 											[
