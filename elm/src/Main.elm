@@ -121,6 +121,9 @@ type alias Model =
     , waves : List Wave
     , nextWaveId : Int
     , selectedPieceId : Maybe Int
+    , editMode : Bool
+    , editBrickIds : List Int
+    , editOriginalBrickIds : List Int
     }
 
 
@@ -141,6 +144,9 @@ init _ =
       , waves = []
       , nextWaveId = 1
       , selectedPieceId = Nothing
+      , editMode = False
+      , editBrickIds = []
+      , editOriginalBrickIds = []
       }
     , Cmd.none
     )
@@ -167,6 +173,10 @@ type Msg
     | AddWave
     | ToggleWaveVisibility Int
     | SelectPiece Int
+    | StartEdit
+    | ToggleBrickInEdit Int
+    | SaveEdit
+    | CancelEdit
 
 
 
@@ -199,6 +209,9 @@ update msg model =
                 , waves = []
                 , nextWaveId = 1
                 , selectedPieceId = Nothing
+                , editMode = False
+                , editBrickIds = []
+                , editOriginalBrickIds = []
               }
             , uploadTif file
             )
@@ -257,6 +270,9 @@ update msg model =
                         , waves = []
                         , nextWaveId = 1
                         , selectedPieceId = Nothing
+                        , editMode = False
+                        , editBrickIds = []
+                        , editOriginalBrickIds = []
                       }
                     , mergeBricks model.targetCount model.minBorder model.seed
                     )
@@ -337,6 +353,196 @@ update msg model =
               }
             , Cmd.none
             )
+
+        StartEdit ->
+            case model.selectedPieceId of
+                Nothing ->
+                    ( model, Cmd.none )
+
+                Just pid ->
+                    case List.filter (\p -> p.id == pid) model.pieces |> List.head of
+                        Nothing ->
+                            ( model, Cmd.none )
+
+                        Just piece ->
+                            ( { model
+                                | editMode = True
+                                , editBrickIds = piece.brickIds
+                                , editOriginalBrickIds = piece.brickIds
+                              }
+                            , Cmd.none
+                            )
+
+        ToggleBrickInEdit bid ->
+            let
+                newList =
+                    if List.member bid model.editBrickIds then
+                        if List.length model.editBrickIds <= 1 then
+                            model.editBrickIds
+
+                        else
+                            List.filter (\b -> b /= bid) model.editBrickIds
+
+                    else
+                        model.editBrickIds ++ [ bid ]
+            in
+            ( { model | editBrickIds = newList }, Cmd.none )
+
+        SaveEdit ->
+            case model.selectedPieceId of
+                Nothing ->
+                    ( { model | editMode = False, editBrickIds = [], editOriginalBrickIds = [] }
+                    , Cmd.none
+                    )
+
+                Just editedPieceId ->
+                    let
+                        newBrickIds =
+                            model.editBrickIds
+
+                        removedBrickIds =
+                            model.pieces
+                                |> List.filter (\p -> p.id == editedPieceId)
+                                |> List.head
+                                |> Maybe.map (\p -> List.filter (\bid -> not (List.member bid newBrickIds)) p.brickIds)
+                                |> Maybe.withDefault []
+
+                        -- Update edited piece; strip stolen bricks from all others
+                        updatedExisting =
+                            List.map
+                                (\p ->
+                                    if p.id == editedPieceId then
+                                        { p | brickIds = newBrickIds }
+
+                                    else
+                                        { p | brickIds = List.filter (\bid -> not (List.member bid newBrickIds)) p.brickIds }
+                                )
+                                model.pieces
+
+                        -- New single-brick pieces for bricks removed from the edited piece
+                        maxId =
+                            List.foldl Basics.max 0 (List.map .id model.pieces)
+
+                        newSinglePieces =
+                            List.indexedMap
+                                (\i bid ->
+                                    case Dict.get bid model.bricksById of
+                                        Just brick ->
+                                            { id = maxId + i + 1
+                                            , x = brick.x
+                                            , y = brick.y
+                                            , width = brick.width
+                                            , height = brick.height
+                                            , brickIds = [ bid ]
+                                            , bricks = [ BrickRef bid brick.x brick.y brick.width brick.height ]
+                                            , polygon = []
+                                            }
+
+                                        Nothing ->
+                                            { id = maxId + i + 1
+                                            , x = 0
+                                            , y = 0
+                                            , width = 0
+                                            , height = 0
+                                            , brickIds = [ bid ]
+                                            , bricks = []
+                                            , polygon = []
+                                            }
+                                )
+                                removedBrickIds
+
+                        -- Combine, filter empty, recalculate bboxes, re-index
+                        reindexed =
+                            (updatedExisting ++ newSinglePieces)
+                                |> List.filter (\p -> not (List.isEmpty p.brickIds))
+                                |> List.map (recalcPieceBbox model.bricksById)
+                                |> List.indexedMap (\i p -> { p | id = i })
+
+                        -- Find new selected piece (whichever contains first brick of newBrickIds)
+                        newSelectedId =
+                            newBrickIds
+                                |> List.head
+                                |> Maybe.andThen
+                                    (\firstBid ->
+                                        reindexed
+                                            |> List.filter (\p -> List.member firstBid p.brickIds)
+                                            |> List.head
+                                            |> Maybe.map .id
+                                    )
+
+                        -- Prune stale wave piece references
+                        validIds =
+                            List.map .id reindexed
+
+                        updatedWaves =
+                            List.map
+                                (\w -> { w | pieceIds = List.filter (\pid -> List.member pid validIds) w.pieceIds })
+                                model.waves
+                    in
+                    ( { model
+                        | pieces = reindexed
+                        , waves = updatedWaves
+                        , editMode = False
+                        , editBrickIds = []
+                        , editOriginalBrickIds = []
+                        , generateState = Compositing
+                        , pieceImages = Dict.empty
+                        , selectedPieceId = newSelectedId
+                      }
+                    , compositePieces (encodePieceList reindexed)
+                    )
+
+        CancelEdit ->
+            ( { model
+                | editMode = False
+                , editBrickIds = []
+                , editOriginalBrickIds = []
+              }
+            , Cmd.none
+            )
+
+
+
+-- ── Helpers ─────────────────────────────────────────────────────────────────
+
+
+recalcPieceBbox : Dict Int Brick -> Piece -> Piece
+recalcPieceBbox bricksById piece =
+    let
+        bricks =
+            List.filterMap (\bid -> Dict.get bid bricksById) piece.brickIds
+
+        newBrickRefs =
+            List.map (\b -> BrickRef b.id b.x b.y b.width b.height) bricks
+
+        xs =
+            List.map .x bricks
+
+        ys =
+            List.map .y bricks
+
+        x2s =
+            List.map (\b -> b.x + b.width) bricks
+
+        y2s =
+            List.map (\b -> b.y + b.height) bricks
+    in
+    case List.minimum xs of
+        Nothing ->
+            piece
+
+        Just x ->
+            case ( List.minimum ys, List.maximum x2s, List.maximum y2s ) of
+                ( Just y, Just x2, Just y2 ) ->
+                    { piece | x = x, y = y, width = x2 - x, height = y2 - y, bricks = newBrickRefs, polygon = [] }
+
+                _ ->
+                    piece
+
+
+editHasChanges : Model -> Bool
+editHasChanges model =
+    List.sort model.editBrickIds /= List.sort model.editOriginalBrickIds
 
 
 
@@ -552,153 +758,201 @@ viewSidebar model =
             model.loadState == Uploading || model.loadState == Loading
     in
     div [ class "sidebar" ]
-        ([ h2 [] [ text "Source TIF" ]
-         , button
-             [ onClick PickFile
-             , disabled busy
-             , style "width" "100%"
-             , style "margin-bottom" "4px"
-             ]
-             [ text "Open TIF\u{2026}" ]
-         ]
-            ++ (if not (String.isEmpty model.selectedFileName) then
-                    [ div
-                        [ style "font-size" "11px"
-                        , style "color" "#e0a050"
-                        , style "margin-bottom" "6px"
-                        , style "overflow" "hidden"
-                        , style "text-overflow" "ellipsis"
-                        , style "white-space" "nowrap"
-                        ]
-                        [ text model.selectedFileName ]
-                    ]
+        (if model.editMode then
+            viewEditControls model
 
-                else
-                    []
-               )
-            ++ [ viewStatusBadge model ]
-            ++ (if isLoaded then
-                    [ h2 [] [ text "View" ]
-                    , div [ class "view-toggles" ]
-                        [ button
-                            [ classList [ ( "active", model.viewMode == ViewPieces ) ]
-                            , onClick (SetViewMode ViewPieces)
+         else
+            [ h2 [] [ text "Source TIF" ]
+            , button
+                [ onClick PickFile
+                , disabled busy
+                , style "width" "100%"
+                , style "margin-bottom" "4px"
+                ]
+                [ text "Open TIF\u{2026}" ]
+            ]
+                ++ (if not (String.isEmpty model.selectedFileName) then
+                        [ div
+                            [ style "font-size" "11px"
+                            , style "color" "#e0a050"
+                            , style "margin-bottom" "6px"
+                            , style "overflow" "hidden"
+                            , style "text-overflow" "ellipsis"
+                            , style "white-space" "nowrap"
                             ]
-                            [ text "Pieces" ]
-                        , button
-                            [ classList [ ( "active", model.viewMode == ViewBlueprint ) ]
-                            , onClick (SetViewMode ViewBlueprint)
-                            ]
-                            [ text "Blueprint" ]
+                            [ text model.selectedFileName ]
                         ]
-                    , div [ class "checkbox-group" ]
-                        [ input
-                            [ type_ "checkbox"
-                            , id "showOutlines"
-                            , checked model.showOutlines
-                            , onCheck ToggleOutlines
-                            ]
-                            []
-                        , label [ for "showOutlines" ] [ text "Show piece outlines" ]
-                        ]
-                    , div [ class "checkbox-group" ]
-                        [ input
-                            [ type_ "checkbox"
-                            , id "showGrid"
-                            , checked model.showGrid
-                            , onCheck ToggleGrid
-                            ]
-                            []
-                        , label [ for "showGrid" ] [ text "Show grid" ]
-                        ]
-                    , h2 [] [ text "Puzzle Parameters" ]
-                    , div [ class "param-group" ]
-                        [ label []
-                            [ text "Target Pieces "
-                            , span [ class "value" ] [ text (String.fromInt model.targetCount) ]
-                            ]
-                        , input
-                            [ type_ "range"
-                            , Html.Attributes.min "5"
-                            , Html.Attributes.max "181"
-                            , value (String.fromInt model.targetCount)
-                            , onInput SetTargetCount
-                            ]
-                            []
-                        ]
-                    , div [ class "param-group" ]
-                        [ label []
-                            [ text "Min Border "
-                            , span [ class "value" ] [ text (String.fromInt model.minBorder) ]
-                            , text "px"
-                            ]
-                        , input
-                            [ type_ "range"
-                            , Html.Attributes.min "0"
-                            , Html.Attributes.max "50"
-                            , value (String.fromInt model.minBorder)
-                            , onInput SetMinBorder
-                            ]
-                            []
-                        ]
-                    , div [ class "param-group" ]
-                        [ label []
-                            [ text "Seed "
-                            , span [ class "value" ] [ text (String.fromInt model.seed) ]
-                            ]
-                        , input
-                            [ type_ "number"
-                            , value (String.fromInt model.seed)
-                            , onInput SetSeed
-                            , Html.Attributes.min "0"
-                            , Html.Attributes.max "99999"
-                            ]
-                            []
-                        ]
-                    , div [ class "btn-row" ]
-                        [ button
-                            [ class "primary"
-                            , onClick RequestGenerate
-                            , disabled isCompositing
-                            ]
-                            [ text
-                                (if isCompositing then
-                                    "Generating\u{2026}"
 
-                                 else
-                                    "Generate Puzzle"
-                                )
+                    else
+                        []
+                   )
+                ++ [ viewStatusBadge model ]
+                ++ (if isLoaded then
+                        [ h2 [] [ text "View" ]
+                        , div [ class "view-toggles" ]
+                            [ button
+                                [ classList [ ( "active", model.viewMode == ViewPieces ) ]
+                                , onClick (SetViewMode ViewPieces)
+                                ]
+                                [ text "Pieces" ]
+                            , button
+                                [ classList [ ( "active", model.viewMode == ViewBlueprint ) ]
+                                , onClick (SetViewMode ViewBlueprint)
+                                ]
+                                [ text "Blueprint" ]
                             ]
-                        ]
-                    , div [ class "btn-row" ]
-                        [ button
-                            [ disabled (model.selectedPieceId == Nothing) ]
-                            [ text
-                                (case model.selectedPieceId of
-                                    Just pid ->
-                                        "Edit Piece #" ++ String.fromInt pid
-
-                                    Nothing ->
-                                        "Edit Piece"
-                                )
+                        , div [ class "checkbox-group" ]
+                            [ input
+                                [ type_ "checkbox"
+                                , id "showOutlines"
+                                , checked model.showOutlines
+                                , onCheck ToggleOutlines
+                                ]
+                                []
+                            , label [ for "showOutlines" ] [ text "Show piece outlines" ]
                             ]
-                        ]
-                    , h2 [] [ text "Stats" ]
-                    , viewStats model
-                    ]
+                        , div [ class "checkbox-group" ]
+                            [ input
+                                [ type_ "checkbox"
+                                , id "showGrid"
+                                , checked model.showGrid
+                                , onCheck ToggleGrid
+                                ]
+                                []
+                            , label [ for "showGrid" ] [ text "Show grid" ]
+                            ]
+                        , h2 [] [ text "Puzzle Parameters" ]
+                        , div [ class "param-group" ]
+                            [ label []
+                                [ text "Target Pieces "
+                                , span [ class "value" ] [ text (String.fromInt model.targetCount) ]
+                                ]
+                            , input
+                                [ type_ "range"
+                                , Html.Attributes.min "5"
+                                , Html.Attributes.max "181"
+                                , value (String.fromInt model.targetCount)
+                                , onInput SetTargetCount
+                                ]
+                                []
+                            ]
+                        , div [ class "param-group" ]
+                            [ label []
+                                [ text "Min Border "
+                                , span [ class "value" ] [ text (String.fromInt model.minBorder) ]
+                                , text "px"
+                                ]
+                            , input
+                                [ type_ "range"
+                                , Html.Attributes.min "0"
+                                , Html.Attributes.max "50"
+                                , value (String.fromInt model.minBorder)
+                                , onInput SetMinBorder
+                                ]
+                                []
+                            ]
+                        , div [ class "param-group" ]
+                            [ label []
+                                [ text "Seed "
+                                , span [ class "value" ] [ text (String.fromInt model.seed) ]
+                                ]
+                            , input
+                                [ type_ "number"
+                                , value (String.fromInt model.seed)
+                                , onInput SetSeed
+                                , Html.Attributes.min "0"
+                                , Html.Attributes.max "99999"
+                                ]
+                                []
+                            ]
+                        , div [ class "btn-row" ]
+                            [ button
+                                [ class "primary"
+                                , onClick RequestGenerate
+                                , disabled isCompositing
+                                ]
+                                [ text
+                                    (if isCompositing then
+                                        "Generating\u{2026}"
 
-                else
-                    []
-               )
-            ++ [ div
-                    [ style "margin-top" "auto"
-                    , style "padding-top" "12px"
-                    , style "font-size" "10px"
-                    , style "color" "#555"
-                    ]
-                    [ text "Elm" ]
-               ]
+                                     else
+                                        "Generate Puzzle"
+                                    )
+                                ]
+                            ]
+                        , div [ class "btn-row" ]
+                            [ button
+                                [ onClick StartEdit
+                                , disabled (model.selectedPieceId == Nothing || model.generateState /= Generated)
+                                ]
+                                [ text
+                                    (case model.selectedPieceId of
+                                        Just pid ->
+                                            "Edit Piece #" ++ String.fromInt pid
+
+                                        Nothing ->
+                                            "Edit Piece"
+                                    )
+                                ]
+                            ]
+                        , h2 [] [ text "Stats" ]
+                        , viewStats model
+                        ]
+
+                    else
+                        []
+                   )
+                ++ [ div
+                        [ style "margin-top" "auto"
+                        , style "padding-top" "12px"
+                        , style "font-size" "10px"
+                        , style "color" "#555"
+                        ]
+                        [ text "Elm" ]
+                   ]
         )
+
+
+viewEditControls : Model -> List (Html Msg)
+viewEditControls model =
+    let
+        changed =
+            editHasChanges model
+
+        pieceLabel =
+            case model.selectedPieceId of
+                Just pid ->
+                    "Piece #" ++ String.fromInt pid
+
+                Nothing ->
+                    "Piece"
+
+        brickCount =
+            List.length model.editBrickIds
+    in
+    [ h2 [] [ text ("Editing " ++ pieceLabel) ]
+    , div
+        [ style "font-size" "11px"
+        , style "color" "#aaa"
+        , style "margin-bottom" "10px"
+        , style "line-height" "1.5"
+        ]
+        [ text "Click bricks to add/remove."
+        , br [] []
+        , text (String.fromInt brickCount ++ " brick" ++ (if brickCount == 1 then "" else "s") ++ " selected.")
+        ]
+    , div [ class "btn-row" ]
+        [ button
+            [ class "primary"
+            , onClick SaveEdit
+            , disabled (not changed)
+            ]
+            [ text "Save" ]
+        , button
+            [ onClick CancelEdit ]
+            [ text "Cancel" ]
+        ]
+    ]
 
 
 viewStatusBadge : Model -> Html Msg
@@ -803,7 +1057,22 @@ viewMainSvg response model =
 
         -- Base layer
         baseLayer =
-            if showPieceImages then
+            if model.editMode then
+                if response.hasComposite then
+                    [ Svg.image
+                        [ SA.x "0"
+                        , SA.y "0"
+                        , SA.width w
+                        , SA.height h
+                        , attribute "href" "/api/composite.png"
+                        ]
+                        []
+                    ]
+
+                else
+                    []
+
+            else if showPieceImages then
                 List.map (viewPieceImage model.pieceImages) model.pieces
 
             else if showComposite then
@@ -818,11 +1087,9 @@ viewMainSvg response model =
                 ]
 
             else if isGenerated then
-                -- Blueprint post-gen: merged piece polygons
                 List.map viewPieceBlueprintPath model.pieces
 
             else
-                -- Pre-gen: individual brick polygons
                 List.map viewBrickPath response.bricks
 
         -- Composite brick hover overlays (pre-gen only)
@@ -833,25 +1100,33 @@ viewMainSvg response model =
             else
                 []
 
+        -- Edit mode: brick overlays for toggling
+        editOverlays =
+            if model.editMode then
+                List.map (viewBrickEditOverlay model.editBrickIds) response.bricks
+
+            else
+                []
+
         -- Grid lines
         gridLayer =
-            if model.showGrid then
+            if (not model.editMode) && model.showGrid then
                 viewGrid cw ch model.viewMode
 
             else
                 []
 
-        -- Piece outlines — white rect borders around each piece (post-gen only)
+        -- Piece outlines (post-gen, pieces mode, not in edit)
         outlineLayer =
-            if isGenerated && model.showOutlines then
+            if (not model.editMode) && isGenerated && model.showOutlines then
                 List.map viewPieceOutline model.pieces
 
             else
                 []
 
-        -- Piece interaction overlays (hover + click, post-gen only)
+        -- Piece interaction overlays (post-gen, not in edit)
         pieceOverlays =
-            if isGenerated then
+            if (not model.editMode) && isGenerated then
                 List.map (viewPieceOverlay model.selectedPieceId) model.pieces
 
             else
@@ -863,11 +1138,15 @@ viewMainSvg response model =
         , SA.width w
         , SA.height h
         ]
-        (baseLayer
-            ++ compositeOverlays
-            ++ outlineLayer
-            ++ gridLayer
-            ++ pieceOverlays
+        (if model.editMode then
+            baseLayer ++ editOverlays
+
+         else
+            baseLayer
+                ++ compositeOverlays
+                ++ outlineLayer
+                ++ gridLayer
+                ++ pieceOverlays
         )
 
 
@@ -970,70 +1249,49 @@ viewBrickOverlay brick =
             []
 
 
-viewGrid : Float -> Float -> ViewMode -> List (Svg.Svg Msg)
-viewGrid cw ch viewMode =
+viewBrickEditOverlay : List Int -> Brick -> Svg.Svg Msg
+viewBrickEditOverlay editBrickIds brick =
     let
-        gridStep =
-            211.0
+        inEdit =
+            List.member brick.id editBrickIds
 
-        color =
-            if viewMode == ViewBlueprint then
-                "#ff0000"
+        absPoints =
+            List.map (\( x, y ) -> ( x + brick.x, y + brick.y )) brick.polygon
+
+        pointsAttr =
+            absPoints
+                |> List.map (\( x, y ) -> String.fromFloat x ++ "," ++ String.fromFloat y)
+                |> String.join " "
+
+        cls =
+            if inEdit then
+                "brick-edit-in"
 
             else
-                "#e0a050"
-
-        numV =
-            floor (cw / gridStep)
-
-        numH =
-            floor (ch / gridStep)
-
-        vLines =
-            List.map
-                (\i ->
-                    let
-                        x =
-                            toFloat i * gridStep
-                    in
-                    Svg.line
-                        [ SA.x1 (String.fromFloat x)
-                        , SA.y1 "0"
-                        , SA.x2 (String.fromFloat x)
-                        , SA.y2 (String.fromFloat ch)
-                        , SA.stroke color
-                        , SA.strokeWidth "1"
-                        , attribute "vector-effect" "non-scaling-stroke"
-                        ]
-                        []
-                )
-                (List.range 1 numV)
-
-        hLines =
-            List.map
-                (\i ->
-                    let
-                        y =
-                            toFloat i * gridStep
-                    in
-                    Svg.line
-                        [ SA.x1 "0"
-                        , SA.y1 (String.fromFloat y)
-                        , SA.x2 (String.fromFloat cw)
-                        , SA.y2 (String.fromFloat y)
-                        , SA.stroke color
-                        , SA.strokeWidth "1"
-                        , attribute "vector-effect" "non-scaling-stroke"
-                        ]
-                        []
-                )
-                (List.range 1 numH)
+                "brick-edit-out"
     in
-    vLines ++ hLines
+    if List.isEmpty absPoints then
+        Svg.rect
+            [ SA.x (String.fromFloat brick.x)
+            , SA.y (String.fromFloat brick.y)
+            , SA.width (String.fromFloat brick.width)
+            , SA.height (String.fromFloat brick.height)
+            , SA.class cls
+            , attribute "vector-effect" "non-scaling-stroke"
+            , onClick (ToggleBrickInEdit brick.id)
+            ]
+            []
+
+    else
+        Svg.polygon
+            [ SA.points pointsAttr
+            , SA.class cls
+            , attribute "vector-effect" "non-scaling-stroke"
+            , onClick (ToggleBrickInEdit brick.id)
+            ]
+            []
 
 
--- Renders the merged piece shape as a blueprint polygon (blue fill, white stroke).
--- Piece polygon is in canvas coords (absolute), unlike brick polygons which are brick-local.
 viewPieceBlueprintPath : Piece -> Svg.Svg Msg
 viewPieceBlueprintPath piece =
     if List.isEmpty piece.polygon then
@@ -1072,7 +1330,6 @@ viewPieceBlueprintPath piece =
             []
 
 
--- Renders the piece outline (transparent fill, white stroke) on top of composite images.
 viewPieceOutline : Piece -> Svg.Svg Msg
 viewPieceOutline piece =
     if List.isEmpty piece.polygon then
@@ -1154,6 +1411,68 @@ viewPieceOverlay selectedId piece =
             , onClick (SelectPiece piece.id)
             ]
             []
+
+
+viewGrid : Float -> Float -> ViewMode -> List (Svg.Svg Msg)
+viewGrid cw ch viewMode =
+    let
+        gridStep =
+            211.0
+
+        color =
+            if viewMode == ViewBlueprint then
+                "#ff0000"
+
+            else
+                "#e0a050"
+
+        numV =
+            floor (cw / gridStep)
+
+        numH =
+            floor (ch / gridStep)
+
+        vLines =
+            List.map
+                (\i ->
+                    let
+                        x =
+                            toFloat i * gridStep
+                    in
+                    Svg.line
+                        [ SA.x1 (String.fromFloat x)
+                        , SA.y1 "0"
+                        , SA.x2 (String.fromFloat x)
+                        , SA.y2 (String.fromFloat ch)
+                        , SA.stroke color
+                        , SA.strokeWidth "1"
+                        , attribute "vector-effect" "non-scaling-stroke"
+                        ]
+                        []
+                )
+                (List.range 1 numV)
+
+        hLines =
+            List.map
+                (\i ->
+                    let
+                        y =
+                            toFloat i * gridStep
+                    in
+                    Svg.line
+                        [ SA.x1 "0"
+                        , SA.y1 (String.fromFloat y)
+                        , SA.x2 (String.fromFloat cw)
+                        , SA.y2 (String.fromFloat y)
+                        , SA.stroke color
+                        , SA.strokeWidth "1"
+                        , attribute "vector-effect" "non-scaling-stroke"
+                        ]
+                        []
+                )
+                (List.range 1 numH)
+    in
+    vLines ++ hLines
 
 
 viewWavesPanel : Model -> Html Msg
