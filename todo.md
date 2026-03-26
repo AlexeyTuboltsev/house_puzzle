@@ -21,6 +21,33 @@
 Техдолг:
 1. Сделать полностью программный export API (без браузера) — чтобы /api/export покрывал весь функционал включая генерацию outline paths серверно, без необходимости открывать фронтенд
 
+## Wave integration status
+Frontend wave UI exists and wave data is already sent with export:
+- `editor.js:387` sends `waves: [{wave: 1, pieceIds: [...]}, ...]`
+- `unity_export.py` maps these to `steps[].blockIndices` in house_data.json
+- Importer reads steps and populates `HouseData.SchemeData.Steps[]`
+- **Fallback**: if no waves defined by user, `_auto_waves_by_y()` splits into 3 waves by Y position (bottom first)
+- **TODO**: verify in-game that manually-assigned waves from the UI produce correct step progression
+
+## Visual polish
+
+### Match outline/scheme stroke weight to existing houses
+The scheme.png and light.png stroke widths don't quite match the weight of
+existing houses. Needs experimenting with `stroke_width` in `_rasterize_outlines()`
+(currently 4) and `MaxFilter` kernel size in `_rasterize_outline_boundary()`
+(currently 9) until they look consistent with the originals.
+
+## UI/UX polish
+
+### Selection is very slow
+Selecting pieces (lasso or click) is noticeably laggy. Needs profiling and
+optimization — likely re-rendering or hit-testing on every mouse move.
+
+### Wave selection highlight — house only, no tray highlight
+When selecting pieces via the select tool that belong to a wave, show the brown
+selection highlight on the house canvas as usual, but do NOT show the brown
+selection border/rectangle on the piece thumbnail in the wave panel.
+
 ## Bugs
 
 ### Dragged piece renders under already-placed pieces

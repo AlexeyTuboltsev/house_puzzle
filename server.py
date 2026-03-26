@@ -606,7 +606,7 @@ def _rasterize_outline_boundary(outlines, canvas_w, canvas_h):
     silhouette = silhouette.filter(ImageFilter.MinFilter(5))
 
     # Extract outer edge: dilate - original
-    dilated = silhouette.filter(ImageFilter.MaxFilter(9))
+    dilated = silhouette.filter(ImageFilter.MaxFilter(15))
     edge = np.array(dilated).astype(np.int16) - np.array(silhouette).astype(np.int16)
     edge = np.clip(edge, 0, 255).astype(np.uint8)
 

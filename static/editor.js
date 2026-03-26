@@ -340,8 +340,6 @@ async function doMerge() {
         highlightedPieceIds.clear();
         document.getElementById('stat_pieces').textContent = data.num_pieces;
         document.getElementById('stat_selected').textContent = '-';
-        document.getElementById('exportBtn').disabled = false;
-
         buildPieceComposites();
 
         // Clear waves on regenerate — piece IDs change completely
@@ -2068,6 +2066,15 @@ function renderWavesPanel() {
     // Set up drag and drop
     setupWaveDragDrop();
     updateSelectButtonState();
+    updateExportBtn();
+}
+
+function updateExportBtn() {
+    const btn = document.getElementById('exportBtn');
+    if (!btn) return;
+    const allAssigned = pieces.length > 0 && getUnassignedPieces().length === 0;
+    btn.disabled = !allAssigned;
+    btn.title = allAssigned ? '' : 'Assign all pieces to waves before exporting';
 }
 
 function renderPieceThumb(piece, waveId, thumbScale) {
