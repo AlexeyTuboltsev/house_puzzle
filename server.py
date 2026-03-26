@@ -53,6 +53,7 @@ _state = {
     "extracted_dir": None,  # temp dir with extracted PNGs
     "border_pixels": {},    # dict[int, set[(x,y)]] per brick
     "brick_areas": {},      # dict[int, int] pixel area per brick
+    "brick_polygons": {},   # dict[int, list[[x,y]]] traced outlines per brick
 }
 
 EXTRACT_DIR = Path(tempfile.gettempdir()) / "house_puzzle_extract"
@@ -72,6 +73,11 @@ APP_VERSION = _version_file.read_text().strip() if _version_file.exists() else "
 @app.route("/")
 def index():
     return render_template("index.html", version=APP_VERSION)
+
+
+@app.route("/elm")
+def elm_editor():
+    return render_template("elm.html")
 
 
 @app.route("/manage")
@@ -185,6 +191,48 @@ def api_upload_tif():
     })
 
 
+def _trace_one_brick(args):
+    """Top-level function so ProcessPoolExecutor can pickle it."""
+    brick_id, png_path = args
+    try:
+        from tracer import trace_brick_png
+        pts = trace_brick_png(png_path)
+        return brick_id, pts
+    except Exception:
+        return brick_id, []
+
+
+def _vectorize_bricks(bricks, extract_dir: Path) -> dict:
+    """
+    Trace outline polygon for each brick PNG.
+    Results are cached to brick_polygons.json in extract_dir so re-loading is instant.
+    Returns dict[brick_id -> list[[x,y]]].
+    """
+    import concurrent.futures
+
+    cache_path = extract_dir / "brick_polygons.json"
+    if cache_path.exists():
+        with open(cache_path) as f:
+            cached = json.load(f)
+        return {int(k): v for k, v in cached.items()}
+
+    tasks = [
+        (b.id, str(extract_dir / f"brick_{b.id:03d}.png"))
+        for b in bricks
+        if (extract_dir / f"brick_{b.id:03d}.png").exists()
+    ]
+
+    polygons = {}
+    with concurrent.futures.ProcessPoolExecutor() as pool:
+        for brick_id, pts in pool.map(_trace_one_brick, tasks):
+            polygons[brick_id] = pts
+
+    with open(cache_path, "w") as f:
+        json.dump({str(k): v for k, v in polygons.items()}, f)
+
+    return polygons
+
+
 @app.route("/api/load_tif", methods=["POST"])
 def api_load_tif():
     """Load and parse a TIF file, extract brick metadata."""
@@ -244,6 +292,10 @@ def api_load_tif():
     _state["border_pixels"] = bp
     _state["brick_areas"] = ba
 
+    # Vectorize brick outlines (parallel, cached to disk)
+    polygons = _vectorize_bricks(bricks, extract_dir)
+    _state["brick_polygons"] = polygons
+
     # Build adjacency for visualization (using pixel shapes)
     adj = build_adjacency(bricks, border_pixels=bp)
 
@@ -257,6 +309,7 @@ def api_load_tif():
             "height": b.height,
             "type": b.brick_type,
             "neighbors": list(adj.get(b.id, set())),
+            "polygon": polygons.get(b.id, []),
         })
 
     return jsonify({
@@ -857,6 +910,37 @@ def _generate_flat(pieces, piece_images, comp_img):
     combined = np.minimum(a, mask)
     result.putalpha(Image.fromarray(combined))
     return result
+
+
+@app.route("/debug/trace")
+def debug_trace_page():
+    """Debug page for comparing JS vs Python brick outline tracing."""
+    return render_template("debug_trace.html")
+
+
+@app.route("/api/debug/trace/<int:brick_id>")
+def api_debug_trace(brick_id):
+    """Return Python-traced polygon for a brick PNG."""
+    if not _state["extracted_dir"]:
+        return jsonify({"error": "No TIF loaded"}), 400
+    brick_path = _state["extracted_dir"] / f"brick_{brick_id:03d}.png"
+    if not brick_path.exists():
+        return jsonify({"error": f"Brick {brick_id} not found"}), 404
+    from tracer import trace_brick_png
+    pts = trace_brick_png(str(brick_path))
+    return jsonify({"brick_id": brick_id, "polygon": pts})
+
+
+@app.route("/api/debug/bricks")
+def api_debug_bricks():
+    """Return list of brick IDs and metadata for the debug trace page."""
+    if not _state["bricks"]:
+        return jsonify({"error": "No TIF loaded"}), 400
+    bricks = [
+        {"id": b.id, "x": b.x, "y": b.y, "w": b.width, "h": b.height}
+        for b in _state["bricks"]
+    ]
+    return jsonify({"bricks": bricks})
 
 
 if __name__ == "__main__":

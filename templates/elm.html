@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>House Puzzle Editor (Elm)</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #1a1a2e; color: #ccc; font-family: sans-serif; font-size: 14px; }
+
+.elm-app { display: flex; flex-direction: column; height: 100vh; }
+
+.elm-header {
+  padding: 10px 16px;
+  background: #12122a;
+  border-bottom: 1px solid #333;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.elm-header h1 { font-size: 15px; color: #8af; font-weight: 600; }
+
+.elm-load-controls { display: flex; gap: 8px; align-items: center; }
+
+.elm-path-input {
+  width: 280px;
+  padding: 4px 8px;
+  background: #222;
+  color: #ddd;
+  border: 1px solid #445;
+  border-radius: 3px;
+  font-size: 13px;
+  font-family: monospace;
+}
+.elm-path-input:focus { outline: none; border-color: #6af; }
+
+.elm-load-btn {
+  padding: 4px 14px;
+  background: #2a4a7a;
+  color: #8cf;
+  border: 1px solid #4af;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.elm-load-btn:hover:not(:disabled) { background: #3a5a8a; }
+.elm-load-btn:disabled { opacity: 0.5; cursor: default; }
+
+.elm-status { font-size: 12px; }
+.elm-status.ok    { color: #4c4; }
+.elm-status.error { color: #f64; }
+.elm-status.loading { color: #fa0; }
+
+.elm-canvas-area {
+  flex: 1;
+  overflow: auto;
+  padding: 16px;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+.elm-brick-svg {
+  background: #111;
+  display: block;
+  max-width: 100%;
+  border: 1px solid #333;
+}
+
+.elm-brick-path { cursor: pointer; }
+.elm-brick-path:hover { fill: rgba(64,170,255,0.2); stroke: #8df; }
+
+.elm-placeholder {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #555;
+  font-size: 15px;
+}
+
+/* Not-built yet banner */
+#not-built {
+  display: none;
+  padding: 24px;
+  text-align: center;
+  color: #f84;
+  font-size: 14px;
+  line-height: 1.7;
+}
+</style>
+</head>
+<body>
+
+<div id="not-built">
+  <b>elm.js not found.</b><br>
+  Run: <code>docker compose --profile elm run --rm elm-build</code><br>
+  then reload this page.
+</div>
+
+<div id="elm-root"></div>
+
+<script>
+// Check if elm.js loaded successfully; show banner if not
+window.addEventListener('error', function(e) {
+  if (e.filename && e.filename.includes('elm.js')) {
+    document.getElementById('not-built').style.display = 'block';
+  }
+}, true);
+</script>
+<script src="/static/elm.js" onerror="document.getElementById('not-built').style.display='block'"></script>
+<script>
+if (window.Elm && window.Elm.Main) {
+  window.Elm.Main.init({ node: document.getElementById('elm-root') });
+}
+</script>
+</body>
+</html>

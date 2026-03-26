@@ -388,6 +388,28 @@
         .piece-thumb canvas {
             display: block;
         }
+        .piece-path {
+            cursor: pointer;
+            pointer-events: fill;
+            fill: transparent;
+            stroke: none;
+            vector-effect: non-scaling-stroke;
+        }
+        .piece-path:hover {
+            fill: rgba(60, 200, 255, 0.18);
+            stroke: rgba(60, 200, 255, 0.8);
+            stroke-width: 3px;
+        }
+        .piece-path.selected {
+            fill: rgba(255, 96, 48, 0.22);
+            stroke: #ff6030;
+            stroke-width: 3px;
+        }
+        .piece-path.highlighted {
+            fill: rgba(224, 160, 80, 0.22);
+            stroke: #e0a050;
+            stroke-width: 3px;
+        }
         .piece-thumb .piece-thumb-label {
             font-size: 9px;
             color: #aaa;
@@ -523,6 +545,7 @@
         <div class="canvas-area" id="canvasArea">
             <canvas id="houseCanvas"></canvas>
             <svg id="blueprintSvg" style="position:absolute;top:0;left:0;pointer-events:none;display:none;"></svg>
+            <svg id="pieceSvg" style="position:absolute;top:0;left:0;pointer-events:all;display:none;overflow:visible;"></svg>
             <div class="lasso-overlay" id="lassoOverlay"></div>
             <div class="canvas-info" id="canvasInfo">Select a TIF to begin</div>
             <div class="loading-overlay" id="loadingOverlay">Loading...</div>

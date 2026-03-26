@@ -69,6 +69,18 @@ const ctx = canvas.getContext('2d');
 const canvasArea = document.getElementById('canvasArea');
 const loading = document.getElementById('loadingOverlay');
 
+// --- Render scheduling (RAF throttle) ---
+let _renderPending = false;
+function scheduleRender() {
+    if (!_renderPending) {
+        _renderPending = true;
+        requestAnimationFrame(() => { _renderPending = false; render(); });
+    }
+}
+
+// SVG piece overlay state
+let pieceSvgGroup = null;
+
 // --- Persistence (localStorage) ---
 
 const STORAGE_KEY = 'housePuzzle';
@@ -351,6 +363,7 @@ async function doMerge() {
 
         // Cache vectorized outlines for overlay
         cachedOutlinePaths = buildOutlinePaths();
+        buildPieceOverlaySvg();
 
         document.getElementById('canvasInfo').textContent =
             `${canvasW}×${canvasH} | ${data.num_pieces} pieces | Hover/click to inspect`;
@@ -442,6 +455,9 @@ function setView(mode) {
         svg.style.display = 'none';
         svg.innerHTML = '';
     }
+    // Show/hide piece SVG overlay
+    const psvg = document.getElementById('pieceSvg');
+    if (psvg) psvg.style.display = (mode === 'pieces' && pieces.length > 0) ? 'block' : 'none';
     // Hide outlines checkbox in blueprint view (blueprint has its own strokes)
     document.getElementById('showOutlines').parentElement.style.display =
         mode === 'blueprint' ? 'none' : '';
@@ -566,6 +582,7 @@ function render() {
     }
 
     ctx.restore();
+    updatePieceOverlayTransform();
 }
 
 function renderGrid() {
@@ -664,10 +681,8 @@ function renderBricks() {
 function renderPieces() {
     const hiddenPids = getHiddenPieceIds();
 
-    // Draw all pieces except hovered/selected/highlighted/hidden (those go on top or are invisible)
     for (const piece of pieces) {
         if (hiddenPids.has(piece.id)) continue;
-        if (piece.id === hoveredPieceId || piece.id === selectedPieceId || highlightedPieceIds.has(piece.id)) continue;
         const comp = pieceComposites[piece.id];
         if (!comp) continue;
 
@@ -676,61 +691,6 @@ function renderPieces() {
 
         const tint = makeTintedCanvas(comp.canvas, hue, 0.12);
         ctx.drawImage(tint, comp.x, comp.y, comp.w, comp.h);
-
-        if (zoom > 0.12) {
-            ctx.fillStyle = `hsla(${hue}, 80%, 85%, 0.85)`;
-            ctx.font = `bold ${Math.round(13 / zoom)}px sans-serif`;
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(`#${piece.id}`, comp.x + comp.w / 2, comp.y + comp.h / 2);
-        }
-    }
-
-    // Highlighted pieces (from wave panel or lasso selection)
-    for (const hpId of highlightedPieceIds) {
-        if (hiddenPids.has(hpId)) continue;
-        if (hpId === selectedPieceId || hpId === hoveredPieceId) continue;
-        const piece = pieces.find(p => p.id === hpId);
-        if (piece) {
-            const comp = pieceComposites[piece.id];
-            if (comp) {
-                ctx.drawImage(comp.canvas, comp.x, comp.y, comp.w, comp.h);
-                drawPieceSilhouetteOutline(comp, '#e0a050', 5);
-            }
-        }
-    }
-
-    // Draw hover outline on top of all pieces
-    if (hoveredPieceId >= 0 && hoveredPieceId !== selectedPieceId && !hiddenPids.has(hoveredPieceId)) {
-        const piece = pieces.find(p => p.id === hoveredPieceId);
-        if (piece) {
-            const comp = pieceComposites[piece.id];
-            if (comp) {
-                ctx.drawImage(comp.canvas, comp.x, comp.y, comp.w, comp.h);
-                drawPieceSilhouetteOutline(comp, 'rgba(60, 200, 255, 0.9)', 4);
-            }
-        }
-    }
-
-    // Draw selected piece on top of everything
-    if (selectedPieceId >= 0 && !hiddenPids.has(selectedPieceId)) {
-        const piece = pieces.find(p => p.id === selectedPieceId);
-        if (piece) {
-            const comp = pieceComposites[piece.id];
-            if (comp) {
-                ctx.drawImage(comp.canvas, comp.x, comp.y, comp.w, comp.h);
-                drawPieceSilhouetteOutline(comp, '#ff6030', 6);
-
-                ctx.fillStyle = 'rgba(255, 96, 48, 0.95)';
-                ctx.font = `bold ${Math.round(14 / zoom)}px sans-serif`;
-                ctx.textAlign = 'center';
-                ctx.fillText(
-                    `Piece #${piece.id} (${piece.num_bricks} bricks, ${piece.width}×${piece.height})`,
-                    comp.x + comp.w / 2,
-                    comp.y - 8 / zoom,
-                );
-            }
-        }
     }
 }
 
@@ -1472,6 +1432,8 @@ function saveEditPiece() {
     editPieceId = selectedPieceId;
 
     buildPieceComposites();
+    cachedOutlinePaths = buildOutlinePaths();
+    buildPieceOverlaySvg();
 
     document.getElementById('stat_pieces').textContent = pieces.length;
     if (selectedPieceId >= 0) {
@@ -1641,7 +1603,7 @@ canvas.addEventListener('mousemove', (e) => {
         const dx = Math.abs(lassoEndX - lassoStartX);
         const dy = Math.abs(lassoEndY - lassoStartY);
         if (dx > 5 || dy > 5) lassoWasDrag = true;
-        render();
+        scheduleRender();
         return;
     }
 
@@ -1650,13 +1612,12 @@ canvas.addEventListener('mousemove', (e) => {
         const dy = e.clientY - panStartY;
         panY = panStartPanY - dy;
         clampPan();
-        render();
+        scheduleRender();
         return;
     }
 
-    const [hx, hy] = screenToHouse(e.clientX, e.clientY);
-
     if (editMode) {
+        const [hx, hy] = screenToHouse(e.clientX, e.clientY);
         const newHovered = findBrickAt(hx, hy);
         if (newHovered !== hoveredBrickId) {
             hoveredBrickId = newHovered;
@@ -1670,27 +1631,18 @@ canvas.addEventListener('mousemove', (e) => {
             }
             render();
         }
-    } else if (viewMode === 'pieces' && pieces.length) {
-        const newHovered = findPieceAt(hx, hy);
-        if (newHovered !== hoveredPieceId) {
-            hoveredPieceId = newHovered;
-            if (hoveredPieceId >= 0) {
-                const p = pieces.find(pc => pc.id === hoveredPieceId);
-                document.getElementById('stat_hovered').textContent =
-                    `Piece #${p.id} (${p.num_bricks} bricks, ${p.width}×${p.height})`;
-            } else {
-                document.getElementById('stat_hovered').textContent = '-';
-            }
-            render();
-        }
     }
 });
 
 canvas.addEventListener('mouseleave', () => {
-    hoveredBrickId = -1;
+    if (editMode) {
+        hoveredBrickId = -1;
+        document.getElementById('stat_hovered').textContent = '-';
+        render();
+        return;
+    }
     hoveredPieceId = -1;
     document.getElementById('stat_hovered').textContent = '-';
-    render();
 });
 
 canvas.addEventListener('mousedown', (e) => {
@@ -1729,60 +1681,20 @@ canvas.addEventListener('mouseup', (e) => {
     if (e.button === 0 && isLassoing) {
         isLassoing = false;
         finishLasso();
-        render();
+        scheduleRender();
         return;
     }
 });
 
 canvas.addEventListener('click', (e) => {
-    // If lasso drag just ended, don't process as click
-    if (assignMode && lassoWasDrag) return;
-
-    const [hx, hy] = screenToHouse(e.clientX, e.clientY);
-
     if (editMode) {
+        if (assignMode && lassoWasDrag) return;
+        const [hx, hy] = screenToHouse(e.clientX, e.clientY);
         const clickedId = findBrickAt(hx, hy);
         if (clickedId >= 0) {
             toggleBrickInEdit(clickedId);
         }
-        return;
     }
-
-    // Single click in assign/select mode: toggle piece in selected wave
-    if (assignMode && selectedWaveId >= 0 && viewMode === 'pieces' && pieces.length) {
-        const clickedId = findPieceAt(hx, hy);
-        if (clickedId >= 0) {
-            togglePieceInWave(clickedId, selectedWaveId);
-        }
-        return;
-    }
-
-    if (viewMode === 'pieces' && pieces.length) {
-        const clickedId = findPieceAt(hx, hy);
-        if (clickedId === selectedPieceId) {
-            selectedPieceId = -1;
-            highlightedPieceIds.clear();
-            document.getElementById('stat_selected').textContent = '-';
-            document.getElementById('editBtnRow').style.display = 'none';
-        } else {
-            selectedPieceId = clickedId;
-            highlightedPieceIds.clear();
-            shapeManualVerts = 0;
-            if (clickedId >= 0) {
-                const p = pieces.find(pc => pc.id === clickedId);
-                document.getElementById('stat_selected').textContent =
-                    `Piece #${p.id} (${p.num_bricks} bricks, ${p.width}×${p.height})`;
-                if (viewMode === 'pieces') {
-                    document.getElementById('editBtnRow').style.display = 'flex';
-                }
-                highlightPieceInPanel(clickedId);
-            } else {
-                document.getElementById('stat_selected').textContent = '-';
-                document.getElementById('editBtnRow').style.display = 'none';
-            }
-        }
-    }
-    render();
 });
 
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -1792,7 +1704,7 @@ canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
     panY += e.deltaY;
     clampPan();
-    render();
+    scheduleRender();
 }, { passive: false });
 
 // --- Wave system ---
@@ -1802,7 +1714,7 @@ function clearPieceSelection() {
     highlightedPieceIds.clear();
     document.getElementById('stat_selected').textContent = '-';
     document.getElementById('editBtnRow').style.display = 'none';
-    render();
+    applyView();
 }
 
 function addWave() {
@@ -1853,7 +1765,7 @@ function toggleWaveVisibility(waveId) {
     }
     renderWavesPanel();
     requestAnimationFrame(drawThumbCanvases);
-    render();
+    applyView();
 }
 
 function updateSelectButtonState() {
@@ -1897,14 +1809,7 @@ function finishLasso() {
     const lw = Math.abs(lassoEndX - lassoStartX);
     const lh = Math.abs(lassoEndY - lassoStartY);
 
-    // Too small = accidental click, ignore
     if (lw < 5 && lh < 5) return;
-
-    // Find pieces whose center falls within the lasso rectangle
-    const assignedInOtherWaves = new Set();
-    for (const w of waves) {
-        for (const pid of w.pieceIds) assignedInOtherWaves.add(pid);
-    }
 
     let changed = false;
     highlightedPieceIds.clear();
@@ -1932,7 +1837,7 @@ function finishLasso() {
     if (changed || highlightedPieceIds.size > 0) {
         saveState();
         renderWavesPanel();
-        render();
+        applyView();
     }
 }
 
@@ -1942,26 +1847,23 @@ function togglePieceInWave(pieceId, waveId) {
 
     const idx = wave.pieceIds.indexOf(pieceId);
     if (idx >= 0) {
-        // Remove from wave (deselect)
         wave.pieceIds.splice(idx, 1);
         highlightedPieceIds.delete(pieceId);
+        _movePieceThumbInPanel(pieceId, null);
     } else {
-        // Remove from any other wave first
         for (const w of waves) {
             if (w.id !== waveId) {
                 const i = w.pieceIds.indexOf(pieceId);
                 if (i >= 0) w.pieceIds.splice(i, 1);
             }
         }
-        // Add to this wave
         wave.pieceIds.push(pieceId);
         highlightedPieceIds.add(pieceId);
+        _movePieceThumbInPanel(pieceId, waveId);
     }
 
     saveState();
-    renderWavesPanel();
-    requestAnimationFrame(drawThumbCanvases);
-    render();
+    applyView();
 }
 
 function removePieceFromWave(waveId, pieceId) {
@@ -1969,7 +1871,7 @@ function removePieceFromWave(waveId, pieceId) {
     if (!wave) return;
     wave.pieceIds = wave.pieceIds.filter(id => id !== pieceId);
     saveState();
-    renderWavesPanel();
+    _movePieceThumbInPanel(pieceId, null);
 }
 
 function getUnassignedPieces() {
@@ -2129,20 +2031,198 @@ function renderWavesPanelAndThumbs() {
     requestAnimationFrame(drawThumbCanvases);
 }
 
+// --- SVG piece overlay ---
+
+function buildPieceOverlaySvg() {
+    const svg = document.getElementById('pieceSvg');
+    svg.innerHTML = '';
+    pieceSvgGroup = null;
+
+    if (!cachedOutlinePaths.length || viewMode !== 'pieces') {
+        svg.style.display = 'none';
+        return;
+    }
+
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.id = 'pieceSvgGroup';
+    pieceSvgGroup = g;
+
+    for (const outline of cachedOutlinePaths) {
+        if (outline.points.length < 3) continue;
+
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        let d = `M ${outline.points[0][0]} ${outline.points[0][1]}`;
+        for (let i = 1; i < outline.points.length; i++) {
+            d += ` L ${outline.points[i][0]} ${outline.points[i][1]}`;
+        }
+        d += ' Z';
+
+        path.setAttribute('d', d);
+        path.setAttribute('class', 'piece-path');
+        path.dataset.pieceId = outline.pieceId;
+
+        path.addEventListener('mouseenter', () => {
+            if (editMode) return;
+            hoveredPieceId = outline.pieceId;
+            const p = pieces.find(pc => pc.id === outline.pieceId);
+            if (p) document.getElementById('stat_hovered').textContent =
+                `Piece #${p.id} (${p.num_bricks} bricks, ${p.width}×${p.height})`;
+        });
+        path.addEventListener('mouseleave', () => {
+            if (editMode) return;
+            if (hoveredPieceId === outline.pieceId) {
+                hoveredPieceId = -1;
+                document.getElementById('stat_hovered').textContent = '-';
+            }
+        });
+        path.addEventListener('click', (e) => {
+            if (editMode) return;
+            e.stopPropagation();
+            if (lassoWasDrag) return;
+
+            const pieceId = outline.pieceId;
+
+            if (assignMode && selectedWaveId >= 0) {
+                togglePieceInWave(pieceId, selectedWaveId);
+                return;
+            }
+
+            if (pieceId === selectedPieceId) {
+                selectedPieceId = -1;
+                highlightedPieceIds.clear();
+                document.getElementById('stat_selected').textContent = '-';
+                document.getElementById('editBtnRow').style.display = 'none';
+            } else {
+                selectedPieceId = pieceId;
+                highlightedPieceIds.clear();
+                shapeManualVerts = 0;
+                const p = pieces.find(pc => pc.id === pieceId);
+                if (p) {
+                    document.getElementById('stat_selected').textContent =
+                        `Piece #${p.id} (${p.num_bricks} bricks, ${p.width}×${p.height})`;
+                    document.getElementById('editBtnRow').style.display = 'flex';
+                    highlightPieceInPanel(pieceId);
+                    scrollCanvasToPiece(p);
+                }
+            }
+            applyView();
+        });
+
+        g.appendChild(path);
+    }
+
+    svg.appendChild(g);
+    svg.style.display = 'block';
+    updatePieceOverlayTransform();
+}
+
+function updatePieceOverlayTransform() {
+    const svg = document.getElementById('pieceSvg');
+    if (!pieceSvgGroup || !canvasW) return;
+
+    svg.setAttribute('width', canvas.width);
+    svg.setAttribute('height', canvas.height);
+
+    const padX = (canvas.width - canvasW * zoom) / 2;
+    const padY_ = (canvas.height - canvasH * zoom) / 2;
+    const effectivePadY = padY_ - panY;
+
+    pieceSvgGroup.setAttribute('transform', `translate(${padX}, ${effectivePadY}) scale(${zoom})`);
+}
+
+function updatePieceSvgClasses() {
+    if (!pieceSvgGroup) return;
+    const hiddenPids = getHiddenPieceIds();
+    const paths = pieceSvgGroup.querySelectorAll('.piece-path');
+    for (const path of paths) {
+        const pid = parseInt(path.dataset.pieceId);
+        const hidden = hiddenPids.has(pid);
+        path.style.display = hidden ? 'none' : '';
+        path.classList.toggle('selected', !hidden && pid === selectedPieceId);
+        path.classList.toggle('highlighted', !hidden && highlightedPieceIds.has(pid));
+    }
+}
+
+// Central view update — call after any piece state change to keep canvas + SVG in sync.
+function applyView() {
+    scheduleRender();
+    updatePieceSvgClasses();
+}
+
+// --- Incremental wave panel DOM updates ---
+
+function _movePieceThumbInPanel(pieceId, targetWaveId) {
+    const thumb = document.querySelector(`.piece-thumb[data-piece-id="${pieceId}"]`);
+    if (!thumb) { renderWavesPanel(); return; }
+
+    let targetContainer;
+    if (targetWaveId === null) {
+        // Moving to unassigned
+        targetContainer = document.querySelector('.wave-pieces[data-wave-id="unassigned"]');
+        if (!targetContainer) {
+            // Create unassigned row at top
+            const body = document.getElementById('wavesBody');
+            const row = document.createElement('div');
+            row.className = 'wave-row';
+            row.dataset.waveId = 'unassigned';
+            row.innerHTML = `<div class="wave-row-header" onclick="selectWave(-1)">
+                <span class="wave-label unassigned-label">Unassigned</span>
+                <span class="wave-piece-count">0 pcs</span>
+            </div><div class="wave-pieces" data-wave-id="unassigned"></div>`;
+            body.insertBefore(row, body.firstChild);
+            targetContainer = row.querySelector('.wave-pieces');
+        }
+    } else {
+        targetContainer = document.querySelector(`.wave-pieces[data-wave-id="${targetWaveId}"]`);
+        if (!targetContainer) { renderWavesPanel(); return; }
+    }
+
+    targetContainer.appendChild(thumb);
+    thumb.dataset.waveId = targetWaveId !== null ? String(targetWaveId) : 'unassigned';
+
+    // If unassigned container is now empty, remove the unassigned row
+    const uContainer = document.querySelector('.wave-pieces[data-wave-id="unassigned"]');
+    if (uContainer && uContainer.children.length === 0) {
+        const uRow2 = document.querySelector('.wave-row[data-wave-id="unassigned"]');
+        if (uRow2) uRow2.remove();
+    }
+
+    // Update piece counts in all wave headers
+    for (const wave of waves) {
+        const row = document.querySelector(`.wave-row[data-wave-id="${wave.id}"]`);
+        if (row) {
+            const countEl = row.querySelector('.wave-piece-count');
+            if (countEl) countEl.textContent = `${wave.pieceIds.length} pcs`;
+        }
+    }
+    const uRow = document.querySelector('.wave-row[data-wave-id="unassigned"]');
+    if (uRow) {
+        const countEl = uRow.querySelector('.wave-piece-count');
+        if (countEl) countEl.textContent = `${getUnassignedPieces().length} pcs`;
+    }
+
+    // Update global piece count
+    const countEl = document.getElementById('wavePieceCount');
+    if (countEl && pieces.length) {
+        const assignedCount = waves.reduce((sum, w) => sum + w.pieceIds.length, 0);
+        countEl.textContent = `${assignedCount}/${pieces.length}`;
+    }
+    updateExportBtn();
+}
+
 // --- Piece thumb interactions ---
 
 function onThumbHover(pieceId) {
     highlightedPieceIds.add(pieceId);
-    render();
+    applyView();
 }
 
 function onThumbLeave(pieceId) {
     highlightedPieceIds.delete(pieceId);
-    render();
+    applyView();
 }
 
 function onThumbClick(pieceId) {
-    // Clear all multi-selection highlights, select just this one
     selectedPieceId = pieceId;
     highlightedPieceIds.clear();
 
@@ -2152,22 +2232,15 @@ function onThumbClick(pieceId) {
             `Piece #${p.id} (${p.num_bricks} bricks, ${p.width}×${p.height})`;
         scrollCanvasToPiece(p);
     }
-    render();
-    // Re-render wave panel so all thumbs update their CSS classes
-    renderWavesPanel();
-    requestAnimationFrame(drawThumbCanvases);
+    applyView();
 }
 
 function highlightPieceInPanel(pieceId) {
-    // Scroll the wave panel to show the piece
     const thumb = document.querySelector(`.piece-thumb[data-piece-id="${pieceId}"]`);
     if (thumb) {
         thumb.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
-        // Flash highlight
-        document.querySelectorAll('.piece-thumb').forEach(el => {
-            el.classList.toggle('selected', parseInt(el.dataset.pieceId) === pieceId);
-        });
     }
+    applyView();
 }
 
 function scrollCanvasToPiece(piece) {

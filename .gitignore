@@ -23,6 +23,11 @@ build/
 builds/
 *.egg-info/
 
+# Elm
+elm/node_modules/
+elm/elm-stuff/
+static/elm.js
+
 # Firecrawl
 .firecrawl/
 
