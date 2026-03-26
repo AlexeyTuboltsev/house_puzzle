@@ -75,6 +75,11 @@ def index():
     return render_template("index.html", version=APP_VERSION)
 
 
+@app.route("/elm")
+def elm_editor():
+    return render_template("elm.html")
+
+
 @app.route("/manage")
 def manage():
     return render_template("manage.html")
