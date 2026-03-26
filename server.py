@@ -355,6 +355,56 @@ def api_brick_png(brick_id):
     return send_file(str(brick_path), mimetype="image/png")
 
 
+def _compute_piece_polygons(pieces, bricks_by_id, brick_polygons):
+    """Compute merged polygon outline for each piece by rasterizing brick polygons.
+
+    Returns dict[piece_id -> list of [x, y] in canvas coords].
+    """
+    from PIL import Image as PilImage, ImageDraw as PilDraw
+    from unity_export import trace_alpha_contours, douglas_peucker_closed
+
+    result = {}
+    for piece in pieces:
+        bricks = [bricks_by_id[bid] for bid in piece.brick_ids if bid in bricks_by_id]
+        if not bricks:
+            result[piece.id] = []
+            continue
+
+        px, py = piece.x, piece.y
+        pw = int(piece.width) + 2
+        ph = int(piece.height) + 2
+
+        mask_img = PilImage.new("RGBA", (pw, ph), (0, 0, 0, 0))
+        draw = PilDraw.Draw(mask_img)
+
+        for b in bricks:
+            poly = brick_polygons.get(b.id, [])
+            if poly and len(poly) >= 3:
+                # brick_polygons are brick-local; convert to piece-local coords
+                local_pts = [(x + b.x - px, y + b.y - py) for x, y in poly]
+                draw.polygon(local_pts, fill=(255, 255, 255, 255))
+            else:
+                draw.rectangle(
+                    [b.x - px, b.y - py, b.x - px + b.width, b.y - py + b.height],
+                    fill=(255, 255, 255, 255),
+                )
+
+        contours = trace_alpha_contours(mask_img)
+        if not contours:
+            result[piece.id] = []
+            continue
+
+        main = max(contours, key=len)
+        simplified = douglas_peucker_closed(main, 2.0)
+
+        if len(simplified) >= 3:
+            result[piece.id] = [[x + px, y + py] for x, y in simplified]
+        else:
+            result[piece.id] = []
+
+    return result
+
+
 @app.route("/api/merge", methods=["POST"])
 def api_merge():
     """Merge bricks into puzzle pieces."""
@@ -381,6 +431,14 @@ def api_merge():
     _state["pieces"] = result.pieces
 
     pieces_json = pieces_to_json(result.pieces, _state["bricks_by_id"])
+
+    piece_polys = _compute_piece_polygons(
+        result.pieces,
+        _state["bricks_by_id"],
+        _state.get("brick_polygons", {}),
+    )
+    for p in pieces_json:
+        p["polygon"] = piece_polys.get(p["id"], [])
 
     return jsonify({
         "num_pieces": len(result.pieces),

@@ -51,6 +51,7 @@ type alias Piece =
     , height : Float
     , brickIds : List Int
     , bricks : List BrickRef
+    , polygon : List Point
     }
 
 
@@ -424,7 +425,7 @@ decodeMergeResponse =
 
 decodePiece : D.Decoder Piece
 decodePiece =
-    D.map7 Piece
+    D.map8 Piece
         (D.field "id" D.int)
         (D.field "x" D.float)
         (D.field "y" D.float)
@@ -432,6 +433,7 @@ decodePiece =
         (D.field "height" D.float)
         (D.field "brick_ids" (D.list D.int))
         (D.field "bricks" (D.list decodeBrickRef))
+        (D.field "polygon" (D.list decodePoint))
 
 
 decodeBrickRef : D.Decoder BrickRef
@@ -815,8 +817,12 @@ viewMainSvg response model =
                     []
                 ]
 
+            else if isGenerated then
+                -- Blueprint post-gen: merged piece polygons
+                List.map viewPieceBlueprintPath model.pieces
+
             else
-                -- Blueprint (pre or post gen) — brick polygons
+                -- Pre-gen: individual brick polygons
                 List.map viewBrickPath response.bricks
 
         -- Composite brick hover overlays (pre-gen only)
@@ -1026,20 +1032,80 @@ viewGrid cw ch viewMode =
     vLines ++ hLines
 
 
+-- Renders the merged piece shape as a blueprint polygon (blue fill, white stroke).
+-- Piece polygon is in canvas coords (absolute), unlike brick polygons which are brick-local.
+viewPieceBlueprintPath : Piece -> Svg.Svg Msg
+viewPieceBlueprintPath piece =
+    if List.isEmpty piece.polygon then
+        Svg.rect
+            [ SA.x (String.fromFloat piece.x)
+            , SA.y (String.fromFloat piece.y)
+            , SA.width (String.fromFloat piece.width)
+            , SA.height (String.fromFloat piece.height)
+            , SA.fill "#2a5da8"
+            , SA.stroke "white"
+            , SA.strokeWidth "4"
+            , attribute "vector-effect" "non-scaling-stroke"
+            , attribute "paint-order" "fill stroke"
+            , SA.class "brick-path"
+            ]
+            []
+
+    else
+        let
+            pointsAttr =
+                piece.polygon
+                    |> List.map (\( x, y ) -> String.fromFloat x ++ "," ++ String.fromFloat y)
+                    |> String.join " "
+        in
+        Svg.polygon
+            [ SA.points pointsAttr
+            , SA.fill "#2a5da8"
+            , SA.stroke "white"
+            , SA.strokeWidth "4"
+            , SA.strokeLinejoin "round"
+            , attribute "stroke-linecap" "round"
+            , attribute "paint-order" "fill stroke"
+            , attribute "vector-effect" "non-scaling-stroke"
+            , SA.class "brick-path"
+            ]
+            []
+
+
+-- Renders the piece outline (transparent fill, white stroke) on top of composite images.
 viewPieceOutline : Piece -> Svg.Svg Msg
 viewPieceOutline piece =
-    Svg.rect
-        [ SA.x (String.fromFloat piece.x)
-        , SA.y (String.fromFloat piece.y)
-        , SA.width (String.fromFloat piece.width)
-        , SA.height (String.fromFloat piece.height)
-        , SA.fill "transparent"
-        , SA.stroke "white"
-        , SA.strokeWidth "2"
-        , attribute "vector-effect" "non-scaling-stroke"
-        , SA.class "piece-outline"
-        ]
-        []
+    if List.isEmpty piece.polygon then
+        Svg.rect
+            [ SA.x (String.fromFloat piece.x)
+            , SA.y (String.fromFloat piece.y)
+            , SA.width (String.fromFloat piece.width)
+            , SA.height (String.fromFloat piece.height)
+            , SA.fill "transparent"
+            , SA.stroke "white"
+            , SA.strokeWidth "2"
+            , attribute "vector-effect" "non-scaling-stroke"
+            , SA.class "piece-outline"
+            ]
+            []
+
+    else
+        let
+            pointsAttr =
+                piece.polygon
+                    |> List.map (\( x, y ) -> String.fromFloat x ++ "," ++ String.fromFloat y)
+                    |> String.join " "
+        in
+        Svg.polygon
+            [ SA.points pointsAttr
+            , SA.fill "transparent"
+            , SA.stroke "white"
+            , SA.strokeWidth "2"
+            , SA.strokeLinejoin "round"
+            , attribute "vector-effect" "non-scaling-stroke"
+            , SA.class "piece-outline"
+            ]
+            []
 
 
 viewPieceOverlay : Maybe Int -> Piece -> Svg.Svg Msg

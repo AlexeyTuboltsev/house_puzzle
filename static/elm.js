@@ -6542,9 +6542,9 @@ var $author$project$Main$GotMergeResponse = function (a) {
 var $author$project$Main$MergeResponse = function (pieces) {
 	return {pieces: pieces};
 };
-var $author$project$Main$Piece = F7(
-	function (id, x, y, width, height, brickIds, bricks) {
-		return {brickIds: brickIds, bricks: bricks, height: height, id: id, width: width, x: x, y: y};
+var $author$project$Main$Piece = F8(
+	function (id, x, y, width, height, brickIds, bricks, polygon) {
+		return {brickIds: brickIds, bricks: bricks, height: height, id: id, polygon: polygon, width: width, x: x, y: y};
 	});
 var $author$project$Main$BrickRef = F5(
 	function (id, x, y, width, height) {
@@ -6559,9 +6559,8 @@ var $author$project$Main$decodeBrickRef = A6(
 	A2($elm$json$Json$Decode$field, 'y', $elm$json$Json$Decode$float),
 	A2($elm$json$Json$Decode$field, 'width', $elm$json$Json$Decode$float),
 	A2($elm$json$Json$Decode$field, 'height', $elm$json$Json$Decode$float));
-var $elm$json$Json$Decode$map7 = _Json_map7;
-var $author$project$Main$decodePiece = A8(
-	$elm$json$Json$Decode$map7,
+var $author$project$Main$decodePiece = A9(
+	$elm$json$Json$Decode$map8,
 	$author$project$Main$Piece,
 	A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$int),
 	A2($elm$json$Json$Decode$field, 'x', $elm$json$Json$Decode$float),
@@ -6575,7 +6574,11 @@ var $author$project$Main$decodePiece = A8(
 	A2(
 		$elm$json$Json$Decode$field,
 		'bricks',
-		$elm$json$Json$Decode$list($author$project$Main$decodeBrickRef)));
+		$elm$json$Json$Decode$list($author$project$Main$decodeBrickRef)),
+	A2(
+		$elm$json$Json$Decode$field,
+		'polygon',
+		$elm$json$Json$Decode$list($author$project$Main$decodePoint)));
 var $author$project$Main$decodeMergeResponse = A2(
 	$elm$json$Json$Decode$map,
 	$author$project$Main$MergeResponse,
@@ -7076,6 +7079,57 @@ var $author$project$Main$viewGrid = F3(
 			A2($elm$core$List$range, 1, numV));
 		return _Utils_ap(vLines, hLines);
 	});
+var $author$project$Main$viewPieceBlueprintPath = function (piece) {
+	if ($elm$core$List$isEmpty(piece.polygon)) {
+		return A2(
+			$elm$svg$Svg$rect,
+			_List_fromArray(
+				[
+					$elm$svg$Svg$Attributes$x(
+					$elm$core$String$fromFloat(piece.x)),
+					$elm$svg$Svg$Attributes$y(
+					$elm$core$String$fromFloat(piece.y)),
+					$elm$svg$Svg$Attributes$width(
+					$elm$core$String$fromFloat(piece.width)),
+					$elm$svg$Svg$Attributes$height(
+					$elm$core$String$fromFloat(piece.height)),
+					$elm$svg$Svg$Attributes$fill('#2a5da8'),
+					$elm$svg$Svg$Attributes$stroke('white'),
+					$elm$svg$Svg$Attributes$strokeWidth('4'),
+					A2($elm$html$Html$Attributes$attribute, 'vector-effect', 'non-scaling-stroke'),
+					A2($elm$html$Html$Attributes$attribute, 'paint-order', 'fill stroke'),
+					$elm$svg$Svg$Attributes$class('brick-path')
+				]),
+			_List_Nil);
+	} else {
+		var pointsAttr = A2(
+			$elm$core$String$join,
+			' ',
+			A2(
+				$elm$core$List$map,
+				function (_v0) {
+					var x = _v0.a;
+					var y = _v0.b;
+					return $elm$core$String$fromFloat(x) + (',' + $elm$core$String$fromFloat(y));
+				},
+				piece.polygon));
+		return A2(
+			$elm$svg$Svg$polygon,
+			_List_fromArray(
+				[
+					$elm$svg$Svg$Attributes$points(pointsAttr),
+					$elm$svg$Svg$Attributes$fill('#2a5da8'),
+					$elm$svg$Svg$Attributes$stroke('white'),
+					$elm$svg$Svg$Attributes$strokeWidth('4'),
+					$elm$svg$Svg$Attributes$strokeLinejoin('round'),
+					A2($elm$html$Html$Attributes$attribute, 'stroke-linecap', 'round'),
+					A2($elm$html$Html$Attributes$attribute, 'paint-order', 'fill stroke'),
+					A2($elm$html$Html$Attributes$attribute, 'vector-effect', 'non-scaling-stroke'),
+					$elm$svg$Svg$Attributes$class('brick-path')
+				]),
+			_List_Nil);
+	}
+};
 var $author$project$Main$viewPieceImage = F2(
 	function (images, piece) {
 		var _v0 = A2($elm$core$Dict$get, piece.id, images);
@@ -7117,25 +7171,52 @@ var $author$project$Main$viewPieceImage = F2(
 		}
 	});
 var $author$project$Main$viewPieceOutline = function (piece) {
-	return A2(
-		$elm$svg$Svg$rect,
-		_List_fromArray(
-			[
-				$elm$svg$Svg$Attributes$x(
-				$elm$core$String$fromFloat(piece.x)),
-				$elm$svg$Svg$Attributes$y(
-				$elm$core$String$fromFloat(piece.y)),
-				$elm$svg$Svg$Attributes$width(
-				$elm$core$String$fromFloat(piece.width)),
-				$elm$svg$Svg$Attributes$height(
-				$elm$core$String$fromFloat(piece.height)),
-				$elm$svg$Svg$Attributes$fill('transparent'),
-				$elm$svg$Svg$Attributes$stroke('white'),
-				$elm$svg$Svg$Attributes$strokeWidth('2'),
-				A2($elm$html$Html$Attributes$attribute, 'vector-effect', 'non-scaling-stroke'),
-				$elm$svg$Svg$Attributes$class('piece-outline')
-			]),
-		_List_Nil);
+	if ($elm$core$List$isEmpty(piece.polygon)) {
+		return A2(
+			$elm$svg$Svg$rect,
+			_List_fromArray(
+				[
+					$elm$svg$Svg$Attributes$x(
+					$elm$core$String$fromFloat(piece.x)),
+					$elm$svg$Svg$Attributes$y(
+					$elm$core$String$fromFloat(piece.y)),
+					$elm$svg$Svg$Attributes$width(
+					$elm$core$String$fromFloat(piece.width)),
+					$elm$svg$Svg$Attributes$height(
+					$elm$core$String$fromFloat(piece.height)),
+					$elm$svg$Svg$Attributes$fill('transparent'),
+					$elm$svg$Svg$Attributes$stroke('white'),
+					$elm$svg$Svg$Attributes$strokeWidth('2'),
+					A2($elm$html$Html$Attributes$attribute, 'vector-effect', 'non-scaling-stroke'),
+					$elm$svg$Svg$Attributes$class('piece-outline')
+				]),
+			_List_Nil);
+	} else {
+		var pointsAttr = A2(
+			$elm$core$String$join,
+			' ',
+			A2(
+				$elm$core$List$map,
+				function (_v0) {
+					var x = _v0.a;
+					var y = _v0.b;
+					return $elm$core$String$fromFloat(x) + (',' + $elm$core$String$fromFloat(y));
+				},
+				piece.polygon));
+		return A2(
+			$elm$svg$Svg$polygon,
+			_List_fromArray(
+				[
+					$elm$svg$Svg$Attributes$points(pointsAttr),
+					$elm$svg$Svg$Attributes$fill('transparent'),
+					$elm$svg$Svg$Attributes$stroke('white'),
+					$elm$svg$Svg$Attributes$strokeWidth('2'),
+					$elm$svg$Svg$Attributes$strokeLinejoin('round'),
+					A2($elm$html$Html$Attributes$attribute, 'vector-effect', 'non-scaling-stroke'),
+					$elm$svg$Svg$Attributes$class('piece-outline')
+				]),
+			_List_Nil);
+	}
 };
 var $author$project$Main$SelectPiece = function (a) {
 	return {$: 'SelectPiece', a: a};
@@ -7216,7 +7297,7 @@ var $author$project$Main$viewMainSvg = F2(
 						A2($elm$html$Html$Attributes$attribute, 'href', '/api/composite.png')
 					]),
 				_List_Nil)
-			]) : A2($elm$core$List$map, $author$project$Main$viewBrickPath, response.bricks));
+			]) : (isGenerated ? A2($elm$core$List$map, $author$project$Main$viewPieceBlueprintPath, model.pieces) : A2($elm$core$List$map, $author$project$Main$viewBrickPath, response.bricks)));
 		return A2(
 			$elm$svg$Svg$svg,
 			_List_fromArray(
