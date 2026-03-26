@@ -2,6 +2,8 @@ port module Main exposing (main)
 
 import Browser
 import Dict exposing (Dict)
+import File exposing (File)
+import File.Select as Select
 import Html exposing (..)
 import Html.Attributes exposing (..)
 import Html.Events exposing (..)
@@ -14,13 +16,6 @@ import Svg.Attributes as SA
 
 
 -- ── Types ──────────────────────────────────────────────────────────────────
-
-
-type alias TifEntry =
-    { name : String
-    , path : String
-    , sizeMb : Float
-    }
 
 
 type alias Point =
@@ -40,7 +35,6 @@ type alias Brick =
 
 
 type alias BrickRef =
-    -- lightweight brick info inside a piece (from /api/merge)
     { id : Int
     , x : Float
     , y : Float
@@ -85,6 +79,7 @@ type alias MergeResponse =
 
 type LoadState
     = Idle
+    | Uploading
     | Loading
     | Loaded LoadResponse
     | LoadError String
@@ -97,21 +92,19 @@ type GenerateState
 
 
 type alias Model =
-    { tifPath : String
-    , tifList : List TifEntry
+    { selectedFileName : String
     , loadState : LoadState
     , targetCount : Int
     , generateState : GenerateState
     , pieces : List Piece
-    , pieceImages : Dict Int String  -- piece id → data URL
+    , pieceImages : Dict Int String
     , bricksById : Dict Int Brick
     }
 
 
 init : () -> ( Model, Cmd Msg )
 init _ =
-    ( { tifPath = ""
-      , tifList = []
+    ( { selectedFileName = ""
       , loadState = Idle
       , targetCount = 10
       , generateState = NotGenerated
@@ -119,7 +112,7 @@ init _ =
       , pieceImages = Dict.empty
       , bricksById = Dict.empty
       }
-    , fetchTifList
+    , Cmd.none
     )
 
 
@@ -128,9 +121,9 @@ init _ =
 
 
 type Msg
-    = GotTifList (Result Http.Error (List TifEntry))
-    | SetTifPath String
-    | RequestLoad
+    = PickFile
+    | FileSelected File
+    | GotUploadResponse (Result Http.Error String)
     | GotLoadResponse (Result Http.Error LoadResponse)
     | SetTargetCount String
     | RequestGenerate
@@ -155,39 +148,25 @@ port gotPieceImages : (E.Value -> msg) -> Sub msg
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
-        GotTifList (Ok entries) ->
-            ( { model
-                | tifList = entries
-                , tifPath =
-                    -- pre-select first entry if nothing chosen yet
-                    if String.isEmpty model.tifPath then
-                        entries |> List.head |> Maybe.map .path |> Maybe.withDefault ""
+        PickFile ->
+            ( model, Select.file [ ".tif", "image/tiff" ] FileSelected )
 
-                    else
-                        model.tifPath
+        FileSelected file ->
+            ( { model
+                | selectedFileName = File.name file
+                , loadState = Uploading
+                , generateState = NotGenerated
+                , pieces = []
+                , pieceImages = Dict.empty
               }
-            , Cmd.none
+            , uploadTif file
             )
 
-        GotTifList (Err _) ->
-            ( model, Cmd.none )
+        GotUploadResponse (Ok path) ->
+            ( { model | loadState = Loading }, loadTif path )
 
-        SetTifPath path ->
-            ( { model | tifPath = path }, Cmd.none )
-
-        RequestLoad ->
-            if String.isEmpty model.tifPath then
-                ( model, Cmd.none )
-
-            else
-                ( { model
-                    | loadState = Loading
-                    , generateState = NotGenerated
-                    , pieces = []
-                    , pieceImages = Dict.empty
-                  }
-                , loadTif model.tifPath
-                )
+        GotUploadResponse (Err _) ->
+            ( { model | loadState = LoadError "Upload failed" }, Cmd.none )
 
         GotLoadResponse (Ok response) ->
             ( { model
@@ -226,15 +205,12 @@ update msg model =
                     ( model, Cmd.none )
 
         GotMergeResponse (Ok response) ->
-            -- Fire the compositing port; JS will call back with images
             ( { model | pieces = response.pieces }
             , compositePieces (encodePieceList response.pieces)
             )
 
         GotMergeResponse (Err _) ->
-            ( { model | generateState = NotGenerated }
-            , Cmd.none
-            )
+            ( { model | generateState = NotGenerated }, Cmd.none )
 
         GotPieceImages val ->
             case D.decodeValue decodePieceImages val of
@@ -254,24 +230,13 @@ update msg model =
 -- ── HTTP ────────────────────────────────────────────────────────────────────
 
 
-fetchTifList : Cmd Msg
-fetchTifList =
-    Http.get
-        { url = "/api/list_tifs"
-        , expect = Http.expectJson GotTifList decodeTifList
+uploadTif : File -> Cmd Msg
+uploadTif file =
+    Http.post
+        { url = "/api/upload_tif"
+        , body = Http.multipartBody [ Http.filePart "file" file ]
+        , expect = Http.expectJson GotUploadResponse (D.field "path" D.string)
         }
-
-
-decodeTifList : D.Decoder (List TifEntry)
-decodeTifList =
-    D.field "tifs"
-        (D.list
-            (D.map3 TifEntry
-                (D.field "name" D.string)
-                (D.field "path" D.string)
-                (D.field "size_mb" D.float)
-            )
-        )
 
 
 loadTif : String -> Cmd Msg
@@ -442,6 +407,9 @@ view model =
 viewHeader : Model -> Html Msg
 viewHeader model =
     let
+        busy =
+            model.loadState == Uploading || model.loadState == Loading
+
         isLoaded =
             case model.loadState of
                 Loaded _ ->
@@ -449,52 +417,23 @@ viewHeader model =
 
                 _ ->
                     False
-
-        isLoading =
-            model.loadState == Loading
-
-        isCompositing =
-            model.generateState == Compositing
     in
     header [ class "elm-header" ]
         [ h1 [] [ text "House Puzzle Editor" ]
         , div [ class "elm-load-controls" ]
-            [ if List.isEmpty model.tifList then
-                input
-                    [ type_ "text"
-                    , placeholder "e.g. in/casablanca 6.tif"
-                    , value model.tifPath
-                    , onInput SetTifPath
-                    , class "elm-path-input"
-                    ]
-                    []
-
-              else
-                select
-                    [ onInput SetTifPath
-                    , class "elm-path-input"
-                    ]
-                    (List.map
-                        (\t ->
-                            option
-                                [ value t.path
-                                , selected (t.path == model.tifPath)
-                                ]
-                                [ text (t.name ++ " (" ++ String.fromFloat t.sizeMb ++ " MB)") ]
-                        )
-                        model.tifList
-                    )
-            , button
-                [ onClick RequestLoad
-                , disabled (isLoading || String.isEmpty model.tifPath)
+            [ button
+                [ onClick PickFile
+                , disabled busy
                 , class "elm-load-btn"
                 ]
+                [ text "Choose TIF\u{2026}" ]
+            , span [ class "elm-filename" ]
                 [ text
-                    (if isLoading then
-                        "Loading…"
+                    (if String.isEmpty model.selectedFileName then
+                        "No file chosen"
 
                      else
-                        "Load TIF"
+                        model.selectedFileName
                     )
                 ]
             ]
@@ -512,12 +451,12 @@ viewHeader model =
                     []
                 , button
                     [ onClick RequestGenerate
-                    , disabled isCompositing
+                    , disabled (model.generateState == Compositing)
                     , class "elm-load-btn"
                     ]
                     [ text
-                        (if isCompositing then
-                            "Generating…"
+                        (if model.generateState == Compositing then
+                            "Generating\u{2026}"
 
                          else
                             "Generate Puzzle"
@@ -537,18 +476,21 @@ viewStatus model =
         Idle ->
             text ""
 
+        Uploading ->
+            span [ class "elm-status loading" ] [ text "Uploading\u{2026}" ]
+
         Loading ->
-            span [ class "elm-status loading" ] [ text "Parsing TIF and tracing brick outlines…" ]
+            span [ class "elm-status loading" ] [ text "Parsing TIF and tracing brick outlines\u{2026}" ]
 
         Loaded r ->
             let
                 suffix =
                     case model.generateState of
                         Generated ->
-                            " — " ++ String.fromInt (List.length model.pieces) ++ " pieces"
+                            " \u{2014} " ++ String.fromInt (List.length model.pieces) ++ " pieces"
 
                         Compositing ->
-                            " — compositing pieces…"
+                            " \u{2014} compositing pieces\u{2026}"
 
                         NotGenerated ->
                             ""
@@ -558,7 +500,7 @@ viewStatus model =
                     (String.fromInt (List.length r.bricks)
                         ++ " bricks ("
                         ++ String.fromFloat r.canvas.width
-                        ++ "×"
+                        ++ "\u{00D7}"
                         ++ String.fromFloat r.canvas.height
                         ++ ")"
                         ++ suffix
@@ -578,7 +520,7 @@ viewBody model =
 
         _ ->
             div [ class "elm-placeholder" ]
-                [ text "Load a TIF file to begin." ]
+                [ text "Choose a TIF file to begin." ]
 
 
 viewMainSvg : LoadResponse -> Model -> Html Msg

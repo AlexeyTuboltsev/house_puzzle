@@ -71,6 +71,8 @@ body { background: #1a1a2e; color: #ccc; font-family: sans-serif; font-size: 14p
 .elm-brick-path { cursor: pointer; }
 .elm-brick-path:hover { fill: rgba(64,170,255,0.2); stroke: #8df; }
 
+.elm-filename { color: #aaa; font-size: 12px; font-family: monospace; }
+
 .elm-placeholder {
   flex: 1;
   display: flex;
@@ -114,7 +116,7 @@ window.addEventListener('error', function(e) {
 if (window.Elm && window.Elm.Main) {
   const app = window.Elm.Main.init({ node: document.getElementById('elm-root') });
 
-  // ── Port: compositePieces ────────────────────────────────────────────────────────
+  // ── Port: compositePieces ───────────────────────────────────────────────
   // Receives: [{id, x, y, w, h, bricks: [{id, x, y, w, h}, ...]}]
   // Sends back via gotPieceImages: [{id, dataUrl}]
 
