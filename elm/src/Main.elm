@@ -177,6 +177,7 @@ type Msg
     | ToggleBrickInEdit Int
     | SaveEdit
     | CancelEdit
+    | GotPiecePolygons (Result Http.Error (List ( Int, List Point )))
 
 
 
@@ -489,7 +490,10 @@ update msg model =
                         , pieceImages = Dict.empty
                         , selectedPieceId = newSelectedId
                       }
-                    , compositePieces (encodePieceList reindexed)
+                    , Cmd.batch
+                        [ compositePieces (encodePieceList reindexed)
+                        , recomputePiecePolygons reindexed
+                        ]
                     )
 
         CancelEdit ->
@@ -500,6 +504,28 @@ update msg model =
               }
             , Cmd.none
             )
+
+        GotPiecePolygons (Ok pairs) ->
+            let
+                polyDict =
+                    Dict.fromList pairs
+
+                updatedPieces =
+                    List.map
+                        (\p ->
+                            case Dict.get p.id polyDict of
+                                Just poly ->
+                                    { p | polygon = poly }
+
+                                Nothing ->
+                                    p
+                        )
+                        model.pieces
+            in
+            ( { model | pieces = updatedPieces }, Cmd.none )
+
+        GotPiecePolygons (Err _) ->
+            ( model, Cmd.none )
 
 
 
@@ -582,6 +608,40 @@ mergeBricks targetCount minBorder seed =
         , expect = Http.expectJson GotMergeResponse decodeMergeResponse
         }
 
+
+
+recomputePiecePolygons : List Piece -> Cmd Msg
+recomputePiecePolygons pieces =
+    Http.post
+        { url = "/api/merge"
+        , body =
+            Http.jsonBody
+                (E.object
+                    [ ( "pieces"
+                      , E.list
+                            (\p ->
+                                E.object
+                                    [ ( "id", E.int p.id )
+                                    , ( "brick_ids", E.list E.int p.brickIds )
+                                    ]
+                            )
+                            pieces
+                      )
+                    ]
+                )
+        , expect = Http.expectJson GotPiecePolygons decodePiecePolygonResponse
+        }
+
+
+decodePiecePolygonResponse : D.Decoder (List ( Int, List Point ))
+decodePiecePolygonResponse =
+    D.field "pieces"
+        (D.list
+            (D.map2 Tuple.pair
+                (D.field "id" D.int)
+                (D.field "polygon" (D.list decodePoint))
+            )
+        )
 
 
 -- ── Decoders ────────────────────────────────────────────────────────────────

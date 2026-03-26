@@ -358,6 +358,12 @@ def api_brick_png(brick_id):
 def _compute_piece_polygons(pieces, bricks_by_id, brick_polygons):
     """Compute merged polygon outline for each piece by rasterizing brick polygons.
 
+    CANONICAL OUTLINE RULE: piece outlines are ALWAYS derived from brick alpha
+    vectors, never from piece PNG alpha channels or bounding boxes.
+    Pipeline: brick PNG alpha -> tracer.py -> brick polygon (local coords) ->
+    rasterize per-piece mask -> trace_alpha_contours -> douglas_peucker_closed
+    -> canvas-coord piece polygon.
+
     Returns dict[piece_id -> list of [x, y] in canvas coords].
     """
     from PIL import Image as PilImage, ImageDraw as PilDraw
@@ -405,11 +411,53 @@ def _compute_piece_polygons(pieces, bricks_by_id, brick_polygons):
     return result
 
 
+def _pieces_json_with_polygons(pieces, bricks_by_id, brick_polygons):
+    """Build JSON response for a list of pieces, computing polygon outlines."""
+    pieces_json = pieces_to_json(pieces, bricks_by_id)
+    piece_polys = _compute_piece_polygons(pieces, bricks_by_id, brick_polygons)
+    for p in pieces_json:
+        p["polygon"] = piece_polys.get(p["id"], [])
+    return pieces_json
+
+
 @app.route("/api/merge", methods=["POST"])
 def api_merge():
-    """Merge bricks into puzzle pieces."""
+    """Merge bricks into puzzle pieces.
+
+    Two modes:
+    - Normal (no 'pieces' key): run merge algorithm with target_count/seed/min_border.
+    - Recompute (with 'pieces' key): skip merge, recompute bboxes + polygon outlines
+      for the supplied piece definitions [{id, brick_ids}, ...].  Used after manual
+      edits to restore polygon outlines via the canonical brick-vector pipeline.
+    """
     data = request.get_json()
 
+    if not _state["bricks_by_id"]:
+        return jsonify({"error": "No TIF loaded"}), 400
+
+    # ── Recompute mode: pre-defined pieces supplied by caller ─────────────────
+    if "pieces" in data:
+        class _P:
+            def __init__(self, pid, brick_ids, bricks_by_id):
+                self.id = pid
+                self.brick_ids = brick_ids
+                bricks = [bricks_by_id[bid] for bid in brick_ids if bid in bricks_by_id]
+                if bricks:
+                    self.x = min(b.x for b in bricks)
+                    self.y = min(b.y for b in bricks)
+                    self.width = max(b.x + b.width for b in bricks) - self.x
+                    self.height = max(b.y + b.height for b in bricks) - self.y
+                else:
+                    self.x = self.y = self.width = self.height = 0
+
+        pieces = [_P(p["id"], p.get("brick_ids", []), _state["bricks_by_id"])
+                  for p in data["pieces"]]
+        pieces_json = _pieces_json_with_polygons(
+            pieces, _state["bricks_by_id"], _state.get("brick_polygons", {})
+        )
+        return jsonify({"num_pieces": len(pieces), "pieces": pieces_json})
+
+    # ── Normal mode: run merge algorithm ─────────────────────────────────────
     if not _state["bricks"]:
         return jsonify({"error": "No TIF loaded"}), 400
 
@@ -430,15 +478,9 @@ def api_merge():
 
     _state["pieces"] = result.pieces
 
-    pieces_json = pieces_to_json(result.pieces, _state["bricks_by_id"])
-
-    piece_polys = _compute_piece_polygons(
-        result.pieces,
-        _state["bricks_by_id"],
-        _state.get("brick_polygons", {}),
+    pieces_json = _pieces_json_with_polygons(
+        result.pieces, _state["bricks_by_id"], _state.get("brick_polygons", {})
     )
-    for p in pieces_json:
-        p["polygon"] = piece_polys.get(p["id"], [])
 
     return jsonify({
         "num_pieces": len(result.pieces),

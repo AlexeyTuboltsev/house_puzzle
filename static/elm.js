@@ -6770,6 +6770,50 @@ var $author$project$Main$recalcPieceBbox = F2(
 			}
 		}
 	});
+var $author$project$Main$GotPiecePolygons = function (a) {
+	return {$: 'GotPiecePolygons', a: a};
+};
+var $author$project$Main$decodePiecePolygonResponse = A2(
+	$elm$json$Json$Decode$field,
+	'pieces',
+	$elm$json$Json$Decode$list(
+		A3(
+			$elm$json$Json$Decode$map2,
+			$elm$core$Tuple$pair,
+			A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$int),
+			A2(
+				$elm$json$Json$Decode$field,
+				'polygon',
+				$elm$json$Json$Decode$list($author$project$Main$decodePoint)))));
+var $author$project$Main$recomputePiecePolygons = function (pieces) {
+	return $elm$http$Http$post(
+		{
+			body: $elm$http$Http$jsonBody(
+				$elm$json$Json$Encode$object(
+					_List_fromArray(
+						[
+							_Utils_Tuple2(
+							'pieces',
+							A2(
+								$elm$json$Json$Encode$list,
+								function (p) {
+									return $elm$json$Json$Encode$object(
+										_List_fromArray(
+											[
+												_Utils_Tuple2(
+												'id',
+												$elm$json$Json$Encode$int(p.id)),
+												_Utils_Tuple2(
+												'brick_ids',
+												A2($elm$json$Json$Encode$list, $elm$json$Json$Encode$int, p.brickIds))
+											]));
+								},
+								pieces))
+						]))),
+			expect: A2($elm$http$Http$expectJson, $author$project$Main$GotPiecePolygons, $author$project$Main$decodePiecePolygonResponse),
+			url: '/api/merge'
+		});
+};
 var $author$project$Main$GotUploadResponse = function (a) {
 	return {$: 'GotUploadResponse', a: a};
 };
@@ -7230,15 +7274,46 @@ var $author$project$Main$update = F2(
 						_Utils_update(
 							model,
 							{editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, generateState: $author$project$Main$Compositing, pieceImages: $elm$core$Dict$empty, pieces: reindexed, selectedPieceId: newSelectedId, waves: updatedWaves}),
-						$author$project$Main$compositePieces(
-							$author$project$Main$encodePieceList(reindexed)));
+						$elm$core$Platform$Cmd$batch(
+							_List_fromArray(
+								[
+									$author$project$Main$compositePieces(
+									$author$project$Main$encodePieceList(reindexed)),
+									$author$project$Main$recomputePiecePolygons(reindexed)
+								])));
 				}
-			default:
+			case 'CancelEdit':
 				return _Utils_Tuple2(
 					_Utils_update(
 						model,
 						{editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil}),
 					$elm$core$Platform$Cmd$none);
+			default:
+				if (msg.a.$ === 'Ok') {
+					var pairs = msg.a.a;
+					var polyDict = $elm$core$Dict$fromList(pairs);
+					var updatedPieces = A2(
+						$elm$core$List$map,
+						function (p) {
+							var _v10 = A2($elm$core$Dict$get, p.id, polyDict);
+							if (_v10.$ === 'Just') {
+								var poly = _v10.a;
+								return _Utils_update(
+									p,
+									{polygon: poly});
+							} else {
+								return p;
+							}
+						},
+						model.pieces);
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{pieces: updatedPieces}),
+						$elm$core$Platform$Cmd$none);
+				} else {
+					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
+				}
 		}
 	});
 var $elm$html$Html$Attributes$stringProperty = F2(
