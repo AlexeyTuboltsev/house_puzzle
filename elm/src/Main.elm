@@ -16,6 +16,13 @@ import Svg.Attributes as SA
 -- ── Types ──────────────────────────────────────────────────────────────────
 
 
+type alias TifEntry =
+    { name : String
+    , path : String
+    , sizeMb : Float
+    }
+
+
 type alias Point =
     ( Float, Float )
 
@@ -91,6 +98,7 @@ type GenerateState
 
 type alias Model =
     { tifPath : String
+    , tifList : List TifEntry
     , loadState : LoadState
     , targetCount : Int
     , generateState : GenerateState
@@ -103,6 +111,7 @@ type alias Model =
 init : () -> ( Model, Cmd Msg )
 init _ =
     ( { tifPath = ""
+      , tifList = []
       , loadState = Idle
       , targetCount = 10
       , generateState = NotGenerated
@@ -110,7 +119,7 @@ init _ =
       , pieceImages = Dict.empty
       , bricksById = Dict.empty
       }
-    , Cmd.none
+    , fetchTifList
     )
 
 
@@ -119,7 +128,8 @@ init _ =
 
 
 type Msg
-    = SetTifPath String
+    = GotTifList (Result Http.Error (List TifEntry))
+    | SetTifPath String
     | RequestLoad
     | GotLoadResponse (Result Http.Error LoadResponse)
     | SetTargetCount String
@@ -145,6 +155,23 @@ port gotPieceImages : (E.Value -> msg) -> Sub msg
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
+        GotTifList (Ok entries) ->
+            ( { model
+                | tifList = entries
+                , tifPath =
+                    -- pre-select first entry if nothing chosen yet
+                    if String.isEmpty model.tifPath then
+                        entries |> List.head |> Maybe.map .path |> Maybe.withDefault ""
+
+                    else
+                        model.tifPath
+              }
+            , Cmd.none
+            )
+
+        GotTifList (Err _) ->
+            ( model, Cmd.none )
+
         SetTifPath path ->
             ( { model | tifPath = path }, Cmd.none )
 
@@ -225,6 +252,26 @@ update msg model =
 
 
 -- ── HTTP ────────────────────────────────────────────────────────────────────
+
+
+fetchTifList : Cmd Msg
+fetchTifList =
+    Http.get
+        { url = "/api/list_tifs"
+        , expect = Http.expectJson GotTifList decodeTifList
+        }
+
+
+decodeTifList : D.Decoder (List TifEntry)
+decodeTifList =
+    D.field "tifs"
+        (D.list
+            (D.map3 TifEntry
+                (D.field "name" D.string)
+                (D.field "path" D.string)
+                (D.field "size_mb" D.float)
+            )
+        )
 
 
 loadTif : String -> Cmd Msg
@@ -412,14 +459,31 @@ viewHeader model =
     header [ class "elm-header" ]
         [ h1 [] [ text "House Puzzle Editor" ]
         , div [ class "elm-load-controls" ]
-            [ input
-                [ type_ "text"
-                , placeholder "e.g. in/casablanca 6.tif"
-                , value model.tifPath
-                , onInput SetTifPath
-                , class "elm-path-input"
-                ]
-                []
+            [ if List.isEmpty model.tifList then
+                input
+                    [ type_ "text"
+                    , placeholder "e.g. in/casablanca 6.tif"
+                    , value model.tifPath
+                    , onInput SetTifPath
+                    , class "elm-path-input"
+                    ]
+                    []
+
+              else
+                select
+                    [ onInput SetTifPath
+                    , class "elm-path-input"
+                    ]
+                    (List.map
+                        (\t ->
+                            option
+                                [ value t.path
+                                , selected (t.path == model.tifPath)
+                                ]
+                                [ text (t.name ++ " (" ++ String.fromFloat t.sizeMb ++ " MB)") ]
+                        )
+                        model.tifList
+                    )
             , button
                 [ onClick RequestLoad
                 , disabled (isLoading || String.isEmpty model.tifPath)
@@ -427,7 +491,7 @@ viewHeader model =
                 ]
                 [ text
                     (if isLoading then
-                        "Loading\u{2026}"
+                        "Loading…"
 
                      else
                         "Load TIF"
@@ -453,7 +517,7 @@ viewHeader model =
                     ]
                     [ text
                         (if isCompositing then
-                            "Generating\u{2026}"
+                            "Generating…"
 
                          else
                             "Generate Puzzle"
@@ -474,17 +538,17 @@ viewStatus model =
             text ""
 
         Loading ->
-            span [ class "elm-status loading" ] [ text "Parsing TIF and tracing brick outlines\u{2026}" ]
+            span [ class "elm-status loading" ] [ text "Parsing TIF and tracing brick outlines…" ]
 
         Loaded r ->
             let
                 suffix =
                     case model.generateState of
                         Generated ->
-                            " \u{2014} " ++ String.fromInt (List.length model.pieces) ++ " pieces"
+                            " — " ++ String.fromInt (List.length model.pieces) ++ " pieces"
 
                         Compositing ->
-                            " \u{2014} compositing pieces\u{2026}"
+                            " — compositing pieces…"
 
                         NotGenerated ->
                             ""
@@ -494,7 +558,7 @@ viewStatus model =
                     (String.fromInt (List.length r.bricks)
                         ++ " bricks ("
                         ++ String.fromFloat r.canvas.width
-                        ++ "\u{00D7}"
+                        ++ "×"
                         ++ String.fromFloat r.canvas.height
                         ++ ")"
                         ++ suffix
