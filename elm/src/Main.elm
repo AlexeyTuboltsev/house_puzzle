@@ -119,6 +119,7 @@ type alias Model =
     , showGrid : Bool
     , waves : List Wave
     , nextWaveId : Int
+    , selectedPieceId : Maybe Int
     }
 
 
@@ -138,6 +139,7 @@ init _ =
       , showGrid = False
       , waves = []
       , nextWaveId = 1
+      , selectedPieceId = Nothing
       }
     , Cmd.none
     )
@@ -163,6 +165,7 @@ type Msg
     | ToggleGrid Bool
     | AddWave
     | ToggleWaveVisibility Int
+    | SelectPiece Int
 
 
 
@@ -194,6 +197,7 @@ update msg model =
                 , pieceImages = Dict.empty
                 , waves = []
                 , nextWaveId = 1
+                , selectedPieceId = Nothing
               }
             , uploadTif file
             )
@@ -251,6 +255,7 @@ update msg model =
                         , pieceImages = Dict.empty
                         , waves = []
                         , nextWaveId = 1
+                        , selectedPieceId = Nothing
                       }
                     , mergeBricks model.targetCount model.minBorder model.seed
                     )
@@ -316,6 +321,18 @@ update msg model =
                                 w
                         )
                         model.waves
+              }
+            , Cmd.none
+            )
+
+        SelectPiece pid ->
+            ( { model
+                | selectedPieceId =
+                    if model.selectedPieceId == Just pid then
+                        Nothing
+
+                    else
+                        Just pid
               }
             , Cmd.none
             )
@@ -651,6 +668,19 @@ viewSidebar model =
                                 )
                             ]
                         ]
+                    , div [ class "btn-row" ]
+                        [ button
+                            [ disabled (model.selectedPieceId == Nothing) ]
+                            [ text
+                                (case model.selectedPieceId of
+                                    Just pid ->
+                                        "Edit Piece #" ++ String.fromInt pid
+
+                                    Nothing ->
+                                        "Edit Piece"
+                                )
+                            ]
+                        ]
                     , h2 [] [ text "Stats" ]
                     , viewStats model
                     ]
@@ -745,16 +775,81 @@ viewCanvasArea model =
 viewMainSvg : LoadResponse -> Model -> Html Msg
 viewMainSvg response model =
     let
+        cw =
+            response.canvas.width
+
+        ch =
+            response.canvas.height
+
         w =
-            String.fromFloat response.canvas.width
+            String.fromFloat cw
 
         h =
-            String.fromFloat response.canvas.height
+            String.fromFloat ch
+
+        isGenerated =
+            model.generateState == Generated
+
+        isPieces =
+            model.viewMode == ViewPieces
 
         showPieceImages =
-            model.viewMode == ViewPieces
-                && model.generateState == Generated
-                && not (Dict.isEmpty model.pieceImages)
+            isPieces && isGenerated && not (Dict.isEmpty model.pieceImages)
+
+        showComposite =
+            isPieces && not isGenerated && response.hasComposite
+
+        -- Base layer
+        baseLayer =
+            if showPieceImages then
+                List.map (viewPieceImage model.pieceImages) model.pieces
+
+            else if showComposite then
+                [ Svg.image
+                    [ SA.x "0"
+                    , SA.y "0"
+                    , SA.width w
+                    , SA.height h
+                    , attribute "href" "/api/composite.png"
+                    ]
+                    []
+                ]
+
+            else
+                -- Blueprint (pre or post gen) — brick polygons
+                List.map viewBrickPath response.bricks
+
+        -- Composite brick hover overlays (pre-gen only)
+        compositeOverlays =
+            if showComposite then
+                List.map viewBrickOverlay response.bricks
+
+            else
+                []
+
+        -- Grid lines
+        gridLayer =
+            if model.showGrid then
+                viewGrid cw ch model.viewMode
+
+            else
+                []
+
+        -- Piece outlines — white rect borders around each piece (post-gen only)
+        outlineLayer =
+            if isGenerated && model.showOutlines then
+                List.map viewPieceOutline model.pieces
+
+            else
+                []
+
+        -- Piece interaction overlays (hover + click, post-gen only)
+        pieceOverlays =
+            if isGenerated then
+                List.map (viewPieceOverlay model.selectedPieceId) model.pieces
+
+            else
+                []
     in
     Svg.svg
         [ SA.viewBox ("0 0 " ++ w ++ " " ++ h)
@@ -762,11 +857,11 @@ viewMainSvg response model =
         , SA.width w
         , SA.height h
         ]
-        (if showPieceImages then
-            List.map (viewPieceImage model.pieceImages) model.pieces
-
-         else
-            List.map viewBrickPath response.bricks
+        (baseLayer
+            ++ compositeOverlays
+            ++ gridLayer
+            ++ outlineLayer
+            ++ pieceOverlays
         )
 
 
@@ -813,24 +908,169 @@ viewBrickPath brick =
             , SA.y (String.fromFloat brick.y)
             , SA.width (String.fromFloat brick.width)
             , SA.height (String.fromFloat brick.height)
-            , SA.fill "none"
-            , SA.stroke "#4af"
-            , SA.strokeWidth "1"
-            , SA.opacity "0.4"
+            , SA.fill "#2a5da8"
+            , SA.stroke "white"
+            , SA.strokeWidth "4"
+            , attribute "vector-effect" "non-scaling-stroke"
             ]
             []
 
     else
         Svg.polygon
             [ SA.points pointsAttr
-            , SA.fill "rgba(64,170,255,0.08)"
-            , SA.stroke "#4af"
-            , SA.strokeWidth "1"
+            , SA.fill "#2a5da8"
+            , SA.stroke "white"
+            , SA.strokeWidth "4"
             , SA.strokeLinejoin "round"
+            , attribute "stroke-linecap" "round"
+            , attribute "paint-order" "fill stroke"
+            , attribute "vector-effect" "non-scaling-stroke"
             , attribute "data-brick-id" (String.fromInt brick.id)
             , SA.class "brick-path"
             ]
             []
+
+
+viewBrickOverlay : Brick -> Svg.Svg Msg
+viewBrickOverlay brick =
+    let
+        absPoints =
+            List.map (\( x, y ) -> ( x + brick.x, y + brick.y )) brick.polygon
+
+        pointsAttr =
+            absPoints
+                |> List.map (\( x, y ) -> String.fromFloat x ++ "," ++ String.fromFloat y)
+                |> String.join " "
+    in
+    if List.isEmpty absPoints then
+        Svg.rect
+            [ SA.x (String.fromFloat brick.x)
+            , SA.y (String.fromFloat brick.y)
+            , SA.width (String.fromFloat brick.width)
+            , SA.height (String.fromFloat brick.height)
+            , SA.fill "transparent"
+            , attribute "vector-effect" "non-scaling-stroke"
+            , SA.class "brick-overlay"
+            ]
+            []
+
+    else
+        Svg.polygon
+            [ SA.points pointsAttr
+            , SA.fill "transparent"
+            , attribute "vector-effect" "non-scaling-stroke"
+            , SA.class "brick-overlay"
+            ]
+            []
+
+
+viewGrid : Float -> Float -> ViewMode -> List (Svg.Svg Msg)
+viewGrid cw ch viewMode =
+    let
+        gridStep =
+            211.0
+
+        color =
+            if viewMode == ViewBlueprint then
+                "#ff0000"
+
+            else
+                "#e0a050"
+
+        numV =
+            floor (cw / gridStep)
+
+        numH =
+            floor (ch / gridStep)
+
+        vLines =
+            List.map
+                (\i ->
+                    let
+                        x =
+                            toFloat i * gridStep
+                    in
+                    Svg.line
+                        [ SA.x1 (String.fromFloat x)
+                        , SA.y1 "0"
+                        , SA.x2 (String.fromFloat x)
+                        , SA.y2 (String.fromFloat ch)
+                        , SA.stroke color
+                        , SA.strokeWidth "1"
+                        , attribute "vector-effect" "non-scaling-stroke"
+                        ]
+                        []
+                )
+                (List.range 1 numV)
+
+        hLines =
+            List.map
+                (\i ->
+                    let
+                        y =
+                            toFloat i * gridStep
+                    in
+                    Svg.line
+                        [ SA.x1 "0"
+                        , SA.y1 (String.fromFloat y)
+                        , SA.x2 (String.fromFloat cw)
+                        , SA.y2 (String.fromFloat y)
+                        , SA.stroke color
+                        , SA.strokeWidth "1"
+                        , attribute "vector-effect" "non-scaling-stroke"
+                        ]
+                        []
+                )
+                (List.range 1 numH)
+    in
+    vLines ++ hLines
+
+
+viewPieceOutline : Piece -> Svg.Svg Msg
+viewPieceOutline piece =
+    Svg.rect
+        [ SA.x (String.fromFloat piece.x)
+        , SA.y (String.fromFloat piece.y)
+        , SA.width (String.fromFloat piece.width)
+        , SA.height (String.fromFloat piece.height)
+        , SA.fill "transparent"
+        , SA.stroke "white"
+        , SA.strokeWidth "2"
+        , attribute "vector-effect" "non-scaling-stroke"
+        , SA.class "piece-outline"
+        ]
+        []
+
+
+viewPieceOverlay : Maybe Int -> Piece -> Svg.Svg Msg
+viewPieceOverlay selectedId piece =
+    let
+        isSelected =
+            selectedId == Just piece.id
+
+        fillColor =
+            if isSelected then
+                "rgba(64,120,255,0.35)"
+
+            else
+                "transparent"
+    in
+    Svg.rect
+        [ SA.x (String.fromFloat piece.x)
+        , SA.y (String.fromFloat piece.y)
+        , SA.width (String.fromFloat piece.width)
+        , SA.height (String.fromFloat piece.height)
+        , SA.fill fillColor
+        , SA.class
+            (if isSelected then
+                "piece-overlay selected"
+
+             else
+                "piece-overlay"
+            )
+        , onClick (SelectPiece piece.id)
+        ]
+        []
 
 
 viewWavesPanel : Model -> Html Msg

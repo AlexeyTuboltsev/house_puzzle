@@ -163,24 +163,34 @@ body {
 /* Column 2: Canvas */
 .canvas-area {
     flex: 1;
-    overflow: auto;
+    min-height: 0;
+    overflow: hidden;
     background: #000;
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     justify-content: center;
     padding: 16px;
 }
 .canvas-info {
     color: #555;
     font-size: 15px;
-    align-self: center;
 }
 .house-svg {
     display: block;
     max-width: 100%;
+    max-height: 100%;
+    width: auto;
+    height: auto;
 }
 .brick-path { cursor: pointer; }
-.brick-path:hover { fill: rgba(64,170,255,0.2); stroke: #8df; }
+.brick-path:hover { fill: #1a4590; }
+
+.brick-overlay { cursor: pointer; }
+.brick-overlay:hover { fill: rgba(64, 120, 255, 0.25); }
+
+.piece-overlay { cursor: pointer; }
+.piece-overlay:hover { fill: rgba(64, 120, 255, 0.25) !important; }
+.piece-overlay.selected { fill: rgba(64, 120, 255, 0.35); }
 
 /* Column 3: Waves panel */
 .waves-panel-wrapper {
