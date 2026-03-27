@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>House Puzzle Editor (Elm)</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #1a1a2e;
+    color: #e0e0e0;
+    height: 100vh;
+    overflow: hidden;
+}
+
+.app { display: flex; flex-direction: column; height: 100vh; }
+
+.header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 16px;
+    background: #16213e;
+    border-bottom: 1px solid #333;
+    height: 48px;
+    flex-shrink: 0;
+}
+.header h1 {
+    font-size: 16px;
+    font-weight: 600;
+    color: #e0a050;
+    margin-right: auto;
+}
+.header button, .sidebar button, .waves-panel button {
+    padding: 6px 16px;
+    border: 1px solid #555;
+    border-radius: 4px;
+    background: #2a2a4a;
+    color: #e0e0e0;
+    cursor: pointer;
+    font-size: 13px;
+}
+.header button:hover, .sidebar button:hover, .waves-panel button:hover { background: #3a3a6a; }
+.header button:disabled, .sidebar button:disabled, .waves-panel button:disabled { opacity: 0.4; cursor: not-allowed; }
+.header button.primary, .sidebar button.primary, .waves-panel button.primary {
+    background: #e0a050;
+    color: #1a1a2e;
+    border-color: #e0a050;
+    font-weight: 600;
+}
+.header button.primary:hover { background: #f0b060; }
+.header button.primary:disabled { opacity: 0.4; }
+
+.main {
+    display: flex;
+    height: calc(100vh - 48px);
+    overflow: hidden;
+}
+
+/* Column 1: Settings sidebar */
+.sidebar {
+    width: 260px;
+    min-width: 260px;
+    background: #16213e;
+    border-right: 1px solid #333;
+    padding: 12px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+}
+.sidebar h2 {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #888;
+    margin-bottom: 8px;
+}
+.sidebar h2:not(:first-child) { margin-top: 14px; }
+
+.param-group { margin-bottom: 6px; }
+.param-group label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    margin-bottom: 2px;
+}
+.param-group label .value {
+    color: #e0a050;
+    font-weight: 600;
+}
+.param-group input[type="range"] {
+    width: 100%;
+    accent-color: #e0a050;
+}
+.param-group input[type="number"] {
+    width: 70px;
+    background: #2a2a4a;
+    border: 1px solid #555;
+    color: #e0e0e0;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 12px;
+}
+
+.checkbox-group {
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+}
+.checkbox-group input[type="checkbox"] { accent-color: #e0a050; }
+
+.btn-row {
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
+}
+.btn-row button {
+    flex: 1;
+    padding: 6px;
+    font-size: 12px;
+}
+
+.stats {
+    background: #0f1629;
+    border-radius: 6px;
+    padding: 8px;
+    font-size: 11px;
+    line-height: 1.7;
+}
+.stats .row {
+    display: flex;
+    justify-content: space-between;
+}
+.stats .row .val {
+    color: #e0a050;
+    font-weight: 600;
+}
+
+.view-toggles {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 8px;
+}
+.view-toggles button {
+    flex: 1;
+    padding: 4px;
+    font-size: 11px;
+}
+.view-toggles button.active {
+    background: #e0a050;
+    color: #1a1a2e;
+    border-color: #e0a050;
+}
+
+.status { font-size: 11px; margin-top: 4px; display: inline-block; }
+.status.loading { color: #fa0; }
+.status.error   { color: #f64; }
+.status.ok      { color: #4c4; }
+
+/* Column 2: Canvas */
+.canvas-area {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    background: #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    position: relative;
+}
+.canvas-info {
+    color: #555;
+    font-size: 15px;
+}
+.house-svg {
+    display: block;
+    max-width: 100%;
+    max-height: 100%;
+    width: auto;
+    height: auto;
+}
+.brick-path { cursor: pointer; }
+.brick-path:hover { fill: #1a4590; }
+
+.brick-overlay { cursor: pointer; }
+.brick-overlay:hover { fill: rgba(64, 120, 255, 0.25); }
+
+.piece-overlay { cursor: pointer; fill: transparent; }
+.piece-overlay.hovered { fill: rgba(64,120,255,0.25); }
+.piece-overlay.selected { fill: rgba(64,120,255,0.55); }
+
+/* Per-wave piece overlay colors (wc-0 … wc-6, cycling) */
+.piece-overlay.wc-0 { fill: rgba(224,80,80,0.4); }
+.piece-overlay.wc-0.hovered { fill: rgba(224,80,80,0.65); }
+.piece-overlay.wc-1 { fill: rgba(80,192,80,0.4); }
+.piece-overlay.wc-1.hovered { fill: rgba(80,192,80,0.65); }
+.piece-overlay.wc-2 { fill: rgba(224,160,48,0.4); }
+.piece-overlay.wc-2.hovered { fill: rgba(224,160,48,0.65); }
+.piece-overlay.wc-3 { fill: rgba(160,80,224,0.4); }
+.piece-overlay.wc-3.hovered { fill: rgba(160,80,224,0.65); }
+.piece-overlay.wc-4 { fill: rgba(224,96,32,0.4); }
+.piece-overlay.wc-4.hovered { fill: rgba(224,96,32,0.65); }
+.piece-overlay.wc-5 { fill: rgba(32,192,192,0.4); }
+.piece-overlay.wc-5.hovered { fill: rgba(32,192,192,0.65); }
+.piece-overlay.wc-6 { fill: rgba(224,80,160,0.4); }
+.piece-overlay.wc-6.hovered { fill: rgba(224,80,160,0.65); }
+
+/* Wave label colors matching wave overlay colors */
+.wave-label.wc-0 { color: rgb(224,80,80); }
+.wave-label.wc-1 { color: rgb(80,192,80); }
+.wave-label.wc-2 { color: rgb(224,160,48); }
+.wave-label.wc-3 { color: rgb(160,80,224); }
+.wave-label.wc-4 { color: rgb(224,96,32); }
+.wave-label.wc-5 { color: rgb(32,192,192); }
+.wave-label.wc-6 { color: rgb(224,80,160); }
+
+/* Edit mode brick overlays */
+.brick-edit-in  { cursor: pointer; fill: rgba(80,255,120,0.35); stroke: rgba(80,255,120,0.85); stroke-width: 3; vector-effect: non-scaling-stroke; }
+.brick-edit-in:hover  { fill: rgba(255,80,80,0.35); stroke: rgba(255,80,80,0.9); }
+.brick-edit-out { cursor: pointer; fill: rgba(0,0,0,0.55); }
+.brick-edit-out:hover { fill: rgba(80,255,120,0.2); }
+
+/* Column 3: Waves panel */
+.waves-panel-wrapper {
+    display: flex;
+    flex-shrink: 0;
+}
+.waves-resize-handle {
+    width: 5px;
+    cursor: col-resize;
+    background: #333;
+    flex-shrink: 0;
+    transition: background 0.15s;
+}
+.waves-resize-handle:hover { background: #e0a050; }
+.waves-panel {
+    width: 600px;
+    min-width: 180px;
+    background: #16213e;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+.waves-header {
+    padding: 8px 12px;
+    border-bottom: 1px solid #333;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+.waves-header h2 {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #888;
+    margin: 0;
+    flex: 1;
+}
+.waves-header .wave-count {
+    color: #e0a050;
+    font-size: 12px;
+    font-weight: 600;
+}
+.waves-body {
+    flex: 1;
+    overflow-y: auto;
+}
+.wave-toolbar {
+    padding: 6px 12px;
+    border-bottom: 1px solid #333;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+}
+.wave-toolbar button { padding: 4px 10px; font-size: 11px; }
+
+.wave-row { border-bottom: 1px solid #222; padding: 4px 0; }
+.wave-row.selected { background: rgba(224,160,80,0.07); }
+.wave-row.drag-over { background: rgba(60,120,255,0.12); outline: 1px dashed rgba(60,120,255,0.5); }
+.drag-insert-marker {
+    width: 3px;
+    min-width: 3px;
+    align-self: stretch;
+    background: #60c8ff;
+    border-radius: 2px;
+    margin: 2px 1px;
+    flex-shrink: 0;
+}
+.wave-row-header {
+    display: flex;
+    align-items: center;
+    padding: 2px 10px;
+    gap: 6px;
+    font-size: 12px;
+    user-select: none;
+    cursor: pointer;
+}
+.wave-row-header:hover { background: rgba(255,255,255,0.03); }
+.wave-actions {
+    margin-left: auto;
+    display: flex;
+    gap: 2px;
+}
+.wave-actions button {
+    padding: 1px 5px;
+    font-size: 10px;
+    background: transparent;
+    border: 1px solid #444;
+    color: #aaa;
+    border-radius: 3px;
+    cursor: pointer;
+    line-height: 1.4;
+}
+.wave-actions button:hover { background: #2a2a4a; color: #e0e0e0; }
+.wave-actions button:disabled { opacity: 0.3; cursor: not-allowed; }
+.wave-lock {
+    cursor: pointer;
+    font-size: 13px;
+    opacity: 0.5;
+    line-height: 1;
+    padding: 2px 3px;
+    border-radius: 3px;
+    transition: opacity 0.15s;
+}
+.wave-lock:hover { opacity: 1; }
+.wave-lock.locked { opacity: 0.9; color: #e0a050; }
+.wave-row.locked .wave-pieces { opacity: 0.6; pointer-events: none; }
+.wave-row.locked .wave-row-header { border-left: 2px solid #e0a050; padding-left: 6px; }
+.wave-eye {
+    cursor: pointer;
+    font-size: 14px;
+    color: #e0a050;
+    opacity: 0.8;
+    line-height: 1;
+}
+.wave-eye:hover { opacity: 1; }
+.wave-eye.hidden { color: #555; opacity: 0.5; }
+.wave-label {
+    font-weight: 600;
+    color: #e0a050;
+    min-width: 60px;
+}
+.wave-label.unassigned-label { color: #888; }
+.wave-row.selected .wave-label { color: #60c8ff; }
+.wave-row.selected .wave-row-header { background: rgba(60,120,255,0.08); }
+.wave-piece-count { color: #888; font-size: 11px; flex: 1; }
+
+.wave-pieces {
+    display: flex;
+    gap: 4px;
+    padding: 4px 10px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    min-height: 56px;
+    align-items: center;
+}
+.wave-pieces::-webkit-scrollbar { height: 4px; }
+.wave-pieces::-webkit-scrollbar-track { background: #0f1629; border-radius: 2px; }
+.wave-pieces::-webkit-scrollbar-thumb { background: #444; border-radius: 2px; }
+
+.piece-thumb {
+    flex-shrink: 0;
+    position: relative;
+    border: 2px solid transparent;
+    border-radius: 3px;
+    padding: 2px;
+    transition: border-color 0.15s;
+    cursor: grab;
+}
+.piece-thumb:active { cursor: grabbing; }
+.piece-thumb:hover, .piece-thumb.hovered { border-color: rgba(60,200,255,0.6); }
+.piece-thumb-label { font-size: 9px; color: #aaa; text-align: center; margin-top: 1px; }
+.piece-thumb-remove {
+    display: none;
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 14px;
+    height: 14px;
+    padding: 0;
+    font-size: 9px;
+    line-height: 14px;
+    text-align: center;
+    background: rgba(40,40,60,0.9);
+    border: none;
+    border-radius: 0 2px 0 3px;
+    color: #f64;
+    cursor: pointer;
+}
+.piece-thumb:hover .piece-thumb-remove { display: block; }
+
+/* Canvas recomputing spinner overlay */
+.canvas-spinner-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0,0,0,0.35);
+    pointer-events: none;
+    z-index: 10;
+}
+.canvas-spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid rgba(224,160,80,0.3);
+    border-top-color: #e0a050;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Not-built banner */
+#not-built {
+    display: none;
+    padding: 24px;
+    text-align: center;
+    color: #f84;
+    font-size: 14px;
+    line-height: 1.7;
+}
+</style>
+</head>
+<body>
+
+<div id="not-built">
+  <b>elm.js not found.</b><br>
+  Run: <code>docker compose --profile elm run --rm elm-build</code><br>
+  then reload this page.
+</div>
+
+<div id="elm-root"></div>
+
+<script>
+window.addEventListener('error', function(e) {
+  if (e.filename && e.filename.includes('elm.js')) {
+    document.getElementById('not-built').style.display = 'block';
+  }
+}, true);
+</script>
+<script src="/static/elm.js" onerror="document.getElementById('not-built').style.display='block'"></script>
+<script>
+if (window.Elm && window.Elm.Main) {
+  const app = window.Elm.Main.init({ node: document.getElementById('elm-root') });
+
+  // ── Port: compositePieces ───────────────────────────────────────────────────────
+  // Receives: [{id, x, y, w, h, bricks: [{id, x, y, w, h}, ...]}]
+  // Sends back via gotPieceImages: [{id, dataUrl}]
+
+  const _imgCache = {};
+
+  function loadImg(src) {
+    if (_imgCache[src]) return Promise.resolve(_imgCache[src]);
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => { _imgCache[src] = img; resolve(img); };
+      img.onerror = reject;
+      img.src = src;
+    });
+  }
+
+  app.ports.exportZip.subscribe(async function(payload) {
+    try {
+      const resp = await fetch('/api/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        alert('Export failed: ' + (err.error || resp.status));
+        app.ports.gotExportDone.send(false);
+        return;
+      }
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'house_puzzle_export.zip';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      app.ports.gotExportDone.send(true);
+    } catch (e) {
+      alert('Export error: ' + e.message);
+      app.ports.gotExportDone.send(false);
+    }
+  });
+
+  app.ports.compositePieces.subscribe(async function(pieces) {
+    const results = [];
+    for (const piece of pieces) {
+      const canvas = document.createElement('canvas');
+      canvas.width  = Math.round(piece.w);
+      canvas.height = Math.round(piece.h);
+      const ctx = canvas.getContext('2d');
+
+      for (const brick of piece.bricks) {
+        try {
+          const img = await loadImg(`/api/brick/${brick.id}.png`);
+          ctx.drawImage(img,
+            Math.round(brick.x - piece.x),
+            Math.round(brick.y - piece.y)
+          );
+        } catch (e) {
+          console.warn('Failed to load brick', brick.id, e);
+        }
+      }
+
+      results.push({ id: piece.id, dataUrl: canvas.toDataURL() });
+    }
+    app.ports.gotPieceImages.send(results);
+  });
+
+  app.ports.logBrick.subscribe(function(data) {
+    console.log('[brick click] id=' + data.brickId + '  piece=' + data.pieceId);
+  });
+}
+</script>
+</body>
+</html>

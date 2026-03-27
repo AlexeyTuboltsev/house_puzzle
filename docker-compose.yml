@@ -9,3 +9,14 @@ services:
     environment:
       - PYTHONDONTWRITEBYTECODE=1
       - PYTHONUNBUFFERED=1
+
+  elm-build:
+    image: node:22-slim
+    working_dir: /app/elm
+    volumes:
+      - .:/app
+    command: >
+      sh -c "npm install --save-dev elm@0.19.1-5 &&
+             npx elm make src/Main.elm --output ../static/elm.js"
+    profiles:
+      - elm

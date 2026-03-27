@@ -53,6 +53,7 @@ _state = {
     "extracted_dir": None,  # temp dir with extracted PNGs
     "border_pixels": {},    # dict[int, set[(x,y)]] per brick
     "brick_areas": {},      # dict[int, int] pixel area per brick
+    "brick_polygons": {},   # dict[int, list[[x,y]]] traced outlines per brick
 }
 
 EXTRACT_DIR = Path(tempfile.gettempdir()) / "house_puzzle_extract"
@@ -72,6 +73,11 @@ APP_VERSION = _version_file.read_text().strip() if _version_file.exists() else "
 @app.route("/")
 def index():
     return render_template("index.html", version=APP_VERSION)
+
+
+@app.route("/elm")
+def elm_editor():
+    return render_template("elm.html")
 
 
 @app.route("/manage")
@@ -185,6 +191,48 @@ def api_upload_tif():
     })
 
 
+def _trace_one_brick(args):
+    """Top-level function so ProcessPoolExecutor can pickle it."""
+    brick_id, png_path = args
+    try:
+        from tracer import trace_brick_png
+        pts = trace_brick_png(png_path)
+        return brick_id, pts
+    except Exception:
+        return brick_id, []
+
+
+def _vectorize_bricks(bricks, extract_dir: Path) -> dict:
+    """
+    Trace outline polygon for each brick PNG.
+    Results are cached to brick_polygons.json in extract_dir so re-loading is instant.
+    Returns dict[brick_id -> list[[x,y]]].
+    """
+    import concurrent.futures
+
+    cache_path = extract_dir / "brick_polygons.json"
+    if cache_path.exists():
+        with open(cache_path) as f:
+            cached = json.load(f)
+        return {int(k): v for k, v in cached.items()}
+
+    tasks = [
+        (b.id, str(extract_dir / f"brick_{b.id:03d}.png"))
+        for b in bricks
+        if (extract_dir / f"brick_{b.id:03d}.png").exists()
+    ]
+
+    polygons = {}
+    with concurrent.futures.ProcessPoolExecutor() as pool:
+        for brick_id, pts in pool.map(_trace_one_brick, tasks):
+            polygons[brick_id] = pts
+
+    with open(cache_path, "w") as f:
+        json.dump({str(k): v for k, v in polygons.items()}, f)
+
+    return polygons
+
+
 @app.route("/api/load_tif", methods=["POST"])
 def api_load_tif():
     """Load and parse a TIF file, extract brick metadata."""
@@ -244,6 +292,10 @@ def api_load_tif():
     _state["border_pixels"] = bp
     _state["brick_areas"] = ba
 
+    # Vectorize brick outlines (parallel, cached to disk)
+    polygons = _vectorize_bricks(bricks, extract_dir)
+    _state["brick_polygons"] = polygons
+
     # Build adjacency for visualization (using pixel shapes)
     adj = build_adjacency(bricks, border_pixels=bp)
 
@@ -257,6 +309,7 @@ def api_load_tif():
             "height": b.height,
             "type": b.brick_type,
             "neighbors": list(adj.get(b.id, set())),
+            "polygon": polygons.get(b.id, []),
         })
 
     return jsonify({
@@ -302,11 +355,120 @@ def api_brick_png(brick_id):
     return send_file(str(brick_path), mimetype="image/png")
 
 
+def _compute_piece_polygons(pieces, bricks_by_id, brick_polygons):
+    """Compute merged polygon outline for each piece by rasterizing brick polygons.
+
+    CANONICAL OUTLINE RULE: piece outlines are ALWAYS derived from brick alpha
+    vectors, never from piece PNG alpha channels or bounding boxes.
+    Pipeline: brick PNG alpha -> tracer.py -> brick polygon (local coords) ->
+    rasterize per-piece mask -> trace_alpha_contours -> douglas_peucker_closed
+    -> canvas-coord piece polygon.
+
+    Returns dict[piece_id -> list of [x, y] in canvas coords].
+    """
+    from PIL import Image as PilImage, ImageDraw as PilDraw
+    from unity_export import trace_alpha_contours, douglas_peucker_closed
+
+    result = {}
+    for piece in pieces:
+        bricks = [bricks_by_id[bid] for bid in piece.brick_ids if bid in bricks_by_id]
+        if not bricks:
+            result[piece.id] = []
+            continue
+
+        px, py = piece.x, piece.y
+        pw = int(piece.width) + 2
+        ph = int(piece.height) + 2
+
+        from PIL import ImageFilter as PilFilter
+        mask_img = PilImage.new("L", (pw, ph), 0)
+        draw = PilDraw.Draw(mask_img)
+
+        for b in bricks:
+            poly = brick_polygons.get(b.id, [])
+            if poly and len(poly) >= 3:
+                # brick_polygons are brick-local; convert to piece-local coords
+                local_pts = [(x + b.x - px, y + b.y - py) for x, y in poly]
+                draw.polygon(local_pts, fill=255)
+            else:
+                draw.rectangle(
+                    [b.x - px, b.y - py, b.x - px + b.width, b.y - py + b.height],
+                    fill=255,
+                )
+
+        mask_rgba = PilImage.new("RGBA", mask_img.size, (0, 0, 0, 0))
+        mask_rgba.putalpha(mask_img)
+        contours = trace_alpha_contours(mask_rgba)
+
+        # If multiple disconnected regions, close gaps and re-trace
+        if len(contours) > 1:
+            closed = mask_img.filter(PilFilter.MaxFilter(5))
+            closed = closed.filter(PilFilter.MinFilter(5))
+            mask_rgba = PilImage.new("RGBA", closed.size, (0, 0, 0, 0))
+            mask_rgba.putalpha(closed)
+            contours = trace_alpha_contours(mask_rgba)
+        if not contours:
+            result[piece.id] = []
+            continue
+
+        main = max(contours, key=len)
+        simplified = douglas_peucker_closed(main, 2.0)
+
+        if len(simplified) >= 3:
+            result[piece.id] = [[x + px, y + py] for x, y in simplified]
+        else:
+            result[piece.id] = []
+
+    return result
+
+
+def _pieces_json_with_polygons(pieces, bricks_by_id, brick_polygons):
+    """Build JSON response for a list of pieces, computing polygon outlines."""
+    pieces_json = pieces_to_json(pieces, bricks_by_id)
+    piece_polys = _compute_piece_polygons(pieces, bricks_by_id, brick_polygons)
+    for p in pieces_json:
+        p["polygon"] = piece_polys.get(p["id"], [])
+    return pieces_json
+
+
 @app.route("/api/merge", methods=["POST"])
 def api_merge():
-    """Merge bricks into puzzle pieces."""
+    """Merge bricks into puzzle pieces.
+
+    Two modes:
+    - Normal (no 'pieces' key): run merge algorithm with target_count/seed/min_border.
+    - Recompute (with 'pieces' key): skip merge, recompute bboxes + polygon outlines
+      for the supplied piece definitions [{id, brick_ids}, ...].  Used after manual
+      edits to restore polygon outlines via the canonical brick-vector pipeline.
+    """
     data = request.get_json()
 
+    if not _state["bricks_by_id"]:
+        return jsonify({"error": "No TIF loaded"}), 400
+
+    # ── Recompute mode: pre-defined pieces supplied by caller ─────────────────
+    if "pieces" in data:
+        class _P:
+            def __init__(self, pid, brick_ids, bricks_by_id):
+                self.id = pid
+                self.brick_ids = brick_ids
+                bricks = [bricks_by_id[bid] for bid in brick_ids if bid in bricks_by_id]
+                if bricks:
+                    self.x = min(b.x for b in bricks)
+                    self.y = min(b.y for b in bricks)
+                    self.width = max(b.x + b.width for b in bricks) - self.x
+                    self.height = max(b.y + b.height for b in bricks) - self.y
+                else:
+                    self.x = self.y = self.width = self.height = 0
+
+        pieces = [_P(p["id"], p.get("brick_ids", []), _state["bricks_by_id"])
+                  for p in data["pieces"]]
+        pieces_json = _pieces_json_with_polygons(
+            pieces, _state["bricks_by_id"], _state.get("brick_polygons", {})
+        )
+        return jsonify({"num_pieces": len(pieces), "pieces": pieces_json})
+
+    # ── Normal mode: run merge algorithm ─────────────────────────────────────
     if not _state["bricks"]:
         return jsonify({"error": "No TIF loaded"}), 400
 
@@ -327,7 +489,9 @@ def api_merge():
 
     _state["pieces"] = result.pieces
 
-    pieces_json = pieces_to_json(result.pieces, _state["bricks_by_id"])
+    pieces_json = _pieces_json_with_polygons(
+        result.pieces, _state["bricks_by_id"], _state.get("brick_polygons", {})
+    )
 
     return jsonify({
         "num_pieces": len(result.pieces),
@@ -857,6 +1021,37 @@ def _generate_flat(pieces, piece_images, comp_img):
     combined = np.minimum(a, mask)
     result.putalpha(Image.fromarray(combined))
     return result
+
+
+@app.route("/debug/trace")
+def debug_trace_page():
+    """Debug page for comparing JS vs Python brick outline tracing."""
+    return render_template("debug_trace.html")
+
+
+@app.route("/api/debug/trace/<int:brick_id>")
+def api_debug_trace(brick_id):
+    """Return Python-traced polygon for a brick PNG."""
+    if not _state["extracted_dir"]:
+        return jsonify({"error": "No TIF loaded"}), 400
+    brick_path = _state["extracted_dir"] / f"brick_{brick_id:03d}.png"
+    if not brick_path.exists():
+        return jsonify({"error": f"Brick {brick_id} not found"}), 404
+    from tracer import trace_brick_png
+    pts = trace_brick_png(str(brick_path))
+    return jsonify({"brick_id": brick_id, "polygon": pts})
+
+
+@app.route("/api/debug/bricks")
+def api_debug_bricks():
+    """Return list of brick IDs and metadata for the debug trace page."""
+    if not _state["bricks"]:
+        return jsonify({"error": "No TIF loaded"}), 400
+    bricks = [
+        {"id": b.id, "x": b.x, "y": b.y, "w": b.width, "h": b.height}
+        for b in _state["bricks"]
+    ]
+    return jsonify({"bricks": bricks})
 
 
 if __name__ == "__main__":
