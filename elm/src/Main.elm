@@ -1254,7 +1254,15 @@ viewMainSvg response model =
         visiblePieces =
             List.filter (\p -> not (List.member p.id hiddenPieceIds)) model.pieces
 
-        -- Base layer
+        -- Blueprint always underneath all pieces (post-gen, not edit mode)
+        blueprintLayer =
+            if (not model.editMode) && isGenerated then
+                List.map viewPieceBlueprintPath model.pieces
+
+            else
+                []
+
+        -- Base layer (on top of blueprint)
         baseLayer =
             if model.editMode then
                 if response.hasComposite then
@@ -1284,9 +1292,6 @@ viewMainSvg response model =
                     ]
                     []
                 ]
-
-            else if isGenerated then
-                List.map viewPieceBlueprintPath visiblePieces
 
             else
                 List.map viewBrickPath response.bricks
@@ -1353,7 +1358,8 @@ viewMainSvg response model =
             baseLayer ++ editOverlays
 
          else
-            baseLayer
+            blueprintLayer
+                ++ baseLayer
                 ++ compositeOverlays
                 ++ outlineLayer
                 ++ gridLayer

@@ -8032,6 +8032,7 @@ var $author$project$Main$viewMainSvg = F2(
 		var ch = response.canvas.height;
 		var gridLayer = ((!model.editMode) && model.showGrid) ? A3($author$project$Main$viewGrid, cw, ch, model.viewMode) : _List_Nil;
 		var h = $elm$core$String$fromFloat(ch);
+		var blueprintLayer = ((!model.editMode) && isGenerated) ? A2($elm$core$List$map, $author$project$Main$viewPieceBlueprintPath, model.pieces) : _List_Nil;
 		var baseLayer = model.editMode ? (response.hasComposite ? _List_fromArray(
 			[
 				A2(
@@ -8061,7 +8062,7 @@ var $author$project$Main$viewMainSvg = F2(
 						A2($elm$html$Html$Attributes$attribute, 'href', '/api/composite.png')
 					]),
 				_List_Nil)
-			]) : (isGenerated ? A2($elm$core$List$map, $author$project$Main$viewPieceBlueprintPath, visiblePieces) : A2($elm$core$List$map, $author$project$Main$viewBrickPath, response.bricks))));
+			]) : A2($elm$core$List$map, $author$project$Main$viewBrickPath, response.bricks)));
 		var assignedToSelectedWave = function () {
 			var _v0 = model.selectedWaveId;
 			if (_v0.$ === 'Just') {
@@ -8099,12 +8100,14 @@ var $author$project$Main$viewMainSvg = F2(
 					$elm$svg$Svg$Attributes$height(h)
 				]),
 			model.editMode ? _Utils_ap(baseLayer, editOverlays) : _Utils_ap(
-				baseLayer,
+				blueprintLayer,
 				_Utils_ap(
-					compositeOverlays,
+					baseLayer,
 					_Utils_ap(
-						outlineLayer,
-						_Utils_ap(gridLayer, pieceOverlays)))));
+						compositeOverlays,
+						_Utils_ap(
+							outlineLayer,
+							_Utils_ap(gridLayer, pieceOverlays))))));
 	});
 var $author$project$Main$viewCanvasArea = function (model) {
 	return A2(
