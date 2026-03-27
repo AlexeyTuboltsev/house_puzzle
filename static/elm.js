@@ -7550,6 +7550,22 @@ var $elm$virtual_dom$VirtualDom$attribute = F2(
 	});
 var $elm$html$Html$Attributes$attribute = $elm$virtual_dom$VirtualDom$attribute;
 var $elm$svg$Svg$Attributes$class = _VirtualDom_attribute('class');
+var $elm$core$List$append = F2(
+	function (xs, ys) {
+		if (!ys.b) {
+			return xs;
+		} else {
+			return A3($elm$core$List$foldr, $elm$core$List$cons, ys, xs);
+		}
+	});
+var $elm$core$List$concat = function (lists) {
+	return A3($elm$core$List$foldr, $elm$core$List$append, _List_Nil, lists);
+};
+var $elm$core$List$concatMap = F2(
+	function (f, list) {
+		return $elm$core$List$concat(
+			A2($elm$core$List$map, f, list));
+	});
 var $elm$core$String$fromFloat = _String_fromNumber;
 var $elm$svg$Svg$Attributes$height = _VirtualDom_attribute('height');
 var $elm$svg$Svg$trustedNode = _VirtualDom_nodeNS('http://www.w3.org/2000/svg');
@@ -7986,9 +8002,26 @@ var $author$project$Main$viewMainSvg = F2(
 	function (response, model) {
 		var isPieces = _Utils_eq(model.viewMode, $author$project$Main$ViewPieces);
 		var isGenerated = _Utils_eq(model.generateState, $author$project$Main$Generated);
-		var outlineLayer = ((!model.editMode) && (isGenerated && model.showOutlines)) ? A2($elm$core$List$map, $author$project$Main$viewPieceOutline, model.pieces) : _List_Nil;
 		var showComposite = isPieces && ((!isGenerated) && response.hasComposite);
 		var showPieceImages = isPieces && (isGenerated && (!$elm$core$Dict$isEmpty(model.pieceImages)));
+		var hiddenPieceIds = A2(
+			$elm$core$List$concatMap,
+			function ($) {
+				return $.pieceIds;
+			},
+			A2(
+				$elm$core$List$filter,
+				function (wv) {
+					return !wv.visible;
+				},
+				model.waves));
+		var visiblePieces = A2(
+			$elm$core$List$filter,
+			function (p) {
+				return !A2($elm$core$List$member, p.id, hiddenPieceIds);
+			},
+			model.pieces);
+		var outlineLayer = ((!model.editMode) && (isGenerated && model.showOutlines)) ? A2($elm$core$List$map, $author$project$Main$viewPieceOutline, visiblePieces) : _List_Nil;
 		var editOverlays = model.editMode ? A2(
 			$elm$core$List$map,
 			$author$project$Main$viewBrickEditOverlay(model.editBrickIds),
@@ -8015,7 +8048,7 @@ var $author$project$Main$viewMainSvg = F2(
 			]) : _List_Nil) : (showPieceImages ? A2(
 			$elm$core$List$map,
 			$author$project$Main$viewPieceImage(model.pieceImages),
-			model.pieces) : (showComposite ? _List_fromArray(
+			visiblePieces) : (showComposite ? _List_fromArray(
 			[
 				A2(
 				$elm$svg$Svg$image,
@@ -8028,7 +8061,7 @@ var $author$project$Main$viewMainSvg = F2(
 						A2($elm$html$Html$Attributes$attribute, 'href', '/api/composite.png')
 					]),
 				_List_Nil)
-			]) : (isGenerated ? A2($elm$core$List$map, $author$project$Main$viewPieceBlueprintPath, model.pieces) : A2($elm$core$List$map, $author$project$Main$viewBrickPath, response.bricks))));
+			]) : (isGenerated ? A2($elm$core$List$map, $author$project$Main$viewPieceBlueprintPath, visiblePieces) : A2($elm$core$List$map, $author$project$Main$viewBrickPath, response.bricks))));
 		var assignedToSelectedWave = function () {
 			var _v0 = model.selectedWaveId;
 			if (_v0.$ === 'Just') {
@@ -8055,7 +8088,7 @@ var $author$project$Main$viewMainSvg = F2(
 		var pieceOverlays = ((!model.editMode) && isGenerated) ? A2(
 			$elm$core$List$map,
 			A4($author$project$Main$viewPieceOverlay, model.hoveredPieceId, model.selectedPieceId, model.selectedWaveId, assignedToSelectedWave),
-			model.pieces) : _List_Nil;
+			visiblePieces) : _List_Nil;
 		return A2(
 			$elm$svg$Svg$svg,
 			_List_fromArray(
@@ -8869,22 +8902,6 @@ var $author$project$Main$viewSidebar = function (model) {
 							]))))));
 };
 var $author$project$Main$AddWave = {$: 'AddWave'};
-var $elm$core$List$append = F2(
-	function (xs, ys) {
-		if (!ys.b) {
-			return xs;
-		} else {
-			return A3($elm$core$List$foldr, $elm$core$List$cons, ys, xs);
-		}
-	});
-var $elm$core$List$concat = function (lists) {
-	return A3($elm$core$List$foldr, $elm$core$List$append, _List_Nil, lists);
-};
-var $elm$core$List$concatMap = F2(
-	function (f, list) {
-		return $elm$core$List$concat(
-			A2($elm$core$List$map, f, list));
-	});
 var $author$project$Main$RemovePieceFromWave = F2(
 	function (a, b) {
 		return {$: 'RemovePieceFromWave', a: a, b: b};

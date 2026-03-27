@@ -1245,6 +1245,15 @@ viewMainSvg response model =
         showComposite =
             isPieces && not isGenerated && response.hasComposite
 
+        -- Pieces hidden by invisible waves
+        hiddenPieceIds =
+            model.waves
+                |> List.filter (\wv -> not wv.visible)
+                |> List.concatMap .pieceIds
+
+        visiblePieces =
+            List.filter (\p -> not (List.member p.id hiddenPieceIds)) model.pieces
+
         -- Base layer
         baseLayer =
             if model.editMode then
@@ -1263,7 +1272,7 @@ viewMainSvg response model =
                     []
 
             else if showPieceImages then
-                List.map (viewPieceImage model.pieceImages) model.pieces
+                List.map (viewPieceImage model.pieceImages) visiblePieces
 
             else if showComposite then
                 [ Svg.image
@@ -1277,7 +1286,7 @@ viewMainSvg response model =
                 ]
 
             else if isGenerated then
-                List.map viewPieceBlueprintPath model.pieces
+                List.map viewPieceBlueprintPath visiblePieces
 
             else
                 List.map viewBrickPath response.bricks
@@ -1309,7 +1318,7 @@ viewMainSvg response model =
         -- Piece outlines (post-gen, pieces mode, not in edit)
         outlineLayer =
             if (not model.editMode) && isGenerated && model.showOutlines then
-                List.map viewPieceOutline model.pieces
+                List.map viewPieceOutline visiblePieces
 
             else
                 []
@@ -1329,7 +1338,7 @@ viewMainSvg response model =
 
         pieceOverlays =
             if (not model.editMode) && isGenerated then
-                List.map (viewPieceOverlay model.hoveredPieceId model.selectedPieceId model.selectedWaveId assignedToSelectedWave) model.pieces
+                List.map (viewPieceOverlay model.hoveredPieceId model.selectedPieceId model.selectedWaveId assignedToSelectedWave) visiblePieces
 
             else
                 []
