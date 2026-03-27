@@ -418,6 +418,32 @@ if (window.Elm && window.Elm.Main) {
     });
   }
 
+  app.ports.exportZip.subscribe(async function(payload) {
+    try {
+      const resp = await fetch('/api/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        alert('Export failed: ' + (err.error || resp.status));
+        return;
+      }
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'house_puzzle_export.zip';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      alert('Export error: ' + e.message);
+    }
+  });
+
   app.ports.compositePieces.subscribe(async function(pieces) {
     const results = [];
     for (const piece of pieces) {

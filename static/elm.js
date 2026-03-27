@@ -5658,6 +5658,7 @@ var $author$project$Main$encodePiece = function (piece) {
 var $author$project$Main$encodePieceList = function (pieces) {
 	return A2($elm$json$Json$Encode$list, $author$project$Main$encodePiece, pieces);
 };
+var $author$project$Main$exportZip = _Platform_outgoingPort('exportZip', $elm$core$Basics$identity);
 var $elm$time$Time$Posix = function (a) {
 	return {$: 'Posix', a: a};
 };
@@ -7499,7 +7500,7 @@ var $author$project$Main$update = F2(
 						model,
 						{editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil}),
 					$elm$core$Platform$Cmd$none);
-			default:
+			case 'GotPiecePolygons':
 				if (msg.a.$ === 'Ok') {
 					var pairs = msg.a.a;
 					var polyDict = $elm$core$Dict$fromList(pairs);
@@ -7529,6 +7530,74 @@ var $author$project$Main$update = F2(
 							{recomputing: false}),
 						$elm$core$Platform$Cmd$none);
 				}
+			default:
+				var wavesJson = A2(
+					$elm$json$Json$Encode$list,
+					function (_v15) {
+						var idx = _v15.a;
+						var wv = _v15.b;
+						return $elm$json$Json$Encode$object(
+							_List_fromArray(
+								[
+									_Utils_Tuple2(
+									'wave',
+									$elm$json$Json$Encode$int(idx + 1)),
+									_Utils_Tuple2(
+									'pieceIds',
+									A2($elm$json$Json$Encode$list, $elm$json$Json$Encode$int, wv.pieceIds))
+								]));
+					},
+					A2($elm$core$List$indexedMap, $elm$core$Tuple$pair, model.waves));
+				var outlinesJson = A2(
+					$elm$json$Json$Encode$list,
+					function (piece) {
+						return $elm$json$Json$Encode$object(
+							_List_fromArray(
+								[
+									_Utils_Tuple2(
+									'points',
+									A2(
+										$elm$json$Json$Encode$list,
+										function (_v14) {
+											var x = _v14.a;
+											var y = _v14.b;
+											return A2(
+												$elm$json$Json$Encode$list,
+												$elm$json$Json$Encode$float,
+												_List_fromArray(
+													[x, y]));
+										},
+										piece.polygon))
+								]));
+					},
+					model.pieces);
+				var payload = $elm$json$Json$Encode$object(
+					_List_fromArray(
+						[
+							_Utils_Tuple2('waves', wavesJson),
+							_Utils_Tuple2('outlines', outlinesJson),
+							_Utils_Tuple2(
+							'placement',
+							$elm$json$Json$Encode$object(
+								_List_fromArray(
+									[
+										_Utils_Tuple2(
+										'location',
+										$elm$json$Json$Encode$string('Rome')),
+										_Utils_Tuple2(
+										'position',
+										$elm$json$Json$Encode$int(0)),
+										_Utils_Tuple2(
+										'houseName',
+										$elm$json$Json$Encode$string('NewHouse')),
+										_Utils_Tuple2(
+										'spacing',
+										$elm$json$Json$Encode$float(12.0))
+									])))
+						]));
+				return _Utils_Tuple2(
+					model,
+					$author$project$Main$exportZip(payload));
 		}
 	});
 var $elm$html$Html$Attributes$stringProperty = F2(
@@ -8162,6 +8231,7 @@ var $author$project$Main$viewCanvasArea = function (model) {
 			}
 		}());
 };
+var $author$project$Main$RequestExport = {$: 'RequestExport'};
 var $elm$html$Html$button = _VirtualDom_node('button');
 var $elm$json$Json$Encode$bool = _Json_wrap;
 var $elm$html$Html$Attributes$boolProperty = F2(
@@ -8195,7 +8265,8 @@ var $author$project$Main$viewHeader = function (model) {
 					[
 						$elm$html$Html$Attributes$class('primary'),
 						$elm$html$Html$Attributes$disabled(
-						!_Utils_eq(model.generateState, $author$project$Main$Generated))
+						(!_Utils_eq(model.generateState, $author$project$Main$Generated)) || model.recomputing),
+						$elm$html$Html$Events$onClick($author$project$Main$RequestExport)
 					]),
 				_List_fromArray(
 					[

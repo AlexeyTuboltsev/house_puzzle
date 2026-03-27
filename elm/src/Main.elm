@@ -190,6 +190,7 @@ type Msg
     | SaveEdit
     | CancelEdit
     | GotPiecePolygons (Result Http.Error (List ( Int, List Point )))
+    | RequestExport
 
 
 
@@ -200,6 +201,9 @@ port compositePieces : E.Value -> Cmd msg
 
 
 port gotPieceImages : (E.Value -> msg) -> Sub msg
+
+
+port exportZip : E.Value -> Cmd msg
 
 
 
@@ -651,6 +655,49 @@ update msg model =
         GotPiecePolygons (Err _) ->
             ( { model | recomputing = False }, Cmd.none )
 
+        RequestExport ->
+            let
+                wavesJson =
+                    E.list
+                        (\( idx, wv ) ->
+                            E.object
+                                [ ( "wave", E.int (idx + 1) )
+                                , ( "pieceIds", E.list E.int wv.pieceIds )
+                                ]
+                        )
+                        (List.indexedMap Tuple.pair model.waves)
+
+                outlinesJson =
+                    E.list
+                        (\piece ->
+                            E.object
+                                [ ( "points"
+                                  , E.list
+                                        (\( x, y ) ->
+                                            E.list E.float [ x, y ]
+                                        )
+                                        piece.polygon
+                                  )
+                                ]
+                        )
+                        model.pieces
+
+                payload =
+                    E.object
+                        [ ( "waves", wavesJson )
+                        , ( "outlines", outlinesJson )
+                        , ( "placement"
+                          , E.object
+                                [ ( "location", E.string "Rome" )
+                                , ( "position", E.int 0 )
+                                , ( "houseName", E.string "NewHouse" )
+                                , ( "spacing", E.float 12.0 )
+                                ]
+                          )
+                        ]
+            in
+            ( model, exportZip payload )
+
 
 
 -- ── Helpers ─────────────────────────────────────────────────────────────────
@@ -918,7 +965,8 @@ viewHeader model =
         [ h1 [] [ text "House Puzzle Editor" ]
         , button
             [ class "primary"
-            , disabled (model.generateState /= Generated)
+            , disabled (model.generateState /= Generated || model.recomputing)
+            , onClick RequestExport
             ]
             [ text "Export ZIP" ]
         ]
