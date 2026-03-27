@@ -1355,15 +1355,18 @@ viewMainSvg response model =
         , SA.height h
         ]
         (if model.editMode then
-            baseLayer ++ editOverlays
+            [ Svg.g [] baseLayer
+            , Svg.g [] editOverlays
+            ]
 
          else
-            blueprintLayer
-                ++ baseLayer
-                ++ compositeOverlays
-                ++ outlineLayer
-                ++ gridLayer
-                ++ pieceOverlays
+            [ Svg.g [] blueprintLayer
+            , Svg.g [] baseLayer
+            , Svg.g [] compositeOverlays
+            , Svg.g [] outlineLayer
+            , Svg.g [] gridLayer
+            , Svg.g [] pieceOverlays
+            ]
         )
 
 
@@ -1645,7 +1648,7 @@ viewGrid cw ch viewMode =
                 (\i ->
                     let
                         y =
-                            toFloat i * gridStep
+                            ch - toFloat i * gridStep
                     in
                     Svg.line
                         [ SA.x1 "0"

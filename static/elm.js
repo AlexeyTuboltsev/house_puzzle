@@ -7567,8 +7567,9 @@ var $elm$core$List$concatMap = F2(
 			A2($elm$core$List$map, f, list));
 	});
 var $elm$core$String$fromFloat = _String_fromNumber;
-var $elm$svg$Svg$Attributes$height = _VirtualDom_attribute('height');
 var $elm$svg$Svg$trustedNode = _VirtualDom_nodeNS('http://www.w3.org/2000/svg');
+var $elm$svg$Svg$g = $elm$svg$Svg$trustedNode('g');
+var $elm$svg$Svg$Attributes$height = _VirtualDom_attribute('height');
 var $elm$svg$Svg$image = $elm$svg$Svg$trustedNode('image');
 var $elm$core$Dict$isEmpty = function (dict) {
 	if (dict.$ === 'RBEmpty_elm_builtin') {
@@ -7780,7 +7781,7 @@ var $author$project$Main$viewGrid = F3(
 		var hLines = A2(
 			$elm$core$List$map,
 			function (i) {
-				var y = i * gridStep;
+				var y = ch - (i * gridStep);
 				return A2(
 					$elm$svg$Svg$line,
 					_List_fromArray(
@@ -7823,7 +7824,6 @@ var $author$project$Main$viewGrid = F3(
 			A2($elm$core$List$range, 1, numV));
 		return _Utils_ap(vLines, hLines);
 	});
-var $elm$svg$Svg$g = $elm$svg$Svg$trustedNode('g');
 var $author$project$Main$viewPieceBlueprintPath = function (piece) {
 	if ($elm$core$List$isEmpty(piece.polygon)) {
 		return A2($elm$svg$Svg$g, _List_Nil, _List_Nil);
@@ -8099,15 +8099,19 @@ var $author$project$Main$viewMainSvg = F2(
 					$elm$svg$Svg$Attributes$width(w),
 					$elm$svg$Svg$Attributes$height(h)
 				]),
-			model.editMode ? _Utils_ap(baseLayer, editOverlays) : _Utils_ap(
-				blueprintLayer,
-				_Utils_ap(
-					baseLayer,
-					_Utils_ap(
-						compositeOverlays,
-						_Utils_ap(
-							outlineLayer,
-							_Utils_ap(gridLayer, pieceOverlays))))));
+			model.editMode ? _List_fromArray(
+				[
+					A2($elm$svg$Svg$g, _List_Nil, baseLayer),
+					A2($elm$svg$Svg$g, _List_Nil, editOverlays)
+				]) : _List_fromArray(
+				[
+					A2($elm$svg$Svg$g, _List_Nil, blueprintLayer),
+					A2($elm$svg$Svg$g, _List_Nil, baseLayer),
+					A2($elm$svg$Svg$g, _List_Nil, compositeOverlays),
+					A2($elm$svg$Svg$g, _List_Nil, outlineLayer),
+					A2($elm$svg$Svg$g, _List_Nil, gridLayer),
+					A2($elm$svg$Svg$g, _List_Nil, pieceOverlays)
+				]));
 	});
 var $author$project$Main$viewCanvasArea = function (model) {
 	return A2(
