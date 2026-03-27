@@ -7095,6 +7095,7 @@ var $author$project$Main$update = F2(
 						model,
 						{
 							nextWaveId: model.nextWaveId + 1,
+							selectedWaveId: $elm$core$Maybe$Just(newWave.id),
 							waves: _Utils_ap(
 								model.waves,
 								_List_fromArray(
@@ -9322,7 +9323,7 @@ var $author$project$Main$viewWavesPanel = function (model) {
 									]),
 								_List_fromArray(
 									[
-										$elm$html$Html$text('+ Wave')
+										$elm$html$Html$text('New wave')
 									]))
 							])),
 						A2(

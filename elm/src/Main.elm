@@ -339,6 +339,7 @@ update msg model =
             ( { model
                 | waves = model.waves ++ [ newWave ]
                 , nextWaveId = model.nextWaveId + 1
+                , selectedWaveId = Just newWave.id
               }
             , Cmd.none
             )
@@ -1697,7 +1698,7 @@ viewWavesPanel model =
                     ]
                 ]
             , div [ class "wave-toolbar" ]
-                [ button [ onClick AddWave ] [ text "+ Wave" ] ]
+                [ button [ onClick AddWave ] [ text "New wave" ] ]
             , div [ class "waves-body" ]
                 (List.map (viewWaveRow model model.waves) model.waves
                     ++ [ viewUnassignedRow model unassignedPieces ]
