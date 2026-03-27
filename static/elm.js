@@ -5521,16 +5521,28 @@ var $elm$core$Platform$Cmd$batch = _Platform_batch;
 var $elm$core$Platform$Cmd$none = $elm$core$Platform$Cmd$batch(_List_Nil);
 var $author$project$Main$init = function (_v0) {
 	return _Utils_Tuple2(
-		{bricksById: $elm$core$Dict$empty, editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, generateState: $author$project$Main$NotGenerated, hoveredPieceId: $elm$core$Maybe$Nothing, loadState: $author$project$Main$Idle, minBorder: 5, nextWaveId: 1, pieceImages: $elm$core$Dict$empty, pieces: _List_Nil, recomputing: false, seed: 42, selectedFileName: '', selectedPieceId: $elm$core$Maybe$Nothing, selectedWaveId: $elm$core$Maybe$Nothing, showGrid: false, showOutlines: true, targetCount: 60, viewMode: $author$project$Main$ViewPieces, waves: _List_Nil},
+		{bricksById: $elm$core$Dict$empty, editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, exporting: false, generateState: $author$project$Main$NotGenerated, hoveredPieceId: $elm$core$Maybe$Nothing, loadState: $author$project$Main$Idle, minBorder: 5, nextWaveId: 1, pieceImages: $elm$core$Dict$empty, pieces: _List_Nil, recomputing: false, seed: 42, selectedFileName: '', selectedPieceId: $elm$core$Maybe$Nothing, selectedWaveId: $elm$core$Maybe$Nothing, showGrid: false, showOutlines: true, targetCount: 60, viewMode: $author$project$Main$ViewPieces, waves: _List_Nil},
 		$elm$core$Platform$Cmd$none);
 };
+var $author$project$Main$ExportDone = {$: 'ExportDone'};
 var $author$project$Main$GotPieceImages = function (a) {
 	return {$: 'GotPieceImages', a: a};
 };
+var $elm$core$Platform$Sub$batch = _Platform_batch;
+var $elm$json$Json$Decode$bool = _Json_decodeBool;
+var $author$project$Main$gotExportDone = _Platform_incomingPort('gotExportDone', $elm$json$Json$Decode$bool);
 var $elm$json$Json$Decode$value = _Json_decodeValue;
 var $author$project$Main$gotPieceImages = _Platform_incomingPort('gotPieceImages', $elm$json$Json$Decode$value);
 var $author$project$Main$subscriptions = function (_v0) {
-	return $author$project$Main$gotPieceImages($author$project$Main$GotPieceImages);
+	return $elm$core$Platform$Sub$batch(
+		_List_fromArray(
+			[
+				$author$project$Main$gotPieceImages($author$project$Main$GotPieceImages),
+				$author$project$Main$gotExportDone(
+				function (_v1) {
+					return $author$project$Main$ExportDone;
+				})
+			]));
 };
 var $author$project$Main$BrickRef = F5(
 	function (id, x, y, width, height) {
@@ -5874,7 +5886,6 @@ var $author$project$Main$LoadResponse = F4(
 	function (canvas, bricks, hasComposite, hasBase) {
 		return {bricks: bricks, canvas: canvas, hasBase: hasBase, hasComposite: hasComposite};
 	});
-var $elm$json$Json$Decode$bool = _Json_decodeBool;
 var $author$project$Main$Brick = F8(
 	function (id, x, y, width, height, brickType, neighbors, polygon) {
 		return {brickType: brickType, height: height, id: id, neighbors: neighbors, polygon: polygon, width: width, x: x, y: y};
@@ -7530,7 +7541,7 @@ var $author$project$Main$update = F2(
 							{recomputing: false}),
 						$elm$core$Platform$Cmd$none);
 				}
-			default:
+			case 'RequestExport':
 				var wavesJson = A2(
 					$elm$json$Json$Encode$list,
 					function (_v15) {
@@ -7596,8 +7607,16 @@ var $author$project$Main$update = F2(
 									])))
 						]));
 				return _Utils_Tuple2(
-					model,
+					_Utils_update(
+						model,
+						{exporting: true}),
 					$author$project$Main$exportZip(payload));
+			default:
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{exporting: false}),
+					$elm$core$Platform$Cmd$none);
 		}
 	});
 var $elm$html$Html$Attributes$stringProperty = F2(
@@ -8265,12 +8284,13 @@ var $author$project$Main$viewHeader = function (model) {
 					[
 						$elm$html$Html$Attributes$class('primary'),
 						$elm$html$Html$Attributes$disabled(
-						(!_Utils_eq(model.generateState, $author$project$Main$Generated)) || model.recomputing),
+						(!_Utils_eq(model.generateState, $author$project$Main$Generated)) || (model.recomputing || model.exporting)),
 						$elm$html$Html$Events$onClick($author$project$Main$RequestExport)
 					]),
 				_List_fromArray(
 					[
-						$elm$html$Html$text('Export ZIP')
+						$elm$html$Html$text(
+						model.exporting ? 'Exporting\u2026' : 'Export ZIP')
 					]))
 			]));
 };

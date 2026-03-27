@@ -127,6 +127,7 @@ type alias Model =
     , editBrickIds : List Int
     , editOriginalBrickIds : List Int
     , recomputing : Bool
+    , exporting : Bool
     }
 
 
@@ -153,9 +154,11 @@ init _ =
       , editBrickIds = []
       , editOriginalBrickIds = []
       , recomputing = False
+      , exporting = False
       }
     , Cmd.none
     )
+
 
 
 
@@ -191,6 +194,7 @@ type Msg
     | CancelEdit
     | GotPiecePolygons (Result Http.Error (List ( Int, List Point )))
     | RequestExport
+    | ExportDone
 
 
 
@@ -204,6 +208,9 @@ port gotPieceImages : (E.Value -> msg) -> Sub msg
 
 
 port exportZip : E.Value -> Cmd msg
+
+
+port gotExportDone : (Bool -> msg) -> Sub msg
 
 
 
@@ -696,7 +703,10 @@ update msg model =
                           )
                         ]
             in
-            ( model, exportZip payload )
+            ( { model | exporting = True }, exportZip payload )
+
+        ExportDone ->
+            ( { model | exporting = False }, Cmd.none )
 
 
 
@@ -965,10 +975,17 @@ viewHeader model =
         [ h1 [] [ text "House Puzzle Editor" ]
         , button
             [ class "primary"
-            , disabled (model.generateState /= Generated || model.recomputing)
+            , disabled (model.generateState /= Generated || model.recomputing || model.exporting)
             , onClick RequestExport
             ]
-            [ text "Export ZIP" ]
+            [ text
+                (if model.exporting then
+                    "Exporting\u{2026}"
+
+                 else
+                    "Export ZIP"
+                )
+            ]
         ]
 
 
@@ -1887,7 +1904,10 @@ viewPieceThumb removeInfo hoveredId pieceId dataUrl =
 
 subscriptions : Model -> Sub Msg
 subscriptions _ =
-    gotPieceImages GotPieceImages
+    Sub.batch
+        [ gotPieceImages GotPieceImages
+        , gotExportDone (\_ -> ExportDone)
+        ]
 
 
 

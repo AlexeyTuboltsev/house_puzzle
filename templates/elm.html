@@ -428,6 +428,7 @@ if (window.Elm && window.Elm.Main) {
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({}));
         alert('Export failed: ' + (err.error || resp.status));
+        app.ports.gotExportDone.send(false);
         return;
       }
       const blob = await resp.blob();
@@ -439,8 +440,10 @@ if (window.Elm && window.Elm.Main) {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
+      app.ports.gotExportDone.send(true);
     } catch (e) {
       alert('Export error: ' + e.message);
+      app.ports.gotExportDone.send(false);
     }
   });
 
