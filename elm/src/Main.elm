@@ -1550,13 +1550,14 @@ viewPieceOverlay hoveredId selectedId selectedWaveId waveAssignedIds piece =
         inAssignMode =
             selectedWaveId /= Nothing
 
-        cls =
-            classList
-                [ ( "piece-overlay", True )
-                , ( "hovered", hoveredId == Just piece.id )
-                , ( "selected", not inAssignMode && selectedId == Just piece.id )
-                , ( "in-wave", inAssignMode && List.member piece.id waveAssignedIds )
-                ]
+        clsStr =
+            [ "piece-overlay"
+            , if hoveredId == Just piece.id then "hovered" else ""
+            , if not inAssignMode && selectedId == Just piece.id then "selected" else ""
+            , if inAssignMode && List.member piece.id waveAssignedIds then "in-wave" else ""
+            ]
+                |> List.filter ((/=) "")
+                |> String.join " "
 
         clickMsg =
             if inAssignMode then
@@ -1577,7 +1578,7 @@ viewPieceOverlay hoveredId selectedId selectedWaveId waveAssignedIds piece =
         in
         Svg.polygon
             [ SA.points pointsAttr
-            , cls
+            , SA.class clsStr
             , onClick clickMsg
             , onMouseEnter (SetHoveredPiece (Just piece.id))
             , onMouseLeave (SetHoveredPiece Nothing)

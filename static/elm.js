@@ -7919,20 +7919,6 @@ var $author$project$Main$SelectPiece = function (a) {
 var $author$project$Main$SetHoveredPiece = function (a) {
 	return {$: 'SetHoveredPiece', a: a};
 };
-var $elm$core$Tuple$second = function (_v0) {
-	var y = _v0.b;
-	return y;
-};
-var $elm$html$Html$Attributes$classList = function (classes) {
-	return $elm$html$Html$Attributes$class(
-		A2(
-			$elm$core$String$join,
-			' ',
-			A2(
-				$elm$core$List$map,
-				$elm$core$Tuple$first,
-				A2($elm$core$List$filter, $elm$core$Tuple$second, classes))));
-};
 var $elm$html$Html$Events$onMouseEnter = function (msg) {
 	return A2(
 		$elm$html$Html$Events$on,
@@ -7948,24 +7934,23 @@ var $elm$html$Html$Events$onMouseLeave = function (msg) {
 var $author$project$Main$viewPieceOverlay = F5(
 	function (hoveredId, selectedId, selectedWaveId, waveAssignedIds, piece) {
 		var inAssignMode = !_Utils_eq(selectedWaveId, $elm$core$Maybe$Nothing);
-		var cls = $elm$html$Html$Attributes$classList(
-			_List_fromArray(
-				[
-					_Utils_Tuple2('piece-overlay', true),
-					_Utils_Tuple2(
-					'hovered',
-					_Utils_eq(
+		var clsStr = A2(
+			$elm$core$String$join,
+			' ',
+			A2(
+				$elm$core$List$filter,
+				$elm$core$Basics$neq(''),
+				_List_fromArray(
+					[
+						'piece-overlay',
+						_Utils_eq(
 						hoveredId,
-						$elm$core$Maybe$Just(piece.id))),
-					_Utils_Tuple2(
-					'selected',
-					(!inAssignMode) && _Utils_eq(
+						$elm$core$Maybe$Just(piece.id)) ? 'hovered' : '',
+						((!inAssignMode) && _Utils_eq(
 						selectedId,
-						$elm$core$Maybe$Just(piece.id))),
-					_Utils_Tuple2(
-					'in-wave',
-					inAssignMode && A2($elm$core$List$member, piece.id, waveAssignedIds))
-				]));
+						$elm$core$Maybe$Just(piece.id))) ? 'selected' : '',
+						(inAssignMode && A2($elm$core$List$member, piece.id, waveAssignedIds)) ? 'in-wave' : ''
+					])));
 		var clickMsg = inAssignMode ? $author$project$Main$AssignPieceToWave(piece.id) : $author$project$Main$SelectPiece(piece.id);
 		if ($elm$core$List$isEmpty(piece.polygon)) {
 			return A2($elm$svg$Svg$g, _List_Nil, _List_Nil);
@@ -7986,7 +7971,7 @@ var $author$project$Main$viewPieceOverlay = F5(
 				_List_fromArray(
 					[
 						$elm$svg$Svg$Attributes$points(pointsAttr),
-						cls,
+						$elm$svg$Svg$Attributes$class(clsStr),
 						$elm$html$Html$Events$onClick(clickMsg),
 						$elm$html$Html$Events$onMouseEnter(
 						$author$project$Main$SetHoveredPiece(
@@ -8199,6 +8184,20 @@ var $author$project$Main$ToggleOutlines = function (a) {
 	return {$: 'ToggleOutlines', a: a};
 };
 var $elm$html$Html$Attributes$checked = $elm$html$Html$Attributes$boolProperty('checked');
+var $elm$core$Tuple$second = function (_v0) {
+	var y = _v0.b;
+	return y;
+};
+var $elm$html$Html$Attributes$classList = function (classes) {
+	return $elm$html$Html$Attributes$class(
+		A2(
+			$elm$core$String$join,
+			' ',
+			A2(
+				$elm$core$List$map,
+				$elm$core$Tuple$first,
+				A2($elm$core$List$filter, $elm$core$Tuple$second, classes))));
+};
 var $elm$html$Html$Attributes$for = $elm$html$Html$Attributes$stringProperty('htmlFor');
 var $elm$html$Html$h2 = _VirtualDom_node('h2');
 var $elm$html$Html$Attributes$id = $elm$html$Html$Attributes$stringProperty('id');
