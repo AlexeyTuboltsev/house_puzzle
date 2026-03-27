@@ -5521,7 +5521,7 @@ var $elm$core$Platform$Cmd$batch = _Platform_batch;
 var $elm$core$Platform$Cmd$none = $elm$core$Platform$Cmd$batch(_List_Nil);
 var $author$project$Main$init = function (_v0) {
 	return _Utils_Tuple2(
-		{bricksById: $elm$core$Dict$empty, editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, generateState: $author$project$Main$NotGenerated, loadState: $author$project$Main$Idle, minBorder: 5, nextWaveId: 1, pieceImages: $elm$core$Dict$empty, pieces: _List_Nil, recomputing: false, seed: 42, selectedFileName: '', selectedPieceId: $elm$core$Maybe$Nothing, showGrid: false, showOutlines: true, targetCount: 60, viewMode: $author$project$Main$ViewPieces, waves: _List_Nil},
+		{bricksById: $elm$core$Dict$empty, editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, generateState: $author$project$Main$NotGenerated, loadState: $author$project$Main$Idle, minBorder: 5, nextWaveId: 1, pieceImages: $elm$core$Dict$empty, pieces: _List_Nil, recomputing: false, seed: 42, selectedFileName: '', selectedPieceId: $elm$core$Maybe$Nothing, selectedWaveId: $elm$core$Maybe$Nothing, showGrid: false, showOutlines: true, targetCount: 60, viewMode: $author$project$Main$ViewPieces, waves: _List_Nil},
 		$elm$core$Platform$Cmd$none);
 };
 var $author$project$Main$GotPieceImages = function (a) {
@@ -5565,6 +5565,27 @@ var $author$project$Main$decodePieceImages = $elm$json$Json$Decode$list(
 		A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$int),
 		A2($elm$json$Json$Decode$field, 'dataUrl', $elm$json$Json$Decode$string)));
 var $elm$json$Json$Decode$decodeValue = _Json_run;
+var $elm$core$List$drop = F2(
+	function (n, list) {
+		drop:
+		while (true) {
+			if (n <= 0) {
+				return list;
+			} else {
+				if (!list.b) {
+					return list;
+				} else {
+					var x = list.a;
+					var xs = list.b;
+					var $temp$n = n - 1,
+						$temp$list = xs;
+					n = $temp$n;
+					list = $temp$list;
+					continue drop;
+				}
+			}
+		}
+	});
 var $elm$json$Json$Encode$float = _Json_wrap;
 var $elm$json$Json$Encode$int = _Json_wrap;
 var $elm$json$Json$Encode$object = function (pairs) {
@@ -5780,6 +5801,7 @@ var $elm$core$Dict$fromList = function (assocs) {
 		$elm$core$Dict$empty,
 		assocs);
 };
+var $elm$core$Basics$ge = _Utils_ge;
 var $elm$core$Dict$get = F2(
 	function (targetKey, dict) {
 		get:
@@ -6896,6 +6918,7 @@ var $author$project$Main$update = F2(
 							recomputing: false,
 							selectedFileName: $elm$file$File$name(file),
 							selectedPieceId: $elm$core$Maybe$Nothing,
+							selectedWaveId: $elm$core$Maybe$Nothing,
 							waves: _List_Nil
 						}),
 					$author$project$Main$uploadTif(file));
@@ -6995,7 +7018,7 @@ var $author$project$Main$update = F2(
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
-							{editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, generateState: $author$project$Main$Compositing, nextWaveId: 1, pieceImages: $elm$core$Dict$empty, pieces: _List_Nil, recomputing: false, selectedPieceId: $elm$core$Maybe$Nothing, waves: _List_Nil}),
+							{editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, generateState: $author$project$Main$Compositing, nextWaveId: 1, pieceImages: $elm$core$Dict$empty, pieces: _List_Nil, recomputing: false, selectedPieceId: $elm$core$Maybe$Nothing, selectedWaveId: $elm$core$Maybe$Nothing, waves: _List_Nil}),
 						A3($author$project$Main$mergeBricks, model.targetCount, model.minBorder, model.seed));
 				} else {
 					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
@@ -7105,23 +7128,195 @@ var $author$project$Main$update = F2(
 								$elm$core$Maybe$Just(pid)) ? $elm$core$Maybe$Nothing : $elm$core$Maybe$Just(pid)
 						}),
 					$elm$core$Platform$Cmd$none);
-			case 'StartEdit':
-				var _v6 = model.selectedPieceId;
+			case 'SelectWave':
+				var mwid = msg.a;
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{selectedWaveId: mwid}),
+					$elm$core$Platform$Cmd$none);
+			case 'AssignPieceToWave':
+				var pid = msg.a;
+				var _v6 = model.selectedWaveId;
 				if (_v6.$ === 'Nothing') {
 					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 				} else {
-					var pid = _v6.a;
-					var _v7 = $elm$core$List$head(
+					var wid = _v6.a;
+					var alreadyIn = A2(
+						$elm$core$Maybe$withDefault,
+						false,
+						A2(
+							$elm$core$Maybe$map,
+							function (w) {
+								return A2($elm$core$List$member, pid, w.pieceIds);
+							},
+							$elm$core$List$head(
+								A2(
+									$elm$core$List$filter,
+									function (w) {
+										return _Utils_eq(w.id, wid);
+									},
+									model.waves))));
+					var updatedWaves = A2(
+						$elm$core$List$map,
+						function (w) {
+							return _Utils_eq(w.id, wid) ? (alreadyIn ? _Utils_update(
+								w,
+								{
+									pieceIds: A2(
+										$elm$core$List$filter,
+										function (p) {
+											return !_Utils_eq(p, pid);
+										},
+										w.pieceIds)
+								}) : _Utils_update(
+								w,
+								{
+									pieceIds: _Utils_ap(
+										w.pieceIds,
+										_List_fromArray(
+											[pid]))
+								})) : ((!alreadyIn) ? _Utils_update(
+								w,
+								{
+									pieceIds: A2(
+										$elm$core$List$filter,
+										function (p) {
+											return !_Utils_eq(p, pid);
+										},
+										w.pieceIds)
+								}) : w);
+						},
+						model.waves);
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{waves: updatedWaves}),
+						$elm$core$Platform$Cmd$none);
+				}
+			case 'RemovePieceFromWave':
+				var wid = msg.a;
+				var pid = msg.b;
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{
+							waves: A2(
+								$elm$core$List$map,
+								function (w) {
+									return _Utils_eq(w.id, wid) ? _Utils_update(
+										w,
+										{
+											pieceIds: A2(
+												$elm$core$List$filter,
+												function (p) {
+													return !_Utils_eq(p, pid);
+												},
+												w.pieceIds)
+										}) : w;
+								},
+								model.waves)
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'MoveWave':
+				var wid = msg.a;
+				var dir = msg.b;
+				var indexed = A2($elm$core$List$indexedMap, $elm$core$Tuple$pair, model.waves);
+				var maybeIdx = A2(
+					$elm$core$Maybe$map,
+					$elm$core$Tuple$first,
+					$elm$core$List$head(
+						A2(
+							$elm$core$List$filter,
+							function (_v8) {
+								var w = _v8.b;
+								return _Utils_eq(w.id, wid);
+							},
+							indexed)));
+				var swapped = function () {
+					if (maybeIdx.$ === 'Nothing') {
+						return model.waves;
+					} else {
+						var i = maybeIdx.a;
+						var n = $elm$core$List$length(model.waves);
+						var j = i + dir;
+						return ((j < 0) || (_Utils_cmp(j, n) > -1)) ? model.waves : A2(
+							$elm$core$List$indexedMap,
+							F2(
+								function (k, w) {
+									return _Utils_eq(k, i) ? A2(
+										$elm$core$Maybe$withDefault,
+										w,
+										$elm$core$List$head(
+											A2($elm$core$List$drop, j, model.waves))) : (_Utils_eq(k, j) ? A2(
+										$elm$core$Maybe$withDefault,
+										w,
+										$elm$core$List$head(
+											A2($elm$core$List$drop, i, model.waves))) : w);
+								}),
+							model.waves);
+					}
+				}();
+				var renumbered = A2(
+					$elm$core$List$indexedMap,
+					F2(
+						function (i, w) {
+							return _Utils_update(
+								w,
+								{
+									name: 'Wave ' + $elm$core$String$fromInt(i + 1)
+								});
+						}),
+					swapped);
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{waves: renumbered}),
+					$elm$core$Platform$Cmd$none);
+			case 'RemoveWave':
+				var wid = msg.a;
+				var newSelectedWaveId = _Utils_eq(
+					model.selectedWaveId,
+					$elm$core$Maybe$Just(wid)) ? $elm$core$Maybe$Nothing : model.selectedWaveId;
+				var filtered = A2(
+					$elm$core$List$filter,
+					function (w) {
+						return !_Utils_eq(w.id, wid);
+					},
+					model.waves);
+				var renumbered = A2(
+					$elm$core$List$indexedMap,
+					F2(
+						function (i, w) {
+							return _Utils_update(
+								w,
+								{
+									name: 'Wave ' + $elm$core$String$fromInt(i + 1)
+								});
+						}),
+					filtered);
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{selectedWaveId: newSelectedWaveId, waves: renumbered}),
+					$elm$core$Platform$Cmd$none);
+			case 'StartEdit':
+				var _v9 = model.selectedPieceId;
+				if (_v9.$ === 'Nothing') {
+					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
+				} else {
+					var pid = _v9.a;
+					var _v10 = $elm$core$List$head(
 						A2(
 							$elm$core$List$filter,
 							function (p) {
 								return _Utils_eq(p.id, pid);
 							},
 							model.pieces));
-					if (_v7.$ === 'Nothing') {
+					if (_v10.$ === 'Nothing') {
 						return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 					} else {
-						var piece = _v7.a;
+						var piece = _v10.a;
 						return _Utils_Tuple2(
 							_Utils_update(
 								model,
@@ -7146,15 +7341,15 @@ var $author$project$Main$update = F2(
 						{editBrickIds: newList}),
 					$elm$core$Platform$Cmd$none);
 			case 'SaveEdit':
-				var _v8 = model.selectedPieceId;
-				if (_v8.$ === 'Nothing') {
+				var _v11 = model.selectedPieceId;
+				if (_v11.$ === 'Nothing') {
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
 							{editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil}),
 						$elm$core$Platform$Cmd$none);
 				} else {
-					var editedPieceId = _v8.a;
+					var editedPieceId = _v11.a;
 					var newBrickIds = model.editBrickIds;
 					var removedBrickIds = A2(
 						$elm$core$Maybe$withDefault,
@@ -7207,9 +7402,9 @@ var $author$project$Main$update = F2(
 						$elm$core$List$indexedMap,
 						F2(
 							function (i, bid) {
-								var _v9 = A2($elm$core$Dict$get, bid, model.bricksById);
-								if (_v9.$ === 'Just') {
-									var brick = _v9.a;
+								var _v12 = A2($elm$core$Dict$get, bid, model.bricksById);
+								if (_v12.$ === 'Just') {
+									var brick = _v12.a;
 									return {
 										brickIds: _List_fromArray(
 											[bid]),
@@ -7303,9 +7498,9 @@ var $author$project$Main$update = F2(
 					var updatedPieces = A2(
 						$elm$core$List$map,
 						function (p) {
-							var _v10 = A2($elm$core$Dict$get, p.id, polyDict);
-							if (_v10.$ === 'Just') {
-								var poly = _v10.a;
+							var _v13 = A2($elm$core$Dict$get, p.id, polyDict);
+							if (_v13.$ === 'Just') {
+								var poly = _v13.a;
 								return _Utils_update(
 									p,
 									{polygon: poly});
@@ -7708,16 +7903,22 @@ var $author$project$Main$viewPieceOutline = function (piece) {
 			_List_Nil);
 	}
 };
+var $author$project$Main$AssignPieceToWave = function (a) {
+	return {$: 'AssignPieceToWave', a: a};
+};
 var $author$project$Main$SelectPiece = function (a) {
 	return {$: 'SelectPiece', a: a};
 };
-var $author$project$Main$viewPieceOverlay = F2(
-	function (selectedId, piece) {
+var $author$project$Main$viewPieceOverlay = F4(
+	function (selectedId, selectedWaveId, waveAssignedIds, piece) {
 		var isSelected = _Utils_eq(
 			selectedId,
 			$elm$core$Maybe$Just(piece.id));
-		var fillColor = isSelected ? 'rgba(64,120,255,0.35)' : 'transparent';
-		var cls = isSelected ? 'piece-overlay selected' : 'piece-overlay';
+		var inWave = A2($elm$core$List$member, piece.id, waveAssignedIds);
+		var inAssignMode = !_Utils_eq(selectedWaveId, $elm$core$Maybe$Nothing);
+		var fillColor = inAssignMode ? (inWave ? 'rgba(64,120,255,0.4)' : 'transparent') : (isSelected ? 'rgba(64,120,255,0.35)' : 'transparent');
+		var cls = inAssignMode ? (inWave ? 'piece-overlay selected' : 'piece-overlay') : (isSelected ? 'piece-overlay selected' : 'piece-overlay');
+		var clickMsg = inAssignMode ? $author$project$Main$AssignPieceToWave(piece.id) : $author$project$Main$SelectPiece(piece.id);
 		if ($elm$core$List$isEmpty(piece.polygon)) {
 			return A2($elm$svg$Svg$g, _List_Nil, _List_Nil);
 		} else {
@@ -7739,8 +7940,7 @@ var $author$project$Main$viewPieceOverlay = F2(
 						$elm$svg$Svg$Attributes$points(pointsAttr),
 						$elm$svg$Svg$Attributes$fill(fillColor),
 						$elm$svg$Svg$Attributes$class(cls),
-						$elm$html$Html$Events$onClick(
-						$author$project$Main$SelectPiece(piece.id))
+						$elm$html$Html$Events$onClick(clickMsg)
 					]),
 				_List_Nil);
 		}
@@ -7750,10 +7950,6 @@ var $author$project$Main$viewMainSvg = F2(
 		var isPieces = _Utils_eq(model.viewMode, $author$project$Main$ViewPieces);
 		var isGenerated = _Utils_eq(model.generateState, $author$project$Main$Generated);
 		var outlineLayer = ((!model.editMode) && (isGenerated && model.showOutlines)) ? A2($elm$core$List$map, $author$project$Main$viewPieceOutline, model.pieces) : _List_Nil;
-		var pieceOverlays = ((!model.editMode) && isGenerated) ? A2(
-			$elm$core$List$map,
-			$author$project$Main$viewPieceOverlay(model.selectedPieceId),
-			model.pieces) : _List_Nil;
 		var showComposite = isPieces && ((!isGenerated) && response.hasComposite);
 		var showPieceImages = isPieces && (isGenerated && (!$elm$core$Dict$isEmpty(model.pieceImages)));
 		var editOverlays = model.editMode ? A2(
@@ -7796,6 +7992,33 @@ var $author$project$Main$viewMainSvg = F2(
 					]),
 				_List_Nil)
 			]) : (isGenerated ? A2($elm$core$List$map, $author$project$Main$viewPieceBlueprintPath, model.pieces) : A2($elm$core$List$map, $author$project$Main$viewBrickPath, response.bricks))));
+		var assignedToSelectedWave = function () {
+			var _v0 = model.selectedWaveId;
+			if (_v0.$ === 'Just') {
+				var wid = _v0.a;
+				return A2(
+					$elm$core$Maybe$withDefault,
+					_List_Nil,
+					A2(
+						$elm$core$Maybe$map,
+						function ($) {
+							return $.pieceIds;
+						},
+						$elm$core$List$head(
+							A2(
+								$elm$core$List$filter,
+								function (wv) {
+									return _Utils_eq(wv.id, wid);
+								},
+								model.waves))));
+			} else {
+				return _List_Nil;
+			}
+		}();
+		var pieceOverlays = ((!model.editMode) && isGenerated) ? A2(
+			$elm$core$List$map,
+			A3($author$project$Main$viewPieceOverlay, model.selectedPieceId, model.selectedWaveId, assignedToSelectedWave),
+			model.pieces) : _List_Nil;
 		return A2(
 			$elm$svg$Svg$svg,
 			_List_fromArray(
@@ -8625,6 +8848,10 @@ var $elm$core$List$concatMap = F2(
 		return $elm$core$List$concat(
 			A2($elm$core$List$map, f, list));
 	});
+var $author$project$Main$RemovePieceFromWave = F2(
+	function (a, b) {
+		return {$: 'RemovePieceFromWave', a: a, b: b};
+	});
 var $elm$html$Html$img = _VirtualDom_node('img');
 var $elm$html$Html$Attributes$src = function (url) {
 	return A2(
@@ -8632,38 +8859,65 @@ var $elm$html$Html$Attributes$src = function (url) {
 		'src',
 		_VirtualDom_noJavaScriptOrHtmlUri(url));
 };
-var $author$project$Main$viewPieceThumb = F2(
-	function (pieceId, dataUrl) {
+var $elm$html$Html$Attributes$title = $elm$html$Html$Attributes$stringProperty('title');
+var $author$project$Main$viewPieceThumb = F3(
+	function (removeInfo, pieceId, dataUrl) {
 		return A2(
 			$elm$html$Html$div,
 			_List_fromArray(
 				[
 					$elm$html$Html$Attributes$class('piece-thumb')
 				]),
-			_List_fromArray(
-				[
-					A2(
-					$elm$html$Html$img,
-					_List_fromArray(
-						[
-							$elm$html$Html$Attributes$src(dataUrl),
-							A2($elm$html$Html$Attributes$style, 'max-height', '48px'),
-							A2($elm$html$Html$Attributes$style, 'max-width', '80px'),
-							A2($elm$html$Html$Attributes$style, 'display', 'block')
-						]),
-					_List_Nil),
-					A2(
-					$elm$html$Html$div,
-					_List_fromArray(
-						[
-							$elm$html$Html$Attributes$class('piece-thumb-label')
-						]),
-					_List_fromArray(
-						[
-							$elm$html$Html$text(
-							'#' + $elm$core$String$fromInt(pieceId))
-						]))
-				]));
+			_Utils_ap(
+				_List_fromArray(
+					[
+						A2(
+						$elm$html$Html$img,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$src(dataUrl),
+								A2($elm$html$Html$Attributes$style, 'max-height', '48px'),
+								A2($elm$html$Html$Attributes$style, 'max-width', '80px'),
+								A2($elm$html$Html$Attributes$style, 'display', 'block')
+							]),
+						_List_Nil),
+						A2(
+						$elm$html$Html$div,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('piece-thumb-label')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text(
+								'#' + $elm$core$String$fromInt(pieceId))
+							]))
+					]),
+				function () {
+					if (removeInfo.$ === 'Just') {
+						var _v1 = removeInfo.a;
+						var wid = _v1.a;
+						var pid = _v1.b;
+						return _List_fromArray(
+							[
+								A2(
+								$elm$html$Html$button,
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$class('piece-thumb-remove'),
+										$elm$html$Html$Events$onClick(
+										A2($author$project$Main$RemovePieceFromWave, wid, pid)),
+										$elm$html$Html$Attributes$title('Remove from wave')
+									]),
+								_List_fromArray(
+									[
+										$elm$html$Html$text('\u2715')
+									]))
+							]);
+					} else {
+						return _List_Nil;
+					}
+				}()));
 	});
 var $author$project$Main$viewUnassignedRow = F2(
 	function (model, unassignedPieces) {
@@ -8703,7 +8957,7 @@ var $author$project$Main$viewUnassignedRow = F2(
 								[
 									$elm$html$Html$text(
 									$elm$core$String$fromInt(
-										$elm$core$List$length(unassignedPieces)) + ' pieces')
+										$elm$core$List$length(unassignedPieces)) + ' pcs')
 								]))
 						])),
 					A2(
@@ -8717,22 +8971,58 @@ var $author$project$Main$viewUnassignedRow = F2(
 						function (p) {
 							return A2(
 								$elm$core$Maybe$map,
-								$author$project$Main$viewPieceThumb(p.id),
+								A2($author$project$Main$viewPieceThumb, $elm$core$Maybe$Nothing, p.id),
 								A2($elm$core$Dict$get, p.id, model.pieceImages));
 						},
 						unassignedPieces))
 				]));
 	});
+var $author$project$Main$MoveWave = F2(
+	function (a, b) {
+		return {$: 'MoveWave', a: a, b: b};
+	});
+var $author$project$Main$RemoveWave = function (a) {
+	return {$: 'RemoveWave', a: a};
+};
+var $author$project$Main$SelectWave = function (a) {
+	return {$: 'SelectWave', a: a};
+};
 var $author$project$Main$ToggleWaveVisibility = function (a) {
 	return {$: 'ToggleWaveVisibility', a: a};
 };
-var $author$project$Main$viewWaveRow = F2(
-	function (model, wave) {
+var $elm$core$Basics$negate = function (n) {
+	return -n;
+};
+var $author$project$Main$viewWaveRow = F3(
+	function (model, allWaves, wave) {
+		var waveIdx = A2(
+			$elm$core$Maybe$withDefault,
+			0,
+			A2(
+				$elm$core$Maybe$map,
+				$elm$core$Tuple$first,
+				$elm$core$List$head(
+					A2(
+						$elm$core$List$filter,
+						function (_v0) {
+							var wv = _v0.b;
+							return _Utils_eq(wv.id, wave.id);
+						},
+						A2($elm$core$List$indexedMap, $elm$core$Tuple$pair, allWaves)))));
+		var waveCount = $elm$core$List$length(allWaves);
+		var isSelected = _Utils_eq(
+			model.selectedWaveId,
+			$elm$core$Maybe$Just(wave.id));
 		return A2(
 			$elm$html$Html$div,
 			_List_fromArray(
 				[
-					$elm$html$Html$Attributes$class('wave-row')
+					$elm$html$Html$Attributes$classList(
+					_List_fromArray(
+						[
+							_Utils_Tuple2('wave-row', true),
+							_Utils_Tuple2('selected', isSelected)
+						]))
 				]),
 			_List_fromArray(
 				[
@@ -8740,7 +9030,10 @@ var $author$project$Main$viewWaveRow = F2(
 					$elm$html$Html$div,
 					_List_fromArray(
 						[
-							$elm$html$Html$Attributes$class('wave-row-header')
+							$elm$html$Html$Attributes$class('wave-row-header'),
+							$elm$html$Html$Events$onClick(
+							isSelected ? $author$project$Main$SelectWave($elm$core$Maybe$Nothing) : $author$project$Main$SelectWave(
+								$elm$core$Maybe$Just(wave.id)))
 						]),
 					_List_fromArray(
 						[
@@ -8754,8 +9047,13 @@ var $author$project$Main$viewWaveRow = F2(
 											_Utils_Tuple2('wave-eye', true),
 											_Utils_Tuple2('hidden', !wave.visible)
 										])),
-									$elm$html$Html$Events$onClick(
-									$author$project$Main$ToggleWaveVisibility(wave.id))
+									A2(
+									$elm$html$Html$Events$stopPropagationOn,
+									'click',
+									$elm$json$Json$Decode$succeed(
+										_Utils_Tuple2(
+											$author$project$Main$ToggleWaveVisibility(wave.id),
+											true)))
 								]),
 							_List_fromArray(
 								[
@@ -8781,7 +9079,70 @@ var $author$project$Main$viewWaveRow = F2(
 								[
 									$elm$html$Html$text(
 									$elm$core$String$fromInt(
-										$elm$core$List$length(wave.pieceIds)) + ' pieces')
+										$elm$core$List$length(wave.pieceIds)) + ' pcs')
+								])),
+							A2(
+							$elm$html$Html$span,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('wave-actions')
+								]),
+							_List_fromArray(
+								[
+									A2(
+									$elm$html$Html$button,
+									_List_fromArray(
+										[
+											A2(
+											$elm$html$Html$Events$stopPropagationOn,
+											'click',
+											$elm$json$Json$Decode$succeed(
+												_Utils_Tuple2(
+													A2($author$project$Main$MoveWave, wave.id, -1),
+													true))),
+											$elm$html$Html$Attributes$disabled(!waveIdx),
+											$elm$html$Html$Attributes$title('Move up')
+										]),
+									_List_fromArray(
+										[
+											$elm$html$Html$text('\u25B2')
+										])),
+									A2(
+									$elm$html$Html$button,
+									_List_fromArray(
+										[
+											A2(
+											$elm$html$Html$Events$stopPropagationOn,
+											'click',
+											$elm$json$Json$Decode$succeed(
+												_Utils_Tuple2(
+													A2($author$project$Main$MoveWave, wave.id, 1),
+													true))),
+											$elm$html$Html$Attributes$disabled(
+											_Utils_cmp(waveIdx, waveCount - 1) > -1),
+											$elm$html$Html$Attributes$title('Move down')
+										]),
+									_List_fromArray(
+										[
+											$elm$html$Html$text('\u25BC')
+										])),
+									A2(
+									$elm$html$Html$button,
+									_List_fromArray(
+										[
+											A2(
+											$elm$html$Html$Events$stopPropagationOn,
+											'click',
+											$elm$json$Json$Decode$succeed(
+												_Utils_Tuple2(
+													$author$project$Main$RemoveWave(wave.id),
+													true))),
+											$elm$html$Html$Attributes$title('Delete wave')
+										]),
+									_List_fromArray(
+										[
+											$elm$html$Html$text('\u2715')
+										]))
 								]))
 						])),
 					A2(
@@ -8795,7 +9156,11 @@ var $author$project$Main$viewWaveRow = F2(
 						function (pid) {
 							return A2(
 								$elm$core$Maybe$map,
-								$author$project$Main$viewPieceThumb(pid),
+								A2(
+									$author$project$Main$viewPieceThumb,
+									$elm$core$Maybe$Just(
+										_Utils_Tuple2(wave.id, pid)),
+									pid),
 								A2($elm$core$Dict$get, pid, model.pieceImages));
 						},
 						wave.pieceIds))
@@ -8894,7 +9259,7 @@ var $author$project$Main$viewWavesPanel = function (model) {
 						_Utils_ap(
 							A2(
 								$elm$core$List$map,
-								$author$project$Main$viewWaveRow(model),
+								A2($author$project$Main$viewWaveRow, model, model.waves),
 								model.waves),
 							_List_fromArray(
 								[

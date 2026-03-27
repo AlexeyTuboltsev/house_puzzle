@@ -121,6 +121,7 @@ type alias Model =
     , waves : List Wave
     , nextWaveId : Int
     , selectedPieceId : Maybe Int
+    , selectedWaveId : Maybe Int
     , editMode : Bool
     , editBrickIds : List Int
     , editOriginalBrickIds : List Int
@@ -145,6 +146,7 @@ init _ =
       , waves = []
       , nextWaveId = 1
       , selectedPieceId = Nothing
+      , selectedWaveId = Nothing
       , editMode = False
       , editBrickIds = []
       , editOriginalBrickIds = []
@@ -175,6 +177,11 @@ type Msg
     | AddWave
     | ToggleWaveVisibility Int
     | SelectPiece Int
+    | SelectWave (Maybe Int)
+    | AssignPieceToWave Int
+    | RemovePieceFromWave Int Int
+    | MoveWave Int Int
+    | RemoveWave Int
     | StartEdit
     | ToggleBrickInEdit Int
     | SaveEdit
@@ -212,6 +219,7 @@ update msg model =
                 , waves = []
                 , nextWaveId = 1
                 , selectedPieceId = Nothing
+                , selectedWaveId = Nothing
                 , editMode = False
                 , editBrickIds = []
                 , editOriginalBrickIds = []
@@ -274,6 +282,7 @@ update msg model =
                         , waves = []
                         , nextWaveId = 1
                         , selectedPieceId = Nothing
+                        , selectedWaveId = Nothing
                         , editMode = False
                         , editBrickIds = []
                         , editOriginalBrickIds = []
@@ -358,6 +367,123 @@ update msg model =
               }
             , Cmd.none
             )
+
+        SelectWave mwid ->
+            ( { model | selectedWaveId = mwid }, Cmd.none )
+
+        AssignPieceToWave pid ->
+            case model.selectedWaveId of
+                Nothing ->
+                    ( model, Cmd.none )
+
+                Just wid ->
+                    let
+                        alreadyIn =
+                            model.waves
+                                |> List.filter (\w -> w.id == wid)
+                                |> List.head
+                                |> Maybe.map (\w -> List.member pid w.pieceIds)
+                                |> Maybe.withDefault False
+
+                        updatedWaves =
+                            List.map
+                                (\w ->
+                                    if w.id == wid then
+                                        if alreadyIn then
+                                            { w | pieceIds = List.filter (\p -> p /= pid) w.pieceIds }
+
+                                        else
+                                            { w | pieceIds = w.pieceIds ++ [ pid ] }
+
+                                    else if not alreadyIn then
+                                        -- adding to wid: remove from all other waves
+                                        { w | pieceIds = List.filter (\p -> p /= pid) w.pieceIds }
+
+                                    else
+                                        w
+                                )
+                                model.waves
+                    in
+                    ( { model | waves = updatedWaves }, Cmd.none )
+
+        RemovePieceFromWave wid pid ->
+            ( { model
+                | waves =
+                    List.map
+                        (\w ->
+                            if w.id == wid then
+                                { w | pieceIds = List.filter (\p -> p /= pid) w.pieceIds }
+
+                            else
+                                w
+                        )
+                        model.waves
+              }
+            , Cmd.none
+            )
+
+        MoveWave wid dir ->
+            let
+                indexed =
+                    List.indexedMap Tuple.pair model.waves
+
+                maybeIdx =
+                    indexed
+                        |> List.filter (\( _, w ) -> w.id == wid)
+                        |> List.head
+                        |> Maybe.map Tuple.first
+
+                swapped =
+                    case maybeIdx of
+                        Nothing ->
+                            model.waves
+
+                        Just i ->
+                            let
+                                j =
+                                    i + dir
+
+                                n =
+                                    List.length model.waves
+                            in
+                            if j < 0 || j >= n then
+                                model.waves
+
+                            else
+                                List.indexedMap
+                                    (\k w ->
+                                        if k == i then
+                                            Maybe.withDefault w (List.head (List.drop j model.waves))
+
+                                        else if k == j then
+                                            Maybe.withDefault w (List.head (List.drop i model.waves))
+
+                                        else
+                                            w
+                                    )
+                                    model.waves
+
+                renumbered =
+                    List.indexedMap (\i w -> { w | name = "Wave " ++ String.fromInt (i + 1) }) swapped
+            in
+            ( { model | waves = renumbered }, Cmd.none )
+
+        RemoveWave wid ->
+            let
+                filtered =
+                    List.filter (\w -> w.id /= wid) model.waves
+
+                renumbered =
+                    List.indexedMap (\i w -> { w | name = "Wave " ++ String.fromInt (i + 1) }) filtered
+
+                newSelectedWaveId =
+                    if model.selectedWaveId == Just wid then
+                        Nothing
+
+                    else
+                        model.selectedWaveId
+            in
+            ( { model | waves = renumbered, selectedWaveId = newSelectedWaveId }, Cmd.none )
 
         StartEdit ->
             case model.selectedPieceId of
@@ -1183,9 +1309,21 @@ viewMainSvg response model =
                 []
 
         -- Piece interaction overlays (post-gen, not in edit)
+        assignedToSelectedWave =
+            case model.selectedWaveId of
+                Just wid ->
+                    model.waves
+                        |> List.filter (\wv -> wv.id == wid)
+                        |> List.head
+                        |> Maybe.map .pieceIds
+                        |> Maybe.withDefault []
+
+                Nothing ->
+                    []
+
         pieceOverlays =
             if (not model.editMode) && isGenerated then
-                List.map (viewPieceOverlay model.selectedPieceId) model.pieces
+                List.map (viewPieceOverlay model.selectedPieceId model.selectedWaveId assignedToSelectedWave) model.pieces
 
             else
                 []
@@ -1400,25 +1538,52 @@ viewPieceOutline piece =
             []
 
 
-viewPieceOverlay : Maybe Int -> Piece -> Svg.Svg Msg
-viewPieceOverlay selectedId piece =
+viewPieceOverlay : Maybe Int -> Maybe Int -> List Int -> Piece -> Svg.Svg Msg
+viewPieceOverlay selectedId selectedWaveId waveAssignedIds piece =
     let
+        inAssignMode =
+            selectedWaveId /= Nothing
+
         isSelected =
             selectedId == Just piece.id
 
+        inWave =
+            List.member piece.id waveAssignedIds
+
         fillColor =
-            if isSelected then
+            if inAssignMode then
+                if inWave then
+                    "rgba(64,120,255,0.4)"
+
+                else
+                    "transparent"
+
+            else if isSelected then
                 "rgba(64,120,255,0.35)"
 
             else
                 "transparent"
 
         cls =
-            if isSelected then
+            if inAssignMode then
+                if inWave then
+                    "piece-overlay selected"
+
+                else
+                    "piece-overlay"
+
+            else if isSelected then
                 "piece-overlay selected"
 
             else
                 "piece-overlay"
+
+        clickMsg =
+            if inAssignMode then
+                AssignPieceToWave piece.id
+
+            else
+                SelectPiece piece.id
     in
     if List.isEmpty piece.polygon then
         Svg.g [] []
@@ -1434,7 +1599,7 @@ viewPieceOverlay selectedId piece =
             [ SA.points pointsAttr
             , SA.fill fillColor
             , SA.class cls
-            , onClick (SelectPiece piece.id)
+            , onClick clickMsg
             ]
             []
 
@@ -1534,34 +1699,74 @@ viewWavesPanel model =
             , div [ class "wave-toolbar" ]
                 [ button [ onClick AddWave ] [ text "+ Wave" ] ]
             , div [ class "waves-body" ]
-                (List.map (viewWaveRow model) model.waves
+                (List.map (viewWaveRow model model.waves) model.waves
                     ++ [ viewUnassignedRow model unassignedPieces ]
                 )
             ]
         ]
 
 
-viewWaveRow : Model -> Wave -> Html Msg
-viewWaveRow model wave =
-    div [ class "wave-row" ]
-        [ div [ class "wave-row-header" ]
+viewWaveRow : Model -> List Wave -> Wave -> Html Msg
+viewWaveRow model allWaves wave =
+    let
+        isSelected =
+            model.selectedWaveId == Just wave.id
+
+        waveIdx =
+            allWaves
+                |> List.indexedMap Tuple.pair
+                |> List.filter (\( _, wv ) -> wv.id == wave.id)
+                |> List.head
+                |> Maybe.map Tuple.first
+                |> Maybe.withDefault 0
+
+        waveCount =
+            List.length allWaves
+    in
+    div [ classList [ ( "wave-row", True ), ( "selected", isSelected ) ] ]
+        [ div
+            [ class "wave-row-header"
+            , onClick
+                (if isSelected then
+                    SelectWave Nothing
+
+                 else
+                    SelectWave (Just wave.id)
+                )
+            ]
             [ span
-                [ classList
-                    [ ( "wave-eye", True )
-                    , ( "hidden", not wave.visible )
-                    ]
-                , onClick (ToggleWaveVisibility wave.id)
+                [ classList [ ( "wave-eye", True ), ( "hidden", not wave.visible ) ]
+                , stopPropagationOn "click" (D.succeed ( ToggleWaveVisibility wave.id, True ))
                 ]
                 [ text "\u{1F441}" ]
             , span [ class "wave-label" ] [ text wave.name ]
             , span [ class "wave-piece-count" ]
-                [ text (String.fromInt (List.length wave.pieceIds) ++ " pieces") ]
+                [ text (String.fromInt (List.length wave.pieceIds) ++ " pcs") ]
+            , span [ class "wave-actions" ]
+                [ button
+                    [ stopPropagationOn "click" (D.succeed ( MoveWave wave.id -1, True ))
+                    , disabled (waveIdx == 0)
+                    , title "Move up"
+                    ]
+                    [ text "\u{25B2}" ]
+                , button
+                    [ stopPropagationOn "click" (D.succeed ( MoveWave wave.id 1, True ))
+                    , disabled (waveIdx >= waveCount - 1)
+                    , title "Move down"
+                    ]
+                    [ text "\u{25BC}" ]
+                , button
+                    [ stopPropagationOn "click" (D.succeed ( RemoveWave wave.id, True ))
+                    , title "Delete wave"
+                    ]
+                    [ text "\u{2715}" ]
+                ]
             ]
         , div [ class "wave-pieces" ]
             (List.filterMap
                 (\pid ->
                     Dict.get pid model.pieceImages
-                        |> Maybe.map (viewPieceThumb pid)
+                        |> Maybe.map (viewPieceThumb (Just ( wave.id, pid )) pid)
                 )
                 wave.pieceIds
             )
@@ -1578,31 +1783,45 @@ viewUnassignedRow model unassignedPieces =
             [ div [ class "wave-row-header" ]
                 [ span [ class "wave-label unassigned-label" ] [ text "Unassigned" ]
                 , span [ class "wave-piece-count" ]
-                    [ text (String.fromInt (List.length unassignedPieces) ++ " pieces") ]
+                    [ text (String.fromInt (List.length unassignedPieces) ++ " pcs") ]
                 ]
             , div [ class "wave-pieces" ]
                 (List.filterMap
                     (\p ->
                         Dict.get p.id model.pieceImages
-                            |> Maybe.map (viewPieceThumb p.id)
+                            |> Maybe.map (viewPieceThumb Nothing p.id)
                     )
                     unassignedPieces
                 )
             ]
 
 
-viewPieceThumb : Int -> String -> Html Msg
-viewPieceThumb pieceId dataUrl =
+viewPieceThumb : Maybe ( Int, Int ) -> Int -> String -> Html Msg
+viewPieceThumb removeInfo pieceId dataUrl =
     div [ class "piece-thumb" ]
-        [ img
+        ([ img
             [ src dataUrl
             , style "max-height" "48px"
             , style "max-width" "80px"
             , style "display" "block"
             ]
             []
-        , div [ class "piece-thumb-label" ] [ text ("#" ++ String.fromInt pieceId) ]
-        ]
+         , div [ class "piece-thumb-label" ] [ text ("#" ++ String.fromInt pieceId) ]
+         ]
+            ++ (case removeInfo of
+                    Just ( wid, pid ) ->
+                        [ button
+                            [ class "piece-thumb-remove"
+                            , onClick (RemovePieceFromWave wid pid)
+                            , title "Remove from wave"
+                            ]
+                            [ text "\u{2715}" ]
+                        ]
+
+                    Nothing ->
+                        []
+               )
+        )
 
 
 

@@ -256,6 +256,7 @@ body {
 .wave-toolbar button { padding: 4px 10px; font-size: 11px; }
 
 .wave-row { border-bottom: 1px solid #222; padding: 4px 0; }
+.wave-row.selected { background: rgba(224,160,80,0.07); }
 .wave-row-header {
     display: flex;
     align-items: center;
@@ -263,8 +264,26 @@ body {
     gap: 6px;
     font-size: 12px;
     user-select: none;
+    cursor: pointer;
 }
 .wave-row-header:hover { background: rgba(255,255,255,0.03); }
+.wave-actions {
+    margin-left: auto;
+    display: flex;
+    gap: 2px;
+}
+.wave-actions button {
+    padding: 1px 5px;
+    font-size: 10px;
+    background: transparent;
+    border: 1px solid #444;
+    color: #aaa;
+    border-radius: 3px;
+    cursor: pointer;
+    line-height: 1.4;
+}
+.wave-actions button:hover { background: #2a2a4a; color: #e0e0e0; }
+.wave-actions button:disabled { opacity: 0.3; cursor: not-allowed; }
 .wave-eye {
     cursor: pointer;
     font-size: 14px;
@@ -280,6 +299,8 @@ body {
     min-width: 60px;
 }
 .wave-label.unassigned-label { color: #888; }
+.wave-row.selected .wave-label { color: #60c8ff; }
+.wave-row.selected .wave-row-header { background: rgba(60,120,255,0.08); }
 .wave-piece-count { color: #888; font-size: 11px; flex: 1; }
 
 .wave-pieces {
@@ -297,7 +318,7 @@ body {
 
 .piece-thumb {
     flex-shrink: 0;
-    cursor: pointer;
+    position: relative;
     border: 2px solid transparent;
     border-radius: 3px;
     padding: 2px;
@@ -305,6 +326,24 @@ body {
 }
 .piece-thumb:hover { border-color: rgba(60,200,255,0.6); }
 .piece-thumb-label { font-size: 9px; color: #aaa; text-align: center; margin-top: 1px; }
+.piece-thumb-remove {
+    display: none;
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 14px;
+    height: 14px;
+    padding: 0;
+    font-size: 9px;
+    line-height: 14px;
+    text-align: center;
+    background: rgba(40,40,60,0.9);
+    border: none;
+    border-radius: 0 2px 0 3px;
+    color: #f64;
+    cursor: pointer;
+}
+.piece-thumb:hover .piece-thumb-remove { display: block; }
 
 /* Canvas recomputing spinner overlay */
 .canvas-spinner-overlay {
