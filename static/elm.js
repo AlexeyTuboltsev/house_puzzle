@@ -5521,7 +5521,7 @@ var $elm$core$Platform$Cmd$batch = _Platform_batch;
 var $elm$core$Platform$Cmd$none = $elm$core$Platform$Cmd$batch(_List_Nil);
 var $author$project$Main$init = function (_v0) {
 	return _Utils_Tuple2(
-		{bricksById: $elm$core$Dict$empty, editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, generateState: $author$project$Main$NotGenerated, loadState: $author$project$Main$Idle, minBorder: 5, nextWaveId: 1, pieceImages: $elm$core$Dict$empty, pieces: _List_Nil, recomputing: false, seed: 42, selectedFileName: '', selectedPieceId: $elm$core$Maybe$Nothing, selectedWaveId: $elm$core$Maybe$Nothing, showGrid: false, showOutlines: true, targetCount: 60, viewMode: $author$project$Main$ViewPieces, waves: _List_Nil},
+		{bricksById: $elm$core$Dict$empty, editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, generateState: $author$project$Main$NotGenerated, hoveredPieceId: $elm$core$Maybe$Nothing, loadState: $author$project$Main$Idle, minBorder: 5, nextWaveId: 1, pieceImages: $elm$core$Dict$empty, pieces: _List_Nil, recomputing: false, seed: 42, selectedFileName: '', selectedPieceId: $elm$core$Maybe$Nothing, selectedWaveId: $elm$core$Maybe$Nothing, showGrid: false, showOutlines: true, targetCount: 60, viewMode: $author$project$Main$ViewPieces, waves: _List_Nil},
 		$elm$core$Platform$Cmd$none);
 };
 var $author$project$Main$GotPieceImages = function (a) {
@@ -7117,6 +7117,13 @@ var $author$project$Main$update = F2(
 								model.waves)
 						}),
 					$elm$core$Platform$Cmd$none);
+			case 'SetHoveredPiece':
+				var mid = msg.a;
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{hoveredPieceId: mid}),
+					$elm$core$Platform$Cmd$none);
 			case 'SelectPiece':
 				var pid = msg.a;
 				return _Utils_Tuple2(
@@ -7909,15 +7916,56 @@ var $author$project$Main$AssignPieceToWave = function (a) {
 var $author$project$Main$SelectPiece = function (a) {
 	return {$: 'SelectPiece', a: a};
 };
-var $author$project$Main$viewPieceOverlay = F4(
-	function (selectedId, selectedWaveId, waveAssignedIds, piece) {
-		var isSelected = _Utils_eq(
-			selectedId,
-			$elm$core$Maybe$Just(piece.id));
-		var inWave = A2($elm$core$List$member, piece.id, waveAssignedIds);
+var $author$project$Main$SetHoveredPiece = function (a) {
+	return {$: 'SetHoveredPiece', a: a};
+};
+var $elm$core$Tuple$second = function (_v0) {
+	var y = _v0.b;
+	return y;
+};
+var $elm$html$Html$Attributes$classList = function (classes) {
+	return $elm$html$Html$Attributes$class(
+		A2(
+			$elm$core$String$join,
+			' ',
+			A2(
+				$elm$core$List$map,
+				$elm$core$Tuple$first,
+				A2($elm$core$List$filter, $elm$core$Tuple$second, classes))));
+};
+var $elm$html$Html$Events$onMouseEnter = function (msg) {
+	return A2(
+		$elm$html$Html$Events$on,
+		'mouseenter',
+		$elm$json$Json$Decode$succeed(msg));
+};
+var $elm$html$Html$Events$onMouseLeave = function (msg) {
+	return A2(
+		$elm$html$Html$Events$on,
+		'mouseleave',
+		$elm$json$Json$Decode$succeed(msg));
+};
+var $author$project$Main$viewPieceOverlay = F5(
+	function (hoveredId, selectedId, selectedWaveId, waveAssignedIds, piece) {
 		var inAssignMode = !_Utils_eq(selectedWaveId, $elm$core$Maybe$Nothing);
-		var fillColor = inAssignMode ? (inWave ? 'rgba(64,120,255,0.4)' : 'transparent') : (isSelected ? 'rgba(64,120,255,0.35)' : 'transparent');
-		var cls = inAssignMode ? (inWave ? 'piece-overlay selected' : 'piece-overlay') : (isSelected ? 'piece-overlay selected' : 'piece-overlay');
+		var cls = $elm$html$Html$Attributes$classList(
+			_List_fromArray(
+				[
+					_Utils_Tuple2('piece-overlay', true),
+					_Utils_Tuple2(
+					'hovered',
+					_Utils_eq(
+						hoveredId,
+						$elm$core$Maybe$Just(piece.id))),
+					_Utils_Tuple2(
+					'selected',
+					(!inAssignMode) && _Utils_eq(
+						selectedId,
+						$elm$core$Maybe$Just(piece.id))),
+					_Utils_Tuple2(
+					'in-wave',
+					inAssignMode && A2($elm$core$List$member, piece.id, waveAssignedIds))
+				]));
 		var clickMsg = inAssignMode ? $author$project$Main$AssignPieceToWave(piece.id) : $author$project$Main$SelectPiece(piece.id);
 		if ($elm$core$List$isEmpty(piece.polygon)) {
 			return A2($elm$svg$Svg$g, _List_Nil, _List_Nil);
@@ -7938,9 +7986,13 @@ var $author$project$Main$viewPieceOverlay = F4(
 				_List_fromArray(
 					[
 						$elm$svg$Svg$Attributes$points(pointsAttr),
-						$elm$svg$Svg$Attributes$fill(fillColor),
-						$elm$svg$Svg$Attributes$class(cls),
-						$elm$html$Html$Events$onClick(clickMsg)
+						cls,
+						$elm$html$Html$Events$onClick(clickMsg),
+						$elm$html$Html$Events$onMouseEnter(
+						$author$project$Main$SetHoveredPiece(
+							$elm$core$Maybe$Just(piece.id))),
+						$elm$html$Html$Events$onMouseLeave(
+						$author$project$Main$SetHoveredPiece($elm$core$Maybe$Nothing))
 					]),
 				_List_Nil);
 		}
@@ -8017,7 +8069,7 @@ var $author$project$Main$viewMainSvg = F2(
 		}();
 		var pieceOverlays = ((!model.editMode) && isGenerated) ? A2(
 			$elm$core$List$map,
-			A3($author$project$Main$viewPieceOverlay, model.selectedPieceId, model.selectedWaveId, assignedToSelectedWave),
+			A4($author$project$Main$viewPieceOverlay, model.hoveredPieceId, model.selectedPieceId, model.selectedWaveId, assignedToSelectedWave),
 			model.pieces) : _List_Nil;
 		return A2(
 			$elm$svg$Svg$svg,
@@ -8147,20 +8199,6 @@ var $author$project$Main$ToggleOutlines = function (a) {
 	return {$: 'ToggleOutlines', a: a};
 };
 var $elm$html$Html$Attributes$checked = $elm$html$Html$Attributes$boolProperty('checked');
-var $elm$core$Tuple$second = function (_v0) {
-	var y = _v0.b;
-	return y;
-};
-var $elm$html$Html$Attributes$classList = function (classes) {
-	return $elm$html$Html$Attributes$class(
-		A2(
-			$elm$core$String$join,
-			' ',
-			A2(
-				$elm$core$List$map,
-				$elm$core$Tuple$first,
-				A2($elm$core$List$filter, $elm$core$Tuple$second, classes))));
-};
 var $elm$html$Html$Attributes$for = $elm$html$Html$Attributes$stringProperty('htmlFor');
 var $elm$html$Html$h2 = _VirtualDom_node('h2');
 var $elm$html$Html$Attributes$id = $elm$html$Html$Attributes$stringProperty('id');
@@ -8860,13 +8898,26 @@ var $elm$html$Html$Attributes$src = function (url) {
 		_VirtualDom_noJavaScriptOrHtmlUri(url));
 };
 var $elm$html$Html$Attributes$title = $elm$html$Html$Attributes$stringProperty('title');
-var $author$project$Main$viewPieceThumb = F3(
-	function (removeInfo, pieceId, dataUrl) {
+var $author$project$Main$viewPieceThumb = F4(
+	function (removeInfo, hoveredId, pieceId, dataUrl) {
+		var isHovered = _Utils_eq(
+			hoveredId,
+			$elm$core$Maybe$Just(pieceId));
 		return A2(
 			$elm$html$Html$div,
 			_List_fromArray(
 				[
-					$elm$html$Html$Attributes$class('piece-thumb')
+					$elm$html$Html$Attributes$classList(
+					_List_fromArray(
+						[
+							_Utils_Tuple2('piece-thumb', true),
+							_Utils_Tuple2('hovered', isHovered)
+						])),
+					$elm$html$Html$Events$onMouseEnter(
+					$author$project$Main$SetHoveredPiece(
+						$elm$core$Maybe$Just(pieceId))),
+					$elm$html$Html$Events$onMouseLeave(
+					$author$project$Main$SetHoveredPiece($elm$core$Maybe$Nothing))
 				]),
 			_Utils_ap(
 				_List_fromArray(
@@ -8971,7 +9022,7 @@ var $author$project$Main$viewUnassignedRow = F2(
 						function (p) {
 							return A2(
 								$elm$core$Maybe$map,
-								A2($author$project$Main$viewPieceThumb, $elm$core$Maybe$Nothing, p.id),
+								A3($author$project$Main$viewPieceThumb, $elm$core$Maybe$Nothing, model.hoveredPieceId, p.id),
 								A2($elm$core$Dict$get, p.id, model.pieceImages));
 						},
 						unassignedPieces))
@@ -9156,10 +9207,11 @@ var $author$project$Main$viewWaveRow = F3(
 						function (pid) {
 							return A2(
 								$elm$core$Maybe$map,
-								A2(
+								A3(
 									$author$project$Main$viewPieceThumb,
 									$elm$core$Maybe$Just(
 										_Utils_Tuple2(wave.id, pid)),
+									model.hoveredPieceId,
 									pid),
 								A2($elm$core$Dict$get, pid, model.pieceImages));
 						},

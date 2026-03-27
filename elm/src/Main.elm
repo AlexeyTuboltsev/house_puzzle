@@ -120,6 +120,7 @@ type alias Model =
     , showGrid : Bool
     , waves : List Wave
     , nextWaveId : Int
+    , hoveredPieceId : Maybe Int
     , selectedPieceId : Maybe Int
     , selectedWaveId : Maybe Int
     , editMode : Bool
@@ -145,6 +146,7 @@ init _ =
       , showGrid = False
       , waves = []
       , nextWaveId = 1
+      , hoveredPieceId = Nothing
       , selectedPieceId = Nothing
       , selectedWaveId = Nothing
       , editMode = False
@@ -176,6 +178,7 @@ type Msg
     | ToggleGrid Bool
     | AddWave
     | ToggleWaveVisibility Int
+    | SetHoveredPiece (Maybe Int)
     | SelectPiece Int
     | SelectWave (Maybe Int)
     | AssignPieceToWave Int
@@ -355,6 +358,9 @@ update msg model =
               }
             , Cmd.none
             )
+
+        SetHoveredPiece mid ->
+            ( { model | hoveredPieceId = mid }, Cmd.none )
 
         SelectPiece pid ->
             ( { model
@@ -1323,7 +1329,7 @@ viewMainSvg response model =
 
         pieceOverlays =
             if (not model.editMode) && isGenerated then
-                List.map (viewPieceOverlay model.selectedPieceId model.selectedWaveId assignedToSelectedWave) model.pieces
+                List.map (viewPieceOverlay model.hoveredPieceId model.selectedPieceId model.selectedWaveId assignedToSelectedWave) model.pieces
 
             else
                 []
@@ -1538,45 +1544,19 @@ viewPieceOutline piece =
             []
 
 
-viewPieceOverlay : Maybe Int -> Maybe Int -> List Int -> Piece -> Svg.Svg Msg
-viewPieceOverlay selectedId selectedWaveId waveAssignedIds piece =
+viewPieceOverlay : Maybe Int -> Maybe Int -> Maybe Int -> List Int -> Piece -> Svg.Svg Msg
+viewPieceOverlay hoveredId selectedId selectedWaveId waveAssignedIds piece =
     let
         inAssignMode =
             selectedWaveId /= Nothing
 
-        isSelected =
-            selectedId == Just piece.id
-
-        inWave =
-            List.member piece.id waveAssignedIds
-
-        fillColor =
-            if inAssignMode then
-                if inWave then
-                    "rgba(64,120,255,0.4)"
-
-                else
-                    "transparent"
-
-            else if isSelected then
-                "rgba(64,120,255,0.35)"
-
-            else
-                "transparent"
-
         cls =
-            if inAssignMode then
-                if inWave then
-                    "piece-overlay selected"
-
-                else
-                    "piece-overlay"
-
-            else if isSelected then
-                "piece-overlay selected"
-
-            else
-                "piece-overlay"
+            classList
+                [ ( "piece-overlay", True )
+                , ( "hovered", hoveredId == Just piece.id )
+                , ( "selected", not inAssignMode && selectedId == Just piece.id )
+                , ( "in-wave", inAssignMode && List.member piece.id waveAssignedIds )
+                ]
 
         clickMsg =
             if inAssignMode then
@@ -1597,9 +1577,10 @@ viewPieceOverlay selectedId selectedWaveId waveAssignedIds piece =
         in
         Svg.polygon
             [ SA.points pointsAttr
-            , SA.fill fillColor
-            , SA.class cls
+            , cls
             , onClick clickMsg
+            , onMouseEnter (SetHoveredPiece (Just piece.id))
+            , onMouseLeave (SetHoveredPiece Nothing)
             ]
             []
 
@@ -1766,7 +1747,7 @@ viewWaveRow model allWaves wave =
             (List.filterMap
                 (\pid ->
                     Dict.get pid model.pieceImages
-                        |> Maybe.map (viewPieceThumb (Just ( wave.id, pid )) pid)
+                        |> Maybe.map (viewPieceThumb (Just ( wave.id, pid )) model.hoveredPieceId pid)
                 )
                 wave.pieceIds
             )
@@ -1789,16 +1770,24 @@ viewUnassignedRow model unassignedPieces =
                 (List.filterMap
                     (\p ->
                         Dict.get p.id model.pieceImages
-                            |> Maybe.map (viewPieceThumb Nothing p.id)
+                            |> Maybe.map (viewPieceThumb Nothing model.hoveredPieceId p.id)
                     )
                     unassignedPieces
                 )
             ]
 
 
-viewPieceThumb : Maybe ( Int, Int ) -> Int -> String -> Html Msg
-viewPieceThumb removeInfo pieceId dataUrl =
-    div [ class "piece-thumb" ]
+viewPieceThumb : Maybe ( Int, Int ) -> Maybe Int -> Int -> String -> Html Msg
+viewPieceThumb removeInfo hoveredId pieceId dataUrl =
+    let
+        isHovered =
+            hoveredId == Just pieceId
+    in
+    div
+        [ classList [ ( "piece-thumb", True ), ( "hovered", isHovered ) ]
+        , onMouseEnter (SetHoveredPiece (Just pieceId))
+        , onMouseLeave (SetHoveredPiece Nothing)
+        ]
         ([ img
             [ src dataUrl
             , style "max-height" "48px"
