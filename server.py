@@ -380,7 +380,8 @@ def _compute_piece_polygons(pieces, bricks_by_id, brick_polygons):
         pw = int(piece.width) + 2
         ph = int(piece.height) + 2
 
-        mask_img = PilImage.new("RGBA", (pw, ph), (0, 0, 0, 0))
+        from PIL import ImageFilter as PilFilter
+        mask_img = PilImage.new("L", (pw, ph), 0)
         draw = PilDraw.Draw(mask_img)
 
         for b in bricks:
@@ -388,14 +389,24 @@ def _compute_piece_polygons(pieces, bricks_by_id, brick_polygons):
             if poly and len(poly) >= 3:
                 # brick_polygons are brick-local; convert to piece-local coords
                 local_pts = [(x + b.x - px, y + b.y - py) for x, y in poly]
-                draw.polygon(local_pts, fill=(255, 255, 255, 255))
+                draw.polygon(local_pts, fill=255)
             else:
                 draw.rectangle(
                     [b.x - px, b.y - py, b.x - px + b.width, b.y - py + b.height],
-                    fill=(255, 255, 255, 255),
+                    fill=255,
                 )
 
-        contours = trace_alpha_contours(mask_img)
+        mask_rgba = PilImage.new("RGBA", mask_img.size, (0, 0, 0, 0))
+        mask_rgba.putalpha(mask_img)
+        contours = trace_alpha_contours(mask_rgba)
+
+        # If multiple disconnected regions, close gaps and re-trace
+        if len(contours) > 1:
+            closed = mask_img.filter(PilFilter.MaxFilter(5))
+            closed = closed.filter(PilFilter.MinFilter(5))
+            mask_rgba = PilImage.new("RGBA", closed.size, (0, 0, 0, 0))
+            mask_rgba.putalpha(closed)
+            contours = trace_alpha_contours(mask_rgba)
         if not contours:
             result[piece.id] = []
             continue

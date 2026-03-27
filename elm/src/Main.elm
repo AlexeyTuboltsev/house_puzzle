@@ -78,6 +78,7 @@ type alias Wave =
     { id : Int
     , name : String
     , visible : Bool
+    , locked : Bool
     , pieceIds : List Int
     }
 
@@ -128,6 +129,9 @@ type alias Model =
     , editOriginalBrickIds : List Int
     , recomputing : Bool
     , exporting : Bool
+    , draggingPieceId : Maybe Int
+    , dragOverWaveId : Maybe (Maybe Int)
+    , dragInsertBeforeId : Maybe Int
     }
 
 
@@ -155,6 +159,9 @@ init _ =
       , editOriginalBrickIds = []
       , recomputing = False
       , exporting = False
+      , draggingPieceId = Nothing
+      , dragOverWaveId = Nothing
+      , dragInsertBeforeId = Nothing
       }
     , Cmd.none
     )
@@ -195,6 +202,14 @@ type Msg
     | GotPiecePolygons (Result Http.Error (List ( Int, List Point )))
     | RequestExport
     | ExportDone
+    | LogBrickClick Int
+    | DragPieceStart Int
+    | DragPieceEnd
+    | DragEnterWave (Maybe Int)
+    | DragEnterPiece Int
+    | DropOnWave (Maybe Int)
+    | ToggleWaveLock Int
+    | NoOp
 
 
 
@@ -211,6 +226,9 @@ port exportZip : E.Value -> Cmd msg
 
 
 port gotExportDone : (Bool -> msg) -> Sub msg
+
+
+port logBrick : E.Value -> Cmd msg
 
 
 
@@ -344,6 +362,7 @@ update msg model =
                     { id = model.nextWaveId
                     , name = "Wave " ++ String.fromInt model.nextWaveId
                     , visible = True
+                    , locked = False
                     , pieceIds = []
                     }
             in
@@ -396,35 +415,52 @@ update msg model =
 
                 Just wid ->
                     let
+                        targetWave =
+                            model.waves |> List.filter (\w -> w.id == wid) |> List.head
+
+                        targetLocked =
+                            targetWave |> Maybe.map .locked |> Maybe.withDefault False
+
                         alreadyIn =
-                            model.waves
-                                |> List.filter (\w -> w.id == wid)
-                                |> List.head
-                                |> Maybe.map (\w -> List.member pid w.pieceIds)
-                                |> Maybe.withDefault False
+                            targetWave |> Maybe.map (\w -> List.member pid w.pieceIds) |> Maybe.withDefault False
+
+                        sourceLocked =
+                            model.waves |> List.any (\w -> w.locked && List.member pid w.pieceIds)
 
                         updatedWaves =
-                            List.map
-                                (\w ->
-                                    if w.id == wid then
-                                        if alreadyIn then
+                            if targetLocked || (not alreadyIn && sourceLocked) then
+                                model.waves
+
+                            else
+                                List.map
+                                    (\w ->
+                                        if w.id == wid then
+                                            if alreadyIn then
+                                                { w | pieceIds = List.filter (\p -> p /= pid) w.pieceIds }
+
+                                            else
+                                                { w | pieceIds = w.pieceIds ++ [ pid ] }
+
+                                        else if not alreadyIn then
+                                            -- adding to wid: remove from all other waves
                                             { w | pieceIds = List.filter (\p -> p /= pid) w.pieceIds }
 
                                         else
-                                            { w | pieceIds = w.pieceIds ++ [ pid ] }
-
-                                    else if not alreadyIn then
-                                        -- adding to wid: remove from all other waves
-                                        { w | pieceIds = List.filter (\p -> p /= pid) w.pieceIds }
-
-                                    else
-                                        w
-                                )
-                                model.waves
+                                            w
+                                    )
+                                    model.waves
                     in
                     ( { model | waves = updatedWaves }, Cmd.none )
 
         RemovePieceFromWave wid pid ->
+            let
+                waveLocked =
+                    model.waves |> List.any (\w -> w.id == wid && w.locked)
+            in
+            if waveLocked then
+                ( model, Cmd.none )
+
+            else
             ( { model
                 | waves =
                     List.map
@@ -708,6 +744,105 @@ update msg model =
         ExportDone ->
             ( { model | exporting = False }, Cmd.none )
 
+        LogBrickClick brickId ->
+            ( model
+            , logBrick
+                (E.object
+                    [ ( "brickId", E.int brickId )
+                    , ( "pieceId"
+                      , model.pieces
+                            |> List.filter (\p -> List.any (\br -> br.id == brickId) p.bricks)
+                            |> List.head
+                            |> Maybe.map (.id >> E.int)
+                            |> Maybe.withDefault E.null
+                      )
+                    ]
+                )
+            )
+
+        DragPieceStart pid ->
+            ( { model | draggingPieceId = Just pid }, Cmd.none )
+
+        DragPieceEnd ->
+            ( { model | draggingPieceId = Nothing, dragOverWaveId = Nothing, dragInsertBeforeId = Nothing }, Cmd.none )
+
+        DragEnterWave waveId ->
+            ( { model | dragOverWaveId = Just waveId, dragInsertBeforeId = Nothing }, Cmd.none )
+
+        DragEnterPiece pid ->
+            ( { model | dragInsertBeforeId = Just pid }, Cmd.none )
+
+        DropOnWave targetWaveId ->
+            case model.draggingPieceId of
+                Nothing ->
+                    ( { model | dragOverWaveId = Nothing, dragInsertBeforeId = Nothing }, Cmd.none )
+
+                Just pid ->
+                    let
+                        insertBefore =
+                            model.dragInsertBeforeId
+
+                        insertInto pids =
+                            let
+                                filtered =
+                                    List.filter ((/=) pid) pids
+                            in
+                            case insertBefore of
+                                Just beforeId ->
+                                    List.concatMap
+                                        (\p ->
+                                            if p == beforeId then
+                                                [ pid, p ]
+
+                                            else
+                                                [ p ]
+                                        )
+                                        filtered
+
+                                Nothing ->
+                                    filtered ++ [ pid ]
+
+                        targetIsLocked =
+                            case targetWaveId of
+                                Just wid ->
+                                    model.waves |> List.any (\wv -> wv.id == wid && wv.locked)
+
+                                Nothing ->
+                                    False
+
+                        sourceIsLocked =
+                            model.waves |> List.any (\wv -> List.member pid wv.pieceIds && wv.locked)
+
+                        newWaves =
+                            if targetIsLocked || sourceIsLocked then
+                                model.waves
+
+                            else
+                                model.waves
+                                    |> List.map (\wv -> { wv | pieceIds = List.filter ((/=) pid) wv.pieceIds })
+                                    |> List.map
+                                        (\wv ->
+                                            case targetWaveId of
+                                                Just wid ->
+                                                    if wv.id == wid then
+                                                        { wv | pieceIds = insertInto wv.pieceIds }
+
+                                                    else
+                                                        wv
+
+                                                Nothing ->
+                                                    wv
+                                        )
+                    in
+                    ( { model | waves = newWaves, draggingPieceId = Nothing, dragOverWaveId = Nothing, dragInsertBeforeId = Nothing }, Cmd.none )
+
+        ToggleWaveLock wid ->
+            ( { model | waves = List.map (\w -> if w.id == wid then { w | locked = not w.locked } else w) model.waves }
+            , Cmd.none
+            )
+
+        NoOp ->
+            ( model, Cmd.none )
 
 
 -- ── Helpers ─────────────────────────────────────────────────────────────────
@@ -971,11 +1106,25 @@ view model =
 
 viewHeader : Model -> Html Msg
 viewHeader model =
+    let
+        assignedIds =
+            model.waves |> List.concatMap .pieceIds
+
+        hasUnassigned =
+            List.any (\p -> not (List.member p.id assignedIds)) model.pieces
+    in
     div [ class "header" ]
         [ h1 [] [ text "House Puzzle Editor" ]
         , button
             [ class "primary"
-            , disabled (model.generateState /= Generated || model.recomputing || model.exporting)
+            , disabled (model.generateState /= Generated || model.recomputing || model.exporting || hasUnassigned)
+            , title
+                (if hasUnassigned then
+                    "All pieces must be assigned to waves before exporting"
+
+                 else
+                    ""
+                )
             , onClick RequestExport
             ]
             [ text
@@ -1320,7 +1469,7 @@ viewMainSvg response model =
         visiblePieces =
             List.filter (\p -> not (List.member p.id hiddenPieceIds)) model.pieces
 
-        -- Blueprint always underneath all pieces (post-gen, not edit mode)
+        -- Blueprint layer: always shown post-gen (underneath everything) so hidden-wave gaps show piece outlines
         blueprintLayer =
             if (not model.editMode) && isGenerated then
                 List.map viewPieceBlueprintPath model.pieces
@@ -1359,6 +1508,10 @@ viewMainSvg response model =
                     []
                 ]
 
+            else if isGenerated then
+                -- Blueprint mode after generate: hide bricks so piece polygons show through
+                []
+
             else
                 List.map viewBrickPath response.bricks
 
@@ -1386,39 +1539,34 @@ viewMainSvg response model =
             else
                 []
 
-        -- Piece outlines (post-gen, pieces mode, not in edit)
+        -- Piece outlines (post-gen, pieces mode only, not in edit)
         outlineLayer =
-            if (not model.editMode) && isGenerated && model.showOutlines then
+            if (not model.editMode) && isGenerated && model.showOutlines && isPieces then
                 List.map viewPieceOutline visiblePieces
 
             else
                 []
 
         -- Piece interaction overlays (post-gen, not in edit)
-        assignedToSelectedWave =
-            case model.selectedWaveId of
-                Just wid ->
-                    model.waves
-                        |> List.filter (\wv -> wv.id == wid)
-                        |> List.head
-                        |> Maybe.map .pieceIds
-                        |> Maybe.withDefault []
+        effectiveHoverId =
+            if model.draggingPieceId /= Nothing then
+                model.draggingPieceId
 
-                Nothing ->
-                    []
+            else
+                model.hoveredPieceId
 
         pieceOverlays =
             if (not model.editMode) && isGenerated then
-                List.map (viewPieceOverlay model.hoveredPieceId model.selectedPieceId model.selectedWaveId assignedToSelectedWave) visiblePieces
+                List.map (viewPieceOverlay effectiveHoverId model.selectedPieceId model.selectedWaveId model.waves) visiblePieces
 
             else
                 []
     in
     Svg.svg
-        [ SA.viewBox ("0 0 " ++ w ++ " " ++ h)
+        [ SA.viewBox ("-10 -10 " ++ String.fromFloat (cw + 20) ++ " " ++ String.fromFloat (ch + 20))
         , SA.class "house-svg"
-        , SA.width w
-        , SA.height h
+        , SA.width (String.fromFloat (cw + 20))
+        , SA.height (String.fromFloat (ch + 20))
         ]
         (if model.editMode then
             [ Svg.g [] baseLayer
@@ -1522,6 +1670,7 @@ viewBrickOverlay brick =
             , SA.fill "transparent"
             , attribute "vector-effect" "non-scaling-stroke"
             , SA.class "brick-overlay"
+            , onClick (LogBrickClick brick.id)
             ]
             []
 
@@ -1531,6 +1680,7 @@ viewBrickOverlay brick =
             , SA.fill "transparent"
             , attribute "vector-effect" "non-scaling-stroke"
             , SA.class "brick-overlay"
+            , onClick (LogBrickClick brick.id)
             ]
             []
 
@@ -1628,17 +1778,35 @@ viewPieceOutline piece =
             []
 
 
-viewPieceOverlay : Maybe Int -> Maybe Int -> Maybe Int -> List Int -> Piece -> Svg.Svg Msg
-viewPieceOverlay hoveredId selectedId selectedWaveId waveAssignedIds piece =
+waveColorClass : Int -> String
+waveColorClass idx =
+    "wc-" ++ String.fromInt (modBy 7 idx)
+
+
+viewPieceOverlay : Maybe Int -> Maybe Int -> Maybe Int -> List Wave -> Piece -> Svg.Svg Msg
+viewPieceOverlay hoveredId selectedId selectedWaveId waves piece =
     let
         inAssignMode =
             selectedWaveId /= Nothing
 
+        isHov =
+            hoveredId == Just piece.id
+
+        isSel =
+            not inAssignMode && selectedId == Just piece.id
+
+        maybePieceWaveClass =
+            waves
+                |> List.indexedMap Tuple.pair
+                |> List.filter (\( _, w ) -> w.visible && List.member piece.id w.pieceIds)
+                |> List.head
+                |> Maybe.map (\( idx, _ ) -> waveColorClass idx)
+
         clsStr =
             [ "piece-overlay"
-            , if hoveredId == Just piece.id then "hovered" else ""
-            , if not inAssignMode && selectedId == Just piece.id then "selected" else ""
-            , if inAssignMode && List.member piece.id waveAssignedIds then "in-wave" else ""
+            , Maybe.withDefault "" maybePieceWaveClass
+            , if isHov then "hovered" else ""
+            , if isSel then "selected" else ""
             ]
                 |> List.filter ((/=) "")
                 |> String.join " "
@@ -1789,7 +1957,17 @@ viewWaveRow model allWaves wave =
         waveCount =
             List.length allWaves
     in
-    div [ classList [ ( "wave-row", True ), ( "selected", isSelected ) ] ]
+    div
+        [ classList
+            [ ( "wave-row", True )
+            , ( "selected", isSelected )
+            , ( "locked", wave.locked )
+            , ( "drag-over", not wave.locked && model.dragOverWaveId == Just (Just wave.id) )
+            ]
+        , preventDefaultOn "dragover" (D.succeed ( NoOp, True ))
+        , on "dragenter" (D.succeed (DragEnterWave (Just wave.id)))
+        , on "drop" (D.succeed (DropOnWave (Just wave.id)))
+        ]
         [ div
             [ class "wave-row-header"
             , onClick
@@ -1805,11 +1983,32 @@ viewWaveRow model allWaves wave =
                 , stopPropagationOn "click" (D.succeed ( ToggleWaveVisibility wave.id, True ))
                 ]
                 [ text "\u{1F441}" ]
-            , span [ class "wave-label" ] [ text wave.name ]
+            , span
+                [ classList [ ( "wave-label", True ), ( waveColorClass waveIdx, True ) ] ]
+                [ text wave.name ]
             , span [ class "wave-piece-count" ]
                 [ text (String.fromInt (List.length wave.pieceIds) ++ " pcs") ]
             , span [ class "wave-actions" ]
-                [ button
+                [ span
+                    [ classList [ ( "wave-lock", True ), ( "locked", wave.locked ) ]
+                    , stopPropagationOn "click" (D.succeed ( ToggleWaveLock wave.id, True ))
+                    , title
+                        (if wave.locked then
+                            "Unlock wave"
+
+                         else
+                            "Lock wave"
+                        )
+                    ]
+                    [ text
+                        (if wave.locked then
+                            "\u{1F512}"
+
+                         else
+                            "\u{1F513}"
+                        )
+                    ]
+                , button
                     [ stopPropagationOn "click" (D.succeed ( MoveWave wave.id -1, True ))
                     , disabled (waveIdx == 0)
                     , title "Move up"
@@ -1823,18 +2022,41 @@ viewWaveRow model allWaves wave =
                     [ text "\u{25BC}" ]
                 , button
                     [ stopPropagationOn "click" (D.succeed ( RemoveWave wave.id, True ))
+                    , disabled wave.locked
                     , title "Delete wave"
                     ]
                     [ text "\u{2715}" ]
                 ]
             ]
         , div [ class "wave-pieces" ]
-            (List.filterMap
+            (List.concatMap
                 (\pid ->
-                    Dict.get pid model.pieceImages
-                        |> Maybe.map (viewPieceThumb (Just ( wave.id, pid )) model.hoveredPieceId pid)
+                    let
+                        showMarker =
+                            not wave.locked && model.draggingPieceId /= Nothing && model.dragInsertBeforeId == Just pid
+
+                        marker =
+                            if showMarker then
+                                [ div [ class "drag-insert-marker" ] [] ]
+
+                            else
+                                []
+
+                        thumb =
+                            Dict.get pid model.pieceImages
+                                |> Maybe.map (viewPieceThumb (Just ( wave.id, pid )) wave.locked model.hoveredPieceId pid)
+                                |> Maybe.map List.singleton
+                                |> Maybe.withDefault []
+                    in
+                    marker ++ thumb
                 )
                 wave.pieceIds
+                ++ (if not wave.locked && model.draggingPieceId /= Nothing && model.dragInsertBeforeId == Nothing && model.dragOverWaveId == Just (Just wave.id) then
+                        [ div [ class "drag-insert-marker" ] [] ]
+
+                    else
+                        []
+                   )
             )
         ]
 
@@ -1845,7 +2067,15 @@ viewUnassignedRow model unassignedPieces =
         text ""
 
     else
-        div [ class "wave-row" ]
+        div
+            [ classList
+                [ ( "wave-row", True )
+                , ( "drag-over", model.dragOverWaveId == Just Nothing )
+                ]
+            , preventDefaultOn "dragover" (D.succeed ( NoOp, True ))
+            , on "dragenter" (D.succeed (DragEnterWave Nothing))
+            , on "drop" (D.succeed (DropOnWave Nothing))
+            ]
             [ div [ class "wave-row-header" ]
                 [ span [ class "wave-label unassigned-label" ] [ text "Unassigned" ]
                 , span [ class "wave-piece-count" ]
@@ -1855,24 +2085,37 @@ viewUnassignedRow model unassignedPieces =
                 (List.filterMap
                     (\p ->
                         Dict.get p.id model.pieceImages
-                            |> Maybe.map (viewPieceThumb Nothing model.hoveredPieceId p.id)
+                            |> Maybe.map (viewPieceThumb Nothing False model.hoveredPieceId p.id)
                     )
                     unassignedPieces
                 )
             ]
 
 
-viewPieceThumb : Maybe ( Int, Int ) -> Maybe Int -> Int -> String -> Html Msg
-viewPieceThumb removeInfo hoveredId pieceId dataUrl =
+viewPieceThumb : Maybe ( Int, Int ) -> Bool -> Maybe Int -> Int -> String -> Html Msg
+viewPieceThumb removeInfo isLocked hoveredId pieceId dataUrl =
     let
         isHovered =
             hoveredId == Just pieceId
+
+        dragAttrs =
+            if isLocked then
+                []
+
+            else
+                [ attribute "draggable" "true"
+                , on "dragstart" (D.succeed (DragPieceStart pieceId))
+                , on "dragend" (D.succeed DragPieceEnd)
+                , stopPropagationOn "dragenter" (D.succeed ( DragEnterPiece pieceId, True ))
+                ]
     in
     div
-        [ classList [ ( "piece-thumb", True ), ( "hovered", isHovered ) ]
-        , onMouseEnter (SetHoveredPiece (Just pieceId))
-        , onMouseLeave (SetHoveredPiece Nothing)
-        ]
+        ([ classList [ ( "piece-thumb", True ), ( "hovered", isHovered ) ]
+         , onMouseEnter (SetHoveredPiece (Just pieceId))
+         , onMouseLeave (SetHoveredPiece Nothing)
+         ]
+            ++ dragAttrs
+        )
         ([ img
             [ src dataUrl
             , style "max-height" "48px"
@@ -1887,6 +2130,7 @@ viewPieceThumb removeInfo hoveredId pieceId dataUrl =
                         [ button
                             [ class "piece-thumb-remove"
                             , onClick (RemovePieceFromWave wid pid)
+                            , disabled isLocked
                             , title "Remove from wave"
                             ]
                             [ text "\u{2715}" ]

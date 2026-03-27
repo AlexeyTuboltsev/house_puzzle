@@ -190,11 +190,33 @@ body {
 .brick-overlay:hover { fill: rgba(64, 120, 255, 0.25); }
 
 .piece-overlay { cursor: pointer; fill: transparent; }
-.piece-overlay.hovered { fill: rgba(64, 120, 255, 0.25); }
-.piece-overlay.selected { fill: rgba(64, 120, 255, 0.35); }
-.piece-overlay.selected.hovered { fill: rgba(64, 120, 255, 0.45); }
-.piece-overlay.in-wave { fill: rgba(64, 120, 255, 0.4); }
-.piece-overlay.in-wave.hovered { fill: rgba(64, 120, 255, 0.55); }
+.piece-overlay.hovered { fill: rgba(64,120,255,0.25); }
+.piece-overlay.selected { fill: rgba(64,120,255,0.55); }
+
+/* Per-wave piece overlay colors (wc-0 … wc-6, cycling) */
+.piece-overlay.wc-0 { fill: rgba(224,80,80,0.4); }
+.piece-overlay.wc-0.hovered { fill: rgba(224,80,80,0.65); }
+.piece-overlay.wc-1 { fill: rgba(80,192,80,0.4); }
+.piece-overlay.wc-1.hovered { fill: rgba(80,192,80,0.65); }
+.piece-overlay.wc-2 { fill: rgba(224,160,48,0.4); }
+.piece-overlay.wc-2.hovered { fill: rgba(224,160,48,0.65); }
+.piece-overlay.wc-3 { fill: rgba(160,80,224,0.4); }
+.piece-overlay.wc-3.hovered { fill: rgba(160,80,224,0.65); }
+.piece-overlay.wc-4 { fill: rgba(224,96,32,0.4); }
+.piece-overlay.wc-4.hovered { fill: rgba(224,96,32,0.65); }
+.piece-overlay.wc-5 { fill: rgba(32,192,192,0.4); }
+.piece-overlay.wc-5.hovered { fill: rgba(32,192,192,0.65); }
+.piece-overlay.wc-6 { fill: rgba(224,80,160,0.4); }
+.piece-overlay.wc-6.hovered { fill: rgba(224,80,160,0.65); }
+
+/* Wave label colors matching wave overlay colors */
+.wave-label.wc-0 { color: rgb(224,80,80); }
+.wave-label.wc-1 { color: rgb(80,192,80); }
+.wave-label.wc-2 { color: rgb(224,160,48); }
+.wave-label.wc-3 { color: rgb(160,80,224); }
+.wave-label.wc-4 { color: rgb(224,96,32); }
+.wave-label.wc-5 { color: rgb(32,192,192); }
+.wave-label.wc-6 { color: rgb(224,80,160); }
 
 /* Edit mode brick overlays */
 .brick-edit-in  { cursor: pointer; fill: rgba(80,255,120,0.35); stroke: rgba(80,255,120,0.85); stroke-width: 3; vector-effect: non-scaling-stroke; }
@@ -260,6 +282,16 @@ body {
 
 .wave-row { border-bottom: 1px solid #222; padding: 4px 0; }
 .wave-row.selected { background: rgba(224,160,80,0.07); }
+.wave-row.drag-over { background: rgba(60,120,255,0.12); outline: 1px dashed rgba(60,120,255,0.5); }
+.drag-insert-marker {
+    width: 3px;
+    min-width: 3px;
+    align-self: stretch;
+    background: #60c8ff;
+    border-radius: 2px;
+    margin: 2px 1px;
+    flex-shrink: 0;
+}
 .wave-row-header {
     display: flex;
     align-items: center;
@@ -287,6 +319,19 @@ body {
 }
 .wave-actions button:hover { background: #2a2a4a; color: #e0e0e0; }
 .wave-actions button:disabled { opacity: 0.3; cursor: not-allowed; }
+.wave-lock {
+    cursor: pointer;
+    font-size: 13px;
+    opacity: 0.5;
+    line-height: 1;
+    padding: 2px 3px;
+    border-radius: 3px;
+    transition: opacity 0.15s;
+}
+.wave-lock:hover { opacity: 1; }
+.wave-lock.locked { opacity: 0.9; color: #e0a050; }
+.wave-row.locked .wave-pieces { opacity: 0.6; pointer-events: none; }
+.wave-row.locked .wave-row-header { border-left: 2px solid #e0a050; padding-left: 6px; }
 .wave-eye {
     cursor: pointer;
     font-size: 14px;
@@ -326,7 +371,9 @@ body {
     border-radius: 3px;
     padding: 2px;
     transition: border-color 0.15s;
+    cursor: grab;
 }
+.piece-thumb:active { cursor: grabbing; }
 .piece-thumb:hover, .piece-thumb.hovered { border-color: rgba(60,200,255,0.6); }
 .piece-thumb-label { font-size: 9px; color: #aaa; text-align: center; margin-top: 1px; }
 .piece-thumb-remove {
@@ -470,6 +517,10 @@ if (window.Elm && window.Elm.Main) {
       results.push({ id: piece.id, dataUrl: canvas.toDataURL() });
     }
     app.ports.gotPieceImages.send(results);
+  });
+
+  app.ports.logBrick.subscribe(function(data) {
+    console.log('[brick click] id=' + data.brickId + '  piece=' + data.pieceId);
   });
 }
 </script>
