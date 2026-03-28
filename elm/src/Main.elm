@@ -1,6 +1,7 @@
 port module Main exposing (main)
 
 import Browser
+import Browser.Dom
 import Dict exposing (Dict)
 import File exposing (File)
 import File.Select as Select
@@ -12,6 +13,7 @@ import Json.Decode as D
 import Json.Encode as E
 import Svg
 import Svg.Attributes as SA
+import Task
 
 
 
@@ -52,6 +54,8 @@ type alias Piece =
     , brickIds : List Int
     , bricks : List BrickRef
     , polygon : List Point
+    , imgUrl : String
+    , outlineUrl : String
     }
 
 
@@ -61,11 +65,15 @@ type alias Canvas =
     }
 
 
+
 type alias LoadResponse =
     { canvas : Canvas
     , bricks : List Brick
     , hasComposite : Bool
     , hasBase : Bool
+    , renderDpi : Float
+    , warnings : List String
+    , outlinesUrl : String
     }
 
 
@@ -83,9 +91,13 @@ type alias Wave =
     }
 
 
-type ViewMode
-    = ViewPieces
-    | ViewBlueprint
+type AppMode
+    = ModeInit
+    | ModePdf
+    | ModePieces
+    | ModeBlueprint
+    | ModeWaves
+    | ModeExport
 
 
 
@@ -94,7 +106,6 @@ type ViewMode
 
 type LoadState
     = Idle
-    | Uploading
     | Loading
     | Loaded LoadResponse
     | LoadError String
@@ -108,15 +119,16 @@ type GenerateState
 
 type alias Model =
     { selectedFileName : String
+    , pdfFiles : List { name : String, path : String }
     , loadState : LoadState
     , targetCount : Int
     , minBorder : Int
     , seed : Int
     , generateState : GenerateState
     , pieces : List Piece
-    , pieceImages : Dict Int String
+    , pieceGeneration : Int
     , bricksById : Dict Int Brick
-    , viewMode : ViewMode
+    , appMode : AppMode
     , showOutlines : Bool
     , showGrid : Bool
     , waves : List Wave
@@ -129,24 +141,28 @@ type alias Model =
     , editOriginalBrickIds : List Int
     , recomputing : Bool
     , exporting : Bool
+    , exportCanvasHeight : String
     , draggingPieceId : Maybe Int
     , dragOverWaveId : Maybe (Maybe Int)
     , dragInsertBeforeId : Maybe Int
+    , svgScale : Float
+    , viewportHeight : Float
     }
 
 
 init : () -> ( Model, Cmd Msg )
 init _ =
     ( { selectedFileName = ""
+      , pdfFiles = []
       , loadState = Idle
       , targetCount = 60
       , minBorder = 5
       , seed = 42
       , generateState = NotGenerated
       , pieces = []
-      , pieceImages = Dict.empty
+      , pieceGeneration = 0
       , bricksById = Dict.empty
-      , viewMode = ViewPieces
+      , appMode = ModeInit
       , showOutlines = True
       , showGrid = False
       , waves = []
@@ -159,11 +175,17 @@ init _ =
       , editOriginalBrickIds = []
       , recomputing = False
       , exporting = False
+      , exportCanvasHeight = "900"
       , draggingPieceId = Nothing
       , dragOverWaveId = Nothing
       , dragInsertBeforeId = Nothing
+      , svgScale = 1.0
+      , viewportHeight = 900.0
       }
-    , Cmd.none
+    , Cmd.batch
+        [ fetchPdfList
+        , Task.perform GotViewport Browser.Dom.getViewport
+        ]
     )
 
 
@@ -173,23 +195,26 @@ init _ =
 
 
 type Msg
-    = PickFile
+    = GotFileList (Result Http.Error (List { name : String, path : String }))
+    | PickFile
     | FileSelected File
-    | GotUploadResponse (Result Http.Error String)
+    | LoadFile String
+    | Reset
     | GotLoadResponse (Result Http.Error LoadResponse)
     | SetTargetCount String
     | SetMinBorder String
     | SetSeed String
     | RequestGenerate
     | GotMergeResponse (Result Http.Error MergeResponse)
-    | GotPieceImages E.Value
-    | SetViewMode ViewMode
+    | GotViewport Browser.Dom.Viewport
+    | SetAppMode AppMode
     | ToggleOutlines Bool
     | ToggleGrid Bool
     | AddWave
     | ToggleWaveVisibility Int
     | SetHoveredPiece (Maybe Int)
     | SelectPiece Int
+    | SelectAndEdit Int
     | SelectWave (Maybe Int)
     | AssignPieceToWave Int
     | RemovePieceFromWave Int Int
@@ -200,6 +225,7 @@ type Msg
     | SaveEdit
     | CancelEdit
     | GotPiecePolygons (Result Http.Error (List ( Int, List Point )))
+    | SetExportCanvasHeight String
     | RequestExport
     | ExportDone
     | LogBrickClick Int
@@ -214,12 +240,6 @@ type Msg
 
 
 -- ── Ports ───────────────────────────────────────────────────────────────────
-
-
-port compositePieces : E.Value -> Cmd msg
-
-
-port gotPieceImages : (E.Value -> msg) -> Sub msg
 
 
 port exportZip : E.Value -> Cmd msg
@@ -238,16 +258,22 @@ port logBrick : E.Value -> Cmd msg
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
+        GotFileList (Ok files) ->
+            ( { model | pdfFiles = files }, Cmd.none )
+
+        GotFileList (Err _) ->
+            ( model, Cmd.none )
+
         PickFile ->
-            ( model, Select.file [ ".tif", "image/tiff" ] FileSelected )
+            ( model, Select.file [ ".pdf", "application/pdf" ] FileSelected )
 
         FileSelected file ->
             ( { model
                 | selectedFileName = File.name file
-                , loadState = Uploading
+                , loadState = Loading
                 , generateState = NotGenerated
                 , pieces = []
-                , pieceImages = Dict.empty
+                , pieceGeneration = 0
                 , waves = []
                 , nextWaveId = 1
                 , selectedPieceId = Nothing
@@ -256,15 +282,50 @@ update msg model =
                 , editBrickIds = []
                 , editOriginalBrickIds = []
                 , recomputing = False
+                , appMode = ModeInit
               }
-            , uploadTif file
+            , loadPdf ("in/" ++ File.name file) model.viewportHeight
             )
 
-        GotUploadResponse (Ok path) ->
-            ( { model | loadState = Loading }, loadTif path )
+        Reset ->
+            ( { model
+                | selectedFileName = ""
+                , loadState = Idle
+                , generateState = NotGenerated
+                , pieces = []
+                , pieceGeneration = 0
+                , waves = []
+                , nextWaveId = 1
+                , selectedPieceId = Nothing
+                , selectedWaveId = Nothing
+                , editMode = False
+                , editBrickIds = []
+                , editOriginalBrickIds = []
+                , recomputing = False
+                , appMode = ModeInit
+              }
+            , fetchPdfList
+            )
 
-        GotUploadResponse (Err _) ->
-            ( { model | loadState = LoadError "Upload failed" }, Cmd.none )
+        LoadFile path ->
+            ( { model
+                | selectedFileName = path
+                , loadState = Loading
+                , generateState = NotGenerated
+                , pieces = []
+                , pieceGeneration = 0
+                , waves = []
+                , nextWaveId = 1
+                , selectedPieceId = Nothing
+                , selectedWaveId = Nothing
+                , editMode = False
+                , editBrickIds = []
+                , editOriginalBrickIds = []
+                , recomputing = False
+                , appMode = ModeInit
+              }
+            , loadPdf path model.viewportHeight
+            )
 
         GotLoadResponse (Ok response) ->
             ( { model
@@ -273,6 +334,7 @@ update msg model =
                     response.bricks
                         |> List.map (\b -> ( b.id, b ))
                         |> Dict.fromList
+                , appMode = ModePdf
               }
             , Cmd.none
             )
@@ -310,7 +372,6 @@ update msg model =
                     ( { model
                         | generateState = Compositing
                         , pieces = []
-                        , pieceImages = Dict.empty
                         , waves = []
                         , nextWaveId = 1
                         , selectedPieceId = Nothing
@@ -327,28 +388,45 @@ update msg model =
                     ( model, Cmd.none )
 
         GotMergeResponse (Ok response) ->
-            ( { model | pieces = response.pieces }
-            , compositePieces (encodePieceList response.pieces)
+            ( { model
+                | pieces = response.pieces
+                , generateState = Generated
+                , appMode = ModePieces
+                , pieceGeneration = model.pieceGeneration + 1
+                , recomputing = False
+              }
+            , Task.perform GotViewport Browser.Dom.getViewport
             )
 
         GotMergeResponse (Err _) ->
-            ( { model | generateState = NotGenerated }, Cmd.none )
+            ( { model | generateState = NotGenerated, recomputing = False }, Cmd.none )
 
-        GotPieceImages val ->
-            case D.decodeValue decodePieceImages val of
-                Ok images ->
-                    ( { model
-                        | pieceImages = Dict.union (Dict.fromList images) model.pieceImages
-                        , generateState = Generated
-                      }
-                    , Cmd.none
-                    )
+        SetAppMode mode ->
+            let
+                baseModel =
+                    { model | appMode = mode }
+            in
+            if mode == ModeWaves then
+                case model.waves of
+                    [] ->
+                        let
+                            newWave =
+                                { id = model.nextWaveId
+                                , name = "Wave " ++ String.fromInt model.nextWaveId
+                                , visible = True
+                                , locked = False
+                                , pieceIds = []
+                                }
+                        in
+                        ( { baseModel | waves = [ newWave ], nextWaveId = model.nextWaveId + 1, selectedWaveId = Just newWave.id }, Cmd.none )
 
-                Err _ ->
-                    ( { model | generateState = NotGenerated }, Cmd.none )
+                    first :: _ ->
+                        ( { baseModel | selectedWaveId = if baseModel.selectedWaveId == Nothing then Just first.id else baseModel.selectedWaveId }
+                        , Task.perform GotViewport Browser.Dom.getViewport
+                        )
 
-        SetViewMode mode ->
-            ( { model | viewMode = mode }, Cmd.none )
+            else
+                ( baseModel, Cmd.none )
 
         ToggleOutlines checked ->
             ( { model | showOutlines = checked }, Cmd.none )
@@ -404,6 +482,21 @@ update msg model =
               }
             , Cmd.none
             )
+
+        SelectAndEdit pid ->
+            case List.filter (\p -> p.id == pid) model.pieces |> List.head of
+                Nothing ->
+                    ( model, Cmd.none )
+
+                Just piece ->
+                    ( { model
+                        | selectedPieceId = Just pid
+                        , editMode = True
+                        , editBrickIds = piece.brickIds
+                        , editOriginalBrickIds = piece.brickIds
+                      }
+                    , Cmd.none
+                    )
 
         SelectWave mwid ->
             ( { model | selectedWaveId = mwid }, Cmd.none )
@@ -611,9 +704,13 @@ update msg model =
                         newSinglePieces =
                             List.indexedMap
                                 (\i bid ->
+                                    let
+                                        newId =
+                                            maxId + i + 1
+                                    in
                                     case Dict.get bid model.bricksById of
                                         Just brick ->
-                                            { id = maxId + i + 1
+                                            { id = newId
                                             , x = brick.x
                                             , y = brick.y
                                             , width = brick.width
@@ -621,10 +718,12 @@ update msg model =
                                             , brickIds = [ bid ]
                                             , bricks = [ BrickRef bid brick.x brick.y brick.width brick.height ]
                                             , polygon = []
+                                            , imgUrl = "/api/piece/" ++ String.fromInt newId ++ ".png"
+                                            , outlineUrl = "/api/piece_outline/" ++ String.fromInt newId ++ ".png"
                                             }
 
                                         Nothing ->
-                                            { id = maxId + i + 1
+                                            { id = newId
                                             , x = 0
                                             , y = 0
                                             , width = 0
@@ -632,6 +731,8 @@ update msg model =
                                             , brickIds = [ bid ]
                                             , bricks = []
                                             , polygon = []
+                                            , imgUrl = "/api/piece/" ++ String.fromInt newId ++ ".png"
+                                            , outlineUrl = "/api/piece_outline/" ++ String.fromInt newId ++ ".png"
                                             }
                                 )
                                 removedBrickIds
@@ -661,10 +762,7 @@ update msg model =
                         , recomputing = True
                         , selectedPieceId = Just editedPieceId
                       }
-                    , Cmd.batch
-                        [ compositePieces (encodePieceList allPieces)
-                        , recomputePiecePolygons allPieces
-                        ]
+                    , recomputePiecePolygons allPieces
                     )
 
         CancelEdit ->
@@ -693,10 +791,13 @@ update msg model =
                         )
                         model.pieces
             in
-            ( { model | pieces = updatedPieces, recomputing = False }, Cmd.none )
+            ( { model | pieces = updatedPieces, recomputing = False, pieceGeneration = model.pieceGeneration + 1 }, Cmd.none )
 
         GotPiecePolygons (Err _) ->
             ( { model | recomputing = False }, Cmd.none )
+
+        SetExportCanvasHeight s ->
+            ( { model | exportCanvasHeight = s }, Cmd.none )
 
         RequestExport ->
             let
@@ -725,10 +826,14 @@ update msg model =
                         )
                         model.pieces
 
+                exportHeight =
+                    Maybe.withDefault 900 (String.toInt model.exportCanvasHeight)
+
                 payload =
                     E.object
                         [ ( "waves", wavesJson )
                         , ( "outlines", outlinesJson )
+                        , ( "export_canvas_height", E.int exportHeight )
                         , ( "placement"
                           , E.object
                                 [ ( "location", E.string "Rome" )
@@ -841,6 +946,29 @@ update msg model =
             , Cmd.none
             )
 
+        GotViewport viewport ->
+            let
+                vh =
+                    viewport.viewport.height
+            in
+            case model.loadState of
+                Loaded response ->
+                    let
+                        -- Available height for SVG = canvas-area height (88% of body) minus padding
+                        availableH =
+                            (vh - 48) * 0.88 - 32
+
+                        svgH =
+                            response.canvas.height + 20
+
+                        scale =
+                            Basics.min 1.0 (availableH / svgH)
+                    in
+                    ( { model | svgScale = scale, viewportHeight = vh }, Cmd.none )
+
+                _ ->
+                    ( { model | viewportHeight = vh }, Cmd.none )
+
         NoOp ->
             ( model, Cmd.none )
 
@@ -876,7 +1004,7 @@ recalcPieceBbox bricksById piece =
         Just x ->
             case ( List.minimum ys, List.maximum x2s, List.maximum y2s ) of
                 ( Just y, Just x2, Just y2 ) ->
-                    { piece | x = x, y = y, width = x2 - x, height = y2 - y, bricks = newBrickRefs, polygon = [] }
+                    { piece | x = x, y = y, width = x2 - x, height = y2 - y, bricks = newBrickRefs, polygon = [], imgUrl = "/api/piece/" ++ String.fromInt piece.id ++ ".png", outlineUrl = "/api/piece_outline/" ++ String.fromInt piece.id ++ ".png" }
 
                 _ ->
                     piece
@@ -891,20 +1019,32 @@ editHasChanges model =
 -- ── HTTP ────────────────────────────────────────────────────────────────────
 
 
-uploadTif : File -> Cmd Msg
-uploadTif file =
-    Http.post
-        { url = "/api/upload_tif"
-        , body = Http.multipartBody [ Http.filePart "file" file ]
-        , expect = Http.expectJson GotUploadResponse (D.field "path" D.string)
+fetchPdfList : Cmd Msg
+fetchPdfList =
+    Http.get
+        { url = "/api/list_pdfs"
+        , expect = Http.expectJson GotFileList (D.field "files" (D.list decodePdfFile))
         }
 
 
-loadTif : String -> Cmd Msg
-loadTif path =
+decodePdfFile : D.Decoder { name : String, path : String }
+decodePdfFile =
+    D.map2 (\n p -> { name = n, path = p })
+        (D.field "name" D.string)
+        (D.field "path" D.string)
+
+
+loadPdf : String -> Float -> Cmd Msg
+loadPdf path canvasHeight =
     Http.post
-        { url = "/api/load_tif"
-        , body = Http.jsonBody (E.object [ ( "path", E.string path ) ])
+        { url = "/api/load_pdf"
+        , body =
+            Http.jsonBody
+                (E.object
+                    [ ( "path", E.string path )
+                    , ( "canvas_height", E.int (round canvasHeight) )
+                    ]
+                )
         , expect = Http.expectJson GotLoadResponse decodeLoadResponse
         }
 
@@ -965,11 +1105,14 @@ decodePiecePolygonResponse =
 
 decodeLoadResponse : D.Decoder LoadResponse
 decodeLoadResponse =
-    D.map4 LoadResponse
+    D.map7 LoadResponse
         (D.field "canvas" decodeCanvas)
         (D.field "bricks" (D.list decodeBrick))
         (D.field "has_composite" D.bool)
         (D.field "has_base" D.bool)
+        (D.field "render_dpi" D.float)
+        (D.field "warnings" (D.list D.string))
+        (D.field "outlines_url" D.string |> D.maybe |> D.map (Maybe.withDefault "/api/outlines.png"))
 
 
 decodeCanvas : D.Decoder Canvas
@@ -1007,7 +1150,20 @@ decodeMergeResponse =
 
 decodePiece : D.Decoder Piece
 decodePiece =
-    D.map8 Piece
+    D.map8
+        (\id_ x_ y_ w_ h_ brickIds_ bricks_ polygon_ ->
+            { id = id_
+            , x = x_
+            , y = y_
+            , width = w_
+            , height = h_
+            , brickIds = brickIds_
+            , bricks = bricks_
+            , polygon = polygon_
+            , imgUrl = "/api/piece/" ++ String.fromInt id_ ++ ".png"
+            , outlineUrl = "/api/piece_outline/" ++ String.fromInt id_ ++ ".png"
+            }
+        )
         (D.field "id" D.int)
         (D.field "x" D.float)
         (D.field "y" D.float)
@@ -1028,45 +1184,7 @@ decodeBrickRef =
         (D.field "height" D.float)
 
 
-decodePieceImages : D.Decoder (List ( Int, String ))
-decodePieceImages =
-    D.list
-        (D.map2 Tuple.pair
-            (D.field "id" D.int)
-            (D.field "dataUrl" D.string)
-        )
-
-
-
 -- ── Encoders ────────────────────────────────────────────────────────────────
-
-
-encodePieceList : List Piece -> E.Value
-encodePieceList pieces =
-    E.list encodePiece pieces
-
-
-encodePiece : Piece -> E.Value
-encodePiece piece =
-    E.object
-        [ ( "id", E.int piece.id )
-        , ( "x", E.float piece.x )
-        , ( "y", E.float piece.y )
-        , ( "w", E.float piece.width )
-        , ( "h", E.float piece.height )
-        , ( "bricks", E.list encodeBrickRef piece.bricks )
-        ]
-
-
-encodeBrickRef : BrickRef -> E.Value
-encodeBrickRef b =
-    E.object
-        [ ( "id", E.int b.id )
-        , ( "x", E.float b.x )
-        , ( "y", E.float b.y )
-        , ( "w", E.float b.width )
-        , ( "h", E.float b.height )
-        ]
 
 
 httpErrorToString : Http.Error -> String
@@ -1095,51 +1213,99 @@ httpErrorToString err =
 view : Model -> Html Msg
 view model =
     div [ class "app" ]
-        [ viewHeader model
-        , div [ class "main" ]
-            [ viewSidebar model
-            , viewCanvasArea model
-            , viewWavesPanel model
-            ]
+        [ viewTitleBar model
+        , viewBody model
         ]
 
 
-viewHeader : Model -> Html Msg
-viewHeader model =
+viewBody : Model -> Html Msg
+viewBody model =
+    if model.appMode == ModeInit then
+        div [ class "app-body-empty" ]
+            [ viewFileList model
+            , viewBodyOverlay model
+            ]
+
+    else
+        case model.loadState of
+            Loaded response ->
+                div [ class "app-body" ]
+                    [ viewCanvasCol model response
+                    , div [ class "resize-handle" ] []
+                    , viewToolsCol model response
+                    , viewBodyOverlay model
+                    ]
+
+            _ ->
+                div [ class "app-body" ]
+                    [ div [ class "canvas-col" ]
+                        [ div [ class "canvas-area" ]
+                            [ div [ class "canvas-spinner-overlay" ] [ div [ class "canvas-spinner" ] [] ] ]
+                        ]
+                    , div [ class "tools-col" ] []
+                    ]
+
+
+viewFileList : Model -> Html Msg
+viewFileList model =
     let
-        assignedIds =
-            model.waves |> List.concatMap .pieceIds
-
-        hasUnassigned =
-            List.any (\p -> not (List.member p.id assignedIds)) model.pieces
+        isBusy =
+            model.loadState == Loading
     in
-    div [ class "header" ]
-        [ h1 [] [ text "House Puzzle Editor" ]
-        , button
-            [ class "primary"
-            , disabled (model.generateState /= Generated || model.recomputing || model.exporting || hasUnassigned)
-            , title
-                (if hasUnassigned then
-                    "All pieces must be assigned to waves before exporting"
+    div [ class "file-list" ]
+        ([ button [ class "file-entry file-entry-browse", onClick PickFile, disabled isBusy ]
+            [ text "Browse…" ]
+         ]
+            ++ (if List.isEmpty model.pdfFiles then
+                    [ span [ class "file-list-empty" ] [ text "No files in in/" ] ]
 
-                 else
-                    ""
-                )
-            , onClick RequestExport
-            ]
-            [ text
-                (if model.exporting then
-                    "Exporting\u{2026}"
-
-                 else
-                    "Export ZIP"
-                )
-            ]
-        ]
+                else
+                    List.map
+                        (\f ->
+                            button
+                                [ class "file-entry"
+                                , onClick (LoadFile f.path)
+                                , disabled isBusy
+                                ]
+                                [ text f.name ]
+                        )
+                        model.pdfFiles
+               )
+        )
 
 
-viewSidebar : Model -> Html Msg
-viewSidebar model =
+viewBodyOverlay : Model -> Html Msg
+viewBodyOverlay model =
+    let
+        msg =
+            if model.loadState == Loading then
+                Just "Parsing PDF\u{2026}"
+
+            else if model.generateState == Compositing then
+                Just "Generating puzzle\u{2026}"
+
+            else if model.recomputing then
+                Just "Updating pieces\u{2026}"
+
+            else if model.exporting then
+                Just "Exporting\u{2026}"
+
+            else
+                Nothing
+    in
+    case msg of
+        Nothing ->
+            text ""
+
+        Just label ->
+            div [ class "body-overlay" ]
+                [ div [ class "overlay-spinner" ] []
+                , div [ class "overlay-label" ] [ text label ]
+                ]
+
+
+viewTitleBar : Model -> Html Msg
+viewTitleBar model =
     let
         isLoaded =
             case model.loadState of
@@ -1149,287 +1315,463 @@ viewSidebar model =
                 _ ->
                     False
 
-        isCompositing =
+        isLoadingPdf =
+            model.loadState == Loading
+
+        isBusy =
+            isLoadingPdf || model.recomputing || model.exporting
+
+        isGenerating =
             model.generateState == Compositing
 
-        busy =
-            model.loadState == Uploading || model.loadState == Loading
+        isGenerated =
+            model.generateState == Generated
+
+        hasFile =
+            not (String.isEmpty model.selectedFileName)
+
+        assignedIds =
+            model.waves |> List.concatMap .pieceIds
+
+        hasUnassigned =
+            List.any (\p -> not (List.member p.id assignedIds)) model.pieces
+
+        canExport =
+            isGenerated && not isBusy && not isGenerating && not hasUnassigned
     in
-    div [ class "sidebar" ]
+    div [ class "title-bar" ]
+        [ span [ class "app-title" ] [ text "House Puzzle" ]
+        , span [ class "version-tag" ] [ text "v0.1" ]
+        , div [ class "mode-buttons" ]
+            [ button
+                [ classList
+                    [ ( "mode-btn", True )
+                    , ( "active", model.appMode == ModeInit )
+                    , ( "loading", isLoadingPdf )
+                    ]
+                , disabled (isBusy || isGenerating)
+                , onClick Reset
+                ]
+                [ text
+                    (if isLoadingPdf then
+                        "Loading\u{2026}"
+
+                     else if hasFile then
+                        "Reset"
+
+                     else
+                        "Start"
+                    )
+                ]
+            , span [ class "mode-sep" ] [ text "\u{2192}" ]
+            , button
+                [ classList
+                    [ ( "mode-btn", True )
+                    , ( "active", model.appMode == ModePdf )
+                    , ( "loading", isGenerating )
+                    ]
+                , disabled (not isLoaded || isBusy || isGenerating)
+                , onClick (SetAppMode ModePdf)
+                ]
+                [ text
+                    (if isGenerating then
+                        "Generating\u{2026}"
+
+                     else
+                        "Generate"
+                    )
+                ]
+            , span [ class "mode-sep" ] [ text "\u{2192}" ]
+            , button
+                [ classList
+                    [ ( "mode-btn", True )
+                    , ( "active", model.appMode == ModePieces )
+                    , ( "loading", model.recomputing && model.appMode == ModePieces )
+                    ]
+                , disabled (not isGenerated || isBusy || isGenerating)
+                , onClick (SetAppMode ModePieces)
+                ]
+                [ text "Pieces" ]
+            , span [ class "mode-sep" ] [ text "\u{21C4}" ]
+            , button
+                [ classList
+                    [ ( "mode-btn", True )
+                    , ( "active", model.appMode == ModeBlueprint )
+                    ]
+                , disabled (not isGenerated || isBusy || isGenerating)
+                , onClick (SetAppMode ModeBlueprint)
+                ]
+                [ text "Blueprint" ]
+            , span [ class "mode-sep" ] [ text "\u{21C4}" ]
+            , button
+                [ classList
+                    [ ( "mode-btn", True )
+                    , ( "active", model.appMode == ModeWaves )
+                    ]
+                , disabled (not isGenerated || isBusy || isGenerating)
+                , onClick (SetAppMode ModeWaves)
+                ]
+                [ text "Waves" ]
+            , span [ class "mode-sep" ] [ text "\u{2192}" ]
+            , button
+                [ classList
+                    [ ( "mode-btn", True )
+                    , ( "export-btn", True )
+                    , ( "active", model.appMode == ModeExport )
+                    , ( "loading", model.exporting )
+                    ]
+                , disabled (not canExport)
+                , onClick (SetAppMode ModeExport)
+                , title
+                    (if hasUnassigned && isGenerated then
+                        "All pieces must be assigned to waves before exporting"
+
+                     else
+                        ""
+                    )
+                ]
+                [ text "Export" ]
+            ]
+        ]
+
+
+viewCanvasCol : Model -> LoadResponse -> Html Msg
+viewCanvasCol model response =
+    div [ class "canvas-col" ]
+        ([ div [ class "canvas-area" ]
+            [ viewMainSvg response model
+            , if model.recomputing then
+                div [ class "canvas-spinner-overlay" ] [ div [ class "canvas-spinner" ] [] ]
+
+              else
+                text ""
+            ]
+         ]
+            ++ (if model.appMode == ModeWaves then
+                    [ viewWaveTray model response ]
+
+                else
+                    []
+               )
+        )
+
+
+viewWaveTray : Model -> LoadResponse -> Html Msg
+viewWaveTray model _ =
+    let
+        activeWaveId =
+            model.selectedWaveId
+
+        activeWave =
+            model.waves |> List.filter (\w -> Just w.id == activeWaveId) |> List.head
+
+        activeWavePieceIds =
+            activeWave |> Maybe.map .pieceIds |> Maybe.withDefault []
+
+        isLocked =
+            activeWave |> Maybe.map .locked |> Maybe.withDefault False
+    in
+    div
+        [ classList
+            [ ( "wave-tray", True )
+            , ( "drag-over", not isLocked && model.dragOverWaveId == Just activeWaveId )
+            ]
+        , preventDefaultOn "dragover" (D.succeed ( NoOp, True ))
+        , on "dragenter" (D.succeed (DragEnterWave activeWaveId))
+        , on "drop" (D.succeed (DropOnWave activeWaveId))
+        ]
+        [ div [ class "wave-tray-scroll" ]
+            (List.concatMap
+                (\pid ->
+                    let
+                        showMarker =
+                            not isLocked && model.draggingPieceId /= Nothing && model.dragInsertBeforeId == Just pid
+
+                        marker =
+                            if showMarker then
+                                [ div [ class "drag-insert-marker-v" ] [] ]
+
+                            else
+                                []
+
+                        thumb =
+                            case model.pieces |> List.filter (\p -> p.id == pid) |> List.head of
+                                Just piece ->
+                                    [ viewWaveTrayThumb piece isLocked model.svgScale model.hoveredPieceId model.pieceGeneration ]
+
+                                Nothing ->
+                                    []
+                    in
+                    marker ++ thumb
+                )
+                activeWavePieceIds
+                ++ (if not isLocked && model.draggingPieceId /= Nothing && model.dragInsertBeforeId == Nothing && model.dragOverWaveId == Just activeWaveId then
+                        [ div [ class "drag-insert-marker-v" ] [] ]
+
+                    else
+                        []
+                   )
+            )
+        ]
+
+
+-- scale: computed from viewport height and SVG natural height (stored in model.svgScale).
+-- Produces exact px dimensions matching how the piece appears in the house view.
+viewWaveTrayThumb : Piece -> Bool -> Float -> Maybe Int -> Int -> Html Msg
+viewWaveTrayThumb piece isLocked scale hoveredId generation =
+    let
+        isHovered =
+            hoveredId == Just piece.id
+
+        widthCss =
+            String.fromFloat (piece.width * scale) ++ "px"
+
+        dragAttrs =
+            if isLocked then
+                []
+
+            else
+                [ attribute "draggable" "true"
+                , on "dragstart" (D.succeed (DragPieceStart piece.id))
+                , on "dragend" (D.succeed DragPieceEnd)
+                , stopPropagationOn "dragenter" (D.succeed ( DragEnterPiece piece.id, True ))
+                ]
+    in
+    div
+        ([ classList [ ( "wave-tray-thumb", True ), ( "hovered", isHovered ) ]
+         , style "width" widthCss
+         , style "aspect-ratio" (String.fromFloat (piece.width / piece.height))
+         , onMouseEnter (SetHoveredPiece (Just piece.id))
+         , onMouseLeave (SetHoveredPiece Nothing)
+         ]
+            ++ dragAttrs
+        )
+        [ img [ src (piece.imgUrl ++ "?v=" ++ String.fromInt generation) ] []
+        ]
+
+
+viewToolsCol : Model -> LoadResponse -> Html Msg
+viewToolsCol model response =
+    div [ class "tools-col" ]
+        [ case model.appMode of
+            ModeInit ->
+                text ""
+
+            ModePdf ->
+                viewPdfTools model response
+
+            ModePieces ->
+                viewPiecesTools model
+
+            ModeBlueprint ->
+                viewBlueprintTools model
+
+            ModeWaves ->
+                viewWavesTools model
+
+            ModeExport ->
+                viewExportTools model
+        ]
+
+
+viewPdfTools : Model -> LoadResponse -> Html Msg
+viewPdfTools model _ =
+    let
+        isLoaded =
+            case model.loadState of
+                Loaded _ -> True
+                _ -> False
+
+        isBusy =
+            model.loadState == Loading || model.recomputing || model.exporting
+
+        isGenerating =
+            model.generateState == Compositing
+    in
+    div [ class "tools-pane" ]
+        [ viewStatusBadge model
+        , h2 [] [ text "Puzzle Parameters" ]
+        , div [ class "param-group" ]
+            [ label [] [ text "Target Pieces ", span [ class "value" ] [ text (String.fromInt model.targetCount) ] ]
+            , input [ type_ "range", Html.Attributes.min "5", Html.Attributes.max "181", value (String.fromInt model.targetCount), onInput SetTargetCount ] []
+            ]
+        , div [ class "param-group" ]
+            [ label [] [ text "Min Border ", span [ class "value" ] [ text (String.fromInt model.minBorder) ], text "px" ]
+            , input [ type_ "range", Html.Attributes.min "0", Html.Attributes.max "50", value (String.fromInt model.minBorder), onInput SetMinBorder ] []
+            ]
+        , div [ class "param-group" ]
+            [ label [] [ text "Seed ", span [ class "value" ] [ text (String.fromInt model.seed) ] ]
+            , input [ type_ "number", value (String.fromInt model.seed), onInput SetSeed, Html.Attributes.min "0", Html.Attributes.max "99999" ] []
+            ]
+        , h2 [] [ text "Stats" ]
+        , viewStats model
+        , div [ class "tools-divider" ] []
+        , button
+            [ class "primary"
+            , disabled (not isLoaded || isBusy || isGenerating)
+            , onClick RequestGenerate
+            ]
+            [ text
+                (if isGenerating then
+                    "Generating\u{2026}"
+
+                 else
+                    "Generate Puzzle"
+                )
+            ]
+        ]
+
+
+viewPiecesTools : Model -> Html Msg
+viewPiecesTools model =
+    div [ class "tools-pane" ]
         (if model.editMode then
             viewEditControls model
 
          else
-            [ h2 [] [ text "Source TIF" ]
-            , button
-                [ onClick PickFile
-                , disabled busy
-                , style "width" "100%"
-                , style "margin-bottom" "4px"
+            [ div [ class "checkbox-group" ]
+                [ input [ type_ "checkbox", id "showOutlines", checked model.showOutlines, onCheck ToggleOutlines ] []
+                , label [ for "showOutlines" ] [ text "Show piece outlines" ]
                 ]
-                [ text "Open TIF\u{2026}" ]
+            , div [ class "checkbox-group" ]
+                [ input [ type_ "checkbox", id "showGrid", checked model.showGrid, onCheck ToggleGrid ] []
+                , label [ for "showGrid" ] [ text "Show grid" ]
+                ]
+            , div [ class "tools-divider" ] []
+            , case model.selectedPieceId of
+                Just pid ->
+                    div [ class "piece-info" ]
+                        [ div [ class "piece-info-label" ] [ text ("Piece #" ++ String.fromInt pid) ]
+                        , button
+                            [ class "primary"
+                            , onClick StartEdit
+                            , disabled model.recomputing
+                            ]
+                            [ text ("Edit Piece #" ++ String.fromInt pid) ]
+                        ]
+
+                Nothing ->
+                    div [ class "piece-info-empty" ] [ text "Click a piece to select" ]
             ]
-                ++ (if not (String.isEmpty model.selectedFileName) then
-                        [ div
-                            [ style "font-size" "11px"
-                            , style "color" "#e0a050"
-                            , style "margin-bottom" "6px"
-                            , style "overflow" "hidden"
-                            , style "text-overflow" "ellipsis"
-                            , style "white-space" "nowrap"
-                            ]
-                            [ text model.selectedFileName ]
-                        ]
-
-                    else
-                        []
-                   )
-                ++ [ viewStatusBadge model ]
-                ++ (if isLoaded then
-                        [ h2 [] [ text "View" ]
-                        , div [ class "view-toggles" ]
-                            [ button
-                                [ classList [ ( "active", model.viewMode == ViewPieces ) ]
-                                , onClick (SetViewMode ViewPieces)
-                                ]
-                                [ text "Pieces" ]
-                            , button
-                                [ classList [ ( "active", model.viewMode == ViewBlueprint ) ]
-                                , onClick (SetViewMode ViewBlueprint)
-                                ]
-                                [ text "Blueprint" ]
-                            ]
-                        , div [ class "checkbox-group" ]
-                            [ input
-                                [ type_ "checkbox"
-                                , id "showOutlines"
-                                , checked model.showOutlines
-                                , onCheck ToggleOutlines
-                                ]
-                                []
-                            , label [ for "showOutlines" ] [ text "Show piece outlines" ]
-                            ]
-                        , div [ class "checkbox-group" ]
-                            [ input
-                                [ type_ "checkbox"
-                                , id "showGrid"
-                                , checked model.showGrid
-                                , onCheck ToggleGrid
-                                ]
-                                []
-                            , label [ for "showGrid" ] [ text "Show grid" ]
-                            ]
-                        , h2 [] [ text "Puzzle Parameters" ]
-                        , div [ class "param-group" ]
-                            [ label []
-                                [ text "Target Pieces "
-                                , span [ class "value" ] [ text (String.fromInt model.targetCount) ]
-                                ]
-                            , input
-                                [ type_ "range"
-                                , Html.Attributes.min "5"
-                                , Html.Attributes.max "181"
-                                , value (String.fromInt model.targetCount)
-                                , onInput SetTargetCount
-                                ]
-                                []
-                            ]
-                        , div [ class "param-group" ]
-                            [ label []
-                                [ text "Min Border "
-                                , span [ class "value" ] [ text (String.fromInt model.minBorder) ]
-                                , text "px"
-                                ]
-                            , input
-                                [ type_ "range"
-                                , Html.Attributes.min "0"
-                                , Html.Attributes.max "50"
-                                , value (String.fromInt model.minBorder)
-                                , onInput SetMinBorder
-                                ]
-                                []
-                            ]
-                        , div [ class "param-group" ]
-                            [ label []
-                                [ text "Seed "
-                                , span [ class "value" ] [ text (String.fromInt model.seed) ]
-                                ]
-                            , input
-                                [ type_ "number"
-                                , value (String.fromInt model.seed)
-                                , onInput SetSeed
-                                , Html.Attributes.min "0"
-                                , Html.Attributes.max "99999"
-                                ]
-                                []
-                            ]
-                        , div [ class "btn-row" ]
-                            [ button
-                                [ class "primary"
-                                , onClick RequestGenerate
-                                , disabled isCompositing
-                                ]
-                                [ text
-                                    (if isCompositing then
-                                        "Generating\u{2026}"
-
-                                     else
-                                        "Generate Puzzle"
-                                    )
-                                ]
-                            ]
-                        , div [ class "btn-row" ]
-                            [ button
-                                [ onClick StartEdit
-                                , disabled (model.selectedPieceId == Nothing || model.generateState /= Generated || model.recomputing)
-                                ]
-                                [ text
-                                    (case model.selectedPieceId of
-                                        Just pid ->
-                                            "Edit Piece #" ++ String.fromInt pid
-
-                                        Nothing ->
-                                            "Edit Piece"
-                                    )
-                                ]
-                            ]
-                        , h2 [] [ text "Stats" ]
-                        , viewStats model
-                        ]
-
-                    else
-                        []
-                   )
-                ++ [ div
-                        [ style "margin-top" "auto"
-                        , style "padding-top" "12px"
-                        , style "font-size" "10px"
-                        , style "color" "#555"
-                        ]
-                        [ text "Elm" ]
-                   ]
         )
 
 
-viewEditControls : Model -> List (Html Msg)
-viewEditControls model =
+viewBlueprintTools : Model -> Html Msg
+viewBlueprintTools model =
+    div [ class "tools-pane" ]
+        [ div [ class "checkbox-group" ]
+            [ input [ type_ "checkbox", id "showGrid", checked model.showGrid, onCheck ToggleGrid ] []
+            , label [ for "showGrid" ] [ text "Show grid" ]
+            ]
+        ]
+
+
+viewWavesTools : Model -> Html Msg
+viewWavesTools model =
     let
-        changed =
-            editHasChanges model
+        assignedIds =
+            List.concatMap .pieceIds model.waves
 
-        pieceLabel =
-            case model.selectedPieceId of
-                Just pid ->
-                    "Piece #" ++ String.fromInt pid
+        totalPieces =
+            List.length model.pieces
 
-                Nothing ->
-                    "Piece"
+        assignedCount =
+            List.length assignedIds
 
-        brickCount =
-            List.length model.editBrickIds
+        unassignedPieces =
+            List.filter (\p -> not (List.member p.id assignedIds)) model.pieces
     in
-    [ h2 [] [ text ("Editing " ++ pieceLabel) ]
-    , div
-        [ style "font-size" "11px"
-        , style "color" "#aaa"
-        , style "margin-bottom" "10px"
-        , style "line-height" "1.5"
-        ]
-        [ text "Click bricks to add/remove."
-        , br [] []
-        , text (String.fromInt brickCount ++ " brick" ++ (if brickCount == 1 then "" else "s") ++ " selected.")
-        ]
-    , div [ class "btn-row" ]
-        [ button
-            [ class "primary"
-            , onClick SaveEdit
-            , disabled (not changed)
-            ]
-            [ text "Save" ]
-        , button
-            [ onClick CancelEdit ]
-            [ text "Cancel" ]
-        ]
-    ]
+    div [ class "tools-pane waves-tools" ]
+        [ div [ class "waves-header" ]
+            [ h2 [] [ text "Waves" ]
+            , span [ class "wave-count" ]
+                [ text
+                    (if totalPieces > 0 then
+                        String.fromInt assignedCount ++ "/" ++ String.fromInt totalPieces
 
-
-viewStatusBadge : Model -> Html Msg
-viewStatusBadge model =
-    case model.loadState of
-        Idle ->
-            text ""
-
-        Uploading ->
-            span [ class "status loading" ] [ text "Uploading\u{2026}" ]
-
-        Loading ->
-            span [ class "status loading" ] [ text "Parsing TIF\u{2026}" ]
-
-        Loaded _ ->
-            text ""
-
-        LoadError err ->
-            span [ class "status error" ] [ text ("Error: " ++ err) ]
-
-
-viewStats : Model -> Html Msg
-viewStats model =
-    let
-        canvasInfo =
-            case model.loadState of
-                Loaded r ->
-                    String.fromFloat r.canvas.width ++ "\u{00D7}" ++ String.fromFloat r.canvas.height
-
-                _ ->
-                    "-"
-
-        brickCount =
-            case model.loadState of
-                Loaded r ->
-                    String.fromInt (List.length r.bricks)
-
-                _ ->
-                    "-"
-
-        pieceCount =
-            if model.generateState == Generated then
-                String.fromInt (List.length model.pieces)
-
-            else
-                "-"
-    in
-    div [ class "stats" ]
-        [ div [ class "row" ]
-            [ span [] [ text "Canvas" ]
-            , span [ class "val" ] [ text canvasInfo ]
-            ]
-        , div [ class "row" ]
-            [ span [] [ text "Total Bricks" ]
-            , span [ class "val" ] [ text brickCount ]
-            ]
-        , div [ class "row" ]
-            [ span [] [ text "Puzzle Pieces" ]
-            , span [ class "val" ] [ text pieceCount ]
-            ]
-        ]
-
-
-viewCanvasArea : Model -> Html Msg
-viewCanvasArea model =
-    div [ class "canvas-area" ]
-        (case model.loadState of
-            Loaded response ->
-                [ viewMainSvg response model
-                , if model.recomputing then
-                    div [ class "canvas-spinner-overlay" ]
-                        [ div [ class "canvas-spinner" ] [] ]
-
-                  else
-                    text ""
+                     else
+                        ""
+                    )
                 ]
+            ]
+        , div [ class "wave-toolbar" ]
+            [ button [ onClick AddWave ] [ text "New wave" ] ]
+        , div [ class "waves-body" ]
+            (List.map (viewWaveRow model model.waves) model.waves
+                ++ [ viewUnassignedRow model unassignedPieces ]
+            )
+        ]
 
-            _ ->
-                [ div [ class "canvas-info" ] [ text "Select a TIF to begin" ] ]
+
+viewExportTools : Model -> Html Msg
+viewExportTools model =
+    let
+        assignedIds =
+            model.waves |> List.concatMap .pieceIds
+
+        hasUnassigned =
+            List.any (\p -> not (List.member p.id assignedIds)) model.pieces
+
+        renderDpiInfo =
+            case model.loadState of
+                Loaded resp ->
+                    if resp.renderDpi > 0 then
+                        [ div [ class "field-row" ]
+                            [ label [] [ text "Display DPI" ]
+                            , span [ class "dpi-info" ] [ text (String.fromFloat resp.renderDpi) ]
+                            ]
+                        ]
+
+                    else
+                        []
+
+                _ ->
+                    []
+
+        warningItems =
+            case model.loadState of
+                Loaded resp ->
+                    List.map (\w -> div [ class "warning-item" ] [ text w ]) resp.warnings
+
+                _ ->
+                    []
+    in
+    div [ class "tools-pane" ]
+        (renderDpiInfo
+            ++ warningItems
+            ++ [ div [ class "field-row" ]
+                    [ label [] [ text "Export height (px)" ]
+                    , input
+                        [ type_ "number"
+                        , value model.exportCanvasHeight
+                        , onInput SetExportCanvasHeight
+                        , Html.Attributes.min "100"
+                        , Html.Attributes.max "10000"
+                        , Html.Attributes.step "100"
+                        ]
+                        []
+                    ]
+               , button
+                    [ class "primary"
+                    , onClick RequestExport
+                    , disabled (hasUnassigned || model.exporting)
+                    , title
+                        (if hasUnassigned then
+                            "All pieces must be assigned to waves before exporting"
+
+                         else
+                            ""
+                        )
+                    ]
+                    [ text
+                        (if model.exporting then
+                            "Exporting\u{2026}"
+
+                         else
+                            "Export ZIP"
+                        )
+                    ]
+               ]
         )
 
 
@@ -1451,14 +1793,11 @@ viewMainSvg response model =
         isGenerated =
             model.generateState == Generated
 
-        isPieces =
-            model.viewMode == ViewPieces
-
         showPieceImages =
-            isPieces && isGenerated && not (Dict.isEmpty model.pieceImages)
+            (model.appMode == ModePieces || model.appMode == ModeWaves) && isGenerated && not (List.isEmpty model.pieces)
 
         showComposite =
-            isPieces && not isGenerated && response.hasComposite
+            not isGenerated && response.hasComposite
 
         -- Pieces hidden by invisible waves
         hiddenPieceIds =
@@ -1495,7 +1834,7 @@ viewMainSvg response model =
                     []
 
             else if showPieceImages then
-                List.map (viewPieceImage model.pieceImages) visiblePieces
+                List.map (viewPieceImage model.pieceGeneration) visiblePieces
 
             else if showComposite then
                 [ Svg.image
@@ -1508,12 +1847,26 @@ viewMainSvg response model =
                     []
                 ]
 
-            else if isGenerated then
-                -- Blueprint mode after generate: hide bricks so piece polygons show through
+            else
+                -- Blueprint or pieces mode post-gen: hide bricks, piece polygons/images show through
                 []
 
+        -- Outlines PNG overlay (pre-gen only, shows vector brick shapes from PDF)
+        outlinesPngLayer =
+            if not model.editMode && not isGenerated then
+                [ Svg.image
+                    [ SA.x "0"
+                    , SA.y "0"
+                    , SA.width w
+                    , SA.height h
+                    , attribute "href" response.outlinesUrl
+                    , SA.style "pointer-events: none;"
+                    ]
+                    []
+                ]
+
             else
-                List.map viewBrickPath response.bricks
+                []
 
         -- Composite brick hover overlays (pre-gen only)
         compositeOverlays =
@@ -1534,14 +1887,14 @@ viewMainSvg response model =
         -- Grid lines
         gridLayer =
             if (not model.editMode) && model.showGrid then
-                viewGrid cw ch model.viewMode
+                viewGrid cw ch (model.appMode == ModeBlueprint)
 
             else
                 []
 
-        -- Piece outlines (post-gen, pieces mode only, not in edit)
+        -- Piece outlines (post-gen, pieces/waves mode only, not in edit)
         outlineLayer =
-            if (not model.editMode) && isGenerated && model.showOutlines && isPieces then
+            if (not model.editMode) && isGenerated && model.showOutlines && (model.appMode == ModePieces || model.appMode == ModeWaves) then
                 List.map viewPieceOutline visiblePieces
 
             else
@@ -1557,7 +1910,7 @@ viewMainSvg response model =
 
         pieceOverlays =
             if (not model.editMode) && isGenerated then
-                List.map (viewPieceOverlay effectiveHoverId model.selectedPieceId model.selectedWaveId model.waves) visiblePieces
+                List.map (viewPieceOverlay model.appMode effectiveHoverId model.selectedPieceId model.selectedWaveId model.waves) visiblePieces
 
             else
                 []
@@ -1580,74 +1933,21 @@ viewMainSvg response model =
             , Svg.g [] outlineLayer
             , Svg.g [] gridLayer
             , Svg.g [] pieceOverlays
+            , Svg.g [] outlinesPngLayer
             ]
         )
 
 
-viewPieceImage : Dict Int String -> Piece -> Svg.Svg Msg
-viewPieceImage images piece =
-    case Dict.get piece.id images of
-        Just dataUrl ->
-            Svg.image
-                [ SA.x (String.fromFloat piece.x)
-                , SA.y (String.fromFloat piece.y)
-                , SA.width (String.fromFloat piece.width)
-                , SA.height (String.fromFloat piece.height)
-                , attribute "href" dataUrl
-                ]
-                []
-
-        Nothing ->
-            Svg.rect
-                [ SA.x (String.fromFloat piece.x)
-                , SA.y (String.fromFloat piece.y)
-                , SA.width (String.fromFloat piece.width)
-                , SA.height (String.fromFloat piece.height)
-                , SA.fill "rgba(255,100,50,0.2)"
-                , SA.stroke "#f64"
-                , SA.strokeWidth "1"
-                ]
-                []
-
-
-viewBrickPath : Brick -> Svg.Svg Msg
-viewBrickPath brick =
-    let
-        absPoints =
-            List.map (\( x, y ) -> ( x + brick.x, y + brick.y )) brick.polygon
-
-        pointsAttr =
-            absPoints
-                |> List.map (\( x, y ) -> String.fromFloat x ++ "," ++ String.fromFloat y)
-                |> String.join " "
-    in
-    if List.isEmpty absPoints then
-        Svg.rect
-            [ SA.x (String.fromFloat brick.x)
-            , SA.y (String.fromFloat brick.y)
-            , SA.width (String.fromFloat brick.width)
-            , SA.height (String.fromFloat brick.height)
-            , SA.fill "#2a5da8"
-            , SA.stroke "white"
-            , SA.strokeWidth "4"
-            , attribute "vector-effect" "non-scaling-stroke"
-            ]
-            []
-
-    else
-        Svg.polygon
-            [ SA.points pointsAttr
-            , SA.fill "#2a5da8"
-            , SA.stroke "white"
-            , SA.strokeWidth "4"
-            , SA.strokeLinejoin "round"
-            , attribute "stroke-linecap" "round"
-            , attribute "paint-order" "fill stroke"
-            , attribute "vector-effect" "non-scaling-stroke"
-            , attribute "data-brick-id" (String.fromInt brick.id)
-            , SA.class "brick-path"
-            ]
-            []
+viewPieceImage : Int -> Piece -> Svg.Svg Msg
+viewPieceImage generation piece =
+    Svg.image
+        [ SA.x (String.fromFloat piece.x)
+        , SA.y (String.fromFloat piece.y)
+        , SA.width (String.fromFloat piece.width)
+        , SA.height (String.fromFloat piece.height)
+        , attribute "href" (piece.imgUrl ++ "?v=" ++ String.fromInt generation)
+        ]
+        []
 
 
 viewBrickOverlay : Brick -> Svg.Svg Msg
@@ -1662,17 +1962,26 @@ viewBrickOverlay brick =
                 |> String.join " "
     in
     if List.isEmpty absPoints then
-        Svg.rect
-            [ SA.x (String.fromFloat brick.x)
-            , SA.y (String.fromFloat brick.y)
-            , SA.width (String.fromFloat brick.width)
-            , SA.height (String.fromFloat brick.height)
-            , SA.fill "transparent"
-            , attribute "vector-effect" "non-scaling-stroke"
-            , SA.class "brick-overlay"
-            , onClick (LogBrickClick brick.id)
+        -- ERROR: no polygon from PDF vector layer — must never happen, all shapes are complex polygons
+        Svg.g []
+            [ Svg.rect
+                [ SA.x (String.fromFloat brick.x)
+                , SA.y (String.fromFloat brick.y)
+                , SA.width "20"
+                , SA.height "20"
+                , SA.fill "red"
+                , SA.opacity "0.8"
+                ]
+                []
+            , Svg.text_
+                [ SA.x (String.fromFloat (brick.x + 2))
+                , SA.y (String.fromFloat (brick.y + 14))
+                , SA.fontSize "12"
+                , SA.fill "white"
+                , SA.fontWeight "bold"
+                ]
+                [ Svg.text ("!" ++ String.fromInt brick.id) ]
             ]
-            []
 
     else
         Svg.polygon
@@ -1707,16 +2016,26 @@ viewBrickEditOverlay editBrickIds brick =
                 "brick-edit-out"
     in
     if List.isEmpty absPoints then
-        Svg.rect
-            [ SA.x (String.fromFloat brick.x)
-            , SA.y (String.fromFloat brick.y)
-            , SA.width (String.fromFloat brick.width)
-            , SA.height (String.fromFloat brick.height)
-            , SA.class cls
-            , attribute "vector-effect" "non-scaling-stroke"
-            , onClick (ToggleBrickInEdit brick.id)
+        -- ERROR: no polygon — all bricks must have vector polygons
+        Svg.g []
+            [ Svg.rect
+                [ SA.x (String.fromFloat brick.x)
+                , SA.y (String.fromFloat brick.y)
+                , SA.width "20"
+                , SA.height "20"
+                , SA.fill "red"
+                , SA.opacity "0.8"
+                ]
+                []
+            , Svg.text_
+                [ SA.x (String.fromFloat (brick.x + 2))
+                , SA.y (String.fromFloat (brick.y + 14))
+                , SA.fontSize "12"
+                , SA.fill "white"
+                , SA.fontWeight "bold"
+                ]
+                [ Svg.text ("!" ++ String.fromInt brick.id) ]
             ]
-            []
 
     else
         Svg.polygon
@@ -1783,8 +2102,8 @@ waveColorClass idx =
     "wc-" ++ String.fromInt (modBy 7 idx)
 
 
-viewPieceOverlay : Maybe Int -> Maybe Int -> Maybe Int -> List Wave -> Piece -> Svg.Svg Msg
-viewPieceOverlay hoveredId selectedId selectedWaveId waves piece =
+viewPieceOverlay : AppMode -> Maybe Int -> Maybe Int -> Maybe Int -> List Wave -> Piece -> Svg.Svg Msg
+viewPieceOverlay appMode hoveredId selectedId selectedWaveId waves piece =
     let
         inAssignMode =
             selectedWaveId /= Nothing
@@ -1815,6 +2134,9 @@ viewPieceOverlay hoveredId selectedId selectedWaveId waves piece =
             if inAssignMode then
                 AssignPieceToWave piece.id
 
+            else if appMode == ModePieces then
+                SelectAndEdit piece.id
+
             else
                 SelectPiece piece.id
     in
@@ -1838,14 +2160,14 @@ viewPieceOverlay hoveredId selectedId selectedWaveId waves piece =
             []
 
 
-viewGrid : Float -> Float -> ViewMode -> List (Svg.Svg Msg)
-viewGrid cw ch viewMode =
+viewGrid : Float -> Float -> Bool -> List (Svg.Svg Msg)
+viewGrid cw ch isBlueprint =
     let
         gridStep =
             211.0
 
         color =
-            if viewMode == ViewBlueprint then
+            if isBlueprint then
                 "#ff0000"
 
             else
@@ -1900,43 +2222,26 @@ viewGrid cw ch viewMode =
     vLines ++ hLines
 
 
-viewWavesPanel : Model -> Html Msg
-viewWavesPanel model =
-    let
-        assignedIds =
-            List.concatMap .pieceIds model.waves
+iconEye : Html msg
+iconEye =
+    Svg.svg [ SA.viewBox "0 0 24 24", SA.width "14", SA.height "14", SA.fill "currentColor" ]
+        [ Svg.path [ SA.d "M23.271,9.419C21.72,6.893,18.192,2.655,12,2.655S2.28,6.893.729,9.419a4.908,4.908,0,0,0,0,5.162C2.28,17.107,5.808,21.345,12,21.345s9.72-4.238,11.271-6.764A4.908,4.908,0,0,0,23.271,9.419Zm-1.705,4.115C20.234,15.7,17.219,19.345,12,19.345S3.766,15.7,2.434,13.534a2.918,2.918,0,0,1,0-3.068C3.766,8.3,6.781,4.655,12,4.655s8.234,3.641,9.566,5.811A2.918,2.918,0,0,1,21.566,13.534Z" ] []
+        , Svg.path [ SA.d "M12,7a5,5,0,1,0,5,5A5.006,5.006,0,0,0,12,7Zm0,8a3,3,0,1,1,3-3A3,3,0,0,1,12,15Z" ] []
+        ]
 
-        assignedCount =
-            List.length assignedIds
 
-        totalPieces =
-            List.length model.pieces
+iconEyeCrossed : Html msg
+iconEyeCrossed =
+    Svg.svg [ SA.viewBox "0 0 24 24", SA.width "14", SA.height "14", SA.fill "currentColor" ]
+        [ Svg.path [ SA.d "M23.271,9.419A15.866,15.866,0,0,0,19.9,5.51l2.8-2.8a1,1,0,0,0-1.414-1.414L18.241,4.345A12.054,12.054,0,0,0,12,2.655C5.809,2.655,2.281,6.893.729,9.419a4.908,4.908,0,0,0,0,5.162A15.866,15.866,0,0,0,4.1,18.49l-2.8,2.8a1,1,0,1,0,1.414,1.414l3.052-3.052A12.054,12.054,0,0,0,12,21.345c6.191,0,9.719-4.238,11.271-6.764A4.908,4.908,0,0,0,23.271,9.419ZM2.433,13.534a2.918,2.918,0,0,1,0-3.068C3.767,8.3,6.782,4.655,12,4.655A10.1,10.1,0,0,1,16.766,5.82L14.753,7.833a4.992,4.992,0,0,0-6.92,6.92l-2.31,2.31A13.723,13.723,0,0,1,2.433,13.534ZM15,12a3,3,0,0,1-3,3,2.951,2.951,0,0,1-1.285-.3L14.7,10.715A2.951,2.951,0,0,1,15,12ZM9,12a3,3,0,0,1,3-3,2.951,2.951,0,0,1,1.285.3L9.3,13.285A2.951,2.951,0,0,1,9,12Zm12.567,1.534C20.233,15.7,17.218,19.345,12,19.345A10.1,10.1,0,0,1,7.234,18.18l2.013-2.013a4.992,4.992,0,0,0,6.92-6.92l2.31-2.31a13.723,13.723,0,0,1,3.09,3.529A2.918,2.918,0,0,1,21.567,13.534Z" ] []
+        ]
 
-        unassignedPieces =
-            List.filter (\p -> not (List.member p.id assignedIds)) model.pieces
-    in
-    div [ class "waves-panel-wrapper" ]
-        [ div [ class "waves-resize-handle" ] []
-        , div [ class "waves-panel" ]
-            [ div [ class "waves-header" ]
-                [ h2 [] [ text "Waves" ]
-                , span [ class "wave-count" ]
-                    [ text
-                        (if totalPieces > 0 then
-                            String.fromInt assignedCount ++ "/" ++ String.fromInt totalPieces
 
-                         else
-                            ""
-                        )
-                    ]
-                ]
-            , div [ class "wave-toolbar" ]
-                [ button [ onClick AddWave ] [ text "New wave" ] ]
-            , div [ class "waves-body" ]
-                (List.map (viewWaveRow model model.waves) model.waves
-                    ++ [ viewUnassignedRow model unassignedPieces ]
-                )
-            ]
+iconLock : Html msg
+iconLock =
+    Svg.svg [ SA.viewBox "0 0 24 24", SA.width "14", SA.height "14", SA.fill "currentColor" ]
+        [ Svg.path [ SA.d "M19,8V7A7,7,0,0,0,5,7V8H2V21a3,3,0,0,0,3,3H19a3,3,0,0,0,3-3V8ZM7,7A5,5,0,0,1,17,7V8H7ZM20,21a1,1,0,0,1-1,1H5a1,1,0,0,1-1-1V10H20Z" ] []
+        , Svg.rect [ SA.x "11", SA.y "14", SA.width "2", SA.height "4" ] []
         ]
 
 
@@ -1960,6 +2265,7 @@ viewWaveRow model allWaves wave =
     div
         [ classList
             [ ( "wave-row", True )
+            , ( waveColorClass waveIdx, True )
             , ( "selected", isSelected )
             , ( "locked", wave.locked )
             , ( "drag-over", not wave.locked && model.dragOverWaveId == Just (Just wave.id) )
@@ -1971,7 +2277,7 @@ viewWaveRow model allWaves wave =
         [ div
             [ class "wave-row-header"
             , onClick
-                (if isSelected then
+                (if isSelected && waveCount > 1 then
                     SelectWave Nothing
 
                  else
@@ -1981,34 +2287,28 @@ viewWaveRow model allWaves wave =
             [ span
                 [ classList [ ( "wave-eye", True ), ( "hidden", not wave.visible ) ]
                 , stopPropagationOn "click" (D.succeed ( ToggleWaveVisibility wave.id, True ))
+                , title (if wave.visible then "Hide wave" else "Show wave")
                 ]
-                [ text "\u{1F441}" ]
+                [ if wave.visible then iconEye else iconEyeCrossed ]
             , span
-                [ classList [ ( "wave-label", True ), ( waveColorClass waveIdx, True ) ] ]
-                [ text wave.name ]
-            , span [ class "wave-piece-count" ]
+                [ classList [ ( "wave-lock", True ), ( "locked", wave.locked ) ]
+                , stopPropagationOn "click" (D.succeed ( ToggleWaveLock wave.id, True ))
+                , title
+                    (if wave.locked then
+                        "Unlock wave"
+
+                     else
+                        "Lock wave"
+                    )
+                ]
+                [ iconLock ]
+            , span [ class "wave-piece-count-label" ]
                 [ text (String.fromInt (List.length wave.pieceIds) ++ " pcs") ]
+            , span [ class "wave-name-label" ]
+                [ text wave.name ]
+            , span [ class "wave-row-spacer" ] []
             , span [ class "wave-actions" ]
-                [ span
-                    [ classList [ ( "wave-lock", True ), ( "locked", wave.locked ) ]
-                    , stopPropagationOn "click" (D.succeed ( ToggleWaveLock wave.id, True ))
-                    , title
-                        (if wave.locked then
-                            "Unlock wave"
-
-                         else
-                            "Lock wave"
-                        )
-                    ]
-                    [ text
-                        (if wave.locked then
-                            "\u{1F512}"
-
-                         else
-                            "\u{1F513}"
-                        )
-                    ]
-                , button
+                [ button
                     [ stopPropagationOn "click" (D.succeed ( MoveWave wave.id -1, True ))
                     , disabled (waveIdx == 0)
                     , title "Move up"
@@ -2022,7 +2322,7 @@ viewWaveRow model allWaves wave =
                     [ text "\u{25BC}" ]
                 , button
                     [ stopPropagationOn "click" (D.succeed ( RemoveWave wave.id, True ))
-                    , disabled wave.locked
+                    , disabled (wave.locked || waveCount <= 1)
                     , title "Delete wave"
                     ]
                     [ text "\u{2715}" ]
@@ -2043,8 +2343,10 @@ viewWaveRow model allWaves wave =
                                 []
 
                         thumb =
-                            Dict.get pid model.pieceImages
-                                |> Maybe.map (viewPieceThumb (Just ( wave.id, pid )) wave.locked model.hoveredPieceId pid)
+                            model.pieces
+                                |> List.filter (\p -> p.id == pid)
+                                |> List.head
+                                |> Maybe.map (\piece -> viewPieceThumb (Just ( wave.id, pid )) wave.locked model.hoveredPieceId pid (piece.imgUrl ++ "?v=" ++ String.fromInt model.pieceGeneration))
                                 |> Maybe.map List.singleton
                                 |> Maybe.withDefault []
                     in
@@ -2082,10 +2384,9 @@ viewUnassignedRow model unassignedPieces =
                     [ text (String.fromInt (List.length unassignedPieces) ++ " pcs") ]
                 ]
             , div [ class "wave-pieces" ]
-                (List.filterMap
+                (List.map
                     (\p ->
-                        Dict.get p.id model.pieceImages
-                            |> Maybe.map (viewPieceThumb Nothing False model.hoveredPieceId p.id)
+                        viewPieceThumb Nothing False model.hoveredPieceId p.id (p.imgUrl ++ "?v=" ++ String.fromInt model.pieceGeneration)
                     )
                     unassignedPieces
                 )
@@ -2142,6 +2443,106 @@ viewPieceThumb removeInfo isLocked hoveredId pieceId dataUrl =
         )
 
 
+viewEditControls : Model -> List (Html Msg)
+viewEditControls model =
+    let
+        changed =
+            editHasChanges model
+
+        pieceLabel =
+            case model.selectedPieceId of
+                Just pid ->
+                    "Piece #" ++ String.fromInt pid
+
+                Nothing ->
+                    "Piece"
+
+        brickCount =
+            List.length model.editBrickIds
+    in
+    [ h2 [] [ text ("Editing " ++ pieceLabel) ]
+    , div
+        [ style "font-size" "11px"
+        , style "color" "#aaa"
+        , style "margin-bottom" "10px"
+        , style "line-height" "1.5"
+        ]
+        [ text "Click bricks to add/remove."
+        , br [] []
+        , text (String.fromInt brickCount ++ " brick" ++ (if brickCount == 1 then "" else "s") ++ " selected.")
+        ]
+    , div [ class "btn-row" ]
+        [ button
+            [ class "primary"
+            , onClick SaveEdit
+            , disabled (not changed)
+            ]
+            [ text "Save" ]
+        , button
+            [ onClick CancelEdit ]
+            [ text "Cancel" ]
+        ]
+    ]
+
+
+viewStatusBadge : Model -> Html Msg
+viewStatusBadge model =
+    case model.loadState of
+        Idle ->
+            text ""
+
+        Loading ->
+            span [ class "status loading" ] [ text "Parsing PDF\u{2026}" ]
+
+        Loaded _ ->
+            text ""
+
+        LoadError err ->
+            span [ class "status error" ] [ text ("Error: " ++ err) ]
+
+
+viewStats : Model -> Html Msg
+viewStats model =
+    let
+        canvasInfo =
+            case model.loadState of
+                Loaded r ->
+                    String.fromFloat r.canvas.width ++ "\u{00D7}" ++ String.fromFloat r.canvas.height
+
+                _ ->
+                    "-"
+
+        brickCount =
+            case model.loadState of
+                Loaded r ->
+                    String.fromInt (List.length r.bricks)
+
+                _ ->
+                    "-"
+
+        pieceCount =
+            if model.generateState == Generated then
+                String.fromInt (List.length model.pieces)
+
+            else
+                "-"
+    in
+    div [ class "stats" ]
+        [ div [ class "row" ]
+            [ span [] [ text "Canvas" ]
+            , span [ class "val" ] [ text canvasInfo ]
+            ]
+        , div [ class "row" ]
+            [ span [] [ text "Total Bricks" ]
+            , span [ class "val" ] [ text brickCount ]
+            ]
+        , div [ class "row" ]
+            [ span [] [ text "Puzzle Pieces" ]
+            , span [ class "val" ] [ text pieceCount ]
+            ]
+        ]
+
+
 
 -- ── Subscriptions ────────────────────────────────────────────────────────────
 
@@ -2149,8 +2550,7 @@ viewPieceThumb removeInfo isLocked hoveredId pieceId dataUrl =
 subscriptions : Model -> Sub Msg
 subscriptions _ =
     Sub.batch
-        [ gotPieceImages GotPieceImages
-        , gotExportDone (\_ -> ExportDone)
+        [ gotExportDone (\_ -> ExportDone)
         ]
 
 

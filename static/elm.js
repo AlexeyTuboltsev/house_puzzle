@@ -4373,6 +4373,181 @@ function _Browser_load(url)
 
 
 
+// SEND REQUEST
+
+var _Http_toTask = F3(function(router, toTask, request)
+{
+	return _Scheduler_binding(function(callback)
+	{
+		function done(response) {
+			callback(toTask(request.expect.a(response)));
+		}
+
+		var xhr = new XMLHttpRequest();
+		xhr.addEventListener('error', function() { done($elm$http$Http$NetworkError_); });
+		xhr.addEventListener('timeout', function() { done($elm$http$Http$Timeout_); });
+		xhr.addEventListener('load', function() { done(_Http_toResponse(request.expect.b, xhr)); });
+		$elm$core$Maybe$isJust(request.tracker) && _Http_track(router, xhr, request.tracker.a);
+
+		try {
+			xhr.open(request.method, request.url, true);
+		} catch (e) {
+			return done($elm$http$Http$BadUrl_(request.url));
+		}
+
+		_Http_configureRequest(xhr, request);
+
+		request.body.a && xhr.setRequestHeader('Content-Type', request.body.a);
+		xhr.send(request.body.b);
+
+		return function() { xhr.c = true; xhr.abort(); };
+	});
+});
+
+
+// CONFIGURE
+
+function _Http_configureRequest(xhr, request)
+{
+	for (var headers = request.headers; headers.b; headers = headers.b) // WHILE_CONS
+	{
+		xhr.setRequestHeader(headers.a.a, headers.a.b);
+	}
+	xhr.timeout = request.timeout.a || 0;
+	xhr.responseType = request.expect.d;
+	xhr.withCredentials = request.allowCookiesFromOtherDomains;
+}
+
+
+// RESPONSES
+
+function _Http_toResponse(toBody, xhr)
+{
+	return A2(
+		200 <= xhr.status && xhr.status < 300 ? $elm$http$Http$GoodStatus_ : $elm$http$Http$BadStatus_,
+		_Http_toMetadata(xhr),
+		toBody(xhr.response)
+	);
+}
+
+
+// METADATA
+
+function _Http_toMetadata(xhr)
+{
+	return {
+		url: xhr.responseURL,
+		statusCode: xhr.status,
+		statusText: xhr.statusText,
+		headers: _Http_parseHeaders(xhr.getAllResponseHeaders())
+	};
+}
+
+
+// HEADERS
+
+function _Http_parseHeaders(rawHeaders)
+{
+	if (!rawHeaders)
+	{
+		return $elm$core$Dict$empty;
+	}
+
+	var headers = $elm$core$Dict$empty;
+	var headerPairs = rawHeaders.split('\r\n');
+	for (var i = headerPairs.length; i--; )
+	{
+		var headerPair = headerPairs[i];
+		var index = headerPair.indexOf(': ');
+		if (index > 0)
+		{
+			var key = headerPair.substring(0, index);
+			var value = headerPair.substring(index + 2);
+
+			headers = A3($elm$core$Dict$update, key, function(oldValue) {
+				return $elm$core$Maybe$Just($elm$core$Maybe$isJust(oldValue)
+					? value + ', ' + oldValue.a
+					: value
+				);
+			}, headers);
+		}
+	}
+	return headers;
+}
+
+
+// EXPECT
+
+var _Http_expect = F3(function(type, toBody, toValue)
+{
+	return {
+		$: 0,
+		d: type,
+		b: toBody,
+		a: toValue
+	};
+});
+
+var _Http_mapExpect = F2(function(func, expect)
+{
+	return {
+		$: 0,
+		d: expect.d,
+		b: expect.b,
+		a: function(x) { return func(expect.a(x)); }
+	};
+});
+
+function _Http_toDataView(arrayBuffer)
+{
+	return new DataView(arrayBuffer);
+}
+
+
+// BODY and PARTS
+
+var _Http_emptyBody = { $: 0 };
+var _Http_pair = F2(function(a, b) { return { $: 0, a: a, b: b }; });
+
+function _Http_toFormData(parts)
+{
+	for (var formData = new FormData(); parts.b; parts = parts.b) // WHILE_CONS
+	{
+		var part = parts.a;
+		formData.append(part.a, part.b);
+	}
+	return formData;
+}
+
+var _Http_bytesToBlob = F2(function(mime, bytes)
+{
+	return new Blob([bytes], { type: mime });
+});
+
+
+// PROGRESS
+
+function _Http_track(router, xhr, tracker)
+{
+	// TODO check out lengthComputable on loadstart event
+
+	xhr.upload.addEventListener('progress', function(event) {
+		if (xhr.c) { return; }
+		_Scheduler_rawSpawn(A2($elm$core$Platform$sendToSelf, router, _Utils_Tuple2(tracker, $elm$http$Http$Sending({
+			sent: event.loaded,
+			size: event.total
+		}))));
+	});
+	xhr.addEventListener('progress', function(event) {
+		if (xhr.c) { return; }
+		_Scheduler_rawSpawn(A2($elm$core$Platform$sendToSelf, router, _Utils_Tuple2(tracker, $elm$http$Http$Receiving({
+			received: event.loaded,
+			size: event.lengthComputable ? $elm$core$Maybe$Just(event.total) : $elm$core$Maybe$Nothing
+		}))));
+	});
+}
+
+
 // DECODER
 
 var _File_decoder = _Json_decodePrim(function(value) {
@@ -4548,182 +4723,7 @@ function _File_toUrl(blob)
 	});
 }
 
-
-
-
-// SEND REQUEST
-
-var _Http_toTask = F3(function(router, toTask, request)
-{
-	return _Scheduler_binding(function(callback)
-	{
-		function done(response) {
-			callback(toTask(request.expect.a(response)));
-		}
-
-		var xhr = new XMLHttpRequest();
-		xhr.addEventListener('error', function() { done($elm$http$Http$NetworkError_); });
-		xhr.addEventListener('timeout', function() { done($elm$http$Http$Timeout_); });
-		xhr.addEventListener('load', function() { done(_Http_toResponse(request.expect.b, xhr)); });
-		$elm$core$Maybe$isJust(request.tracker) && _Http_track(router, xhr, request.tracker.a);
-
-		try {
-			xhr.open(request.method, request.url, true);
-		} catch (e) {
-			return done($elm$http$Http$BadUrl_(request.url));
-		}
-
-		_Http_configureRequest(xhr, request);
-
-		request.body.a && xhr.setRequestHeader('Content-Type', request.body.a);
-		xhr.send(request.body.b);
-
-		return function() { xhr.c = true; xhr.abort(); };
-	});
-});
-
-
-// CONFIGURE
-
-function _Http_configureRequest(xhr, request)
-{
-	for (var headers = request.headers; headers.b; headers = headers.b) // WHILE_CONS
-	{
-		xhr.setRequestHeader(headers.a.a, headers.a.b);
-	}
-	xhr.timeout = request.timeout.a || 0;
-	xhr.responseType = request.expect.d;
-	xhr.withCredentials = request.allowCookiesFromOtherDomains;
-}
-
-
-// RESPONSES
-
-function _Http_toResponse(toBody, xhr)
-{
-	return A2(
-		200 <= xhr.status && xhr.status < 300 ? $elm$http$Http$GoodStatus_ : $elm$http$Http$BadStatus_,
-		_Http_toMetadata(xhr),
-		toBody(xhr.response)
-	);
-}
-
-
-// METADATA
-
-function _Http_toMetadata(xhr)
-{
-	return {
-		url: xhr.responseURL,
-		statusCode: xhr.status,
-		statusText: xhr.statusText,
-		headers: _Http_parseHeaders(xhr.getAllResponseHeaders())
-	};
-}
-
-
-// HEADERS
-
-function _Http_parseHeaders(rawHeaders)
-{
-	if (!rawHeaders)
-	{
-		return $elm$core$Dict$empty;
-	}
-
-	var headers = $elm$core$Dict$empty;
-	var headerPairs = rawHeaders.split('\r\n');
-	for (var i = headerPairs.length; i--; )
-	{
-		var headerPair = headerPairs[i];
-		var index = headerPair.indexOf(': ');
-		if (index > 0)
-		{
-			var key = headerPair.substring(0, index);
-			var value = headerPair.substring(index + 2);
-
-			headers = A3($elm$core$Dict$update, key, function(oldValue) {
-				return $elm$core$Maybe$Just($elm$core$Maybe$isJust(oldValue)
-					? value + ', ' + oldValue.a
-					: value
-				);
-			}, headers);
-		}
-	}
-	return headers;
-}
-
-
-// EXPECT
-
-var _Http_expect = F3(function(type, toBody, toValue)
-{
-	return {
-		$: 0,
-		d: type,
-		b: toBody,
-		a: toValue
-	};
-});
-
-var _Http_mapExpect = F2(function(func, expect)
-{
-	return {
-		$: 0,
-		d: expect.d,
-		b: expect.b,
-		a: function(x) { return func(expect.a(x)); }
-	};
-});
-
-function _Http_toDataView(arrayBuffer)
-{
-	return new DataView(arrayBuffer);
-}
-
-
-// BODY and PARTS
-
-var _Http_emptyBody = { $: 0 };
-var _Http_pair = F2(function(a, b) { return { $: 0, a: a, b: b }; });
-
-function _Http_toFormData(parts)
-{
-	for (var formData = new FormData(); parts.b; parts = parts.b) // WHILE_CONS
-	{
-		var part = parts.a;
-		formData.append(part.a, part.b);
-	}
-	return formData;
-}
-
-var _Http_bytesToBlob = F2(function(mime, bytes)
-{
-	return new Blob([bytes], { type: mime });
-});
-
-
-// PROGRESS
-
-function _Http_track(router, xhr, tracker)
-{
-	// TODO check out lengthComputable on loadstart event
-
-	xhr.upload.addEventListener('progress', function(event) {
-		if (xhr.c) { return; }
-		_Scheduler_rawSpawn(A2($elm$core$Platform$sendToSelf, router, _Utils_Tuple2(tracker, $elm$http$Http$Sending({
-			sent: event.loaded,
-			size: event.total
-		}))));
-	});
-	xhr.addEventListener('progress', function(event) {
-		if (xhr.c) { return; }
-		_Scheduler_rawSpawn(A2($elm$core$Platform$sendToSelf, router, _Utils_Tuple2(tracker, $elm$http$Http$Receiving({
-			received: event.loaded,
-			size: event.lengthComputable ? $elm$core$Maybe$Just(event.total) : $elm$core$Maybe$Nothing
-		}))));
-	});
-}var $elm$core$Basics$EQ = {$: 'EQ'};
+var $elm$core$Basics$EQ = {$: 'EQ'};
 var $elm$core$Basics$GT = {$: 'GT'};
 var $elm$core$Basics$LT = {$: 'LT'};
 var $elm$core$List$cons = _List_cons;
@@ -5512,228 +5512,87 @@ var $elm$core$Task$perform = F2(
 				A2($elm$core$Task$map, toMessage, task)));
 	});
 var $elm$browser$Browser$element = _Browser_element;
+var $author$project$Main$GotViewport = function (a) {
+	return {$: 'GotViewport', a: a};
+};
 var $author$project$Main$Idle = {$: 'Idle'};
+var $author$project$Main$ModeInit = {$: 'ModeInit'};
 var $author$project$Main$NotGenerated = {$: 'NotGenerated'};
-var $author$project$Main$ViewPieces = {$: 'ViewPieces'};
+var $elm$core$Platform$Cmd$batch = _Platform_batch;
 var $elm$core$Dict$RBEmpty_elm_builtin = {$: 'RBEmpty_elm_builtin'};
 var $elm$core$Dict$empty = $elm$core$Dict$RBEmpty_elm_builtin;
-var $elm$core$Platform$Cmd$batch = _Platform_batch;
-var $elm$core$Platform$Cmd$none = $elm$core$Platform$Cmd$batch(_List_Nil);
-var $author$project$Main$init = function (_v0) {
-	return _Utils_Tuple2(
-		{bricksById: $elm$core$Dict$empty, dragInsertBeforeId: $elm$core$Maybe$Nothing, dragOverWaveId: $elm$core$Maybe$Nothing, draggingPieceId: $elm$core$Maybe$Nothing, editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, exporting: false, generateState: $author$project$Main$NotGenerated, hoveredPieceId: $elm$core$Maybe$Nothing, loadState: $author$project$Main$Idle, minBorder: 5, nextWaveId: 1, pieceImages: $elm$core$Dict$empty, pieces: _List_Nil, recomputing: false, seed: 42, selectedFileName: '', selectedPieceId: $elm$core$Maybe$Nothing, selectedWaveId: $elm$core$Maybe$Nothing, showGrid: false, showOutlines: true, targetCount: 60, viewMode: $author$project$Main$ViewPieces, waves: _List_Nil},
-		$elm$core$Platform$Cmd$none);
+var $author$project$Main$GotFileList = function (a) {
+	return {$: 'GotFileList', a: a};
 };
-var $author$project$Main$ExportDone = {$: 'ExportDone'};
-var $author$project$Main$GotPieceImages = function (a) {
-	return {$: 'GotPieceImages', a: a};
-};
-var $elm$core$Platform$Sub$batch = _Platform_batch;
-var $elm$json$Json$Decode$bool = _Json_decodeBool;
-var $author$project$Main$gotExportDone = _Platform_incomingPort('gotExportDone', $elm$json$Json$Decode$bool);
-var $elm$json$Json$Decode$value = _Json_decodeValue;
-var $author$project$Main$gotPieceImages = _Platform_incomingPort('gotPieceImages', $elm$json$Json$Decode$value);
-var $author$project$Main$subscriptions = function (_v0) {
-	return $elm$core$Platform$Sub$batch(
-		_List_fromArray(
-			[
-				$author$project$Main$gotPieceImages($author$project$Main$GotPieceImages),
-				$author$project$Main$gotExportDone(
-				function (_v1) {
-					return $author$project$Main$ExportDone;
-				})
-			]));
-};
-var $author$project$Main$BrickRef = F5(
-	function (id, x, y, width, height) {
-		return {height: height, id: id, width: width, x: x, y: y};
-	});
-var $author$project$Main$Compositing = {$: 'Compositing'};
-var $author$project$Main$FileSelected = function (a) {
-	return {$: 'FileSelected', a: a};
-};
-var $author$project$Main$Generated = {$: 'Generated'};
-var $author$project$Main$LoadError = function (a) {
-	return {$: 'LoadError', a: a};
-};
-var $author$project$Main$Loaded = function (a) {
-	return {$: 'Loaded', a: a};
-};
-var $author$project$Main$Loading = {$: 'Loading'};
-var $author$project$Main$Uploading = {$: 'Uploading'};
-var $elm$core$List$any = F2(
-	function (isOkay, list) {
-		any:
-		while (true) {
-			if (!list.b) {
-				return false;
-			} else {
-				var x = list.a;
-				var xs = list.b;
-				if (isOkay(x)) {
-					return true;
-				} else {
-					var $temp$isOkay = isOkay,
-						$temp$list = xs;
-					isOkay = $temp$isOkay;
-					list = $temp$list;
-					continue any;
-				}
-			}
-		}
-	});
-var $elm$core$Basics$composeR = F3(
-	function (f, g, x) {
-		return g(
-			f(x));
-	});
-var $author$project$Main$compositePieces = _Platform_outgoingPort('compositePieces', $elm$core$Basics$identity);
-var $elm$core$List$append = F2(
-	function (xs, ys) {
-		if (!ys.b) {
-			return xs;
-		} else {
-			return A3($elm$core$List$foldr, $elm$core$List$cons, ys, xs);
-		}
-	});
-var $elm$core$List$concat = function (lists) {
-	return A3($elm$core$List$foldr, $elm$core$List$append, _List_Nil, lists);
-};
-var $elm$core$List$concatMap = F2(
-	function (f, list) {
-		return $elm$core$List$concat(
-			A2($elm$core$List$map, f, list));
-	});
 var $elm$json$Json$Decode$field = _Json_decodeField;
-var $elm$json$Json$Decode$int = _Json_decodeInt;
-var $elm$json$Json$Decode$list = _Json_decodeList;
-var $elm$core$Tuple$pair = F2(
-	function (a, b) {
-		return _Utils_Tuple2(a, b);
-	});
 var $elm$json$Json$Decode$string = _Json_decodeString;
-var $author$project$Main$decodePieceImages = $elm$json$Json$Decode$list(
-	A3(
-		$elm$json$Json$Decode$map2,
-		$elm$core$Tuple$pair,
-		A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$int),
-		A2($elm$json$Json$Decode$field, 'dataUrl', $elm$json$Json$Decode$string)));
-var $elm$json$Json$Decode$decodeValue = _Json_run;
-var $elm$core$List$drop = F2(
-	function (n, list) {
-		drop:
+var $author$project$Main$decodePdfFile = A3(
+	$elm$json$Json$Decode$map2,
+	F2(
+		function (n, p) {
+			return {name: n, path: p};
+		}),
+	A2($elm$json$Json$Decode$field, 'name', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'path', $elm$json$Json$Decode$string));
+var $elm$json$Json$Decode$decodeString = _Json_runOnString;
+var $elm$http$Http$BadStatus_ = F2(
+	function (a, b) {
+		return {$: 'BadStatus_', a: a, b: b};
+	});
+var $elm$http$Http$BadUrl_ = function (a) {
+	return {$: 'BadUrl_', a: a};
+};
+var $elm$http$Http$GoodStatus_ = F2(
+	function (a, b) {
+		return {$: 'GoodStatus_', a: a, b: b};
+	});
+var $elm$http$Http$NetworkError_ = {$: 'NetworkError_'};
+var $elm$http$Http$Receiving = function (a) {
+	return {$: 'Receiving', a: a};
+};
+var $elm$http$Http$Sending = function (a) {
+	return {$: 'Sending', a: a};
+};
+var $elm$http$Http$Timeout_ = {$: 'Timeout_'};
+var $elm$core$Maybe$isJust = function (maybe) {
+	if (maybe.$ === 'Just') {
+		return true;
+	} else {
+		return false;
+	}
+};
+var $elm$core$Platform$sendToSelf = _Platform_sendToSelf;
+var $elm$core$Basics$compare = _Utils_compare;
+var $elm$core$Dict$get = F2(
+	function (targetKey, dict) {
+		get:
 		while (true) {
-			if (n <= 0) {
-				return list;
+			if (dict.$ === 'RBEmpty_elm_builtin') {
+				return $elm$core$Maybe$Nothing;
 			} else {
-				if (!list.b) {
-					return list;
-				} else {
-					var x = list.a;
-					var xs = list.b;
-					var $temp$n = n - 1,
-						$temp$list = xs;
-					n = $temp$n;
-					list = $temp$list;
-					continue drop;
+				var key = dict.b;
+				var value = dict.c;
+				var left = dict.d;
+				var right = dict.e;
+				var _v1 = A2($elm$core$Basics$compare, targetKey, key);
+				switch (_v1.$) {
+					case 'LT':
+						var $temp$targetKey = targetKey,
+							$temp$dict = left;
+						targetKey = $temp$targetKey;
+						dict = $temp$dict;
+						continue get;
+					case 'EQ':
+						return $elm$core$Maybe$Just(value);
+					default:
+						var $temp$targetKey = targetKey,
+							$temp$dict = right;
+						targetKey = $temp$targetKey;
+						dict = $temp$dict;
+						continue get;
 				}
 			}
 		}
-	});
-var $elm$json$Json$Encode$float = _Json_wrap;
-var $elm$json$Json$Encode$int = _Json_wrap;
-var $elm$json$Json$Encode$object = function (pairs) {
-	return _Json_wrap(
-		A3(
-			$elm$core$List$foldl,
-			F2(
-				function (_v0, obj) {
-					var k = _v0.a;
-					var v = _v0.b;
-					return A3(_Json_addField, k, v, obj);
-				}),
-			_Json_emptyObject(_Utils_Tuple0),
-			pairs));
-};
-var $author$project$Main$encodeBrickRef = function (b) {
-	return $elm$json$Json$Encode$object(
-		_List_fromArray(
-			[
-				_Utils_Tuple2(
-				'id',
-				$elm$json$Json$Encode$int(b.id)),
-				_Utils_Tuple2(
-				'x',
-				$elm$json$Json$Encode$float(b.x)),
-				_Utils_Tuple2(
-				'y',
-				$elm$json$Json$Encode$float(b.y)),
-				_Utils_Tuple2(
-				'w',
-				$elm$json$Json$Encode$float(b.width)),
-				_Utils_Tuple2(
-				'h',
-				$elm$json$Json$Encode$float(b.height))
-			]));
-};
-var $elm$json$Json$Encode$list = F2(
-	function (func, entries) {
-		return _Json_wrap(
-			A3(
-				$elm$core$List$foldl,
-				_Json_addEntry(func),
-				_Json_emptyArray(_Utils_Tuple0),
-				entries));
-	});
-var $author$project$Main$encodePiece = function (piece) {
-	return $elm$json$Json$Encode$object(
-		_List_fromArray(
-			[
-				_Utils_Tuple2(
-				'id',
-				$elm$json$Json$Encode$int(piece.id)),
-				_Utils_Tuple2(
-				'x',
-				$elm$json$Json$Encode$float(piece.x)),
-				_Utils_Tuple2(
-				'y',
-				$elm$json$Json$Encode$float(piece.y)),
-				_Utils_Tuple2(
-				'w',
-				$elm$json$Json$Encode$float(piece.width)),
-				_Utils_Tuple2(
-				'h',
-				$elm$json$Json$Encode$float(piece.height)),
-				_Utils_Tuple2(
-				'bricks',
-				A2($elm$json$Json$Encode$list, $author$project$Main$encodeBrickRef, piece.bricks))
-			]));
-};
-var $author$project$Main$encodePieceList = function (pieces) {
-	return A2($elm$json$Json$Encode$list, $author$project$Main$encodePiece, pieces);
-};
-var $author$project$Main$exportZip = _Platform_outgoingPort('exportZip', $elm$core$Basics$identity);
-var $elm$time$Time$Posix = function (a) {
-	return {$: 'Posix', a: a};
-};
-var $elm$time$Time$millisToPosix = $elm$time$Time$Posix;
-var $elm$file$File$Select$file = F2(
-	function (mimes, toMsg) {
-		return A2(
-			$elm$core$Task$perform,
-			toMsg,
-			_File_uploadOne(mimes));
-	});
-var $elm$core$List$filter = F2(
-	function (isGood, list) {
-		return A3(
-			$elm$core$List$foldr,
-			F2(
-				function (x, xs) {
-					return isGood(x) ? A2($elm$core$List$cons, x, xs) : xs;
-				}),
-			_List_Nil,
-			list);
 	});
 var $elm$core$Dict$Black = {$: 'Black'};
 var $elm$core$Dict$RBNode_elm_builtin = F5(
@@ -5795,7 +5654,6 @@ var $elm$core$Dict$balance = F5(
 			}
 		}
 	});
-var $elm$core$Basics$compare = _Utils_compare;
 var $elm$core$Dict$insertHelp = F3(
 	function (key, value, dict) {
 		if (dict.$ === 'RBEmpty_elm_builtin') {
@@ -5844,167 +5702,6 @@ var $elm$core$Dict$insert = F3(
 			return x;
 		}
 	});
-var $elm$core$Dict$fromList = function (assocs) {
-	return A3(
-		$elm$core$List$foldl,
-		F2(
-			function (_v0, dict) {
-				var key = _v0.a;
-				var value = _v0.b;
-				return A3($elm$core$Dict$insert, key, value, dict);
-			}),
-		$elm$core$Dict$empty,
-		assocs);
-};
-var $elm$core$Basics$ge = _Utils_ge;
-var $elm$core$Dict$get = F2(
-	function (targetKey, dict) {
-		get:
-		while (true) {
-			if (dict.$ === 'RBEmpty_elm_builtin') {
-				return $elm$core$Maybe$Nothing;
-			} else {
-				var key = dict.b;
-				var value = dict.c;
-				var left = dict.d;
-				var right = dict.e;
-				var _v1 = A2($elm$core$Basics$compare, targetKey, key);
-				switch (_v1.$) {
-					case 'LT':
-						var $temp$targetKey = targetKey,
-							$temp$dict = left;
-						targetKey = $temp$targetKey;
-						dict = $temp$dict;
-						continue get;
-					case 'EQ':
-						return $elm$core$Maybe$Just(value);
-					default:
-						var $temp$targetKey = targetKey,
-							$temp$dict = right;
-						targetKey = $temp$targetKey;
-						dict = $temp$dict;
-						continue get;
-				}
-			}
-		}
-	});
-var $elm$core$List$head = function (list) {
-	if (list.b) {
-		var x = list.a;
-		var xs = list.b;
-		return $elm$core$Maybe$Just(x);
-	} else {
-		return $elm$core$Maybe$Nothing;
-	}
-};
-var $author$project$Main$httpErrorToString = function (err) {
-	switch (err.$) {
-		case 'BadUrl':
-			var url = err.a;
-			return 'Bad URL: ' + url;
-		case 'Timeout':
-			return 'Request timed out';
-		case 'NetworkError':
-			return 'Network error';
-		case 'BadStatus':
-			var code = err.a;
-			return 'Server error: ' + $elm$core$String$fromInt(code);
-		default:
-			var m = err.a;
-			return 'Bad response: ' + m;
-	}
-};
-var $elm$core$List$isEmpty = function (xs) {
-	if (!xs.b) {
-		return true;
-	} else {
-		return false;
-	}
-};
-var $author$project$Main$GotLoadResponse = function (a) {
-	return {$: 'GotLoadResponse', a: a};
-};
-var $author$project$Main$LoadResponse = F4(
-	function (canvas, bricks, hasComposite, hasBase) {
-		return {bricks: bricks, canvas: canvas, hasBase: hasBase, hasComposite: hasComposite};
-	});
-var $author$project$Main$Brick = F8(
-	function (id, x, y, width, height, brickType, neighbors, polygon) {
-		return {brickType: brickType, height: height, id: id, neighbors: neighbors, polygon: polygon, width: width, x: x, y: y};
-	});
-var $elm$json$Json$Decode$float = _Json_decodeFloat;
-var $elm$json$Json$Decode$index = _Json_decodeIndex;
-var $author$project$Main$decodePoint = A3(
-	$elm$json$Json$Decode$map2,
-	$elm$core$Tuple$pair,
-	A2($elm$json$Json$Decode$index, 0, $elm$json$Json$Decode$float),
-	A2($elm$json$Json$Decode$index, 1, $elm$json$Json$Decode$float));
-var $elm$json$Json$Decode$map8 = _Json_map8;
-var $author$project$Main$decodeBrick = A9(
-	$elm$json$Json$Decode$map8,
-	$author$project$Main$Brick,
-	A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$int),
-	A2($elm$json$Json$Decode$field, 'x', $elm$json$Json$Decode$float),
-	A2($elm$json$Json$Decode$field, 'y', $elm$json$Json$Decode$float),
-	A2($elm$json$Json$Decode$field, 'width', $elm$json$Json$Decode$float),
-	A2($elm$json$Json$Decode$field, 'height', $elm$json$Json$Decode$float),
-	A2($elm$json$Json$Decode$field, 'type', $elm$json$Json$Decode$string),
-	A2(
-		$elm$json$Json$Decode$field,
-		'neighbors',
-		$elm$json$Json$Decode$list($elm$json$Json$Decode$int)),
-	A2(
-		$elm$json$Json$Decode$field,
-		'polygon',
-		$elm$json$Json$Decode$list($author$project$Main$decodePoint)));
-var $author$project$Main$Canvas = F2(
-	function (width, height) {
-		return {height: height, width: width};
-	});
-var $author$project$Main$decodeCanvas = A3(
-	$elm$json$Json$Decode$map2,
-	$author$project$Main$Canvas,
-	A2($elm$json$Json$Decode$field, 'width', $elm$json$Json$Decode$float),
-	A2($elm$json$Json$Decode$field, 'height', $elm$json$Json$Decode$float));
-var $elm$json$Json$Decode$map4 = _Json_map4;
-var $author$project$Main$decodeLoadResponse = A5(
-	$elm$json$Json$Decode$map4,
-	$author$project$Main$LoadResponse,
-	A2($elm$json$Json$Decode$field, 'canvas', $author$project$Main$decodeCanvas),
-	A2(
-		$elm$json$Json$Decode$field,
-		'bricks',
-		$elm$json$Json$Decode$list($author$project$Main$decodeBrick)),
-	A2($elm$json$Json$Decode$field, 'has_composite', $elm$json$Json$Decode$bool),
-	A2($elm$json$Json$Decode$field, 'has_base', $elm$json$Json$Decode$bool));
-var $elm$json$Json$Decode$decodeString = _Json_runOnString;
-var $elm$http$Http$BadStatus_ = F2(
-	function (a, b) {
-		return {$: 'BadStatus_', a: a, b: b};
-	});
-var $elm$http$Http$BadUrl_ = function (a) {
-	return {$: 'BadUrl_', a: a};
-};
-var $elm$http$Http$GoodStatus_ = F2(
-	function (a, b) {
-		return {$: 'GoodStatus_', a: a, b: b};
-	});
-var $elm$http$Http$NetworkError_ = {$: 'NetworkError_'};
-var $elm$http$Http$Receiving = function (a) {
-	return {$: 'Receiving', a: a};
-};
-var $elm$http$Http$Sending = function (a) {
-	return {$: 'Sending', a: a};
-};
-var $elm$http$Http$Timeout_ = {$: 'Timeout_'};
-var $elm$core$Maybe$isJust = function (maybe) {
-	if (maybe.$ === 'Just') {
-		return true;
-	} else {
-		return false;
-	}
-};
-var $elm$core$Platform$sendToSelf = _Platform_sendToSelf;
 var $elm$core$Dict$getMin = function (dict) {
 	getMin:
 	while (true) {
@@ -6378,6 +6075,11 @@ var $elm$core$Dict$update = F3(
 			return A2($elm$core$Dict$remove, targetKey, dictionary);
 		}
 	});
+var $elm$core$Basics$composeR = F3(
+	function (f, g, x) {
+		return g(
+			f(x));
+	});
 var $elm$http$Http$expectStringResponse = F2(
 	function (toMsg, toResult) {
 		return A3(
@@ -6444,12 +6146,7 @@ var $elm$http$Http$expectJson = F2(
 						A2($elm$json$Json$Decode$decodeString, decoder, string));
 				}));
 	});
-var $elm$http$Http$jsonBody = function (value) {
-	return A2(
-		_Http_pair,
-		'application/json',
-		A2($elm$json$Json$Encode$encode, 0, value));
-};
+var $elm$http$Http$emptyBody = _Http_emptyBody;
 var $elm$http$Http$Request = function (a) {
 	return {$: 'Request', a: a};
 };
@@ -6618,26 +6315,338 @@ var $elm$http$Http$request = function (r) {
 		$elm$http$Http$Request(
 			{allowCookiesFromOtherDomains: false, body: r.body, expect: r.expect, headers: r.headers, method: r.method, timeout: r.timeout, tracker: r.tracker, url: r.url}));
 };
+var $elm$http$Http$get = function (r) {
+	return $elm$http$Http$request(
+		{body: $elm$http$Http$emptyBody, expect: r.expect, headers: _List_Nil, method: 'GET', timeout: $elm$core$Maybe$Nothing, tracker: $elm$core$Maybe$Nothing, url: r.url});
+};
+var $elm$json$Json$Decode$list = _Json_decodeList;
+var $author$project$Main$fetchPdfList = $elm$http$Http$get(
+	{
+		expect: A2(
+			$elm$http$Http$expectJson,
+			$author$project$Main$GotFileList,
+			A2(
+				$elm$json$Json$Decode$field,
+				'files',
+				$elm$json$Json$Decode$list($author$project$Main$decodePdfFile))),
+		url: '/api/list_pdfs'
+	});
+var $elm$browser$Browser$Dom$getViewport = _Browser_withWindow(_Browser_getViewport);
+var $author$project$Main$init = function (_v0) {
+	return _Utils_Tuple2(
+		{appMode: $author$project$Main$ModeInit, bricksById: $elm$core$Dict$empty, dragInsertBeforeId: $elm$core$Maybe$Nothing, dragOverWaveId: $elm$core$Maybe$Nothing, draggingPieceId: $elm$core$Maybe$Nothing, editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, exportCanvasHeight: '900', exporting: false, generateState: $author$project$Main$NotGenerated, hoveredPieceId: $elm$core$Maybe$Nothing, loadState: $author$project$Main$Idle, minBorder: 5, nextWaveId: 1, pdfFiles: _List_Nil, pieceGeneration: 0, pieces: _List_Nil, recomputing: false, seed: 42, selectedFileName: '', selectedPieceId: $elm$core$Maybe$Nothing, selectedWaveId: $elm$core$Maybe$Nothing, showGrid: false, showOutlines: true, svgScale: 1.0, targetCount: 60, viewportHeight: 900.0, waves: _List_Nil},
+		$elm$core$Platform$Cmd$batch(
+			_List_fromArray(
+				[
+					$author$project$Main$fetchPdfList,
+					A2($elm$core$Task$perform, $author$project$Main$GotViewport, $elm$browser$Browser$Dom$getViewport)
+				])));
+};
+var $author$project$Main$ExportDone = {$: 'ExportDone'};
+var $elm$core$Platform$Sub$batch = _Platform_batch;
+var $elm$json$Json$Decode$bool = _Json_decodeBool;
+var $author$project$Main$gotExportDone = _Platform_incomingPort('gotExportDone', $elm$json$Json$Decode$bool);
+var $author$project$Main$subscriptions = function (_v0) {
+	return $elm$core$Platform$Sub$batch(
+		_List_fromArray(
+			[
+				$author$project$Main$gotExportDone(
+				function (_v1) {
+					return $author$project$Main$ExportDone;
+				})
+			]));
+};
+var $author$project$Main$BrickRef = F5(
+	function (id, x, y, width, height) {
+		return {height: height, id: id, width: width, x: x, y: y};
+	});
+var $author$project$Main$Compositing = {$: 'Compositing'};
+var $author$project$Main$FileSelected = function (a) {
+	return {$: 'FileSelected', a: a};
+};
+var $author$project$Main$Generated = {$: 'Generated'};
+var $author$project$Main$LoadError = function (a) {
+	return {$: 'LoadError', a: a};
+};
+var $author$project$Main$Loaded = function (a) {
+	return {$: 'Loaded', a: a};
+};
+var $author$project$Main$Loading = {$: 'Loading'};
+var $author$project$Main$ModePdf = {$: 'ModePdf'};
+var $author$project$Main$ModePieces = {$: 'ModePieces'};
+var $author$project$Main$ModeWaves = {$: 'ModeWaves'};
+var $elm$core$List$any = F2(
+	function (isOkay, list) {
+		any:
+		while (true) {
+			if (!list.b) {
+				return false;
+			} else {
+				var x = list.a;
+				var xs = list.b;
+				if (isOkay(x)) {
+					return true;
+				} else {
+					var $temp$isOkay = isOkay,
+						$temp$list = xs;
+					isOkay = $temp$isOkay;
+					list = $temp$list;
+					continue any;
+				}
+			}
+		}
+	});
+var $elm$core$List$append = F2(
+	function (xs, ys) {
+		if (!ys.b) {
+			return xs;
+		} else {
+			return A3($elm$core$List$foldr, $elm$core$List$cons, ys, xs);
+		}
+	});
+var $elm$core$List$concat = function (lists) {
+	return A3($elm$core$List$foldr, $elm$core$List$append, _List_Nil, lists);
+};
+var $elm$core$List$concatMap = F2(
+	function (f, list) {
+		return $elm$core$List$concat(
+			A2($elm$core$List$map, f, list));
+	});
+var $elm$core$List$drop = F2(
+	function (n, list) {
+		drop:
+		while (true) {
+			if (n <= 0) {
+				return list;
+			} else {
+				if (!list.b) {
+					return list;
+				} else {
+					var x = list.a;
+					var xs = list.b;
+					var $temp$n = n - 1,
+						$temp$list = xs;
+					n = $temp$n;
+					list = $temp$list;
+					continue drop;
+				}
+			}
+		}
+	});
+var $author$project$Main$exportZip = _Platform_outgoingPort('exportZip', $elm$core$Basics$identity);
+var $elm$time$Time$Posix = function (a) {
+	return {$: 'Posix', a: a};
+};
+var $elm$time$Time$millisToPosix = $elm$time$Time$Posix;
+var $elm$file$File$Select$file = F2(
+	function (mimes, toMsg) {
+		return A2(
+			$elm$core$Task$perform,
+			toMsg,
+			_File_uploadOne(mimes));
+	});
+var $elm$core$List$filter = F2(
+	function (isGood, list) {
+		return A3(
+			$elm$core$List$foldr,
+			F2(
+				function (x, xs) {
+					return isGood(x) ? A2($elm$core$List$cons, x, xs) : xs;
+				}),
+			_List_Nil,
+			list);
+	});
+var $elm$json$Json$Encode$float = _Json_wrap;
+var $elm$core$Dict$fromList = function (assocs) {
+	return A3(
+		$elm$core$List$foldl,
+		F2(
+			function (_v0, dict) {
+				var key = _v0.a;
+				var value = _v0.b;
+				return A3($elm$core$Dict$insert, key, value, dict);
+			}),
+		$elm$core$Dict$empty,
+		assocs);
+};
+var $elm$core$Basics$ge = _Utils_ge;
+var $elm$core$List$head = function (list) {
+	if (list.b) {
+		var x = list.a;
+		var xs = list.b;
+		return $elm$core$Maybe$Just(x);
+	} else {
+		return $elm$core$Maybe$Nothing;
+	}
+};
+var $author$project$Main$httpErrorToString = function (err) {
+	switch (err.$) {
+		case 'BadUrl':
+			var url = err.a;
+			return 'Bad URL: ' + url;
+		case 'Timeout':
+			return 'Request timed out';
+		case 'NetworkError':
+			return 'Network error';
+		case 'BadStatus':
+			var code = err.a;
+			return 'Server error: ' + $elm$core$String$fromInt(code);
+		default:
+			var m = err.a;
+			return 'Bad response: ' + m;
+	}
+};
+var $elm$json$Json$Encode$int = _Json_wrap;
+var $elm$core$List$isEmpty = function (xs) {
+	if (!xs.b) {
+		return true;
+	} else {
+		return false;
+	}
+};
+var $elm$json$Json$Encode$list = F2(
+	function (func, entries) {
+		return _Json_wrap(
+			A3(
+				$elm$core$List$foldl,
+				_Json_addEntry(func),
+				_Json_emptyArray(_Utils_Tuple0),
+				entries));
+	});
+var $author$project$Main$GotLoadResponse = function (a) {
+	return {$: 'GotLoadResponse', a: a};
+};
+var $author$project$Main$LoadResponse = F7(
+	function (canvas, bricks, hasComposite, hasBase, renderDpi, warnings, outlinesUrl) {
+		return {bricks: bricks, canvas: canvas, hasBase: hasBase, hasComposite: hasComposite, outlinesUrl: outlinesUrl, renderDpi: renderDpi, warnings: warnings};
+	});
+var $author$project$Main$Brick = F8(
+	function (id, x, y, width, height, brickType, neighbors, polygon) {
+		return {brickType: brickType, height: height, id: id, neighbors: neighbors, polygon: polygon, width: width, x: x, y: y};
+	});
+var $elm$json$Json$Decode$float = _Json_decodeFloat;
+var $elm$json$Json$Decode$index = _Json_decodeIndex;
+var $elm$core$Tuple$pair = F2(
+	function (a, b) {
+		return _Utils_Tuple2(a, b);
+	});
+var $author$project$Main$decodePoint = A3(
+	$elm$json$Json$Decode$map2,
+	$elm$core$Tuple$pair,
+	A2($elm$json$Json$Decode$index, 0, $elm$json$Json$Decode$float),
+	A2($elm$json$Json$Decode$index, 1, $elm$json$Json$Decode$float));
+var $elm$json$Json$Decode$int = _Json_decodeInt;
+var $elm$json$Json$Decode$map8 = _Json_map8;
+var $author$project$Main$decodeBrick = A9(
+	$elm$json$Json$Decode$map8,
+	$author$project$Main$Brick,
+	A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$int),
+	A2($elm$json$Json$Decode$field, 'x', $elm$json$Json$Decode$float),
+	A2($elm$json$Json$Decode$field, 'y', $elm$json$Json$Decode$float),
+	A2($elm$json$Json$Decode$field, 'width', $elm$json$Json$Decode$float),
+	A2($elm$json$Json$Decode$field, 'height', $elm$json$Json$Decode$float),
+	A2($elm$json$Json$Decode$field, 'type', $elm$json$Json$Decode$string),
+	A2(
+		$elm$json$Json$Decode$field,
+		'neighbors',
+		$elm$json$Json$Decode$list($elm$json$Json$Decode$int)),
+	A2(
+		$elm$json$Json$Decode$field,
+		'polygon',
+		$elm$json$Json$Decode$list($author$project$Main$decodePoint)));
+var $author$project$Main$Canvas = F2(
+	function (width, height) {
+		return {height: height, width: width};
+	});
+var $author$project$Main$decodeCanvas = A3(
+	$elm$json$Json$Decode$map2,
+	$author$project$Main$Canvas,
+	A2($elm$json$Json$Decode$field, 'width', $elm$json$Json$Decode$float),
+	A2($elm$json$Json$Decode$field, 'height', $elm$json$Json$Decode$float));
+var $elm$json$Json$Decode$map7 = _Json_map7;
+var $elm$json$Json$Decode$oneOf = _Json_oneOf;
+var $elm$json$Json$Decode$maybe = function (decoder) {
+	return $elm$json$Json$Decode$oneOf(
+		_List_fromArray(
+			[
+				A2($elm$json$Json$Decode$map, $elm$core$Maybe$Just, decoder),
+				$elm$json$Json$Decode$succeed($elm$core$Maybe$Nothing)
+			]));
+};
+var $elm$core$Maybe$withDefault = F2(
+	function (_default, maybe) {
+		if (maybe.$ === 'Just') {
+			var value = maybe.a;
+			return value;
+		} else {
+			return _default;
+		}
+	});
+var $author$project$Main$decodeLoadResponse = A8(
+	$elm$json$Json$Decode$map7,
+	$author$project$Main$LoadResponse,
+	A2($elm$json$Json$Decode$field, 'canvas', $author$project$Main$decodeCanvas),
+	A2(
+		$elm$json$Json$Decode$field,
+		'bricks',
+		$elm$json$Json$Decode$list($author$project$Main$decodeBrick)),
+	A2($elm$json$Json$Decode$field, 'has_composite', $elm$json$Json$Decode$bool),
+	A2($elm$json$Json$Decode$field, 'has_base', $elm$json$Json$Decode$bool),
+	A2($elm$json$Json$Decode$field, 'render_dpi', $elm$json$Json$Decode$float),
+	A2(
+		$elm$json$Json$Decode$field,
+		'warnings',
+		$elm$json$Json$Decode$list($elm$json$Json$Decode$string)),
+	A2(
+		$elm$json$Json$Decode$map,
+		$elm$core$Maybe$withDefault('/api/outlines.png'),
+		$elm$json$Json$Decode$maybe(
+			A2($elm$json$Json$Decode$field, 'outlines_url', $elm$json$Json$Decode$string))));
+var $elm$http$Http$jsonBody = function (value) {
+	return A2(
+		_Http_pair,
+		'application/json',
+		A2($elm$json$Json$Encode$encode, 0, value));
+};
+var $elm$json$Json$Encode$object = function (pairs) {
+	return _Json_wrap(
+		A3(
+			$elm$core$List$foldl,
+			F2(
+				function (_v0, obj) {
+					var k = _v0.a;
+					var v = _v0.b;
+					return A3(_Json_addField, k, v, obj);
+				}),
+			_Json_emptyObject(_Utils_Tuple0),
+			pairs));
+};
 var $elm$http$Http$post = function (r) {
 	return $elm$http$Http$request(
 		{body: r.body, expect: r.expect, headers: _List_Nil, method: 'POST', timeout: $elm$core$Maybe$Nothing, tracker: $elm$core$Maybe$Nothing, url: r.url});
 };
+var $elm$core$Basics$round = _Basics_round;
 var $elm$json$Json$Encode$string = _Json_wrap;
-var $author$project$Main$loadTif = function (path) {
-	return $elm$http$Http$post(
-		{
-			body: $elm$http$Http$jsonBody(
-				$elm$json$Json$Encode$object(
-					_List_fromArray(
-						[
-							_Utils_Tuple2(
-							'path',
-							$elm$json$Json$Encode$string(path))
-						]))),
-			expect: A2($elm$http$Http$expectJson, $author$project$Main$GotLoadResponse, $author$project$Main$decodeLoadResponse),
-			url: '/api/load_tif'
-		});
-};
+var $author$project$Main$loadPdf = F2(
+	function (path, canvasHeight) {
+		return $elm$http$Http$post(
+			{
+				body: $elm$http$Http$jsonBody(
+					$elm$json$Json$Encode$object(
+						_List_fromArray(
+							[
+								_Utils_Tuple2(
+								'path',
+								$elm$json$Json$Encode$string(path)),
+								_Utils_Tuple2(
+								'canvas_height',
+								$elm$json$Json$Encode$int(
+									$elm$core$Basics$round(canvasHeight)))
+							]))),
+				expect: A2($elm$http$Http$expectJson, $author$project$Main$GotLoadResponse, $author$project$Main$decodeLoadResponse),
+				url: '/api/load_pdf'
+			});
+	});
 var $author$project$Main$logBrick = _Platform_outgoingPort('logBrick', $elm$core$Basics$identity);
 var $elm$core$Maybe$map = F2(
 	function (f, maybe) {
@@ -6664,10 +6673,6 @@ var $author$project$Main$GotMergeResponse = function (a) {
 var $author$project$Main$MergeResponse = function (pieces) {
 	return {pieces: pieces};
 };
-var $author$project$Main$Piece = F8(
-	function (id, x, y, width, height, brickIds, bricks, polygon) {
-		return {brickIds: brickIds, bricks: bricks, height: height, id: id, polygon: polygon, width: width, x: x, y: y};
-	});
 var $elm$json$Json$Decode$map5 = _Json_map5;
 var $author$project$Main$decodeBrickRef = A6(
 	$elm$json$Json$Decode$map5,
@@ -6679,7 +6684,21 @@ var $author$project$Main$decodeBrickRef = A6(
 	A2($elm$json$Json$Decode$field, 'height', $elm$json$Json$Decode$float));
 var $author$project$Main$decodePiece = A9(
 	$elm$json$Json$Decode$map8,
-	$author$project$Main$Piece,
+	F8(
+		function (id_, x_, y_, w_, h_, brickIds_, bricks_, polygon_) {
+			return {
+				brickIds: brickIds_,
+				bricks: bricks_,
+				height: h_,
+				id: id_,
+				imgUrl: '/api/piece/' + ($elm$core$String$fromInt(id_) + '.png'),
+				outlineUrl: '/api/piece_outline/' + ($elm$core$String$fromInt(id_) + '.png'),
+				polygon: polygon_,
+				width: w_,
+				x: x_,
+				y: y_
+			};
+		}),
 	A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$int),
 	A2($elm$json$Json$Decode$field, 'x', $elm$json$Json$Decode$float),
 	A2($elm$json$Json$Decode$field, 'y', $elm$json$Json$Decode$float),
@@ -6726,8 +6745,13 @@ var $author$project$Main$mergeBricks = F3(
 				url: '/api/merge'
 			});
 	});
+var $elm$core$Basics$min = F2(
+	function (x, y) {
+		return (_Utils_cmp(x, y) < 0) ? x : y;
+	});
 var $elm$file$File$name = _File_name;
 var $elm$core$Basics$neq = _Utils_notEqual;
+var $elm$core$Platform$Cmd$none = $elm$core$Platform$Cmd$batch(_List_Nil);
 var $elm$core$Basics$not = _Basics_not;
 var $elm$json$Json$Encode$null = _Json_encodeNull;
 var $elm$core$List$maximum = function (list) {
@@ -6740,10 +6764,6 @@ var $elm$core$List$maximum = function (list) {
 		return $elm$core$Maybe$Nothing;
 	}
 };
-var $elm$core$Basics$min = F2(
-	function (x, y) {
-		return (_Utils_cmp(x, y) < 0) ? x : y;
-	});
 var $elm$core$List$minimum = function (list) {
 	if (list.b) {
 		var x = list.a;
@@ -6807,7 +6827,16 @@ var $author$project$Main$recalcPieceBbox = F2(
 				var y2 = _v1.c.a;
 				return _Utils_update(
 					piece,
-					{bricks: newBrickRefs, height: y2 - y, polygon: _List_Nil, width: x2 - x, x: x, y: y});
+					{
+						bricks: newBrickRefs,
+						height: y2 - y,
+						imgUrl: '/api/piece/' + ($elm$core$String$fromInt(piece.id) + '.png'),
+						outlineUrl: '/api/piece_outline/' + ($elm$core$String$fromInt(piece.id) + '.png'),
+						polygon: _List_Nil,
+						width: x2 - x,
+						x: x,
+						y: y
+					});
 			} else {
 				return piece;
 			}
@@ -6857,79 +6886,27 @@ var $author$project$Main$recomputePiecePolygons = function (pieces) {
 			url: '/api/merge'
 		});
 };
-var $elm$core$Dict$foldl = F3(
-	function (func, acc, dict) {
-		foldl:
-		while (true) {
-			if (dict.$ === 'RBEmpty_elm_builtin') {
-				return acc;
-			} else {
-				var key = dict.b;
-				var value = dict.c;
-				var left = dict.d;
-				var right = dict.e;
-				var $temp$func = func,
-					$temp$acc = A3(
-					func,
-					key,
-					value,
-					A3($elm$core$Dict$foldl, func, acc, left)),
-					$temp$dict = right;
-				func = $temp$func;
-				acc = $temp$acc;
-				dict = $temp$dict;
-				continue foldl;
-			}
-		}
-	});
-var $elm$core$Dict$union = F2(
-	function (t1, t2) {
-		return A3($elm$core$Dict$foldl, $elm$core$Dict$insert, t2, t1);
-	});
-var $author$project$Main$GotUploadResponse = function (a) {
-	return {$: 'GotUploadResponse', a: a};
-};
-var $elm$http$Http$filePart = _Http_pair;
-var $elm$http$Http$multipartBody = function (parts) {
-	return A2(
-		_Http_pair,
-		'',
-		_Http_toFormData(parts));
-};
-var $author$project$Main$uploadTif = function (file) {
-	return $elm$http$Http$post(
-		{
-			body: $elm$http$Http$multipartBody(
-				_List_fromArray(
-					[
-						A2($elm$http$Http$filePart, 'file', file)
-					])),
-			expect: A2(
-				$elm$http$Http$expectJson,
-				$author$project$Main$GotUploadResponse,
-				A2($elm$json$Json$Decode$field, 'path', $elm$json$Json$Decode$string)),
-			url: '/api/upload_tif'
-		});
-};
-var $elm$core$Maybe$withDefault = F2(
-	function (_default, maybe) {
-		if (maybe.$ === 'Just') {
-			var value = maybe.a;
-			return value;
-		} else {
-			return _default;
-		}
-	});
 var $author$project$Main$update = F2(
 	function (msg, model) {
 		switch (msg.$) {
+			case 'GotFileList':
+				if (msg.a.$ === 'Ok') {
+					var files = msg.a.a;
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{pdfFiles: files}),
+						$elm$core$Platform$Cmd$none);
+				} else {
+					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
+				}
 			case 'PickFile':
 				return _Utils_Tuple2(
 					model,
 					A2(
 						$elm$file$File$Select$file,
 						_List_fromArray(
-							['.tif', 'image/tiff']),
+							['.pdf', 'application/pdf']),
 						$author$project$Main$FileSelected));
 			case 'FileSelected':
 				var file = msg.a;
@@ -6937,13 +6914,14 @@ var $author$project$Main$update = F2(
 					_Utils_update(
 						model,
 						{
+							appMode: $author$project$Main$ModeInit,
 							editBrickIds: _List_Nil,
 							editMode: false,
 							editOriginalBrickIds: _List_Nil,
 							generateState: $author$project$Main$NotGenerated,
-							loadState: $author$project$Main$Uploading,
+							loadState: $author$project$Main$Loading,
 							nextWaveId: 1,
-							pieceImages: $elm$core$Dict$empty,
+							pieceGeneration: 0,
 							pieces: _List_Nil,
 							recomputing: false,
 							selectedFileName: $elm$file$File$name(file),
@@ -6951,24 +6929,23 @@ var $author$project$Main$update = F2(
 							selectedWaveId: $elm$core$Maybe$Nothing,
 							waves: _List_Nil
 						}),
-					$author$project$Main$uploadTif(file));
-			case 'GotUploadResponse':
-				if (msg.a.$ === 'Ok') {
-					var path = msg.a.a;
-					return _Utils_Tuple2(
-						_Utils_update(
-							model,
-							{loadState: $author$project$Main$Loading}),
-						$author$project$Main$loadTif(path));
-				} else {
-					return _Utils_Tuple2(
-						_Utils_update(
-							model,
-							{
-								loadState: $author$project$Main$LoadError('Upload failed')
-							}),
-						$elm$core$Platform$Cmd$none);
-				}
+					A2(
+						$author$project$Main$loadPdf,
+						'in/' + $elm$file$File$name(file),
+						model.viewportHeight));
+			case 'Reset':
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{appMode: $author$project$Main$ModeInit, editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, generateState: $author$project$Main$NotGenerated, loadState: $author$project$Main$Idle, nextWaveId: 1, pieceGeneration: 0, pieces: _List_Nil, recomputing: false, selectedFileName: '', selectedPieceId: $elm$core$Maybe$Nothing, selectedWaveId: $elm$core$Maybe$Nothing, waves: _List_Nil}),
+					$author$project$Main$fetchPdfList);
+			case 'LoadFile':
+				var path = msg.a;
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{appMode: $author$project$Main$ModeInit, editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, generateState: $author$project$Main$NotGenerated, loadState: $author$project$Main$Loading, nextWaveId: 1, pieceGeneration: 0, pieces: _List_Nil, recomputing: false, selectedFileName: path, selectedPieceId: $elm$core$Maybe$Nothing, selectedWaveId: $elm$core$Maybe$Nothing, waves: _List_Nil}),
+					A2($author$project$Main$loadPdf, path, model.viewportHeight));
 			case 'GotLoadResponse':
 				if (msg.a.$ === 'Ok') {
 					var response = msg.a.a;
@@ -6976,6 +6953,7 @@ var $author$project$Main$update = F2(
 						_Utils_update(
 							model,
 							{
+								appMode: $author$project$Main$ModePdf,
 								bricksById: $elm$core$Dict$fromList(
 									A2(
 										$elm$core$List$map,
@@ -7048,7 +7026,7 @@ var $author$project$Main$update = F2(
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
-							{editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, generateState: $author$project$Main$Compositing, nextWaveId: 1, pieceImages: $elm$core$Dict$empty, pieces: _List_Nil, recomputing: false, selectedPieceId: $elm$core$Maybe$Nothing, selectedWaveId: $elm$core$Maybe$Nothing, waves: _List_Nil}),
+							{editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, generateState: $author$project$Main$Compositing, nextWaveId: 1, pieces: _List_Nil, recomputing: false, selectedPieceId: $elm$core$Maybe$Nothing, selectedWaveId: $elm$core$Maybe$Nothing, waves: _List_Nil}),
 						A3($author$project$Main$mergeBricks, model.targetCount, model.minBorder, model.seed));
 				} else {
 					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
@@ -7059,46 +7037,53 @@ var $author$project$Main$update = F2(
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
-							{pieces: response.pieces}),
-						$author$project$Main$compositePieces(
-							$author$project$Main$encodePieceList(response.pieces)));
+							{appMode: $author$project$Main$ModePieces, generateState: $author$project$Main$Generated, pieceGeneration: model.pieceGeneration + 1, pieces: response.pieces, recomputing: false}),
+						A2($elm$core$Task$perform, $author$project$Main$GotViewport, $elm$browser$Browser$Dom$getViewport));
 				} else {
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
-							{generateState: $author$project$Main$NotGenerated}),
+							{generateState: $author$project$Main$NotGenerated, recomputing: false}),
 						$elm$core$Platform$Cmd$none);
 				}
-			case 'GotPieceImages':
-				var val = msg.a;
-				var _v5 = A2($elm$json$Json$Decode$decodeValue, $author$project$Main$decodePieceImages, val);
-				if (_v5.$ === 'Ok') {
-					var images = _v5.a;
-					return _Utils_Tuple2(
-						_Utils_update(
-							model,
-							{
-								generateState: $author$project$Main$Generated,
-								pieceImages: A2(
-									$elm$core$Dict$union,
-									$elm$core$Dict$fromList(images),
-									model.pieceImages)
-							}),
-						$elm$core$Platform$Cmd$none);
-				} else {
-					return _Utils_Tuple2(
-						_Utils_update(
-							model,
-							{generateState: $author$project$Main$NotGenerated}),
-						$elm$core$Platform$Cmd$none);
-				}
-			case 'SetViewMode':
+			case 'SetAppMode':
 				var mode = msg.a;
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{viewMode: mode}),
-					$elm$core$Platform$Cmd$none);
+				var baseModel = _Utils_update(
+					model,
+					{appMode: mode});
+				if (_Utils_eq(mode, $author$project$Main$ModeWaves)) {
+					var _v5 = model.waves;
+					if (!_v5.b) {
+						var newWave = {
+							id: model.nextWaveId,
+							locked: false,
+							name: 'Wave ' + $elm$core$String$fromInt(model.nextWaveId),
+							pieceIds: _List_Nil,
+							visible: true
+						};
+						return _Utils_Tuple2(
+							_Utils_update(
+								baseModel,
+								{
+									nextWaveId: model.nextWaveId + 1,
+									selectedWaveId: $elm$core$Maybe$Just(newWave.id),
+									waves: _List_fromArray(
+										[newWave])
+								}),
+							$elm$core$Platform$Cmd$none);
+					} else {
+						var first = _v5.a;
+						return _Utils_Tuple2(
+							_Utils_update(
+								baseModel,
+								{
+									selectedWaveId: _Utils_eq(baseModel.selectedWaveId, $elm$core$Maybe$Nothing) ? $elm$core$Maybe$Just(first.id) : baseModel.selectedWaveId
+								}),
+							A2($elm$core$Task$perform, $author$project$Main$GotViewport, $elm$browser$Browser$Dom$getViewport));
+					}
+				} else {
+					return _Utils_Tuple2(baseModel, $elm$core$Platform$Cmd$none);
+				}
 			case 'ToggleOutlines':
 				var checked = msg.a;
 				return _Utils_Tuple2(
@@ -7167,6 +7152,30 @@ var $author$project$Main$update = F2(
 								$elm$core$Maybe$Just(pid)) ? $elm$core$Maybe$Nothing : $elm$core$Maybe$Just(pid)
 						}),
 					$elm$core$Platform$Cmd$none);
+			case 'SelectAndEdit':
+				var pid = msg.a;
+				var _v6 = $elm$core$List$head(
+					A2(
+						$elm$core$List$filter,
+						function (p) {
+							return _Utils_eq(p.id, pid);
+						},
+						model.pieces));
+				if (_v6.$ === 'Nothing') {
+					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
+				} else {
+					var piece = _v6.a;
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{
+								editBrickIds: piece.brickIds,
+								editMode: true,
+								editOriginalBrickIds: piece.brickIds,
+								selectedPieceId: $elm$core$Maybe$Just(pid)
+							}),
+						$elm$core$Platform$Cmd$none);
+				}
 			case 'SelectWave':
 				var mwid = msg.a;
 				return _Utils_Tuple2(
@@ -7176,11 +7185,11 @@ var $author$project$Main$update = F2(
 					$elm$core$Platform$Cmd$none);
 			case 'AssignPieceToWave':
 				var pid = msg.a;
-				var _v6 = model.selectedWaveId;
-				if (_v6.$ === 'Nothing') {
+				var _v7 = model.selectedWaveId;
+				if (_v7.$ === 'Nothing') {
 					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 				} else {
-					var wid = _v6.a;
+					var wid = _v7.a;
 					var targetWave = $elm$core$List$head(
 						A2(
 							$elm$core$List$filter,
@@ -7289,8 +7298,8 @@ var $author$project$Main$update = F2(
 					$elm$core$List$head(
 						A2(
 							$elm$core$List$filter,
-							function (_v8) {
-								var w = _v8.b;
+							function (_v9) {
+								var w = _v9.b;
 								return _Utils_eq(w.id, wid);
 							},
 							indexed)));
@@ -7362,22 +7371,22 @@ var $author$project$Main$update = F2(
 						{selectedWaveId: newSelectedWaveId, waves: renumbered}),
 					$elm$core$Platform$Cmd$none);
 			case 'StartEdit':
-				var _v9 = model.selectedPieceId;
-				if (_v9.$ === 'Nothing') {
+				var _v10 = model.selectedPieceId;
+				if (_v10.$ === 'Nothing') {
 					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 				} else {
-					var pid = _v9.a;
-					var _v10 = $elm$core$List$head(
+					var pid = _v10.a;
+					var _v11 = $elm$core$List$head(
 						A2(
 							$elm$core$List$filter,
 							function (p) {
 								return _Utils_eq(p.id, pid);
 							},
 							model.pieces));
-					if (_v10.$ === 'Nothing') {
+					if (_v11.$ === 'Nothing') {
 						return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 					} else {
-						var piece = _v10.a;
+						var piece = _v11.a;
 						return _Utils_Tuple2(
 							_Utils_update(
 								model,
@@ -7402,15 +7411,15 @@ var $author$project$Main$update = F2(
 						{editBrickIds: newList}),
 					$elm$core$Platform$Cmd$none);
 			case 'SaveEdit':
-				var _v11 = model.selectedPieceId;
-				if (_v11.$ === 'Nothing') {
+				var _v12 = model.selectedPieceId;
+				if (_v12.$ === 'Nothing') {
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
 							{editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil}),
 						$elm$core$Platform$Cmd$none);
 				} else {
-					var editedPieceId = _v11.a;
+					var editedPieceId = _v12.a;
 					var newBrickIds = model.editBrickIds;
 					var removedBrickIds = A2(
 						$elm$core$Maybe$withDefault,
@@ -7463,9 +7472,10 @@ var $author$project$Main$update = F2(
 						$elm$core$List$indexedMap,
 						F2(
 							function (i, bid) {
-								var _v12 = A2($elm$core$Dict$get, bid, model.bricksById);
-								if (_v12.$ === 'Just') {
-									var brick = _v12.a;
+								var newId = (maxId + i) + 1;
+								var _v13 = A2($elm$core$Dict$get, bid, model.bricksById);
+								if (_v13.$ === 'Just') {
+									var brick = _v13.a;
 									return {
 										brickIds: _List_fromArray(
 											[bid]),
@@ -7474,7 +7484,9 @@ var $author$project$Main$update = F2(
 												A5($author$project$Main$BrickRef, bid, brick.x, brick.y, brick.width, brick.height)
 											]),
 										height: brick.height,
-										id: (maxId + i) + 1,
+										id: newId,
+										imgUrl: '/api/piece/' + ($elm$core$String$fromInt(newId) + '.png'),
+										outlineUrl: '/api/piece_outline/' + ($elm$core$String$fromInt(newId) + '.png'),
 										polygon: _List_Nil,
 										width: brick.width,
 										x: brick.x,
@@ -7486,7 +7498,9 @@ var $author$project$Main$update = F2(
 											[bid]),
 										bricks: _List_Nil,
 										height: 0,
-										id: (maxId + i) + 1,
+										id: newId,
+										imgUrl: '/api/piece/' + ($elm$core$String$fromInt(newId) + '.png'),
+										outlineUrl: '/api/piece_outline/' + ($elm$core$String$fromInt(newId) + '.png'),
 										polygon: _List_Nil,
 										width: 0,
 										x: 0,
@@ -7538,13 +7552,7 @@ var $author$project$Main$update = F2(
 								selectedPieceId: $elm$core$Maybe$Just(editedPieceId),
 								waves: updatedWaves
 							}),
-						$elm$core$Platform$Cmd$batch(
-							_List_fromArray(
-								[
-									$author$project$Main$compositePieces(
-									$author$project$Main$encodePieceList(allPieces)),
-									$author$project$Main$recomputePiecePolygons(allPieces)
-								])));
+						$author$project$Main$recomputePiecePolygons(allPieces));
 				}
 			case 'CancelEdit':
 				return _Utils_Tuple2(
@@ -7559,9 +7567,9 @@ var $author$project$Main$update = F2(
 					var updatedPieces = A2(
 						$elm$core$List$map,
 						function (p) {
-							var _v13 = A2($elm$core$Dict$get, p.id, polyDict);
-							if (_v13.$ === 'Just') {
-								var poly = _v13.a;
+							var _v14 = A2($elm$core$Dict$get, p.id, polyDict);
+							if (_v14.$ === 'Just') {
+								var poly = _v14.a;
 								return _Utils_update(
 									p,
 									{polygon: poly});
@@ -7573,7 +7581,7 @@ var $author$project$Main$update = F2(
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
-							{pieces: updatedPieces, recomputing: false}),
+							{pieceGeneration: model.pieceGeneration + 1, pieces: updatedPieces, recomputing: false}),
 						$elm$core$Platform$Cmd$none);
 				} else {
 					return _Utils_Tuple2(
@@ -7582,12 +7590,19 @@ var $author$project$Main$update = F2(
 							{recomputing: false}),
 						$elm$core$Platform$Cmd$none);
 				}
+			case 'SetExportCanvasHeight':
+				var s = msg.a;
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{exportCanvasHeight: s}),
+					$elm$core$Platform$Cmd$none);
 			case 'RequestExport':
 				var wavesJson = A2(
 					$elm$json$Json$Encode$list,
-					function (_v15) {
-						var idx = _v15.a;
-						var wv = _v15.b;
+					function (_v16) {
+						var idx = _v16.a;
+						var wv = _v16.b;
 						return $elm$json$Json$Encode$object(
 							_List_fromArray(
 								[
@@ -7610,9 +7625,9 @@ var $author$project$Main$update = F2(
 									'points',
 									A2(
 										$elm$json$Json$Encode$list,
-										function (_v14) {
-											var x = _v14.a;
-											var y = _v14.b;
+										function (_v15) {
+											var x = _v15.a;
+											var y = _v15.b;
 											return A2(
 												$elm$json$Json$Encode$list,
 												$elm$json$Json$Encode$float,
@@ -7623,11 +7638,18 @@ var $author$project$Main$update = F2(
 								]));
 					},
 					model.pieces);
+				var exportHeight = A2(
+					$elm$core$Maybe$withDefault,
+					900,
+					$elm$core$String$toInt(model.exportCanvasHeight));
 				var payload = $elm$json$Json$Encode$object(
 					_List_fromArray(
 						[
 							_Utils_Tuple2('waves', wavesJson),
 							_Utils_Tuple2('outlines', outlinesJson),
+							_Utils_Tuple2(
+							'export_canvas_height',
+							$elm$json$Json$Encode$int(exportHeight)),
 							_Utils_Tuple2(
 							'placement',
 							$elm$json$Json$Encode$object(
@@ -7731,15 +7753,15 @@ var $author$project$Main$update = F2(
 					$elm$core$Platform$Cmd$none);
 			case 'DropOnWave':
 				var targetWaveId = msg.a;
-				var _v16 = model.draggingPieceId;
-				if (_v16.$ === 'Nothing') {
+				var _v17 = model.draggingPieceId;
+				if (_v17.$ === 'Nothing') {
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
 							{dragInsertBeforeId: $elm$core$Maybe$Nothing, dragOverWaveId: $elm$core$Maybe$Nothing}),
 						$elm$core$Platform$Cmd$none);
 				} else {
-					var pid = _v16.a;
+					var pid = _v17.a;
 					var targetIsLocked = function () {
 						if (targetWaveId.$ === 'Just') {
 							var wid = targetWaveId.a;
@@ -7831,6 +7853,27 @@ var $author$project$Main$update = F2(
 								model.waves)
 						}),
 					$elm$core$Platform$Cmd$none);
+			case 'GotViewport':
+				var viewport = msg.a;
+				var vh = viewport.viewport.height;
+				var _v21 = model.loadState;
+				if (_v21.$ === 'Loaded') {
+					var response = _v21.a;
+					var svgH = response.canvas.height + 20;
+					var availableH = ((vh - 48) * 0.88) - 32;
+					var scale = A2($elm$core$Basics$min, 1.0, availableH / svgH);
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{svgScale: scale, viewportHeight: vh}),
+						$elm$core$Platform$Cmd$none);
+				} else {
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{viewportHeight: vh}),
+						$elm$core$Platform$Cmd$none);
+				}
 			default:
 				return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 		}
@@ -7846,6 +7889,41 @@ var $elm$html$Html$Attributes$class = $elm$html$Html$Attributes$stringProperty('
 var $elm$html$Html$div = _VirtualDom_node('div');
 var $elm$virtual_dom$VirtualDom$text = _VirtualDom_text;
 var $elm$html$Html$text = $elm$virtual_dom$VirtualDom$text;
+var $author$project$Main$viewBodyOverlay = function (model) {
+	var msg = _Utils_eq(model.loadState, $author$project$Main$Loading) ? $elm$core$Maybe$Just('Parsing PDF\u2026') : (_Utils_eq(model.generateState, $author$project$Main$Compositing) ? $elm$core$Maybe$Just('Generating puzzle\u2026') : (model.recomputing ? $elm$core$Maybe$Just('Updating pieces\u2026') : (model.exporting ? $elm$core$Maybe$Just('Exporting\u2026') : $elm$core$Maybe$Nothing)));
+	if (msg.$ === 'Nothing') {
+		return $elm$html$Html$text('');
+	} else {
+		var label = msg.a;
+		return A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('body-overlay')
+				]),
+			_List_fromArray(
+				[
+					A2(
+					$elm$html$Html$div,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('overlay-spinner')
+						]),
+					_List_Nil),
+					A2(
+					$elm$html$Html$div,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('overlay-label')
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text(label)
+						]))
+				]));
+	}
+};
+var $author$project$Main$ModeBlueprint = {$: 'ModeBlueprint'};
 var $elm$virtual_dom$VirtualDom$attribute = F2(
 	function (key, value) {
 		return A2(
@@ -7860,18 +7938,15 @@ var $elm$svg$Svg$trustedNode = _VirtualDom_nodeNS('http://www.w3.org/2000/svg');
 var $elm$svg$Svg$g = $elm$svg$Svg$trustedNode('g');
 var $elm$svg$Svg$Attributes$height = _VirtualDom_attribute('height');
 var $elm$svg$Svg$image = $elm$svg$Svg$trustedNode('image');
-var $elm$core$Dict$isEmpty = function (dict) {
-	if (dict.$ === 'RBEmpty_elm_builtin') {
-		return true;
-	} else {
-		return false;
-	}
-};
+var $elm$svg$Svg$Attributes$style = _VirtualDom_attribute('style');
 var $elm$svg$Svg$svg = $elm$svg$Svg$trustedNode('svg');
 var $elm$svg$Svg$Attributes$viewBox = _VirtualDom_attribute('viewBox');
 var $author$project$Main$ToggleBrickInEdit = function (a) {
 	return {$: 'ToggleBrickInEdit', a: a};
 };
+var $elm$svg$Svg$Attributes$fill = _VirtualDom_attribute('fill');
+var $elm$svg$Svg$Attributes$fontSize = _VirtualDom_attribute('font-size');
+var $elm$svg$Svg$Attributes$fontWeight = _VirtualDom_attribute('font-weight');
 var $elm$virtual_dom$VirtualDom$Normal = function (a) {
 	return {$: 'Normal', a: a};
 };
@@ -7889,9 +7964,12 @@ var $elm$html$Html$Events$onClick = function (msg) {
 		'click',
 		$elm$json$Json$Decode$succeed(msg));
 };
+var $elm$svg$Svg$Attributes$opacity = _VirtualDom_attribute('opacity');
 var $elm$svg$Svg$Attributes$points = _VirtualDom_attribute('points');
 var $elm$svg$Svg$polygon = $elm$svg$Svg$trustedNode('polygon');
 var $elm$svg$Svg$rect = $elm$svg$Svg$trustedNode('rect');
+var $elm$svg$Svg$text = $elm$virtual_dom$VirtualDom$text;
+var $elm$svg$Svg$text_ = $elm$svg$Svg$trustedNode('text');
 var $elm$svg$Svg$Attributes$width = _VirtualDom_attribute('width');
 var $elm$svg$Svg$Attributes$x = _VirtualDom_attribute('x');
 var $elm$svg$Svg$Attributes$y = _VirtualDom_attribute('y');
@@ -7919,23 +7997,42 @@ var $author$project$Main$viewBrickEditOverlay = F2(
 				},
 				absPoints));
 		return $elm$core$List$isEmpty(absPoints) ? A2(
-			$elm$svg$Svg$rect,
+			$elm$svg$Svg$g,
+			_List_Nil,
 			_List_fromArray(
 				[
-					$elm$svg$Svg$Attributes$x(
-					$elm$core$String$fromFloat(brick.x)),
-					$elm$svg$Svg$Attributes$y(
-					$elm$core$String$fromFloat(brick.y)),
-					$elm$svg$Svg$Attributes$width(
-					$elm$core$String$fromFloat(brick.width)),
-					$elm$svg$Svg$Attributes$height(
-					$elm$core$String$fromFloat(brick.height)),
-					$elm$svg$Svg$Attributes$class(cls),
-					A2($elm$html$Html$Attributes$attribute, 'vector-effect', 'non-scaling-stroke'),
-					$elm$html$Html$Events$onClick(
-					$author$project$Main$ToggleBrickInEdit(brick.id))
-				]),
-			_List_Nil) : A2(
+					A2(
+					$elm$svg$Svg$rect,
+					_List_fromArray(
+						[
+							$elm$svg$Svg$Attributes$x(
+							$elm$core$String$fromFloat(brick.x)),
+							$elm$svg$Svg$Attributes$y(
+							$elm$core$String$fromFloat(brick.y)),
+							$elm$svg$Svg$Attributes$width('20'),
+							$elm$svg$Svg$Attributes$height('20'),
+							$elm$svg$Svg$Attributes$fill('red'),
+							$elm$svg$Svg$Attributes$opacity('0.8')
+						]),
+					_List_Nil),
+					A2(
+					$elm$svg$Svg$text_,
+					_List_fromArray(
+						[
+							$elm$svg$Svg$Attributes$x(
+							$elm$core$String$fromFloat(brick.x + 2)),
+							$elm$svg$Svg$Attributes$y(
+							$elm$core$String$fromFloat(brick.y + 14)),
+							$elm$svg$Svg$Attributes$fontSize('12'),
+							$elm$svg$Svg$Attributes$fill('white'),
+							$elm$svg$Svg$Attributes$fontWeight('bold')
+						]),
+					_List_fromArray(
+						[
+							$elm$svg$Svg$text(
+							'!' + $elm$core$String$fromInt(brick.id))
+						]))
+				])) : A2(
 			$elm$svg$Svg$polygon,
 			_List_fromArray(
 				[
@@ -7950,7 +8047,6 @@ var $author$project$Main$viewBrickEditOverlay = F2(
 var $author$project$Main$LogBrickClick = function (a) {
 	return {$: 'LogBrickClick', a: a};
 };
-var $elm$svg$Svg$Attributes$fill = _VirtualDom_attribute('fill');
 var $author$project$Main$viewBrickOverlay = function (brick) {
 	var absPoints = A2(
 		$elm$core$List$map,
@@ -7972,108 +8068,67 @@ var $author$project$Main$viewBrickOverlay = function (brick) {
 			},
 			absPoints));
 	return $elm$core$List$isEmpty(absPoints) ? A2(
-		$elm$svg$Svg$rect,
+		$elm$svg$Svg$g,
+		_List_Nil,
 		_List_fromArray(
 			[
-				$elm$svg$Svg$Attributes$x(
-				$elm$core$String$fromFloat(brick.x)),
-				$elm$svg$Svg$Attributes$y(
-				$elm$core$String$fromFloat(brick.y)),
-				$elm$svg$Svg$Attributes$width(
-				$elm$core$String$fromFloat(brick.width)),
-				$elm$svg$Svg$Attributes$height(
-				$elm$core$String$fromFloat(brick.height)),
-				$elm$svg$Svg$Attributes$fill('transparent'),
-				A2($elm$html$Html$Attributes$attribute, 'vector-effect', 'non-scaling-stroke'),
-				$elm$svg$Svg$Attributes$class('brick-overlay'),
-				$elm$html$Html$Events$onClick(
-				$author$project$Main$LogBrickClick(brick.id))
-			]),
-		_List_Nil) : A2(
-		$elm$svg$Svg$polygon,
-		_List_fromArray(
-			[
-				$elm$svg$Svg$Attributes$points(pointsAttr),
-				$elm$svg$Svg$Attributes$fill('transparent'),
-				A2($elm$html$Html$Attributes$attribute, 'vector-effect', 'non-scaling-stroke'),
-				$elm$svg$Svg$Attributes$class('brick-overlay'),
-				$elm$html$Html$Events$onClick(
-				$author$project$Main$LogBrickClick(brick.id))
-			]),
-		_List_Nil);
-};
-var $elm$svg$Svg$Attributes$stroke = _VirtualDom_attribute('stroke');
-var $elm$svg$Svg$Attributes$strokeLinejoin = _VirtualDom_attribute('stroke-linejoin');
-var $elm$svg$Svg$Attributes$strokeWidth = _VirtualDom_attribute('stroke-width');
-var $author$project$Main$viewBrickPath = function (brick) {
-	var absPoints = A2(
-		$elm$core$List$map,
-		function (_v1) {
-			var x = _v1.a;
-			var y = _v1.b;
-			return _Utils_Tuple2(x + brick.x, y + brick.y);
-		},
-		brick.polygon);
-	var pointsAttr = A2(
-		$elm$core$String$join,
-		' ',
-		A2(
-			$elm$core$List$map,
-			function (_v0) {
-				var x = _v0.a;
-				var y = _v0.b;
-				return $elm$core$String$fromFloat(x) + (',' + $elm$core$String$fromFloat(y));
-			},
-			absPoints));
-	return $elm$core$List$isEmpty(absPoints) ? A2(
-		$elm$svg$Svg$rect,
-		_List_fromArray(
-			[
-				$elm$svg$Svg$Attributes$x(
-				$elm$core$String$fromFloat(brick.x)),
-				$elm$svg$Svg$Attributes$y(
-				$elm$core$String$fromFloat(brick.y)),
-				$elm$svg$Svg$Attributes$width(
-				$elm$core$String$fromFloat(brick.width)),
-				$elm$svg$Svg$Attributes$height(
-				$elm$core$String$fromFloat(brick.height)),
-				$elm$svg$Svg$Attributes$fill('#2a5da8'),
-				$elm$svg$Svg$Attributes$stroke('white'),
-				$elm$svg$Svg$Attributes$strokeWidth('4'),
-				A2($elm$html$Html$Attributes$attribute, 'vector-effect', 'non-scaling-stroke')
-			]),
-		_List_Nil) : A2(
-		$elm$svg$Svg$polygon,
-		_List_fromArray(
-			[
-				$elm$svg$Svg$Attributes$points(pointsAttr),
-				$elm$svg$Svg$Attributes$fill('#2a5da8'),
-				$elm$svg$Svg$Attributes$stroke('white'),
-				$elm$svg$Svg$Attributes$strokeWidth('4'),
-				$elm$svg$Svg$Attributes$strokeLinejoin('round'),
-				A2($elm$html$Html$Attributes$attribute, 'stroke-linecap', 'round'),
-				A2($elm$html$Html$Attributes$attribute, 'paint-order', 'fill stroke'),
-				A2($elm$html$Html$Attributes$attribute, 'vector-effect', 'non-scaling-stroke'),
 				A2(
-				$elm$html$Html$Attributes$attribute,
-				'data-brick-id',
-				$elm$core$String$fromInt(brick.id)),
-				$elm$svg$Svg$Attributes$class('brick-path')
+				$elm$svg$Svg$rect,
+				_List_fromArray(
+					[
+						$elm$svg$Svg$Attributes$x(
+						$elm$core$String$fromFloat(brick.x)),
+						$elm$svg$Svg$Attributes$y(
+						$elm$core$String$fromFloat(brick.y)),
+						$elm$svg$Svg$Attributes$width('20'),
+						$elm$svg$Svg$Attributes$height('20'),
+						$elm$svg$Svg$Attributes$fill('red'),
+						$elm$svg$Svg$Attributes$opacity('0.8')
+					]),
+				_List_Nil),
+				A2(
+				$elm$svg$Svg$text_,
+				_List_fromArray(
+					[
+						$elm$svg$Svg$Attributes$x(
+						$elm$core$String$fromFloat(brick.x + 2)),
+						$elm$svg$Svg$Attributes$y(
+						$elm$core$String$fromFloat(brick.y + 14)),
+						$elm$svg$Svg$Attributes$fontSize('12'),
+						$elm$svg$Svg$Attributes$fill('white'),
+						$elm$svg$Svg$Attributes$fontWeight('bold')
+					]),
+				_List_fromArray(
+					[
+						$elm$svg$Svg$text(
+						'!' + $elm$core$String$fromInt(brick.id))
+					]))
+			])) : A2(
+		$elm$svg$Svg$polygon,
+		_List_fromArray(
+			[
+				$elm$svg$Svg$Attributes$points(pointsAttr),
+				$elm$svg$Svg$Attributes$fill('transparent'),
+				A2($elm$html$Html$Attributes$attribute, 'vector-effect', 'non-scaling-stroke'),
+				$elm$svg$Svg$Attributes$class('brick-overlay'),
+				$elm$html$Html$Events$onClick(
+				$author$project$Main$LogBrickClick(brick.id))
 			]),
 		_List_Nil);
 };
-var $author$project$Main$ViewBlueprint = {$: 'ViewBlueprint'};
 var $elm$svg$Svg$line = $elm$svg$Svg$trustedNode('line');
+var $elm$svg$Svg$Attributes$stroke = _VirtualDom_attribute('stroke');
+var $elm$svg$Svg$Attributes$strokeWidth = _VirtualDom_attribute('stroke-width');
 var $elm$svg$Svg$Attributes$x1 = _VirtualDom_attribute('x1');
 var $elm$svg$Svg$Attributes$x2 = _VirtualDom_attribute('x2');
 var $elm$svg$Svg$Attributes$y1 = _VirtualDom_attribute('y1');
 var $elm$svg$Svg$Attributes$y2 = _VirtualDom_attribute('y2');
 var $author$project$Main$viewGrid = F3(
-	function (cw, ch, viewMode) {
+	function (cw, ch, isBlueprint) {
 		var gridStep = 211.0;
 		var numH = $elm$core$Basics$floor(ch / gridStep);
 		var numV = $elm$core$Basics$floor(cw / gridStep);
-		var color = _Utils_eq(viewMode, $author$project$Main$ViewBlueprint) ? '#ff0000' : '#e0a050';
+		var color = isBlueprint ? '#ff0000' : '#e0a050';
 		var hLines = A2(
 			$elm$core$List$map,
 			function (i) {
@@ -8120,6 +8175,7 @@ var $author$project$Main$viewGrid = F3(
 			A2($elm$core$List$range, 1, numV));
 		return _Utils_ap(vLines, hLines);
 	});
+var $elm$svg$Svg$Attributes$strokeLinejoin = _VirtualDom_attribute('stroke-linejoin');
 var $author$project$Main$viewPieceBlueprintPath = function (piece) {
 	if ($elm$core$List$isEmpty(piece.polygon)) {
 		return A2($elm$svg$Svg$g, _List_Nil, _List_Nil);
@@ -8153,44 +8209,25 @@ var $author$project$Main$viewPieceBlueprintPath = function (piece) {
 	}
 };
 var $author$project$Main$viewPieceImage = F2(
-	function (images, piece) {
-		var _v0 = A2($elm$core$Dict$get, piece.id, images);
-		if (_v0.$ === 'Just') {
-			var dataUrl = _v0.a;
-			return A2(
-				$elm$svg$Svg$image,
-				_List_fromArray(
-					[
-						$elm$svg$Svg$Attributes$x(
-						$elm$core$String$fromFloat(piece.x)),
-						$elm$svg$Svg$Attributes$y(
-						$elm$core$String$fromFloat(piece.y)),
-						$elm$svg$Svg$Attributes$width(
-						$elm$core$String$fromFloat(piece.width)),
-						$elm$svg$Svg$Attributes$height(
-						$elm$core$String$fromFloat(piece.height)),
-						A2($elm$html$Html$Attributes$attribute, 'href', dataUrl)
-					]),
-				_List_Nil);
-		} else {
-			return A2(
-				$elm$svg$Svg$rect,
-				_List_fromArray(
-					[
-						$elm$svg$Svg$Attributes$x(
-						$elm$core$String$fromFloat(piece.x)),
-						$elm$svg$Svg$Attributes$y(
-						$elm$core$String$fromFloat(piece.y)),
-						$elm$svg$Svg$Attributes$width(
-						$elm$core$String$fromFloat(piece.width)),
-						$elm$svg$Svg$Attributes$height(
-						$elm$core$String$fromFloat(piece.height)),
-						$elm$svg$Svg$Attributes$fill('rgba(255,100,50,0.2)'),
-						$elm$svg$Svg$Attributes$stroke('#f64'),
-						$elm$svg$Svg$Attributes$strokeWidth('1')
-					]),
-				_List_Nil);
-		}
+	function (generation, piece) {
+		return A2(
+			$elm$svg$Svg$image,
+			_List_fromArray(
+				[
+					$elm$svg$Svg$Attributes$x(
+					$elm$core$String$fromFloat(piece.x)),
+					$elm$svg$Svg$Attributes$y(
+					$elm$core$String$fromFloat(piece.y)),
+					$elm$svg$Svg$Attributes$width(
+					$elm$core$String$fromFloat(piece.width)),
+					$elm$svg$Svg$Attributes$height(
+					$elm$core$String$fromFloat(piece.height)),
+					A2(
+					$elm$html$Html$Attributes$attribute,
+					'href',
+					piece.imgUrl + ('?v=' + $elm$core$String$fromInt(generation)))
+				]),
+			_List_Nil);
 	});
 var $author$project$Main$viewPieceOutline = function (piece) {
 	if ($elm$core$List$isEmpty(piece.polygon)) {
@@ -8225,6 +8262,9 @@ var $author$project$Main$viewPieceOutline = function (piece) {
 var $author$project$Main$AssignPieceToWave = function (a) {
 	return {$: 'AssignPieceToWave', a: a};
 };
+var $author$project$Main$SelectAndEdit = function (a) {
+	return {$: 'SelectAndEdit', a: a};
+};
 var $author$project$Main$SelectPiece = function (a) {
 	return {$: 'SelectPiece', a: a};
 };
@@ -8248,8 +8288,8 @@ var $author$project$Main$waveColorClass = function (idx) {
 	return 'wc-' + $elm$core$String$fromInt(
 		A2($elm$core$Basics$modBy, 7, idx));
 };
-var $author$project$Main$viewPieceOverlay = F5(
-	function (hoveredId, selectedId, selectedWaveId, waves, piece) {
+var $author$project$Main$viewPieceOverlay = F6(
+	function (appMode, hoveredId, selectedId, selectedWaveId, waves, piece) {
 		var maybePieceWaveClass = A2(
 			$elm$core$Maybe$map,
 			function (_v2) {
@@ -8284,7 +8324,7 @@ var $author$project$Main$viewPieceOverlay = F5(
 						isHov ? 'hovered' : '',
 						isSel ? 'selected' : ''
 					])));
-		var clickMsg = inAssignMode ? $author$project$Main$AssignPieceToWave(piece.id) : $author$project$Main$SelectPiece(piece.id);
+		var clickMsg = inAssignMode ? $author$project$Main$AssignPieceToWave(piece.id) : (_Utils_eq(appMode, $author$project$Main$ModePieces) ? $author$project$Main$SelectAndEdit(piece.id) : $author$project$Main$SelectPiece(piece.id));
 		if ($elm$core$List$isEmpty(piece.polygon)) {
 			return A2($elm$svg$Svg$g, _List_Nil, _List_Nil);
 		} else {
@@ -8317,10 +8357,9 @@ var $author$project$Main$viewPieceOverlay = F5(
 	});
 var $author$project$Main$viewMainSvg = F2(
 	function (response, model) {
-		var isPieces = _Utils_eq(model.viewMode, $author$project$Main$ViewPieces);
 		var isGenerated = _Utils_eq(model.generateState, $author$project$Main$Generated);
-		var showComposite = isPieces && ((!isGenerated) && response.hasComposite);
-		var showPieceImages = isPieces && (isGenerated && (!$elm$core$Dict$isEmpty(model.pieceImages)));
+		var showComposite = (!isGenerated) && response.hasComposite;
+		var showPieceImages = (_Utils_eq(model.appMode, $author$project$Main$ModePieces) || _Utils_eq(model.appMode, $author$project$Main$ModeWaves)) && (isGenerated && (!$elm$core$List$isEmpty(model.pieces)));
 		var hiddenPieceIds = A2(
 			$elm$core$List$concatMap,
 			function ($) {
@@ -8338,11 +8377,11 @@ var $author$project$Main$viewMainSvg = F2(
 				return !A2($elm$core$List$member, p.id, hiddenPieceIds);
 			},
 			model.pieces);
-		var outlineLayer = ((!model.editMode) && (isGenerated && (model.showOutlines && isPieces))) ? A2($elm$core$List$map, $author$project$Main$viewPieceOutline, visiblePieces) : _List_Nil;
+		var outlineLayer = ((!model.editMode) && (isGenerated && (model.showOutlines && (_Utils_eq(model.appMode, $author$project$Main$ModePieces) || _Utils_eq(model.appMode, $author$project$Main$ModeWaves))))) ? A2($elm$core$List$map, $author$project$Main$viewPieceOutline, visiblePieces) : _List_Nil;
 		var effectiveHoverId = (!_Utils_eq(model.draggingPieceId, $elm$core$Maybe$Nothing)) ? model.draggingPieceId : model.hoveredPieceId;
 		var pieceOverlays = ((!model.editMode) && isGenerated) ? A2(
 			$elm$core$List$map,
-			A4($author$project$Main$viewPieceOverlay, effectiveHoverId, model.selectedPieceId, model.selectedWaveId, model.waves),
+			A5($author$project$Main$viewPieceOverlay, model.appMode, effectiveHoverId, model.selectedPieceId, model.selectedWaveId, model.waves),
 			visiblePieces) : _List_Nil;
 		var editOverlays = model.editMode ? A2(
 			$elm$core$List$map,
@@ -8352,8 +8391,27 @@ var $author$project$Main$viewMainSvg = F2(
 		var w = $elm$core$String$fromFloat(cw);
 		var compositeOverlays = showComposite ? A2($elm$core$List$map, $author$project$Main$viewBrickOverlay, response.bricks) : _List_Nil;
 		var ch = response.canvas.height;
-		var gridLayer = ((!model.editMode) && model.showGrid) ? A3($author$project$Main$viewGrid, cw, ch, model.viewMode) : _List_Nil;
+		var gridLayer = ((!model.editMode) && model.showGrid) ? A3(
+			$author$project$Main$viewGrid,
+			cw,
+			ch,
+			_Utils_eq(model.appMode, $author$project$Main$ModeBlueprint)) : _List_Nil;
 		var h = $elm$core$String$fromFloat(ch);
+		var outlinesPngLayer = ((!model.editMode) && (!isGenerated)) ? _List_fromArray(
+			[
+				A2(
+				$elm$svg$Svg$image,
+				_List_fromArray(
+					[
+						$elm$svg$Svg$Attributes$x('0'),
+						$elm$svg$Svg$Attributes$y('0'),
+						$elm$svg$Svg$Attributes$width(w),
+						$elm$svg$Svg$Attributes$height(h),
+						A2($elm$html$Html$Attributes$attribute, 'href', response.outlinesUrl),
+						$elm$svg$Svg$Attributes$style('pointer-events: none;')
+					]),
+				_List_Nil)
+			]) : _List_Nil;
 		var blueprintLayer = ((!model.editMode) && isGenerated) ? A2($elm$core$List$map, $author$project$Main$viewPieceBlueprintPath, model.pieces) : _List_Nil;
 		var baseLayer = model.editMode ? (response.hasComposite ? _List_fromArray(
 			[
@@ -8370,7 +8428,7 @@ var $author$project$Main$viewMainSvg = F2(
 				_List_Nil)
 			]) : _List_Nil) : (showPieceImages ? A2(
 			$elm$core$List$map,
-			$author$project$Main$viewPieceImage(model.pieceImages),
+			$author$project$Main$viewPieceImage(model.pieceGeneration),
 			visiblePieces) : (showComposite ? _List_fromArray(
 			[
 				A2(
@@ -8384,7 +8442,7 @@ var $author$project$Main$viewMainSvg = F2(
 						A2($elm$html$Html$Attributes$attribute, 'href', '/api/composite.png')
 					]),
 				_List_Nil)
-			]) : (isGenerated ? _List_Nil : A2($elm$core$List$map, $author$project$Main$viewBrickPath, response.bricks))));
+			]) : _List_Nil));
 		return A2(
 			$elm$svg$Svg$svg,
 			_List_fromArray(
@@ -8408,58 +8466,295 @@ var $author$project$Main$viewMainSvg = F2(
 					A2($elm$svg$Svg$g, _List_Nil, compositeOverlays),
 					A2($elm$svg$Svg$g, _List_Nil, outlineLayer),
 					A2($elm$svg$Svg$g, _List_Nil, gridLayer),
-					A2($elm$svg$Svg$g, _List_Nil, pieceOverlays)
+					A2($elm$svg$Svg$g, _List_Nil, pieceOverlays),
+					A2($elm$svg$Svg$g, _List_Nil, outlinesPngLayer)
 				]));
 	});
-var $author$project$Main$viewCanvasArea = function (model) {
+var $author$project$Main$DragEnterWave = function (a) {
+	return {$: 'DragEnterWave', a: a};
+};
+var $author$project$Main$DropOnWave = function (a) {
+	return {$: 'DropOnWave', a: a};
+};
+var $author$project$Main$NoOp = {$: 'NoOp'};
+var $elm$core$Tuple$second = function (_v0) {
+	var y = _v0.b;
+	return y;
+};
+var $elm$html$Html$Attributes$classList = function (classes) {
+	return $elm$html$Html$Attributes$class(
+		A2(
+			$elm$core$String$join,
+			' ',
+			A2(
+				$elm$core$List$map,
+				$elm$core$Tuple$first,
+				A2($elm$core$List$filter, $elm$core$Tuple$second, classes))));
+};
+var $elm$virtual_dom$VirtualDom$MayPreventDefault = function (a) {
+	return {$: 'MayPreventDefault', a: a};
+};
+var $elm$html$Html$Events$preventDefaultOn = F2(
+	function (event, decoder) {
+		return A2(
+			$elm$virtual_dom$VirtualDom$on,
+			event,
+			$elm$virtual_dom$VirtualDom$MayPreventDefault(decoder));
+	});
+var $author$project$Main$DragEnterPiece = function (a) {
+	return {$: 'DragEnterPiece', a: a};
+};
+var $author$project$Main$DragPieceEnd = {$: 'DragPieceEnd'};
+var $author$project$Main$DragPieceStart = function (a) {
+	return {$: 'DragPieceStart', a: a};
+};
+var $elm$html$Html$img = _VirtualDom_node('img');
+var $elm$html$Html$Attributes$src = function (url) {
 	return A2(
-		$elm$html$Html$div,
-		_List_fromArray(
+		$elm$html$Html$Attributes$stringProperty,
+		'src',
+		_VirtualDom_noJavaScriptOrHtmlUri(url));
+};
+var $elm$virtual_dom$VirtualDom$MayStopPropagation = function (a) {
+	return {$: 'MayStopPropagation', a: a};
+};
+var $elm$html$Html$Events$stopPropagationOn = F2(
+	function (event, decoder) {
+		return A2(
+			$elm$virtual_dom$VirtualDom$on,
+			event,
+			$elm$virtual_dom$VirtualDom$MayStopPropagation(decoder));
+	});
+var $elm$virtual_dom$VirtualDom$style = _VirtualDom_style;
+var $elm$html$Html$Attributes$style = $elm$virtual_dom$VirtualDom$style;
+var $author$project$Main$viewWaveTrayThumb = F5(
+	function (piece, isLocked, scale, hoveredId, generation) {
+		var widthCss = $elm$core$String$fromFloat(piece.width * scale) + 'px';
+		var isHovered = _Utils_eq(
+			hoveredId,
+			$elm$core$Maybe$Just(piece.id));
+		var dragAttrs = isLocked ? _List_Nil : _List_fromArray(
 			[
-				$elm$html$Html$Attributes$class('canvas-area')
-			]),
-		function () {
-			var _v0 = model.loadState;
-			if (_v0.$ === 'Loaded') {
-				var response = _v0.a;
-				return _List_fromArray(
+				A2($elm$html$Html$Attributes$attribute, 'draggable', 'true'),
+				A2(
+				$elm$html$Html$Events$on,
+				'dragstart',
+				$elm$json$Json$Decode$succeed(
+					$author$project$Main$DragPieceStart(piece.id))),
+				A2(
+				$elm$html$Html$Events$on,
+				'dragend',
+				$elm$json$Json$Decode$succeed($author$project$Main$DragPieceEnd)),
+				A2(
+				$elm$html$Html$Events$stopPropagationOn,
+				'dragenter',
+				$elm$json$Json$Decode$succeed(
+					_Utils_Tuple2(
+						$author$project$Main$DragEnterPiece(piece.id),
+						true)))
+			]);
+		return A2(
+			$elm$html$Html$div,
+			_Utils_ap(
+				_List_fromArray(
 					[
-						A2($author$project$Main$viewMainSvg, response, model),
-						model.recomputing ? A2(
-						$elm$html$Html$div,
+						$elm$html$Html$Attributes$classList(
 						_List_fromArray(
 							[
-								$elm$html$Html$Attributes$class('canvas-spinner-overlay')
-							]),
-						_List_fromArray(
+								_Utils_Tuple2('wave-tray-thumb', true),
+								_Utils_Tuple2('hovered', isHovered)
+							])),
+						A2($elm$html$Html$Attributes$style, 'width', widthCss),
+						A2(
+						$elm$html$Html$Attributes$style,
+						'aspect-ratio',
+						$elm$core$String$fromFloat(piece.width / piece.height)),
+						$elm$html$Html$Events$onMouseEnter(
+						$author$project$Main$SetHoveredPiece(
+							$elm$core$Maybe$Just(piece.id))),
+						$elm$html$Html$Events$onMouseLeave(
+						$author$project$Main$SetHoveredPiece($elm$core$Maybe$Nothing))
+					]),
+				dragAttrs),
+			_List_fromArray(
+				[
+					A2(
+					$elm$html$Html$img,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$src(
+							piece.imgUrl + ('?v=' + $elm$core$String$fromInt(generation)))
+						]),
+					_List_Nil)
+				]));
+	});
+var $author$project$Main$viewWaveTray = F2(
+	function (model, _v0) {
+		var activeWaveId = model.selectedWaveId;
+		var activeWave = $elm$core$List$head(
+			A2(
+				$elm$core$List$filter,
+				function (w) {
+					return _Utils_eq(
+						$elm$core$Maybe$Just(w.id),
+						activeWaveId);
+				},
+				model.waves));
+		var activeWavePieceIds = A2(
+			$elm$core$Maybe$withDefault,
+			_List_Nil,
+			A2(
+				$elm$core$Maybe$map,
+				function ($) {
+					return $.pieceIds;
+				},
+				activeWave));
+		var isLocked = A2(
+			$elm$core$Maybe$withDefault,
+			false,
+			A2(
+				$elm$core$Maybe$map,
+				function ($) {
+					return $.locked;
+				},
+				activeWave));
+		return A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$classList(
+					_List_fromArray(
+						[
+							_Utils_Tuple2('wave-tray', true),
+							_Utils_Tuple2(
+							'drag-over',
+							(!isLocked) && _Utils_eq(
+								model.dragOverWaveId,
+								$elm$core$Maybe$Just(activeWaveId)))
+						])),
+					A2(
+					$elm$html$Html$Events$preventDefaultOn,
+					'dragover',
+					$elm$json$Json$Decode$succeed(
+						_Utils_Tuple2($author$project$Main$NoOp, true))),
+					A2(
+					$elm$html$Html$Events$on,
+					'dragenter',
+					$elm$json$Json$Decode$succeed(
+						$author$project$Main$DragEnterWave(activeWaveId))),
+					A2(
+					$elm$html$Html$Events$on,
+					'drop',
+					$elm$json$Json$Decode$succeed(
+						$author$project$Main$DropOnWave(activeWaveId)))
+				]),
+			_List_fromArray(
+				[
+					A2(
+					$elm$html$Html$div,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('wave-tray-scroll')
+						]),
+					_Utils_ap(
+						A2(
+							$elm$core$List$concatMap,
+							function (pid) {
+								var thumb = function () {
+									var _v1 = $elm$core$List$head(
+										A2(
+											$elm$core$List$filter,
+											function (p) {
+												return _Utils_eq(p.id, pid);
+											},
+											model.pieces));
+									if (_v1.$ === 'Just') {
+										var piece = _v1.a;
+										return _List_fromArray(
+											[
+												A5($author$project$Main$viewWaveTrayThumb, piece, isLocked, model.svgScale, model.hoveredPieceId, model.pieceGeneration)
+											]);
+									} else {
+										return _List_Nil;
+									}
+								}();
+								var showMarker = (!isLocked) && ((!_Utils_eq(model.draggingPieceId, $elm$core$Maybe$Nothing)) && _Utils_eq(
+									model.dragInsertBeforeId,
+									$elm$core$Maybe$Just(pid)));
+								var marker = showMarker ? _List_fromArray(
+									[
+										A2(
+										$elm$html$Html$div,
+										_List_fromArray(
+											[
+												$elm$html$Html$Attributes$class('drag-insert-marker-v')
+											]),
+										_List_Nil)
+									]) : _List_Nil;
+								return _Utils_ap(marker, thumb);
+							},
+							activeWavePieceIds),
+						((!isLocked) && ((!_Utils_eq(model.draggingPieceId, $elm$core$Maybe$Nothing)) && (_Utils_eq(model.dragInsertBeforeId, $elm$core$Maybe$Nothing) && _Utils_eq(
+							model.dragOverWaveId,
+							$elm$core$Maybe$Just(activeWaveId))))) ? _List_fromArray(
 							[
 								A2(
 								$elm$html$Html$div,
 								_List_fromArray(
 									[
-										$elm$html$Html$Attributes$class('canvas-spinner')
+										$elm$html$Html$Attributes$class('drag-insert-marker-v')
 									]),
 								_List_Nil)
-							])) : $elm$html$Html$text('')
-					]);
-			} else {
-				return _List_fromArray(
+							]) : _List_Nil))
+				]));
+	});
+var $author$project$Main$viewCanvasCol = F2(
+	function (model, response) {
+		return A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('canvas-col')
+				]),
+			_Utils_ap(
+				_List_fromArray(
 					[
 						A2(
 						$elm$html$Html$div,
 						_List_fromArray(
 							[
-								$elm$html$Html$Attributes$class('canvas-info')
+								$elm$html$Html$Attributes$class('canvas-area')
 							]),
 						_List_fromArray(
 							[
-								$elm$html$Html$text('Select a TIF to begin')
+								A2($author$project$Main$viewMainSvg, response, model),
+								model.recomputing ? A2(
+								$elm$html$Html$div,
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$class('canvas-spinner-overlay')
+									]),
+								_List_fromArray(
+									[
+										A2(
+										$elm$html$Html$div,
+										_List_fromArray(
+											[
+												$elm$html$Html$Attributes$class('canvas-spinner')
+											]),
+										_List_Nil)
+									])) : $elm$html$Html$text('')
 							]))
-					]);
-			}
-		}());
+					]),
+				_Utils_eq(model.appMode, $author$project$Main$ModeWaves) ? _List_fromArray(
+					[
+						A2($author$project$Main$viewWaveTray, model, response)
+					]) : _List_Nil));
+	});
+var $author$project$Main$LoadFile = function (a) {
+	return {$: 'LoadFile', a: a};
 };
-var $author$project$Main$RequestExport = {$: 'RequestExport'};
+var $author$project$Main$PickFile = {$: 'PickFile'};
 var $elm$html$Html$button = _VirtualDom_node('button');
 var $elm$json$Json$Encode$bool = _Json_wrap;
 var $elm$html$Html$Attributes$boolProperty = F2(
@@ -8470,9 +8765,216 @@ var $elm$html$Html$Attributes$boolProperty = F2(
 			$elm$json$Json$Encode$bool(bool));
 	});
 var $elm$html$Html$Attributes$disabled = $elm$html$Html$Attributes$boolProperty('disabled');
-var $elm$html$Html$h1 = _VirtualDom_node('h1');
+var $elm$html$Html$span = _VirtualDom_node('span');
+var $author$project$Main$viewFileList = function (model) {
+	var isBusy = _Utils_eq(model.loadState, $author$project$Main$Loading);
+	return A2(
+		$elm$html$Html$div,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('file-list')
+			]),
+		_Utils_ap(
+			_List_fromArray(
+				[
+					A2(
+					$elm$html$Html$button,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('file-entry file-entry-browse'),
+							$elm$html$Html$Events$onClick($author$project$Main$PickFile),
+							$elm$html$Html$Attributes$disabled(isBusy)
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text('Browse…')
+						]))
+				]),
+			$elm$core$List$isEmpty(model.pdfFiles) ? _List_fromArray(
+				[
+					A2(
+					$elm$html$Html$span,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('file-list-empty')
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text('No files in in/')
+						]))
+				]) : A2(
+				$elm$core$List$map,
+				function (f) {
+					return A2(
+						$elm$html$Html$button,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('file-entry'),
+								$elm$html$Html$Events$onClick(
+								$author$project$Main$LoadFile(f.path)),
+								$elm$html$Html$Attributes$disabled(isBusy)
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text(f.name)
+							]));
+				},
+				model.pdfFiles)));
+};
+var $author$project$Main$ToggleGrid = function (a) {
+	return {$: 'ToggleGrid', a: a};
+};
+var $elm$html$Html$Attributes$checked = $elm$html$Html$Attributes$boolProperty('checked');
+var $elm$html$Html$Attributes$for = $elm$html$Html$Attributes$stringProperty('htmlFor');
+var $elm$html$Html$Attributes$id = $elm$html$Html$Attributes$stringProperty('id');
+var $elm$html$Html$input = _VirtualDom_node('input');
+var $elm$html$Html$label = _VirtualDom_node('label');
+var $elm$json$Json$Decode$at = F2(
+	function (fields, decoder) {
+		return A3($elm$core$List$foldr, $elm$json$Json$Decode$field, decoder, fields);
+	});
+var $elm$html$Html$Events$targetChecked = A2(
+	$elm$json$Json$Decode$at,
+	_List_fromArray(
+		['target', 'checked']),
+	$elm$json$Json$Decode$bool);
+var $elm$html$Html$Events$onCheck = function (tagger) {
+	return A2(
+		$elm$html$Html$Events$on,
+		'change',
+		A2($elm$json$Json$Decode$map, tagger, $elm$html$Html$Events$targetChecked));
+};
+var $elm$html$Html$Attributes$type_ = $elm$html$Html$Attributes$stringProperty('type');
+var $author$project$Main$viewBlueprintTools = function (model) {
+	return A2(
+		$elm$html$Html$div,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('tools-pane')
+			]),
+		_List_fromArray(
+			[
+				A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('checkbox-group')
+					]),
+				_List_fromArray(
+					[
+						A2(
+						$elm$html$Html$input,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$type_('checkbox'),
+								$elm$html$Html$Attributes$id('showGrid'),
+								$elm$html$Html$Attributes$checked(model.showGrid),
+								$elm$html$Html$Events$onCheck($author$project$Main$ToggleGrid)
+							]),
+						_List_Nil),
+						A2(
+						$elm$html$Html$label,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$for('showGrid')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text('Show grid')
+							]))
+					]))
+			]));
+};
+var $author$project$Main$RequestExport = {$: 'RequestExport'};
+var $author$project$Main$SetExportCanvasHeight = function (a) {
+	return {$: 'SetExportCanvasHeight', a: a};
+};
+var $elm$html$Html$Attributes$max = $elm$html$Html$Attributes$stringProperty('max');
+var $elm$html$Html$Attributes$min = $elm$html$Html$Attributes$stringProperty('min');
+var $elm$html$Html$Events$alwaysStop = function (x) {
+	return _Utils_Tuple2(x, true);
+};
+var $elm$html$Html$Events$targetValue = A2(
+	$elm$json$Json$Decode$at,
+	_List_fromArray(
+		['target', 'value']),
+	$elm$json$Json$Decode$string);
+var $elm$html$Html$Events$onInput = function (tagger) {
+	return A2(
+		$elm$html$Html$Events$stopPropagationOn,
+		'input',
+		A2(
+			$elm$json$Json$Decode$map,
+			$elm$html$Html$Events$alwaysStop,
+			A2($elm$json$Json$Decode$map, tagger, $elm$html$Html$Events$targetValue)));
+};
+var $elm$html$Html$Attributes$step = function (n) {
+	return A2($elm$html$Html$Attributes$stringProperty, 'step', n);
+};
 var $elm$html$Html$Attributes$title = $elm$html$Html$Attributes$stringProperty('title');
-var $author$project$Main$viewHeader = function (model) {
+var $elm$html$Html$Attributes$value = $elm$html$Html$Attributes$stringProperty('value');
+var $author$project$Main$viewExportTools = function (model) {
+	var warningItems = function () {
+		var _v1 = model.loadState;
+		if (_v1.$ === 'Loaded') {
+			var resp = _v1.a;
+			return A2(
+				$elm$core$List$map,
+				function (w) {
+					return A2(
+						$elm$html$Html$div,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('warning-item')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text(w)
+							]));
+				},
+				resp.warnings);
+		} else {
+			return _List_Nil;
+		}
+	}();
+	var renderDpiInfo = function () {
+		var _v0 = model.loadState;
+		if (_v0.$ === 'Loaded') {
+			var resp = _v0.a;
+			return (resp.renderDpi > 0) ? _List_fromArray(
+				[
+					A2(
+					$elm$html$Html$div,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('field-row')
+						]),
+					_List_fromArray(
+						[
+							A2(
+							$elm$html$Html$label,
+							_List_Nil,
+							_List_fromArray(
+								[
+									$elm$html$Html$text('Display DPI')
+								])),
+							A2(
+							$elm$html$Html$span,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('dpi-info')
+								]),
+							_List_fromArray(
+								[
+									$elm$html$Html$text(
+									$elm$core$String$fromFloat(resp.renderDpi))
+								]))
+						]))
+				]) : _List_Nil;
+		} else {
+			return _List_Nil;
+		}
+	}();
 	var assignedIds = A2(
 		$elm$core$List$concatMap,
 		function ($) {
@@ -8489,36 +8991,59 @@ var $author$project$Main$viewHeader = function (model) {
 		$elm$html$Html$div,
 		_List_fromArray(
 			[
-				$elm$html$Html$Attributes$class('header')
+				$elm$html$Html$Attributes$class('tools-pane')
 			]),
-		_List_fromArray(
-			[
-				A2(
-				$elm$html$Html$h1,
-				_List_Nil,
+		_Utils_ap(
+			renderDpiInfo,
+			_Utils_ap(
+				warningItems,
 				_List_fromArray(
 					[
-						$elm$html$Html$text('House Puzzle Editor')
-					])),
-				A2(
-				$elm$html$Html$button,
-				_List_fromArray(
-					[
-						$elm$html$Html$Attributes$class('primary'),
-						$elm$html$Html$Attributes$disabled(
-						(!_Utils_eq(model.generateState, $author$project$Main$Generated)) || (model.recomputing || (model.exporting || hasUnassigned))),
-						$elm$html$Html$Attributes$title(
-						hasUnassigned ? 'All pieces must be assigned to waves before exporting' : ''),
-						$elm$html$Html$Events$onClick($author$project$Main$RequestExport)
-					]),
-				_List_fromArray(
-					[
-						$elm$html$Html$text(
-						model.exporting ? 'Exporting\u2026' : 'Export ZIP')
-					]))
-			]));
+						A2(
+						$elm$html$Html$div,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('field-row')
+							]),
+						_List_fromArray(
+							[
+								A2(
+								$elm$html$Html$label,
+								_List_Nil,
+								_List_fromArray(
+									[
+										$elm$html$Html$text('Export height (px)')
+									])),
+								A2(
+								$elm$html$Html$input,
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$type_('number'),
+										$elm$html$Html$Attributes$value(model.exportCanvasHeight),
+										$elm$html$Html$Events$onInput($author$project$Main$SetExportCanvasHeight),
+										$elm$html$Html$Attributes$min('100'),
+										$elm$html$Html$Attributes$max('10000'),
+										$elm$html$Html$Attributes$step('100')
+									]),
+								_List_Nil)
+							])),
+						A2(
+						$elm$html$Html$button,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('primary'),
+								$elm$html$Html$Events$onClick($author$project$Main$RequestExport),
+								$elm$html$Html$Attributes$disabled(hasUnassigned || model.exporting),
+								$elm$html$Html$Attributes$title(
+								hasUnassigned ? 'All pieces must be assigned to waves before exporting' : '')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text(
+								model.exporting ? 'Exporting\u2026' : 'Export ZIP')
+							]))
+					]))));
 };
-var $author$project$Main$PickFile = {$: 'PickFile'};
 var $author$project$Main$RequestGenerate = {$: 'RequestGenerate'};
 var $author$project$Main$SetMinBorder = function (a) {
 	return {$: 'SetMinBorder', a: a};
@@ -8529,167 +9054,7 @@ var $author$project$Main$SetSeed = function (a) {
 var $author$project$Main$SetTargetCount = function (a) {
 	return {$: 'SetTargetCount', a: a};
 };
-var $author$project$Main$SetViewMode = function (a) {
-	return {$: 'SetViewMode', a: a};
-};
-var $author$project$Main$StartEdit = {$: 'StartEdit'};
-var $author$project$Main$ToggleGrid = function (a) {
-	return {$: 'ToggleGrid', a: a};
-};
-var $author$project$Main$ToggleOutlines = function (a) {
-	return {$: 'ToggleOutlines', a: a};
-};
-var $elm$html$Html$Attributes$checked = $elm$html$Html$Attributes$boolProperty('checked');
-var $elm$core$Tuple$second = function (_v0) {
-	var y = _v0.b;
-	return y;
-};
-var $elm$html$Html$Attributes$classList = function (classes) {
-	return $elm$html$Html$Attributes$class(
-		A2(
-			$elm$core$String$join,
-			' ',
-			A2(
-				$elm$core$List$map,
-				$elm$core$Tuple$first,
-				A2($elm$core$List$filter, $elm$core$Tuple$second, classes))));
-};
-var $elm$html$Html$Attributes$for = $elm$html$Html$Attributes$stringProperty('htmlFor');
 var $elm$html$Html$h2 = _VirtualDom_node('h2');
-var $elm$html$Html$Attributes$id = $elm$html$Html$Attributes$stringProperty('id');
-var $elm$html$Html$input = _VirtualDom_node('input');
-var $elm$html$Html$label = _VirtualDom_node('label');
-var $elm$html$Html$Attributes$max = $elm$html$Html$Attributes$stringProperty('max');
-var $elm$html$Html$Attributes$min = $elm$html$Html$Attributes$stringProperty('min');
-var $elm$json$Json$Decode$at = F2(
-	function (fields, decoder) {
-		return A3($elm$core$List$foldr, $elm$json$Json$Decode$field, decoder, fields);
-	});
-var $elm$html$Html$Events$targetChecked = A2(
-	$elm$json$Json$Decode$at,
-	_List_fromArray(
-		['target', 'checked']),
-	$elm$json$Json$Decode$bool);
-var $elm$html$Html$Events$onCheck = function (tagger) {
-	return A2(
-		$elm$html$Html$Events$on,
-		'change',
-		A2($elm$json$Json$Decode$map, tagger, $elm$html$Html$Events$targetChecked));
-};
-var $elm$html$Html$Events$alwaysStop = function (x) {
-	return _Utils_Tuple2(x, true);
-};
-var $elm$virtual_dom$VirtualDom$MayStopPropagation = function (a) {
-	return {$: 'MayStopPropagation', a: a};
-};
-var $elm$html$Html$Events$stopPropagationOn = F2(
-	function (event, decoder) {
-		return A2(
-			$elm$virtual_dom$VirtualDom$on,
-			event,
-			$elm$virtual_dom$VirtualDom$MayStopPropagation(decoder));
-	});
-var $elm$html$Html$Events$targetValue = A2(
-	$elm$json$Json$Decode$at,
-	_List_fromArray(
-		['target', 'value']),
-	$elm$json$Json$Decode$string);
-var $elm$html$Html$Events$onInput = function (tagger) {
-	return A2(
-		$elm$html$Html$Events$stopPropagationOn,
-		'input',
-		A2(
-			$elm$json$Json$Decode$map,
-			$elm$html$Html$Events$alwaysStop,
-			A2($elm$json$Json$Decode$map, tagger, $elm$html$Html$Events$targetValue)));
-};
-var $elm$html$Html$span = _VirtualDom_node('span');
-var $elm$virtual_dom$VirtualDom$style = _VirtualDom_style;
-var $elm$html$Html$Attributes$style = $elm$virtual_dom$VirtualDom$style;
-var $elm$html$Html$Attributes$type_ = $elm$html$Html$Attributes$stringProperty('type');
-var $elm$html$Html$Attributes$value = $elm$html$Html$Attributes$stringProperty('value');
-var $author$project$Main$CancelEdit = {$: 'CancelEdit'};
-var $author$project$Main$SaveEdit = {$: 'SaveEdit'};
-var $elm$html$Html$br = _VirtualDom_node('br');
-var $elm$core$List$sortBy = _List_sortBy;
-var $elm$core$List$sort = function (xs) {
-	return A2($elm$core$List$sortBy, $elm$core$Basics$identity, xs);
-};
-var $author$project$Main$editHasChanges = function (model) {
-	return !_Utils_eq(
-		$elm$core$List$sort(model.editBrickIds),
-		$elm$core$List$sort(model.editOriginalBrickIds));
-};
-var $author$project$Main$viewEditControls = function (model) {
-	var pieceLabel = function () {
-		var _v0 = model.selectedPieceId;
-		if (_v0.$ === 'Just') {
-			var pid = _v0.a;
-			return 'Piece #' + $elm$core$String$fromInt(pid);
-		} else {
-			return 'Piece';
-		}
-	}();
-	var changed = $author$project$Main$editHasChanges(model);
-	var brickCount = $elm$core$List$length(model.editBrickIds);
-	return _List_fromArray(
-		[
-			A2(
-			$elm$html$Html$h2,
-			_List_Nil,
-			_List_fromArray(
-				[
-					$elm$html$Html$text('Editing ' + pieceLabel)
-				])),
-			A2(
-			$elm$html$Html$div,
-			_List_fromArray(
-				[
-					A2($elm$html$Html$Attributes$style, 'font-size', '11px'),
-					A2($elm$html$Html$Attributes$style, 'color', '#aaa'),
-					A2($elm$html$Html$Attributes$style, 'margin-bottom', '10px'),
-					A2($elm$html$Html$Attributes$style, 'line-height', '1.5')
-				]),
-			_List_fromArray(
-				[
-					$elm$html$Html$text('Click bricks to add/remove.'),
-					A2($elm$html$Html$br, _List_Nil, _List_Nil),
-					$elm$html$Html$text(
-					$elm$core$String$fromInt(brickCount) + (' brick' + (((brickCount === 1) ? '' : 's') + ' selected.')))
-				])),
-			A2(
-			$elm$html$Html$div,
-			_List_fromArray(
-				[
-					$elm$html$Html$Attributes$class('btn-row')
-				]),
-			_List_fromArray(
-				[
-					A2(
-					$elm$html$Html$button,
-					_List_fromArray(
-						[
-							$elm$html$Html$Attributes$class('primary'),
-							$elm$html$Html$Events$onClick($author$project$Main$SaveEdit),
-							$elm$html$Html$Attributes$disabled(!changed)
-						]),
-					_List_fromArray(
-						[
-							$elm$html$Html$text('Save')
-						])),
-					A2(
-					$elm$html$Html$button,
-					_List_fromArray(
-						[
-							$elm$html$Html$Events$onClick($author$project$Main$CancelEdit)
-						]),
-					_List_fromArray(
-						[
-							$elm$html$Html$text('Cancel')
-						]))
-				]))
-		]);
-};
 var $author$project$Main$viewStats = function (model) {
 	var pieceCount = _Utils_eq(model.generateState, $author$project$Main$Generated) ? $elm$core$String$fromInt(
 		$elm$core$List$length(model.pieces)) : '-';
@@ -8805,17 +9170,6 @@ var $author$project$Main$viewStatusBadge = function (model) {
 	switch (_v0.$) {
 		case 'Idle':
 			return $elm$html$Html$text('');
-		case 'Uploading':
-			return A2(
-				$elm$html$Html$span,
-				_List_fromArray(
-					[
-						$elm$html$Html$Attributes$class('status loading')
-					]),
-				_List_fromArray(
-					[
-						$elm$html$Html$text('Uploading\u2026')
-					]));
 		case 'Loading':
 			return A2(
 				$elm$html$Html$span,
@@ -8825,7 +9179,7 @@ var $author$project$Main$viewStatusBadge = function (model) {
 					]),
 				_List_fromArray(
 					[
-						$elm$html$Html$text('Parsing TIF\u2026')
+						$elm$html$Html$text('Parsing PDF\u2026')
 					]));
 		case 'Loaded':
 			return $elm$html$Html$text('');
@@ -8843,423 +9197,399 @@ var $author$project$Main$viewStatusBadge = function (model) {
 					]));
 	}
 };
-var $author$project$Main$viewSidebar = function (model) {
-	var isLoaded = function () {
-		var _v1 = model.loadState;
-		if (_v1.$ === 'Loaded') {
-			return true;
-		} else {
-			return false;
-		}
-	}();
-	var isCompositing = _Utils_eq(model.generateState, $author$project$Main$Compositing);
-	var busy = _Utils_eq(model.loadState, $author$project$Main$Uploading) || _Utils_eq(model.loadState, $author$project$Main$Loading);
-	return A2(
-		$elm$html$Html$div,
-		_List_fromArray(
-			[
-				$elm$html$Html$Attributes$class('sidebar')
-			]),
-		model.editMode ? $author$project$Main$viewEditControls(model) : _Utils_ap(
+var $author$project$Main$viewPdfTools = F2(
+	function (model, _v0) {
+		var isLoaded = function () {
+			var _v1 = model.loadState;
+			if (_v1.$ === 'Loaded') {
+				return true;
+			} else {
+				return false;
+			}
+		}();
+		var isGenerating = _Utils_eq(model.generateState, $author$project$Main$Compositing);
+		var isBusy = _Utils_eq(model.loadState, $author$project$Main$Loading) || (model.recomputing || model.exporting);
+		return A2(
+			$elm$html$Html$div,
 			_List_fromArray(
 				[
+					$elm$html$Html$Attributes$class('tools-pane')
+				]),
+			_List_fromArray(
+				[
+					$author$project$Main$viewStatusBadge(model),
 					A2(
 					$elm$html$Html$h2,
 					_List_Nil,
 					_List_fromArray(
 						[
-							$elm$html$Html$text('Source TIF')
+							$elm$html$Html$text('Puzzle Parameters')
+						])),
+					A2(
+					$elm$html$Html$div,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('param-group')
+						]),
+					_List_fromArray(
+						[
+							A2(
+							$elm$html$Html$label,
+							_List_Nil,
+							_List_fromArray(
+								[
+									$elm$html$Html$text('Target Pieces '),
+									A2(
+									$elm$html$Html$span,
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$class('value')
+										]),
+									_List_fromArray(
+										[
+											$elm$html$Html$text(
+											$elm$core$String$fromInt(model.targetCount))
+										]))
+								])),
+							A2(
+							$elm$html$Html$input,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$type_('range'),
+									$elm$html$Html$Attributes$min('5'),
+									$elm$html$Html$Attributes$max('181'),
+									$elm$html$Html$Attributes$value(
+									$elm$core$String$fromInt(model.targetCount)),
+									$elm$html$Html$Events$onInput($author$project$Main$SetTargetCount)
+								]),
+							_List_Nil)
+						])),
+					A2(
+					$elm$html$Html$div,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('param-group')
+						]),
+					_List_fromArray(
+						[
+							A2(
+							$elm$html$Html$label,
+							_List_Nil,
+							_List_fromArray(
+								[
+									$elm$html$Html$text('Min Border '),
+									A2(
+									$elm$html$Html$span,
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$class('value')
+										]),
+									_List_fromArray(
+										[
+											$elm$html$Html$text(
+											$elm$core$String$fromInt(model.minBorder))
+										])),
+									$elm$html$Html$text('px')
+								])),
+							A2(
+							$elm$html$Html$input,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$type_('range'),
+									$elm$html$Html$Attributes$min('0'),
+									$elm$html$Html$Attributes$max('50'),
+									$elm$html$Html$Attributes$value(
+									$elm$core$String$fromInt(model.minBorder)),
+									$elm$html$Html$Events$onInput($author$project$Main$SetMinBorder)
+								]),
+							_List_Nil)
+						])),
+					A2(
+					$elm$html$Html$div,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('param-group')
+						]),
+					_List_fromArray(
+						[
+							A2(
+							$elm$html$Html$label,
+							_List_Nil,
+							_List_fromArray(
+								[
+									$elm$html$Html$text('Seed '),
+									A2(
+									$elm$html$Html$span,
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$class('value')
+										]),
+									_List_fromArray(
+										[
+											$elm$html$Html$text(
+											$elm$core$String$fromInt(model.seed))
+										]))
+								])),
+							A2(
+							$elm$html$Html$input,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$type_('number'),
+									$elm$html$Html$Attributes$value(
+									$elm$core$String$fromInt(model.seed)),
+									$elm$html$Html$Events$onInput($author$project$Main$SetSeed),
+									$elm$html$Html$Attributes$min('0'),
+									$elm$html$Html$Attributes$max('99999')
+								]),
+							_List_Nil)
+						])),
+					A2(
+					$elm$html$Html$h2,
+					_List_Nil,
+					_List_fromArray(
+						[
+							$elm$html$Html$text('Stats')
+						])),
+					$author$project$Main$viewStats(model),
+					A2(
+					$elm$html$Html$div,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('tools-divider')
+						]),
+					_List_Nil),
+					A2(
+					$elm$html$Html$button,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('primary'),
+							$elm$html$Html$Attributes$disabled((!isLoaded) || (isBusy || isGenerating)),
+							$elm$html$Html$Events$onClick($author$project$Main$RequestGenerate)
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text(
+							isGenerating ? 'Generating\u2026' : 'Generate Puzzle')
+						]))
+				]));
+	});
+var $author$project$Main$StartEdit = {$: 'StartEdit'};
+var $author$project$Main$ToggleOutlines = function (a) {
+	return {$: 'ToggleOutlines', a: a};
+};
+var $author$project$Main$CancelEdit = {$: 'CancelEdit'};
+var $author$project$Main$SaveEdit = {$: 'SaveEdit'};
+var $elm$html$Html$br = _VirtualDom_node('br');
+var $elm$core$List$sortBy = _List_sortBy;
+var $elm$core$List$sort = function (xs) {
+	return A2($elm$core$List$sortBy, $elm$core$Basics$identity, xs);
+};
+var $author$project$Main$editHasChanges = function (model) {
+	return !_Utils_eq(
+		$elm$core$List$sort(model.editBrickIds),
+		$elm$core$List$sort(model.editOriginalBrickIds));
+};
+var $author$project$Main$viewEditControls = function (model) {
+	var pieceLabel = function () {
+		var _v0 = model.selectedPieceId;
+		if (_v0.$ === 'Just') {
+			var pid = _v0.a;
+			return 'Piece #' + $elm$core$String$fromInt(pid);
+		} else {
+			return 'Piece';
+		}
+	}();
+	var changed = $author$project$Main$editHasChanges(model);
+	var brickCount = $elm$core$List$length(model.editBrickIds);
+	return _List_fromArray(
+		[
+			A2(
+			$elm$html$Html$h2,
+			_List_Nil,
+			_List_fromArray(
+				[
+					$elm$html$Html$text('Editing ' + pieceLabel)
+				])),
+			A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					A2($elm$html$Html$Attributes$style, 'font-size', '11px'),
+					A2($elm$html$Html$Attributes$style, 'color', '#aaa'),
+					A2($elm$html$Html$Attributes$style, 'margin-bottom', '10px'),
+					A2($elm$html$Html$Attributes$style, 'line-height', '1.5')
+				]),
+			_List_fromArray(
+				[
+					$elm$html$Html$text('Click bricks to add/remove.'),
+					A2($elm$html$Html$br, _List_Nil, _List_Nil),
+					$elm$html$Html$text(
+					$elm$core$String$fromInt(brickCount) + (' brick' + (((brickCount === 1) ? '' : 's') + ' selected.')))
+				])),
+			A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('btn-row')
+				]),
+			_List_fromArray(
+				[
+					A2(
+					$elm$html$Html$button,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('primary'),
+							$elm$html$Html$Events$onClick($author$project$Main$SaveEdit),
+							$elm$html$Html$Attributes$disabled(!changed)
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text('Save')
 						])),
 					A2(
 					$elm$html$Html$button,
 					_List_fromArray(
 						[
-							$elm$html$Html$Events$onClick($author$project$Main$PickFile),
-							$elm$html$Html$Attributes$disabled(busy),
-							A2($elm$html$Html$Attributes$style, 'width', '100%'),
-							A2($elm$html$Html$Attributes$style, 'margin-bottom', '4px')
+							$elm$html$Html$Events$onClick($author$project$Main$CancelEdit)
 						]),
 					_List_fromArray(
 						[
-							$elm$html$Html$text('Open TIF\u2026')
+							$elm$html$Html$text('Cancel')
 						]))
-				]),
-			_Utils_ap(
-				(!$elm$core$String$isEmpty(model.selectedFileName)) ? _List_fromArray(
+				]))
+		]);
+};
+var $author$project$Main$viewPiecesTools = function (model) {
+	return A2(
+		$elm$html$Html$div,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('tools-pane')
+			]),
+		model.editMode ? $author$project$Main$viewEditControls(model) : _List_fromArray(
+			[
+				A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('checkbox-group')
+					]),
+				_List_fromArray(
 					[
 						A2(
-						$elm$html$Html$div,
+						$elm$html$Html$input,
 						_List_fromArray(
 							[
-								A2($elm$html$Html$Attributes$style, 'font-size', '11px'),
-								A2($elm$html$Html$Attributes$style, 'color', '#e0a050'),
-								A2($elm$html$Html$Attributes$style, 'margin-bottom', '6px'),
-								A2($elm$html$Html$Attributes$style, 'overflow', 'hidden'),
-								A2($elm$html$Html$Attributes$style, 'text-overflow', 'ellipsis'),
-								A2($elm$html$Html$Attributes$style, 'white-space', 'nowrap')
+								$elm$html$Html$Attributes$type_('checkbox'),
+								$elm$html$Html$Attributes$id('showOutlines'),
+								$elm$html$Html$Attributes$checked(model.showOutlines),
+								$elm$html$Html$Events$onCheck($author$project$Main$ToggleOutlines)
+							]),
+						_List_Nil),
+						A2(
+						$elm$html$Html$label,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$for('showOutlines')
 							]),
 						_List_fromArray(
 							[
-								$elm$html$Html$text(model.selectedFileName)
+								$elm$html$Html$text('Show piece outlines')
 							]))
-					]) : _List_Nil,
-				_Utils_ap(
-					_List_fromArray(
-						[
-							$author$project$Main$viewStatusBadge(model)
-						]),
-					_Utils_ap(
-						isLoaded ? _List_fromArray(
+					])),
+				A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('checkbox-group')
+					]),
+				_List_fromArray(
+					[
+						A2(
+						$elm$html$Html$input,
+						_List_fromArray(
 							[
-								A2(
-								$elm$html$Html$h2,
-								_List_Nil,
-								_List_fromArray(
-									[
-										$elm$html$Html$text('View')
-									])),
-								A2(
-								$elm$html$Html$div,
-								_List_fromArray(
-									[
-										$elm$html$Html$Attributes$class('view-toggles')
-									]),
-								_List_fromArray(
-									[
-										A2(
-										$elm$html$Html$button,
-										_List_fromArray(
-											[
-												$elm$html$Html$Attributes$classList(
-												_List_fromArray(
-													[
-														_Utils_Tuple2(
-														'active',
-														_Utils_eq(model.viewMode, $author$project$Main$ViewPieces))
-													])),
-												$elm$html$Html$Events$onClick(
-												$author$project$Main$SetViewMode($author$project$Main$ViewPieces))
-											]),
-										_List_fromArray(
-											[
-												$elm$html$Html$text('Pieces')
-											])),
-										A2(
-										$elm$html$Html$button,
-										_List_fromArray(
-											[
-												$elm$html$Html$Attributes$classList(
-												_List_fromArray(
-													[
-														_Utils_Tuple2(
-														'active',
-														_Utils_eq(model.viewMode, $author$project$Main$ViewBlueprint))
-													])),
-												$elm$html$Html$Events$onClick(
-												$author$project$Main$SetViewMode($author$project$Main$ViewBlueprint))
-											]),
-										_List_fromArray(
-											[
-												$elm$html$Html$text('Blueprint')
-											]))
-									])),
-								A2(
-								$elm$html$Html$div,
-								_List_fromArray(
-									[
-										$elm$html$Html$Attributes$class('checkbox-group')
-									]),
-								_List_fromArray(
-									[
-										A2(
-										$elm$html$Html$input,
-										_List_fromArray(
-											[
-												$elm$html$Html$Attributes$type_('checkbox'),
-												$elm$html$Html$Attributes$id('showOutlines'),
-												$elm$html$Html$Attributes$checked(model.showOutlines),
-												$elm$html$Html$Events$onCheck($author$project$Main$ToggleOutlines)
-											]),
-										_List_Nil),
-										A2(
-										$elm$html$Html$label,
-										_List_fromArray(
-											[
-												$elm$html$Html$Attributes$for('showOutlines')
-											]),
-										_List_fromArray(
-											[
-												$elm$html$Html$text('Show piece outlines')
-											]))
-									])),
-								A2(
-								$elm$html$Html$div,
-								_List_fromArray(
-									[
-										$elm$html$Html$Attributes$class('checkbox-group')
-									]),
-								_List_fromArray(
-									[
-										A2(
-										$elm$html$Html$input,
-										_List_fromArray(
-											[
-												$elm$html$Html$Attributes$type_('checkbox'),
-												$elm$html$Html$Attributes$id('showGrid'),
-												$elm$html$Html$Attributes$checked(model.showGrid),
-												$elm$html$Html$Events$onCheck($author$project$Main$ToggleGrid)
-											]),
-										_List_Nil),
-										A2(
-										$elm$html$Html$label,
-										_List_fromArray(
-											[
-												$elm$html$Html$Attributes$for('showGrid')
-											]),
-										_List_fromArray(
-											[
-												$elm$html$Html$text('Show grid')
-											]))
-									])),
-								A2(
-								$elm$html$Html$h2,
-								_List_Nil,
-								_List_fromArray(
-									[
-										$elm$html$Html$text('Puzzle Parameters')
-									])),
-								A2(
-								$elm$html$Html$div,
-								_List_fromArray(
-									[
-										$elm$html$Html$Attributes$class('param-group')
-									]),
-								_List_fromArray(
-									[
-										A2(
-										$elm$html$Html$label,
-										_List_Nil,
-										_List_fromArray(
-											[
-												$elm$html$Html$text('Target Pieces '),
-												A2(
-												$elm$html$Html$span,
-												_List_fromArray(
-													[
-														$elm$html$Html$Attributes$class('value')
-													]),
-												_List_fromArray(
-													[
-														$elm$html$Html$text(
-														$elm$core$String$fromInt(model.targetCount))
-													]))
-											])),
-										A2(
-										$elm$html$Html$input,
-										_List_fromArray(
-											[
-												$elm$html$Html$Attributes$type_('range'),
-												$elm$html$Html$Attributes$min('5'),
-												$elm$html$Html$Attributes$max('181'),
-												$elm$html$Html$Attributes$value(
-												$elm$core$String$fromInt(model.targetCount)),
-												$elm$html$Html$Events$onInput($author$project$Main$SetTargetCount)
-											]),
-										_List_Nil)
-									])),
-								A2(
-								$elm$html$Html$div,
-								_List_fromArray(
-									[
-										$elm$html$Html$Attributes$class('param-group')
-									]),
-								_List_fromArray(
-									[
-										A2(
-										$elm$html$Html$label,
-										_List_Nil,
-										_List_fromArray(
-											[
-												$elm$html$Html$text('Min Border '),
-												A2(
-												$elm$html$Html$span,
-												_List_fromArray(
-													[
-														$elm$html$Html$Attributes$class('value')
-													]),
-												_List_fromArray(
-													[
-														$elm$html$Html$text(
-														$elm$core$String$fromInt(model.minBorder))
-													])),
-												$elm$html$Html$text('px')
-											])),
-										A2(
-										$elm$html$Html$input,
-										_List_fromArray(
-											[
-												$elm$html$Html$Attributes$type_('range'),
-												$elm$html$Html$Attributes$min('0'),
-												$elm$html$Html$Attributes$max('50'),
-												$elm$html$Html$Attributes$value(
-												$elm$core$String$fromInt(model.minBorder)),
-												$elm$html$Html$Events$onInput($author$project$Main$SetMinBorder)
-											]),
-										_List_Nil)
-									])),
-								A2(
-								$elm$html$Html$div,
-								_List_fromArray(
-									[
-										$elm$html$Html$Attributes$class('param-group')
-									]),
-								_List_fromArray(
-									[
-										A2(
-										$elm$html$Html$label,
-										_List_Nil,
-										_List_fromArray(
-											[
-												$elm$html$Html$text('Seed '),
-												A2(
-												$elm$html$Html$span,
-												_List_fromArray(
-													[
-														$elm$html$Html$Attributes$class('value')
-													]),
-												_List_fromArray(
-													[
-														$elm$html$Html$text(
-														$elm$core$String$fromInt(model.seed))
-													]))
-											])),
-										A2(
-										$elm$html$Html$input,
-										_List_fromArray(
-											[
-												$elm$html$Html$Attributes$type_('number'),
-												$elm$html$Html$Attributes$value(
-												$elm$core$String$fromInt(model.seed)),
-												$elm$html$Html$Events$onInput($author$project$Main$SetSeed),
-												$elm$html$Html$Attributes$min('0'),
-												$elm$html$Html$Attributes$max('99999')
-											]),
-										_List_Nil)
-									])),
-								A2(
-								$elm$html$Html$div,
-								_List_fromArray(
-									[
-										$elm$html$Html$Attributes$class('btn-row')
-									]),
-								_List_fromArray(
-									[
-										A2(
-										$elm$html$Html$button,
-										_List_fromArray(
-											[
-												$elm$html$Html$Attributes$class('primary'),
-												$elm$html$Html$Events$onClick($author$project$Main$RequestGenerate),
-												$elm$html$Html$Attributes$disabled(isCompositing)
-											]),
-										_List_fromArray(
-											[
-												$elm$html$Html$text(
-												isCompositing ? 'Generating\u2026' : 'Generate Puzzle')
-											]))
-									])),
-								A2(
-								$elm$html$Html$div,
-								_List_fromArray(
-									[
-										$elm$html$Html$Attributes$class('btn-row')
-									]),
-								_List_fromArray(
-									[
-										A2(
-										$elm$html$Html$button,
-										_List_fromArray(
-											[
-												$elm$html$Html$Events$onClick($author$project$Main$StartEdit),
-												$elm$html$Html$Attributes$disabled(
-												_Utils_eq(model.selectedPieceId, $elm$core$Maybe$Nothing) || ((!_Utils_eq(model.generateState, $author$project$Main$Generated)) || model.recomputing))
-											]),
-										_List_fromArray(
-											[
-												$elm$html$Html$text(
-												function () {
-													var _v0 = model.selectedPieceId;
-													if (_v0.$ === 'Just') {
-														var pid = _v0.a;
-														return 'Edit Piece #' + $elm$core$String$fromInt(pid);
-													} else {
-														return 'Edit Piece';
-													}
-												}())
-											]))
-									])),
-								A2(
-								$elm$html$Html$h2,
-								_List_Nil,
-								_List_fromArray(
-									[
-										$elm$html$Html$text('Stats')
-									])),
-								$author$project$Main$viewStats(model)
-							]) : _List_Nil,
+								$elm$html$Html$Attributes$type_('checkbox'),
+								$elm$html$Html$Attributes$id('showGrid'),
+								$elm$html$Html$Attributes$checked(model.showGrid),
+								$elm$html$Html$Events$onCheck($author$project$Main$ToggleGrid)
+							]),
+						_List_Nil),
+						A2(
+						$elm$html$Html$label,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$for('showGrid')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text('Show grid')
+							]))
+					])),
+				A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('tools-divider')
+					]),
+				_List_Nil),
+				function () {
+				var _v0 = model.selectedPieceId;
+				if (_v0.$ === 'Just') {
+					var pid = _v0.a;
+					return A2(
+						$elm$html$Html$div,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('piece-info')
+							]),
 						_List_fromArray(
 							[
 								A2(
 								$elm$html$Html$div,
 								_List_fromArray(
 									[
-										A2($elm$html$Html$Attributes$style, 'margin-top', 'auto'),
-										A2($elm$html$Html$Attributes$style, 'padding-top', '12px'),
-										A2($elm$html$Html$Attributes$style, 'font-size', '10px'),
-										A2($elm$html$Html$Attributes$style, 'color', '#555')
+										$elm$html$Html$Attributes$class('piece-info-label')
 									]),
 								_List_fromArray(
 									[
-										$elm$html$Html$text('Elm')
+										$elm$html$Html$text(
+										'Piece #' + $elm$core$String$fromInt(pid))
+									])),
+								A2(
+								$elm$html$Html$button,
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$class('primary'),
+										$elm$html$Html$Events$onClick($author$project$Main$StartEdit),
+										$elm$html$Html$Attributes$disabled(model.recomputing)
+									]),
+								_List_fromArray(
+									[
+										$elm$html$Html$text(
+										'Edit Piece #' + $elm$core$String$fromInt(pid))
 									]))
-							]))))));
+							]));
+				} else {
+					return A2(
+						$elm$html$Html$div,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('piece-info-empty')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text('Click a piece to select')
+							]));
+				}
+			}()
+			]));
 };
 var $author$project$Main$AddWave = {$: 'AddWave'};
-var $author$project$Main$DragEnterWave = function (a) {
-	return {$: 'DragEnterWave', a: a};
-};
-var $author$project$Main$DropOnWave = function (a) {
-	return {$: 'DropOnWave', a: a};
-};
-var $author$project$Main$NoOp = {$: 'NoOp'};
-var $elm$virtual_dom$VirtualDom$MayPreventDefault = function (a) {
-	return {$: 'MayPreventDefault', a: a};
-};
-var $elm$html$Html$Events$preventDefaultOn = F2(
-	function (event, decoder) {
-		return A2(
-			$elm$virtual_dom$VirtualDom$on,
-			event,
-			$elm$virtual_dom$VirtualDom$MayPreventDefault(decoder));
-	});
-var $author$project$Main$DragEnterPiece = function (a) {
-	return {$: 'DragEnterPiece', a: a};
-};
-var $author$project$Main$DragPieceEnd = {$: 'DragPieceEnd'};
-var $author$project$Main$DragPieceStart = function (a) {
-	return {$: 'DragPieceStart', a: a};
-};
 var $author$project$Main$RemovePieceFromWave = F2(
 	function (a, b) {
 		return {$: 'RemovePieceFromWave', a: a, b: b};
 	});
-var $elm$html$Html$img = _VirtualDom_node('img');
-var $elm$html$Html$Attributes$src = function (url) {
-	return A2(
-		$elm$html$Html$Attributes$stringProperty,
-		'src',
-		_VirtualDom_noJavaScriptOrHtmlUri(url));
-};
 var $author$project$Main$viewPieceThumb = F5(
 	function (removeInfo, isLocked, hoveredId, pieceId, dataUrl) {
 		var isHovered = _Utils_eq(
@@ -9427,12 +9757,15 @@ var $author$project$Main$viewUnassignedRow = F2(
 							$elm$html$Html$Attributes$class('wave-pieces')
 						]),
 					A2(
-						$elm$core$List$filterMap,
+						$elm$core$List$map,
 						function (p) {
-							return A2(
-								$elm$core$Maybe$map,
-								A4($author$project$Main$viewPieceThumb, $elm$core$Maybe$Nothing, false, model.hoveredPieceId, p.id),
-								A2($elm$core$Dict$get, p.id, model.pieceImages));
+							return A5(
+								$author$project$Main$viewPieceThumb,
+								$elm$core$Maybe$Nothing,
+								false,
+								model.hoveredPieceId,
+								p.id,
+								p.imgUrl + ('?v=' + $elm$core$String$fromInt(model.pieceGeneration)));
 						},
 						unassignedPieces))
 				]));
@@ -9453,6 +9786,82 @@ var $author$project$Main$ToggleWaveLock = function (a) {
 var $author$project$Main$ToggleWaveVisibility = function (a) {
 	return {$: 'ToggleWaveVisibility', a: a};
 };
+var $elm$svg$Svg$Attributes$d = _VirtualDom_attribute('d');
+var $elm$svg$Svg$path = $elm$svg$Svg$trustedNode('path');
+var $author$project$Main$iconEye = A2(
+	$elm$svg$Svg$svg,
+	_List_fromArray(
+		[
+			$elm$svg$Svg$Attributes$viewBox('0 0 24 24'),
+			$elm$svg$Svg$Attributes$width('14'),
+			$elm$svg$Svg$Attributes$height('14'),
+			$elm$svg$Svg$Attributes$fill('currentColor')
+		]),
+	_List_fromArray(
+		[
+			A2(
+			$elm$svg$Svg$path,
+			_List_fromArray(
+				[
+					$elm$svg$Svg$Attributes$d('M23.271,9.419C21.72,6.893,18.192,2.655,12,2.655S2.28,6.893.729,9.419a4.908,4.908,0,0,0,0,5.162C2.28,17.107,5.808,21.345,12,21.345s9.72-4.238,11.271-6.764A4.908,4.908,0,0,0,23.271,9.419Zm-1.705,4.115C20.234,15.7,17.219,19.345,12,19.345S3.766,15.7,2.434,13.534a2.918,2.918,0,0,1,0-3.068C3.766,8.3,6.781,4.655,12,4.655s8.234,3.641,9.566,5.811A2.918,2.918,0,0,1,21.566,13.534Z')
+				]),
+			_List_Nil),
+			A2(
+			$elm$svg$Svg$path,
+			_List_fromArray(
+				[
+					$elm$svg$Svg$Attributes$d('M12,7a5,5,0,1,0,5,5A5.006,5.006,0,0,0,12,7Zm0,8a3,3,0,1,1,3-3A3,3,0,0,1,12,15Z')
+				]),
+			_List_Nil)
+		]));
+var $author$project$Main$iconEyeCrossed = A2(
+	$elm$svg$Svg$svg,
+	_List_fromArray(
+		[
+			$elm$svg$Svg$Attributes$viewBox('0 0 24 24'),
+			$elm$svg$Svg$Attributes$width('14'),
+			$elm$svg$Svg$Attributes$height('14'),
+			$elm$svg$Svg$Attributes$fill('currentColor')
+		]),
+	_List_fromArray(
+		[
+			A2(
+			$elm$svg$Svg$path,
+			_List_fromArray(
+				[
+					$elm$svg$Svg$Attributes$d('M23.271,9.419A15.866,15.866,0,0,0,19.9,5.51l2.8-2.8a1,1,0,0,0-1.414-1.414L18.241,4.345A12.054,12.054,0,0,0,12,2.655C5.809,2.655,2.281,6.893.729,9.419a4.908,4.908,0,0,0,0,5.162A15.866,15.866,0,0,0,4.1,18.49l-2.8,2.8a1,1,0,1,0,1.414,1.414l3.052-3.052A12.054,12.054,0,0,0,12,21.345c6.191,0,9.719-4.238,11.271-6.764A4.908,4.908,0,0,0,23.271,9.419ZM2.433,13.534a2.918,2.918,0,0,1,0-3.068C3.767,8.3,6.782,4.655,12,4.655A10.1,10.1,0,0,1,16.766,5.82L14.753,7.833a4.992,4.992,0,0,0-6.92,6.92l-2.31,2.31A13.723,13.723,0,0,1,2.433,13.534ZM15,12a3,3,0,0,1-3,3,2.951,2.951,0,0,1-1.285-.3L14.7,10.715A2.951,2.951,0,0,1,15,12ZM9,12a3,3,0,0,1,3-3,2.951,2.951,0,0,1,1.285.3L9.3,13.285A2.951,2.951,0,0,1,9,12Zm12.567,1.534C20.233,15.7,17.218,19.345,12,19.345A10.1,10.1,0,0,1,7.234,18.18l2.013-2.013a4.992,4.992,0,0,0,6.92-6.92l2.31-2.31a13.723,13.723,0,0,1,3.09,3.529A2.918,2.918,0,0,1,21.567,13.534Z')
+				]),
+			_List_Nil)
+		]));
+var $author$project$Main$iconLock = A2(
+	$elm$svg$Svg$svg,
+	_List_fromArray(
+		[
+			$elm$svg$Svg$Attributes$viewBox('0 0 24 24'),
+			$elm$svg$Svg$Attributes$width('14'),
+			$elm$svg$Svg$Attributes$height('14'),
+			$elm$svg$Svg$Attributes$fill('currentColor')
+		]),
+	_List_fromArray(
+		[
+			A2(
+			$elm$svg$Svg$path,
+			_List_fromArray(
+				[
+					$elm$svg$Svg$Attributes$d('M19,8V7A7,7,0,0,0,5,7V8H2V21a3,3,0,0,0,3,3H19a3,3,0,0,0,3-3V8ZM7,7A5,5,0,0,1,17,7V8H7ZM20,21a1,1,0,0,1-1,1H5a1,1,0,0,1-1-1V10H20Z')
+				]),
+			_List_Nil),
+			A2(
+			$elm$svg$Svg$rect,
+			_List_fromArray(
+				[
+					$elm$svg$Svg$Attributes$x('11'),
+					$elm$svg$Svg$Attributes$y('14'),
+					$elm$svg$Svg$Attributes$width('2'),
+					$elm$svg$Svg$Attributes$height('4')
+				]),
+			_List_Nil)
+		]));
 var $elm$core$Basics$negate = function (n) {
 	return -n;
 };
@@ -9488,6 +9897,9 @@ var $author$project$Main$viewWaveRow = F3(
 					_List_fromArray(
 						[
 							_Utils_Tuple2('wave-row', true),
+							_Utils_Tuple2(
+							$author$project$Main$waveColorClass(waveIdx),
+							true),
 							_Utils_Tuple2('selected', isSelected),
 							_Utils_Tuple2('locked', wave.locked),
 							_Utils_Tuple2(
@@ -9523,7 +9935,7 @@ var $author$project$Main$viewWaveRow = F3(
 						[
 							$elm$html$Html$Attributes$class('wave-row-header'),
 							$elm$html$Html$Events$onClick(
-							isSelected ? $author$project$Main$SelectWave($elm$core$Maybe$Nothing) : $author$project$Main$SelectWave(
+							(isSelected && (waveCount > 1)) ? $author$project$Main$SelectWave($elm$core$Maybe$Nothing) : $author$project$Main$SelectWave(
 								$elm$core$Maybe$Just(wave.id)))
 						]),
 					_List_fromArray(
@@ -9544,11 +9956,13 @@ var $author$project$Main$viewWaveRow = F3(
 									$elm$json$Json$Decode$succeed(
 										_Utils_Tuple2(
 											$author$project$Main$ToggleWaveVisibility(wave.id),
-											true)))
+											true))),
+									$elm$html$Html$Attributes$title(
+									wave.visible ? 'Hide wave' : 'Show wave')
 								]),
 							_List_fromArray(
 								[
-									$elm$html$Html$text('\uD83D\uDC41')
+									wave.visible ? $author$project$Main$iconEye : $author$project$Main$iconEyeCrossed
 								])),
 							A2(
 							$elm$html$Html$span,
@@ -9557,21 +9971,26 @@ var $author$project$Main$viewWaveRow = F3(
 									$elm$html$Html$Attributes$classList(
 									_List_fromArray(
 										[
-											_Utils_Tuple2('wave-label', true),
-											_Utils_Tuple2(
-											$author$project$Main$waveColorClass(waveIdx),
-											true)
-										]))
+											_Utils_Tuple2('wave-lock', true),
+											_Utils_Tuple2('locked', wave.locked)
+										])),
+									A2(
+									$elm$html$Html$Events$stopPropagationOn,
+									'click',
+									$elm$json$Json$Decode$succeed(
+										_Utils_Tuple2(
+											$author$project$Main$ToggleWaveLock(wave.id),
+											true))),
+									$elm$html$Html$Attributes$title(
+									wave.locked ? 'Unlock wave' : 'Lock wave')
 								]),
 							_List_fromArray(
-								[
-									$elm$html$Html$text(wave.name)
-								])),
+								[$author$project$Main$iconLock])),
 							A2(
 							$elm$html$Html$span,
 							_List_fromArray(
 								[
-									$elm$html$Html$Attributes$class('wave-piece-count')
+									$elm$html$Html$Attributes$class('wave-piece-count-label')
 								]),
 							_List_fromArray(
 								[
@@ -9583,35 +10002,27 @@ var $author$project$Main$viewWaveRow = F3(
 							$elm$html$Html$span,
 							_List_fromArray(
 								[
+									$elm$html$Html$Attributes$class('wave-name-label')
+								]),
+							_List_fromArray(
+								[
+									$elm$html$Html$text(wave.name)
+								])),
+							A2(
+							$elm$html$Html$span,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('wave-row-spacer')
+								]),
+							_List_Nil),
+							A2(
+							$elm$html$Html$span,
+							_List_fromArray(
+								[
 									$elm$html$Html$Attributes$class('wave-actions')
 								]),
 							_List_fromArray(
 								[
-									A2(
-									$elm$html$Html$span,
-									_List_fromArray(
-										[
-											$elm$html$Html$Attributes$classList(
-											_List_fromArray(
-												[
-													_Utils_Tuple2('wave-lock', true),
-													_Utils_Tuple2('locked', wave.locked)
-												])),
-											A2(
-											$elm$html$Html$Events$stopPropagationOn,
-											'click',
-											$elm$json$Json$Decode$succeed(
-												_Utils_Tuple2(
-													$author$project$Main$ToggleWaveLock(wave.id),
-													true))),
-											$elm$html$Html$Attributes$title(
-											wave.locked ? 'Unlock wave' : 'Lock wave')
-										]),
-									_List_fromArray(
-										[
-											$elm$html$Html$text(
-											wave.locked ? '\uD83D\uDD12' : '\uD83D\uDD13')
-										])),
 									A2(
 									$elm$html$Html$button,
 									_List_fromArray(
@@ -9660,7 +10071,7 @@ var $author$project$Main$viewWaveRow = F3(
 												_Utils_Tuple2(
 													$author$project$Main$RemoveWave(wave.id),
 													true))),
-											$elm$html$Html$Attributes$disabled(wave.locked),
+											$elm$html$Html$Attributes$disabled(wave.locked || (waveCount <= 1)),
 											$elm$html$Html$Attributes$title('Delete wave')
 										]),
 									_List_fromArray(
@@ -9687,14 +10098,23 @@ var $author$project$Main$viewWaveRow = F3(
 										$elm$core$List$singleton,
 										A2(
 											$elm$core$Maybe$map,
-											A4(
-												$author$project$Main$viewPieceThumb,
-												$elm$core$Maybe$Just(
-													_Utils_Tuple2(wave.id, pid)),
-												wave.locked,
-												model.hoveredPieceId,
-												pid),
-											A2($elm$core$Dict$get, pid, model.pieceImages))));
+											function (piece) {
+												return A5(
+													$author$project$Main$viewPieceThumb,
+													$elm$core$Maybe$Just(
+														_Utils_Tuple2(wave.id, pid)),
+													wave.locked,
+													model.hoveredPieceId,
+													pid,
+													piece.imgUrl + ('?v=' + $elm$core$String$fromInt(model.pieceGeneration)));
+											},
+											$elm$core$List$head(
+												A2(
+													$elm$core$List$filter,
+													function (p) {
+														return _Utils_eq(p.id, pid);
+													},
+													model.pieces)))));
 								var showMarker = (!wave.locked) && ((!_Utils_eq(model.draggingPieceId, $elm$core$Maybe$Nothing)) && _Utils_eq(
 									model.dragInsertBeforeId,
 									$elm$core$Maybe$Just(pid)));
@@ -9726,7 +10146,7 @@ var $author$project$Main$viewWaveRow = F3(
 							]) : _List_Nil))
 				]));
 	});
-var $author$project$Main$viewWavesPanel = function (model) {
+var $author$project$Main$viewWavesTools = function (model) {
 	var totalPieces = $elm$core$List$length(model.pieces);
 	var assignedIds = A2(
 		$elm$core$List$concatMap,
@@ -9745,7 +10165,7 @@ var $author$project$Main$viewWavesPanel = function (model) {
 		$elm$html$Html$div,
 		_List_fromArray(
 			[
-				$elm$html$Html$Attributes$class('waves-panel-wrapper')
+				$elm$html$Html$Attributes$class('tools-pane waves-tools')
 			]),
 		_List_fromArray(
 			[
@@ -9753,14 +10173,136 @@ var $author$project$Main$viewWavesPanel = function (model) {
 				$elm$html$Html$div,
 				_List_fromArray(
 					[
-						$elm$html$Html$Attributes$class('waves-resize-handle')
+						$elm$html$Html$Attributes$class('waves-header')
 					]),
-				_List_Nil),
+				_List_fromArray(
+					[
+						A2(
+						$elm$html$Html$h2,
+						_List_Nil,
+						_List_fromArray(
+							[
+								$elm$html$Html$text('Waves')
+							])),
+						A2(
+						$elm$html$Html$span,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('wave-count')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text(
+								(totalPieces > 0) ? ($elm$core$String$fromInt(assignedCount) + ('/' + $elm$core$String$fromInt(totalPieces))) : '')
+							]))
+					])),
 				A2(
 				$elm$html$Html$div,
 				_List_fromArray(
 					[
-						$elm$html$Html$Attributes$class('waves-panel')
+						$elm$html$Html$Attributes$class('wave-toolbar')
+					]),
+				_List_fromArray(
+					[
+						A2(
+						$elm$html$Html$button,
+						_List_fromArray(
+							[
+								$elm$html$Html$Events$onClick($author$project$Main$AddWave)
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text('New wave')
+							]))
+					])),
+				A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('waves-body')
+					]),
+				_Utils_ap(
+					A2(
+						$elm$core$List$map,
+						A2($author$project$Main$viewWaveRow, model, model.waves),
+						model.waves),
+					_List_fromArray(
+						[
+							A2($author$project$Main$viewUnassignedRow, model, unassignedPieces)
+						])))
+			]));
+};
+var $author$project$Main$viewToolsCol = F2(
+	function (model, response) {
+		return A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('tools-col')
+				]),
+			_List_fromArray(
+				[
+					function () {
+					var _v0 = model.appMode;
+					switch (_v0.$) {
+						case 'ModeInit':
+							return $elm$html$Html$text('');
+						case 'ModePdf':
+							return A2($author$project$Main$viewPdfTools, model, response);
+						case 'ModePieces':
+							return $author$project$Main$viewPiecesTools(model);
+						case 'ModeBlueprint':
+							return $author$project$Main$viewBlueprintTools(model);
+						case 'ModeWaves':
+							return $author$project$Main$viewWavesTools(model);
+						default:
+							return $author$project$Main$viewExportTools(model);
+					}
+				}()
+				]));
+	});
+var $author$project$Main$viewBody = function (model) {
+	if (_Utils_eq(model.appMode, $author$project$Main$ModeInit)) {
+		return A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('app-body-empty')
+				]),
+			_List_fromArray(
+				[
+					$author$project$Main$viewFileList(model),
+					$author$project$Main$viewBodyOverlay(model)
+				]));
+	} else {
+		var _v0 = model.loadState;
+		if (_v0.$ === 'Loaded') {
+			var response = _v0.a;
+			return A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('app-body')
+					]),
+				_List_fromArray(
+					[
+						A2($author$project$Main$viewCanvasCol, model, response),
+						A2(
+						$elm$html$Html$div,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('resize-handle')
+							]),
+						_List_Nil),
+						A2($author$project$Main$viewToolsCol, model, response),
+						$author$project$Main$viewBodyOverlay(model)
+					]));
+		} else {
+			return A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('app-body')
 					]),
 				_List_fromArray(
 					[
@@ -9768,63 +10310,295 @@ var $author$project$Main$viewWavesPanel = function (model) {
 						$elm$html$Html$div,
 						_List_fromArray(
 							[
-								$elm$html$Html$Attributes$class('waves-header')
+								$elm$html$Html$Attributes$class('canvas-col')
 							]),
 						_List_fromArray(
 							[
 								A2(
-								$elm$html$Html$h2,
-								_List_Nil,
+								$elm$html$Html$div,
 								_List_fromArray(
 									[
-										$elm$html$Html$text('Waves')
+										$elm$html$Html$Attributes$class('canvas-area')
+									]),
+								_List_fromArray(
+									[
+										A2(
+										$elm$html$Html$div,
+										_List_fromArray(
+											[
+												$elm$html$Html$Attributes$class('canvas-spinner-overlay')
+											]),
+										_List_fromArray(
+											[
+												A2(
+												$elm$html$Html$div,
+												_List_fromArray(
+													[
+														$elm$html$Html$Attributes$class('canvas-spinner')
+													]),
+												_List_Nil)
+											]))
+									]))
+							])),
+						A2(
+						$elm$html$Html$div,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('tools-col')
+							]),
+						_List_Nil)
+					]));
+		}
+	}
+};
+var $author$project$Main$ModeExport = {$: 'ModeExport'};
+var $author$project$Main$Reset = {$: 'Reset'};
+var $author$project$Main$SetAppMode = function (a) {
+	return {$: 'SetAppMode', a: a};
+};
+var $author$project$Main$viewTitleBar = function (model) {
+	var isLoadingPdf = _Utils_eq(model.loadState, $author$project$Main$Loading);
+	var isLoaded = function () {
+		var _v0 = model.loadState;
+		if (_v0.$ === 'Loaded') {
+			return true;
+		} else {
+			return false;
+		}
+	}();
+	var isGenerating = _Utils_eq(model.generateState, $author$project$Main$Compositing);
+	var isGenerated = _Utils_eq(model.generateState, $author$project$Main$Generated);
+	var isBusy = isLoadingPdf || (model.recomputing || model.exporting);
+	var hasFile = !$elm$core$String$isEmpty(model.selectedFileName);
+	var assignedIds = A2(
+		$elm$core$List$concatMap,
+		function ($) {
+			return $.pieceIds;
+		},
+		model.waves);
+	var hasUnassigned = A2(
+		$elm$core$List$any,
+		function (p) {
+			return !A2($elm$core$List$member, p.id, assignedIds);
+		},
+		model.pieces);
+	var canExport = isGenerated && ((!isBusy) && ((!isGenerating) && (!hasUnassigned)));
+	return A2(
+		$elm$html$Html$div,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('title-bar')
+			]),
+		_List_fromArray(
+			[
+				A2(
+				$elm$html$Html$span,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('app-title')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text('House Puzzle')
+					])),
+				A2(
+				$elm$html$Html$span,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('version-tag')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text('v0.1')
+					])),
+				A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('mode-buttons')
+					]),
+				_List_fromArray(
+					[
+						A2(
+						$elm$html$Html$button,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$classList(
+								_List_fromArray(
+									[
+										_Utils_Tuple2('mode-btn', true),
+										_Utils_Tuple2(
+										'active',
+										_Utils_eq(model.appMode, $author$project$Main$ModeInit)),
+										_Utils_Tuple2('loading', isLoadingPdf)
 									])),
-								A2(
-								$elm$html$Html$span,
-								_List_fromArray(
-									[
-										$elm$html$Html$Attributes$class('wave-count')
-									]),
-								_List_fromArray(
-									[
-										$elm$html$Html$text(
-										(totalPieces > 0) ? ($elm$core$String$fromInt(assignedCount) + ('/' + $elm$core$String$fromInt(totalPieces))) : '')
-									]))
-							])),
-						A2(
-						$elm$html$Html$div,
-						_List_fromArray(
-							[
-								$elm$html$Html$Attributes$class('wave-toolbar')
+								$elm$html$Html$Attributes$disabled(isBusy || isGenerating),
+								$elm$html$Html$Events$onClick($author$project$Main$Reset)
 							]),
 						_List_fromArray(
 							[
-								A2(
-								$elm$html$Html$button,
-								_List_fromArray(
-									[
-										$elm$html$Html$Events$onClick($author$project$Main$AddWave)
-									]),
-								_List_fromArray(
-									[
-										$elm$html$Html$text('New wave')
-									]))
+								$elm$html$Html$text(
+								isLoadingPdf ? 'Loading\u2026' : (hasFile ? 'Reset' : 'Start'))
 							])),
 						A2(
-						$elm$html$Html$div,
+						$elm$html$Html$span,
 						_List_fromArray(
 							[
-								$elm$html$Html$Attributes$class('waves-body')
+								$elm$html$Html$Attributes$class('mode-sep')
 							]),
-						_Utils_ap(
-							A2(
-								$elm$core$List$map,
-								A2($author$project$Main$viewWaveRow, model, model.waves),
-								model.waves),
-							_List_fromArray(
-								[
-									A2($author$project$Main$viewUnassignedRow, model, unassignedPieces)
-								])))
+						_List_fromArray(
+							[
+								$elm$html$Html$text('\u2192')
+							])),
+						A2(
+						$elm$html$Html$button,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$classList(
+								_List_fromArray(
+									[
+										_Utils_Tuple2('mode-btn', true),
+										_Utils_Tuple2(
+										'active',
+										_Utils_eq(model.appMode, $author$project$Main$ModePdf)),
+										_Utils_Tuple2('loading', isGenerating)
+									])),
+								$elm$html$Html$Attributes$disabled((!isLoaded) || (isBusy || isGenerating)),
+								$elm$html$Html$Events$onClick(
+								$author$project$Main$SetAppMode($author$project$Main$ModePdf))
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text(
+								isGenerating ? 'Generating\u2026' : 'Generate')
+							])),
+						A2(
+						$elm$html$Html$span,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('mode-sep')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text('\u2192')
+							])),
+						A2(
+						$elm$html$Html$button,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$classList(
+								_List_fromArray(
+									[
+										_Utils_Tuple2('mode-btn', true),
+										_Utils_Tuple2(
+										'active',
+										_Utils_eq(model.appMode, $author$project$Main$ModePieces)),
+										_Utils_Tuple2(
+										'loading',
+										model.recomputing && _Utils_eq(model.appMode, $author$project$Main$ModePieces))
+									])),
+								$elm$html$Html$Attributes$disabled((!isGenerated) || (isBusy || isGenerating)),
+								$elm$html$Html$Events$onClick(
+								$author$project$Main$SetAppMode($author$project$Main$ModePieces))
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text('Pieces')
+							])),
+						A2(
+						$elm$html$Html$span,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('mode-sep')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text('\u21C4')
+							])),
+						A2(
+						$elm$html$Html$button,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$classList(
+								_List_fromArray(
+									[
+										_Utils_Tuple2('mode-btn', true),
+										_Utils_Tuple2(
+										'active',
+										_Utils_eq(model.appMode, $author$project$Main$ModeBlueprint))
+									])),
+								$elm$html$Html$Attributes$disabled((!isGenerated) || (isBusy || isGenerating)),
+								$elm$html$Html$Events$onClick(
+								$author$project$Main$SetAppMode($author$project$Main$ModeBlueprint))
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text('Blueprint')
+							])),
+						A2(
+						$elm$html$Html$span,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('mode-sep')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text('\u21C4')
+							])),
+						A2(
+						$elm$html$Html$button,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$classList(
+								_List_fromArray(
+									[
+										_Utils_Tuple2('mode-btn', true),
+										_Utils_Tuple2(
+										'active',
+										_Utils_eq(model.appMode, $author$project$Main$ModeWaves))
+									])),
+								$elm$html$Html$Attributes$disabled((!isGenerated) || (isBusy || isGenerating)),
+								$elm$html$Html$Events$onClick(
+								$author$project$Main$SetAppMode($author$project$Main$ModeWaves))
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text('Waves')
+							])),
+						A2(
+						$elm$html$Html$span,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('mode-sep')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text('\u2192')
+							])),
+						A2(
+						$elm$html$Html$button,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$classList(
+								_List_fromArray(
+									[
+										_Utils_Tuple2('mode-btn', true),
+										_Utils_Tuple2('export-btn', true),
+										_Utils_Tuple2(
+										'active',
+										_Utils_eq(model.appMode, $author$project$Main$ModeExport)),
+										_Utils_Tuple2('loading', model.exporting)
+									])),
+								$elm$html$Html$Attributes$disabled(!canExport),
+								$elm$html$Html$Events$onClick(
+								$author$project$Main$SetAppMode($author$project$Main$ModeExport)),
+								$elm$html$Html$Attributes$title(
+								(hasUnassigned && isGenerated) ? 'All pieces must be assigned to waves before exporting' : '')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text('Export')
+							]))
 					]))
 			]));
 };
@@ -9837,19 +10611,8 @@ var $author$project$Main$view = function (model) {
 			]),
 		_List_fromArray(
 			[
-				$author$project$Main$viewHeader(model),
-				A2(
-				$elm$html$Html$div,
-				_List_fromArray(
-					[
-						$elm$html$Html$Attributes$class('main')
-					]),
-				_List_fromArray(
-					[
-						$author$project$Main$viewSidebar(model),
-						$author$project$Main$viewCanvasArea(model),
-						$author$project$Main$viewWavesPanel(model)
-					]))
+				$author$project$Main$viewTitleBar(model),
+				$author$project$Main$viewBody(model)
 			]));
 };
 var $author$project$Main$main = $elm$browser$Browser$element(
