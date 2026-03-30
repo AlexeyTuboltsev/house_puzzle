@@ -588,6 +588,22 @@ def render_ai_lights_png(
     _render_layer_png(ai_path, "lights", out_path, dpi, clip_rect)
 
 
+def render_ai_background_png(
+    ai_path: str,
+    out_path: str,
+    dpi: float,
+    clip_rect: tuple[float, float, float, float],
+) -> None:
+    """
+    Render only the 'background' OCG layer to a PNG.
+
+    The background layer contains the house silhouette used as the blueprint
+    background in the editor and exported assets.  All other OCGs are turned
+    off so only the background shape appears.
+    """
+    _render_layer_png(ai_path, "background", out_path, dpi, clip_rect)
+
+
 def render_ai_outlines_png(
     ai_path: str,
     out_path: str,

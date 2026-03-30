@@ -1950,19 +1950,12 @@ viewMainSvg response model =
                 List.map (viewPieceImage model.pieceGeneration) visiblePieces
 
             else if showComposite then
-                let
-                    bgUrl =
-                        if model.appMode == ModeBlueprint then
-                            Maybe.withDefault response.compositeUrl response.blueprintBgUrl
-                        else
-                            response.compositeUrl
-                in
                 [ Svg.image
                     [ SA.x "0"
                     , SA.y "0"
                     , SA.width w
                     , SA.height h
-                    , attribute "href" bgUrl
+                    , attribute "href" response.compositeUrl
                     ]
                     []
                 ]
@@ -1970,6 +1963,29 @@ viewMainSvg response model =
             else
                 -- Blueprint or pieces mode post-gen: hide bricks, piece polygons/images show through
                 []
+
+        -- Background image layer — shown in Blueprint and Waves modes when blueprintBgUrl is available.
+        -- Sits beneath piece outlines and piece images so bricks render on top of it.
+        bgImageLayer =
+            case response.blueprintBgUrl of
+                Just url ->
+                    if model.appMode == ModeBlueprint || model.appMode == ModeWaves then
+                        [ Svg.image
+                            [ SA.x "0"
+                            , SA.y "0"
+                            , SA.width w
+                            , SA.height h
+                            , attribute "href" url
+                            , SA.style "pointer-events: none;"
+                            ]
+                            []
+                        ]
+
+                    else
+                        []
+
+                Nothing ->
+                    []
 
         -- Lights overlay (toggleable, shown when showLights is True and lightsUrl is available)
         lightsLayer =
@@ -2083,7 +2099,8 @@ viewMainSvg response model =
             ]
 
          else
-            [ Svg.g [] blueprintLayer
+            [ Svg.g [] bgImageLayer
+            , Svg.g [] blueprintLayer
             , Svg.g [] baseLayer
             , Svg.g [] lightsLayer
             , Svg.g [] compositeOverlays
@@ -2219,12 +2236,11 @@ viewPieceBlueprintPath piece =
         in
         Svg.polygon
             [ SA.points pointsAttr
-            , SA.fill "#2a5da8"
+            , SA.fill "none"
             , SA.stroke "white"
             , SA.strokeWidth "4"
             , SA.strokeLinejoin "round"
             , attribute "stroke-linecap" "round"
-            , attribute "paint-order" "fill stroke"
             , attribute "vector-effect" "non-scaling-stroke"
             , SA.class "brick-path"
             ]

@@ -8256,12 +8256,11 @@ var $author$project$Main$viewPieceBlueprintPath = function (piece) {
 			_List_fromArray(
 				[
 					$elm$svg$Svg$Attributes$points(pointsAttr),
-					$elm$svg$Svg$Attributes$fill('#2a5da8'),
+					$elm$svg$Svg$Attributes$fill('none'),
 					$elm$svg$Svg$Attributes$stroke('white'),
 					$elm$svg$Svg$Attributes$strokeWidth('4'),
 					$elm$svg$Svg$Attributes$strokeLinejoin('round'),
 					A2($elm$html$Html$Attributes$attribute, 'stroke-linecap', 'round'),
-					A2($elm$html$Html$Attributes$attribute, 'paint-order', 'fill stroke'),
 					A2($elm$html$Html$Attributes$attribute, 'vector-effect', 'non-scaling-stroke'),
 					$elm$svg$Svg$Attributes$class('brick-path')
 				]),
@@ -8501,9 +8500,9 @@ var $author$project$Main$viewMainSvg = F2(
 					return !A2($elm$core$List$member, p.id, hiddenPieceIds);
 				},
 				model.pieces);
-			var _v1 = model.draggingPieceId;
-			if (_v1.$ === 'Just') {
-				var dragId = _v1.a;
+			var _v2 = model.draggingPieceId;
+			if (_v2.$ === 'Just') {
+				var dragId = _v2.a;
 				return _Utils_ap(
 					A2(
 						$elm$core$List$filter,
@@ -8551,9 +8550,9 @@ var $author$project$Main$viewMainSvg = F2(
 			_Utils_eq(model.appMode, $author$project$Main$ModeBlueprint)) : _List_Nil;
 		var h = $elm$core$String$fromFloat(ch);
 		var lightsLayer = function () {
-			var _v0 = _Utils_Tuple2(model.showLights, response.lightsUrl);
-			if (_v0.a && (_v0.b.$ === 'Just')) {
-				var url = _v0.b.a;
+			var _v1 = _Utils_Tuple2(model.showLights, response.lightsUrl);
+			if (_v1.a && (_v1.b.$ === 'Just')) {
+				var url = _v1.b.a;
 				return _List_fromArray(
 					[
 						A2(
@@ -8589,9 +8588,11 @@ var $author$project$Main$viewMainSvg = F2(
 				_List_Nil)
 			]) : _List_Nil;
 		var blueprintLayer = ((!model.editMode) && isGenerated) ? A2($elm$core$List$map, $author$project$Main$viewPieceBlueprintPath, model.pieces) : _List_Nil;
-		var baseLayer = function () {
-			if (model.editMode) {
-				return response.hasComposite ? _List_fromArray(
+		var bgImageLayer = function () {
+			var _v0 = response.blueprintBgUrl;
+			if (_v0.$ === 'Just') {
+				var url = _v0.a;
+				return (_Utils_eq(model.appMode, $author$project$Main$ModeBlueprint) || _Utils_eq(model.appMode, $author$project$Main$ModeWaves)) ? _List_fromArray(
 					[
 						A2(
 						$elm$svg$Svg$image,
@@ -8601,39 +8602,45 @@ var $author$project$Main$viewMainSvg = F2(
 								$elm$svg$Svg$Attributes$y('0'),
 								$elm$svg$Svg$Attributes$width(w),
 								$elm$svg$Svg$Attributes$height(h),
-								A2($elm$html$Html$Attributes$attribute, 'href', response.compositeUrl)
+								A2($elm$html$Html$Attributes$attribute, 'href', url),
+								$elm$svg$Svg$Attributes$style('pointer-events: none;')
 							]),
 						_List_Nil)
 					]) : _List_Nil;
 			} else {
-				if (showPieceImages) {
-					return A2(
-						$elm$core$List$map,
-						$author$project$Main$viewPieceImage(model.pieceGeneration),
-						visiblePieces);
-				} else {
-					if (showComposite) {
-						var bgUrl = _Utils_eq(model.appMode, $author$project$Main$ModeBlueprint) ? A2($elm$core$Maybe$withDefault, response.compositeUrl, response.blueprintBgUrl) : response.compositeUrl;
-						return _List_fromArray(
-							[
-								A2(
-								$elm$svg$Svg$image,
-								_List_fromArray(
-									[
-										$elm$svg$Svg$Attributes$x('0'),
-										$elm$svg$Svg$Attributes$y('0'),
-										$elm$svg$Svg$Attributes$width(w),
-										$elm$svg$Svg$Attributes$height(h),
-										A2($elm$html$Html$Attributes$attribute, 'href', bgUrl)
-									]),
-								_List_Nil)
-							]);
-					} else {
-						return _List_Nil;
-					}
-				}
+				return _List_Nil;
 			}
 		}();
+		var baseLayer = model.editMode ? (response.hasComposite ? _List_fromArray(
+			[
+				A2(
+				$elm$svg$Svg$image,
+				_List_fromArray(
+					[
+						$elm$svg$Svg$Attributes$x('0'),
+						$elm$svg$Svg$Attributes$y('0'),
+						$elm$svg$Svg$Attributes$width(w),
+						$elm$svg$Svg$Attributes$height(h),
+						A2($elm$html$Html$Attributes$attribute, 'href', response.compositeUrl)
+					]),
+				_List_Nil)
+			]) : _List_Nil) : (showPieceImages ? A2(
+			$elm$core$List$map,
+			$author$project$Main$viewPieceImage(model.pieceGeneration),
+			visiblePieces) : (showComposite ? _List_fromArray(
+			[
+				A2(
+				$elm$svg$Svg$image,
+				_List_fromArray(
+					[
+						$elm$svg$Svg$Attributes$x('0'),
+						$elm$svg$Svg$Attributes$y('0'),
+						$elm$svg$Svg$Attributes$width(w),
+						$elm$svg$Svg$Attributes$height(h),
+						A2($elm$html$Html$Attributes$attribute, 'href', response.compositeUrl)
+					]),
+				_List_Nil)
+			]) : _List_Nil));
 		return A2(
 			$elm$svg$Svg$svg,
 			_List_fromArray(
@@ -8652,6 +8659,7 @@ var $author$project$Main$viewMainSvg = F2(
 					A2($elm$svg$Svg$g, _List_Nil, editOverlays)
 				]) : _List_fromArray(
 				[
+					A2($elm$svg$Svg$g, _List_Nil, bgImageLayer),
 					A2($elm$svg$Svg$g, _List_Nil, blueprintLayer),
 					A2($elm$svg$Svg$g, _List_Nil, baseLayer),
 					A2($elm$svg$Svg$g, _List_Nil, lightsLayer),
