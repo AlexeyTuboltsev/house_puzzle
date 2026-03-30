@@ -429,18 +429,24 @@ def api_lights_png():
 
 
 def _compute_piece_polygons(pieces, bricks_by_id, brick_polygons):
-    """Compute merged polygon outline for each piece by rasterizing brick polygons.
+    """Compute merged polygon outline for each piece using Shapely vector union.
 
-    CANONICAL OUTLINE RULE: piece outlines are ALWAYS derived from brick alpha
-    vectors, never from piece PNG alpha channels or bounding boxes.
-    Pipeline: brick PNG alpha -> tracer.py -> brick polygon (local coords) ->
-    rasterize per-piece mask -> trace_alpha_contours -> douglas_peucker_closed
-    -> canvas-coord piece polygon.
+    CANONICAL OUTLINE RULE: piece outlines are ALWAYS derived from brick vector
+    polygons. Uses Shapely unary_union on the tessellated brick polygon points so
+    arch/curve detail from the original AI paths is fully preserved.
+
+    Adjacent bricks share edges (zero-area intersection), so each polygon is
+    expanded by BRIDGE px before union and then contracted back. This bridges
+    shared edges without meaningfully distorting the outline shape.
+
+    Bricks missing a vector polygon fall back to their bounding box rectangle.
 
     Returns dict[piece_id -> list of [x, y] in canvas coords].
     """
-    from PIL import Image as PilImage, ImageDraw as PilDraw
-    from unity_export import trace_alpha_contours, douglas_peucker_closed
+    from shapely.geometry import Polygon as ShapelyPolygon
+    from shapely.ops import unary_union
+
+    BRIDGE = 3  # px expand/contract to bridge shared edges between adjacent bricks
 
     result = {}
     for piece in pieces:
@@ -449,48 +455,47 @@ def _compute_piece_polygons(pieces, bricks_by_id, brick_polygons):
             result[piece.id] = []
             continue
 
-        px, py = piece.x, piece.y
-        pw = int(piece.width) + 2
-        ph = int(piece.height) + 2
-
-        from PIL import ImageFilter as PilFilter
-        mask_img = PilImage.new("L", (pw, ph), 0)
-        draw = PilDraw.Draw(mask_img)
-
+        polys = []
         for b in bricks:
             poly = brick_polygons.get(b.id, [])
             if poly and len(poly) >= 3:
-                # brick_polygons are brick-local; convert to piece-local coords
-                local_pts = [(x + b.x - px, y + b.y - py) for x, y in poly]
-                draw.polygon(local_pts, fill=255)
-            else:
-                draw.rectangle(
-                    [b.x - px, b.y - py, b.x - px + b.width, b.y - py + b.height],
-                    fill=255,
-                )
+                # brick-local → canvas coords, then expand to bridge shared edges
+                canvas_pts = [(x + b.x, y + b.y) for x, y in poly]
+                try:
+                    p = ShapelyPolygon(canvas_pts)
+                    if not p.is_valid:
+                        p = p.buffer(0)
+                    if not p.is_empty:
+                        polys.append(p.buffer(BRIDGE))
+                        continue
+                except Exception:
+                    pass
+            # Fallback: bounding box
+            polys.append(ShapelyPolygon([
+                (b.x, b.y), (b.x + b.width, b.y),
+                (b.x + b.width, b.y + b.height), (b.x, b.y + b.height),
+            ]).buffer(BRIDGE))
 
-        mask_rgba = PilImage.new("RGBA", mask_img.size, (0, 0, 0, 0))
-        mask_rgba.putalpha(mask_img)
-        contours = trace_alpha_contours(mask_rgba)
-
-        # If multiple disconnected regions, close gaps and re-trace
-        if len(contours) > 1:
-            closed = mask_img.filter(PilFilter.MaxFilter(5))
-            closed = closed.filter(PilFilter.MinFilter(5))
-            mask_rgba = PilImage.new("RGBA", closed.size, (0, 0, 0, 0))
-            mask_rgba.putalpha(closed)
-            contours = trace_alpha_contours(mask_rgba)
-        if not contours:
+        if not polys:
             result[piece.id] = []
             continue
 
-        main = max(contours, key=len)
-        simplified = douglas_peucker_closed(main, 2.0)
-
-        if len(simplified) >= 3:
-            result[piece.id] = [[x + px, y + py] for x, y in simplified]
-        else:
+        try:
+            union = unary_union(polys).buffer(-BRIDGE)
+        except Exception:
             result[piece.id] = []
+            continue
+
+        # Take the largest polygon if the result is a MultiPolygon
+        if union.geom_type == "MultiPolygon":
+            union = max(union.geoms, key=lambda g: g.area)
+
+        if union.is_empty or union.geom_type != "Polygon":
+            result[piece.id] = []
+            continue
+
+        coords = list(union.exterior.coords)
+        result[piece.id] = [[x, y] for x, y in coords]
 
     return result
 
