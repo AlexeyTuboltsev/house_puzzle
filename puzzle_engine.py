@@ -157,13 +157,8 @@ def compute_borders_and_areas(bricks: list[Brick],
             ~padded[1:-1, 2:]
         )
         ys, xs = np.where(border_mask)
-        # Canvas-sized PNGs (PDF/AI): pixel coords are already canvas-absolute.
-        # Brick-local PNGs (TIF): pixel coords are 0-based, need b.x/b.y offset.
-        if img.width == b.width and img.height == b.height:
-            ox, oy = b.x, b.y  # brick-local PNG
-        else:
-            ox, oy = 0, 0       # canvas-sized PNG
-        borders[b.id] = set(zip((xs + ox).tolist(), (ys + oy).tolist()))
+        # Brick PNGs are canvas-sized: pixel coords are already canvas-absolute.
+        borders[b.id] = set(zip(xs.tolist(), ys.tolist()))
 
     return borders, areas
 

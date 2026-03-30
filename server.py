@@ -3,7 +3,7 @@
 House Puzzle Editor — Flask backend.
 
 Serves the interactive editor UI and exposes API endpoints for
-PDF parsing, brick merging, and blueprint generation.
+AI file parsing, brick merging, and puzzle generation.
 """
 
 import argparse
@@ -20,8 +20,6 @@ from pathlib import Path
 from flask import Flask, jsonify, render_template, request, send_file, send_from_directory
 from PIL import Image, ImageDraw
 
-from tif_parser import parse_tif, extract_brick_png, extract_layers_batch
-from unity_export import build_house_data
 from puzzle_engine import (
     Brick,
     merge_bricks,
@@ -186,35 +184,18 @@ def _vectorize_bricks(bricks, extract_dir: Path) -> dict:
 
 @app.route("/api/load_pdf", methods=["POST"])
 def api_load_pdf():
-    """Load and parse a PDF file, extract brick metadata."""
+    """Load and parse an AI file, extract brick metadata."""
     data = request.get_json()
     file_path = data.get("path", "")
 
     if not file_path or not Path(file_path).exists():
         return jsonify({"error": f"File not found: {file_path}"}), 404
 
-    _suffix = Path(file_path).suffix.lower()
-    is_ai = _suffix == ".ai"
-    is_pdf = _suffix == ".pdf"
     canvas_height: int = int(data.get("canvas_height", 900))
-    dpi: int | None = int(data["dpi"]) if "dpi" in data else None
-    outline_layer: str | None = data.get("outline_layer") or None
 
     try:
-        if is_ai:
-            from ai_parser import parse_ai
-            house = parse_ai(file_path, canvas_height=canvas_height)
-        elif is_pdf:
-            from pdf_parser import (
-                parse_pdf,
-                extract_pdf_layers_batch,
-                extract_pdf_composite_png,
-                extract_pdf_brick_png,
-                extract_pdf_vector_polygons,
-            )
-            house = parse_pdf(file_path, canvas_height=canvas_height, dpi=dpi, outline_layer=outline_layer)
-        else:
-            house = parse_tif(file_path)
+        from ai_parser import parse_ai
+        house = parse_ai(file_path, canvas_height=canvas_height)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -232,7 +213,7 @@ def api_load_pdf():
     _state["bricks_by_id"] = bricks_by_id
     _state["tif_path"] = file_path
     _state["pieces"] = []
-    _state["canvas_height"] = canvas_height if (is_pdf or is_ai) else house.canvas_height
+    _state["canvas_height"] = canvas_height
 
     # Extract all layers as PNGs (always regenerate, no caching)
     import shutil
@@ -242,59 +223,24 @@ def api_load_pdf():
     extract_dir.mkdir(parents=True, exist_ok=True)
     _state["extracted_dir"] = extract_dir
 
-    if is_ai:
-        from ai_parser import (
-            extract_ai_layers_batch,
-            compose_ai_bricks_png,
-            render_ai_outlines_png,
-            render_ai_lights_png,
-            extract_ai_vector_polygons,
-        )
-        _ai_kw = dict(dpi=house.render_dpi, clip_rect=house.clip_rect)
+    from ai_parser import (
+        extract_ai_layers_batch,
+        compose_ai_bricks_png,
+        render_ai_outlines_png,
+        render_ai_lights_png,
+        extract_ai_vector_polygons,
+    )
+    _ai_kw = dict(dpi=house.render_dpi, clip_rect=house.clip_rect)
 
-        compose_ai_bricks_png(file_path, house.bricks, str(extract_dir / "composite.png"), **_ai_kw)
-        extract_ai_layers_batch(file_path, house.bricks, str(extract_dir), **_ai_kw, prefix="brick")
-        render_ai_outlines_png(file_path, str(extract_dir / "outlines.png"), **_ai_kw, stroke_width=3.2)
-        render_ai_lights_png(file_path, str(extract_dir / "lights.png"), **_ai_kw)
+    compose_ai_bricks_png(file_path, house.bricks, str(extract_dir / "composite.png"), **_ai_kw)
+    extract_ai_layers_batch(file_path, house.bricks, str(extract_dir), **_ai_kw, prefix="brick")
+    render_ai_outlines_png(file_path, str(extract_dir / "outlines.png"), **_ai_kw, stroke_width=3.2)
+    render_ai_lights_png(file_path, str(extract_dir / "lights.png"), **_ai_kw)
 
-        vec_polys = extract_ai_vector_polygons(file_path, house.bricks, **_ai_kw)
-        if vec_polys:
-            with open(extract_dir / "brick_polygons.json", "w") as f:
-                json.dump({str(k): v for k, v in vec_polys.items()}, f)
-
-    elif is_pdf:
-        from pdf_parser import (
-            extract_pdf_layers_batch,
-            extract_pdf_composite_png,
-            extract_pdf_brick_png,
-            extract_pdf_vector_polygons,
-            render_outlines_png,
-        )
-        _pdf_kw = dict(canvas_height=None, dpi=house.render_dpi, clip_rect=house.clip_rect)
-        extract_pdf_composite_png(file_path, str(extract_dir / "composite.png"), **_pdf_kw)
-        extract_pdf_layers_batch(file_path, house.bricks, str(extract_dir), **_pdf_kw, prefix="brick")
-
-        if house.base:
-            extract_pdf_brick_png(file_path, house.base.name, str(extract_dir / "base.png"), **_pdf_kw)
-
-        render_outlines_png(file_path, str(extract_dir / "outlines.png"), dpi=house.render_dpi,
-                            clip_rect=house.clip_rect, outline_layer=outline_layer, stroke_width=3.2)
-
-        vec_polys = extract_pdf_vector_polygons(
-            file_path, house.bricks, **_pdf_kw, outline_layer=outline_layer
-        )
-        if vec_polys:
-            with open(extract_dir / "brick_polygons.json", "w") as f:
-                json.dump({str(k): v for k, v in vec_polys.items()}, f)
-    else:
-        if house.composite:
-            extract_brick_png(file_path, house.composite.index, str(extract_dir / "composite.png"))
-
-        brick_indices = [bl.index for bl in house.bricks]
-        extract_layers_batch(file_path, brick_indices, str(extract_dir), prefix="brick")
-
-        if house.base:
-            extract_brick_png(file_path, house.base.index, str(extract_dir / "base.png"))
+    vec_polys = extract_ai_vector_polygons(file_path, house.bricks, **_ai_kw)
+    if vec_polys:
+        with open(extract_dir / "brick_polygons.json", "w") as f:
+            json.dump({str(k): v for k, v in vec_polys.items()}, f)
 
     # Compute border pixels and areas (single PNG read per brick)
     bp, ba = compute_borders_and_areas(bricks, str(extract_dir))
@@ -718,16 +664,13 @@ def api_export():
     house = _state["house"]
     tif_path = _state["tif_path"]
     pieces = _state["pieces"]
-    _export_suffix = Path(tif_path).suffix.lower()
-    is_ai_file = _export_suffix == ".ai"
-    is_pdf_file = _export_suffix in (".pdf", ".ai")
 
     waves_data = data.get("waves", [])
 
-    # Export resolution: for PDFs/AIs the user can specify a canvas height different from
-    # the display resolution (900px default). Bricks are re-rendered at that resolution.
+    # Re-render bricks at export resolution into a temp dir.
+    # The user can specify a canvas height different from the display resolution.
     export_canvas_height = int(data.get("export_canvas_height", house.canvas_height))
-    export_scale = export_canvas_height / house.canvas_height if is_pdf_file else 1.0
+    export_scale = export_canvas_height / house.canvas_height
     export_canvas_w = round(house.canvas_width * export_scale)
 
     # Resize sprites to target PPU=50 to match existing houses.
@@ -736,29 +679,16 @@ def api_export():
     target_canvas_w = TARGET_PPU * TARGET_WORLD_WIDTH  # 570
     scale = target_canvas_w / export_canvas_w
 
-    # For PDFs/AIs: re-render bricks at export resolution into a temp dir
-    export_dir: Path | None = None
-    if is_pdf_file:
-        export_dir = Path(tempfile.mkdtemp())
-        if is_ai_file:
-            from ai_parser import extract_ai_layers_batch, compose_ai_bricks_png
-            export_dpi = house.render_dpi * export_canvas_height / house.canvas_height
-            extract_ai_layers_batch(
-                tif_path, house.bricks, str(export_dir),
-                dpi=export_dpi, clip_rect=house.clip_rect, prefix="brick"
-            )
-            export_comp_path = export_dir / "composite.png"
-            compose_ai_bricks_png(tif_path, house.bricks, str(export_comp_path),
-                                  dpi=export_dpi, clip_rect=house.clip_rect)
-        else:
-            from pdf_parser import extract_pdf_layers_batch, extract_pdf_composite_png
-            extract_pdf_layers_batch(
-                tif_path, house.bricks, str(export_dir),
-                canvas_height=export_canvas_height, prefix="brick"
-            )
-            export_comp_path = export_dir / "composite.png"
-            extract_pdf_composite_png(tif_path, str(export_comp_path),
-                                      canvas_height=export_canvas_height)
+    from ai_parser import extract_ai_layers_batch, compose_ai_bricks_png
+    export_dir = Path(tempfile.mkdtemp())
+    export_dpi = house.render_dpi * export_canvas_height / house.canvas_height
+    extract_ai_layers_batch(
+        tif_path, house.bricks, str(export_dir),
+        dpi=export_dpi, clip_rect=house.clip_rect, prefix="brick"
+    )
+    export_comp_path = export_dir / "composite.png"
+    compose_ai_bricks_png(tif_path, house.bricks, str(export_comp_path),
+                          dpi=export_dpi, clip_rect=house.clip_rect)
 
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -775,29 +705,19 @@ def api_export():
             exp_img = Image.new("RGBA", (exp_w, exp_h), (0, 0, 0, 0))
 
             for bid in piece.brick_ids:
-                b = _state["bricks_by_id"][bid]
-                if is_pdf_file:
-                    # Cached display-resolution brick (full canvas PNG)
-                    disp_p = _state["extracted_dir"] / f"brick_{bid:03d}.png"
-                    if disp_p.exists():
-                        disp_br = Image.open(str(disp_p)).convert("RGBA")
-                        disp_img.paste(disp_br, (-round(piece.x), -round(piece.y)), disp_br)
-                    # Export-resolution brick (full canvas PNG)
-                    exp_p = export_dir / f"brick_{bid:03d}.png"  # type: ignore[operator]
-                    if exp_p.exists():
-                        exp_br = Image.open(str(exp_p)).convert("RGBA")
-                        exp_img.paste(exp_br,
-                                      (-round(piece.x * export_scale),
-                                       -round(piece.y * export_scale)),
-                                      exp_br)
-                else:
-                    tmp_brick = str(Path(tempfile.gettempdir()) / f"_brick_{bid}.png")
-                    extract_brick_png(tif_path, bid, tmp_brick)
-                    brick_img = Image.open(tmp_brick).convert("RGBA")
-                    rel_x = b.x - piece.x
-                    rel_y = b.y - piece.y
-                    disp_img.paste(brick_img, (rel_x, rel_y), brick_img)
-                    exp_img = disp_img  # non-PDF: display == export
+                # Cached display-resolution brick (full canvas PNG)
+                disp_p = _state["extracted_dir"] / f"brick_{bid:03d}.png"
+                if disp_p.exists():
+                    disp_br = Image.open(str(disp_p)).convert("RGBA")
+                    disp_img.paste(disp_br, (-round(piece.x), -round(piece.y)), disp_br)
+                # Export-resolution brick (full canvas PNG)
+                exp_p = export_dir / f"brick_{bid:03d}.png"
+                if exp_p.exists():
+                    exp_br = Image.open(str(exp_p)).convert("RGBA")
+                    exp_img.paste(exp_br,
+                                  (-round(piece.x * export_scale),
+                                   -round(piece.y * export_scale)),
+                                  exp_br)
 
             piece_images_orig[piece.id] = disp_img
 
@@ -813,9 +733,7 @@ def api_export():
             zf.writestr(f"pieces/{fname}", buf.getvalue())
 
         # Load composite source image
-        comp_path = (export_dir / "composite.png") if is_pdf_file and export_dir else (
-            _state["extracted_dir"] / "composite.png"
-        )
+        comp_path = export_dir / "composite.png"
         comp_src = None
         if comp_path.exists():
             comp_src = Image.open(str(comp_path)).convert("RGBA")
@@ -866,6 +784,7 @@ def api_export():
 
         # Unity house_data.json (blocks, steps, colliders)
         placement = data.get("placement", {})
+        from unity_export import build_house_data
         house_data = build_house_data(
             pieces=pieces,
             bricks_by_id=_state["bricks_by_id"],
