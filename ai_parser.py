@@ -568,6 +568,26 @@ def _render_bricks_ocg_png(
 # Step 7 — render outlines PNG (white stroked vector paths of all bricks)
 # ---------------------------------------------------------------------------
 
+def render_ai_lights_png(
+    ai_path: str,
+    out_path: str,
+    dpi: float,
+    clip_rect: tuple[float, float, float, float],
+) -> None:
+    """
+    Render only the 'lights' OCG layer to a PNG.
+
+    The lights layer contains the yellow window/door glow shapes used for the
+    night-lights game effect.  All other OCGs (bricks, background) are turned
+    off so only the light shapes appear on a transparent background.
+
+    The resulting PNG is intended as a toggle overlay in the editor so artists
+    can preview where lights appear without them being baked into the brick
+    sprites.
+    """
+    _render_layer_png(ai_path, "lights", out_path, dpi, clip_rect)
+
+
 def render_ai_outlines_png(
     ai_path: str,
     out_path: str,

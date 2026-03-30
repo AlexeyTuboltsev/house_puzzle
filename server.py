@@ -247,6 +247,7 @@ def api_load_pdf():
             extract_ai_layers_batch,
             compose_ai_bricks_png,
             render_ai_outlines_png,
+            render_ai_lights_png,
             extract_ai_vector_polygons,
         )
         _ai_kw = dict(dpi=house.render_dpi, clip_rect=house.clip_rect)
@@ -254,6 +255,7 @@ def api_load_pdf():
         compose_ai_bricks_png(file_path, house.bricks, str(extract_dir / "composite.png"), **_ai_kw)
         extract_ai_layers_batch(file_path, house.bricks, str(extract_dir), **_ai_kw, prefix="brick")
         render_ai_outlines_png(file_path, str(extract_dir / "outlines.png"), **_ai_kw, stroke_width=3.2)
+        render_ai_lights_png(file_path, str(extract_dir / "lights.png"), **_ai_kw)
 
         vec_polys = extract_ai_vector_polygons(file_path, house.bricks, **_ai_kw)
         if vec_polys:
@@ -336,6 +338,7 @@ def api_load_pdf():
         "warnings": house.warnings,
         "composite_url": "/api/composite.png?f=" + Path(file_path).stem,
         "outlines_url": "/api/outlines.png?f=" + Path(file_path).stem,
+        "lights_url": "/api/lights.png?f=" + Path(file_path).stem if (extract_dir / "lights.png").exists() else None,
         "blueprint_bg_url": None,
     })
 
@@ -406,6 +409,18 @@ def api_outlines_png():
     if not _state["extracted_dir"]:
         return "No PDF loaded", 404
     p = _state["extracted_dir"] / "outlines.png"
+    if not p.exists():
+        return "Not found", 404
+    resp = send_file(str(p), mimetype="image/png")
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@app.route("/api/lights.png")
+def api_lights_png():
+    if not _state["extracted_dir"]:
+        return "No file loaded", 404
+    p = _state["extracted_dir"] / "lights.png"
     if not p.exists():
         return "Not found", 404
     resp = send_file(str(p), mimetype="image/png")

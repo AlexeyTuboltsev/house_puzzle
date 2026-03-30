@@ -74,6 +74,9 @@ type alias LoadResponse =
     , renderDpi : Float
     , warnings : List String
     , outlinesUrl : String
+    , compositeUrl : String
+    , blueprintBgUrl : Maybe String
+    , lightsUrl : Maybe String
     }
 
 
@@ -131,6 +134,8 @@ type alias Model =
     , appMode : AppMode
     , showOutlines : Bool
     , showGrid : Bool
+    , showNumbers : Bool
+    , showLights : Bool
     , waves : List Wave
     , nextWaveId : Int
     , hoveredPieceId : Maybe Int
@@ -165,6 +170,8 @@ init _ =
       , appMode = ModeInit
       , showOutlines = True
       , showGrid = False
+      , showNumbers = True
+      , showLights = False
       , waves = []
       , nextWaveId = 1
       , hoveredPieceId = Nothing
@@ -210,6 +217,8 @@ type Msg
     | SetAppMode AppMode
     | ToggleOutlines Bool
     | ToggleGrid Bool
+    | ToggleNumbers Bool
+    | ToggleLights Bool
     | AddWave
     | ToggleWaveVisibility Int
     | SetHoveredPiece (Maybe Int)
@@ -265,7 +274,7 @@ update msg model =
             ( model, Cmd.none )
 
         PickFile ->
-            ( model, Select.file [ ".pdf", "application/pdf" ] FileSelected )
+            ( model, Select.file [ ".pdf", "application/pdf", ".ai", "application/illustrator" ] FileSelected )
 
         FileSelected file ->
             ( { model
@@ -404,7 +413,7 @@ update msg model =
         SetAppMode mode ->
             let
                 baseModel =
-                    { model | appMode = mode }
+                    { model | appMode = mode, editMode = False, editBrickIds = [], editOriginalBrickIds = [] }
             in
             if mode == ModeWaves then
                 case model.waves of
@@ -433,6 +442,12 @@ update msg model =
 
         ToggleGrid checked ->
             ( { model | showGrid = checked }, Cmd.none )
+
+        ToggleNumbers checked ->
+            ( { model | showNumbers = checked }, Cmd.none )
+
+        ToggleLights checked ->
+            ( { model | showLights = checked }, Cmd.none )
 
         AddWave ->
             let
@@ -1105,7 +1120,11 @@ decodePiecePolygonResponse =
 
 decodeLoadResponse : D.Decoder LoadResponse
 decodeLoadResponse =
-    D.map7 LoadResponse
+    D.map8
+        (\canvas bricks hasComposite hasBase renderDpi warnings outlinesUrl compositeUrl ->
+            \blueprintBgUrl lightsUrl ->
+                LoadResponse canvas bricks hasComposite hasBase renderDpi warnings outlinesUrl compositeUrl blueprintBgUrl lightsUrl
+        )
         (D.field "canvas" decodeCanvas)
         (D.field "bricks" (D.list decodeBrick))
         (D.field "has_composite" D.bool)
@@ -1113,6 +1132,9 @@ decodeLoadResponse =
         (D.field "render_dpi" D.float)
         (D.field "warnings" (D.list D.string))
         (D.field "outlines_url" D.string |> D.maybe |> D.map (Maybe.withDefault "/api/outlines.png"))
+        (D.field "composite_url" D.string |> D.maybe |> D.map (Maybe.withDefault "/api/composite.png"))
+        |> D.andThen (\f -> D.map f (D.field "blueprint_bg_url" D.string |> D.maybe))
+        |> D.andThen (\f -> D.map f (D.field "lights_url" D.string |> D.maybe))
 
 
 decodeCanvas : D.Decoder Canvas
@@ -1213,7 +1235,7 @@ httpErrorToString err =
 view : Model -> Html Msg
 view model =
     div [ class "app" ]
-        [ viewTitleBar model
+        [ viewSidebar model
         , viewBody model
         ]
 
@@ -1304,8 +1326,8 @@ viewBodyOverlay model =
                 ]
 
 
-viewTitleBar : Model -> Html Msg
-viewTitleBar model =
+viewSidebar : Model -> Html Msg
+viewSidebar model =
     let
         isLoaded =
             case model.loadState of
@@ -1339,10 +1361,9 @@ viewTitleBar model =
         canExport =
             isGenerated && not isBusy && not isGenerating && not hasUnassigned
     in
-    div [ class "title-bar" ]
+    div [ class "left-sidebar" ]
         [ span [ class "app-title" ] [ text "House Puzzle" ]
-        , span [ class "version-tag" ] [ text "v0.1" ]
-        , div [ class "mode-buttons" ]
+        , div [ class "sidebar-nav" ]
             [ button
                 [ classList
                     [ ( "mode-btn", True )
@@ -1363,7 +1384,7 @@ viewTitleBar model =
                         "Start"
                     )
                 ]
-            , span [ class "mode-sep" ] [ text "\u{2192}" ]
+            , span [ class "mode-sep" ] [ text "\u{2193}" ]
             , button
                 [ classList
                     [ ( "mode-btn", True )
@@ -1381,7 +1402,7 @@ viewTitleBar model =
                         "Generate"
                     )
                 ]
-            , span [ class "mode-sep" ] [ text "\u{2192}" ]
+            , span [ class "mode-sep" ] [ text "\u{2193}" ]
             , button
                 [ classList
                     [ ( "mode-btn", True )
@@ -1392,7 +1413,7 @@ viewTitleBar model =
                 , onClick (SetAppMode ModePieces)
                 ]
                 [ text "Pieces" ]
-            , span [ class "mode-sep" ] [ text "\u{21C4}" ]
+            , span [ class "mode-sep" ] [ text "\u{2195}" ]
             , button
                 [ classList
                     [ ( "mode-btn", True )
@@ -1402,7 +1423,7 @@ viewTitleBar model =
                 , onClick (SetAppMode ModeBlueprint)
                 ]
                 [ text "Blueprint" ]
-            , span [ class "mode-sep" ] [ text "\u{21C4}" ]
+            , span [ class "mode-sep" ] [ text "\u{2195}" ]
             , button
                 [ classList
                     [ ( "mode-btn", True )
@@ -1412,7 +1433,7 @@ viewTitleBar model =
                 , onClick (SetAppMode ModeWaves)
                 ]
                 [ text "Waves" ]
-            , span [ class "mode-sep" ] [ text "\u{2192}" ]
+            , span [ class "mode-sep" ] [ text "\u{2193}" ]
             , button
                 [ classList
                     [ ( "mode-btn", True )
@@ -1432,6 +1453,7 @@ viewTitleBar model =
                 ]
                 [ text "Export" ]
             ]
+        , span [ class "version-tag" ] [ text "v0.1" ]
         ]
 
 
@@ -1482,7 +1504,7 @@ viewWaveTray model _ =
         ]
         [ div [ class "wave-tray-scroll" ]
             (List.concatMap
-                (\pid ->
+                (\( pos, pid ) ->
                     let
                         showMarker =
                             not isLocked && model.draggingPieceId /= Nothing && model.dragInsertBeforeId == Just pid
@@ -1497,14 +1519,14 @@ viewWaveTray model _ =
                         thumb =
                             case model.pieces |> List.filter (\p -> p.id == pid) |> List.head of
                                 Just piece ->
-                                    [ viewWaveTrayThumb piece isLocked model.svgScale model.hoveredPieceId model.pieceGeneration ]
+                                    [ viewWaveTrayThumb piece isLocked model.svgScale model.hoveredPieceId model.pieceGeneration model.showNumbers pos ]
 
                                 Nothing ->
                                     []
                     in
                     marker ++ thumb
                 )
-                activeWavePieceIds
+                (List.indexedMap (\i pid -> ( i + 1, pid )) activeWavePieceIds)
                 ++ (if not isLocked && model.draggingPieceId /= Nothing && model.dragInsertBeforeId == Nothing && model.dragOverWaveId == Just activeWaveId then
                         [ div [ class "drag-insert-marker-v" ] [] ]
 
@@ -1517,8 +1539,8 @@ viewWaveTray model _ =
 
 -- scale: computed from viewport height and SVG natural height (stored in model.svgScale).
 -- Produces exact px dimensions matching how the piece appears in the house view.
-viewWaveTrayThumb : Piece -> Bool -> Float -> Maybe Int -> Int -> Html Msg
-viewWaveTrayThumb piece isLocked scale hoveredId generation =
+viewWaveTrayThumb : Piece -> Bool -> Float -> Maybe Int -> Int -> Bool -> Int -> Html Msg
+viewWaveTrayThumb piece isLocked scale hoveredId generation showNum pos =
     let
         isHovered =
             hoveredId == Just piece.id
@@ -1547,6 +1569,11 @@ viewWaveTrayThumb piece isLocked scale hoveredId generation =
             ++ dragAttrs
         )
         [ img [ src (piece.imgUrl ++ "?v=" ++ String.fromInt generation) ] []
+        , if showNum then
+            div [ class "tray-thumb-num" ] [ text (String.fromInt pos) ]
+
+          else
+            text ""
         ]
 
 
@@ -1575,7 +1602,7 @@ viewToolsCol model response =
 
 
 viewPdfTools : Model -> LoadResponse -> Html Msg
-viewPdfTools model _ =
+viewPdfTools model response =
     let
         isLoaded =
             case model.loadState of
@@ -1587,6 +1614,9 @@ viewPdfTools model _ =
 
         isGenerating =
             model.generateState == Compositing
+
+        hasLights =
+            response.lightsUrl /= Nothing
     in
     div [ class "tools-pane" ]
         [ viewStatusBadge model
@@ -1605,6 +1635,14 @@ viewPdfTools model _ =
             ]
         , h2 [] [ text "Stats" ]
         , viewStats model
+        , if hasLights then
+            div [ class "checkbox-group" ]
+                [ input [ type_ "checkbox", id "showLights", checked model.showLights, onCheck ToggleLights ] []
+                , label [ for "showLights" ] [ text "Show lights" ]
+                ]
+
+          else
+            text ""
         , div [ class "tools-divider" ] []
         , button
             [ class "primary"
@@ -1637,23 +1675,87 @@ viewPiecesTools model =
                 [ input [ type_ "checkbox", id "showGrid", checked model.showGrid, onCheck ToggleGrid ] []
                 , label [ for "showGrid" ] [ text "Show grid" ]
                 ]
+            , div [ class "checkbox-group" ]
+                [ input [ type_ "checkbox", id "showNumbers", checked model.showNumbers, onCheck ToggleNumbers ] []
+                , label [ for "showNumbers" ] [ text "Show position numbers" ]
+                ]
             , div [ class "tools-divider" ] []
-            , case model.selectedPieceId of
+            , viewPieceInfoBox model
+            ]
+        )
+
+
+viewPieceInfoBox : Model -> Html Msg
+viewPieceInfoBox model =
+    let
+        focusId =
+            case model.hoveredPieceId of
                 Just pid ->
-                    div [ class "piece-info" ]
+                    Just pid
+
+                Nothing ->
+                    model.selectedPieceId
+
+        piecePositions =
+            model.waves
+                |> List.concatMap (\wv -> List.indexedMap (\i pid -> ( pid, i + 1 )) wv.pieceIds)
+                |> Dict.fromList
+
+        waveOfPiece pid =
+            model.waves
+                |> List.indexedMap (\i wv -> ( i + 1, wv ))
+                |> List.filter (\( _, wv ) -> List.member pid wv.pieceIds)
+                |> List.head
+                |> Maybe.map (\( i, wv ) -> ( i, wv.name ))
+    in
+    case focusId of
+        Just pid ->
+            let
+                maybePiece =
+                    model.pieces |> List.filter (\p -> p.id == pid) |> List.head
+
+                posLabel =
+                    case Dict.get pid piecePositions of
+                        Just pos ->
+                            case waveOfPiece pid of
+                                Just ( _, wname ) ->
+                                    "Position " ++ String.fromInt pos ++ " in " ++ wname
+
+                                Nothing ->
+                                    "Position " ++ String.fromInt pos
+
+                        Nothing ->
+                            "Unassigned"
+            in
+            div [ class "piece-info" ]
+                (case maybePiece of
+                    Just piece ->
+                        [ div [ class "piece-info-label" ] [ text posLabel ]
+                        , div [ class "piece-info-row" ] [ text ("Piece ID: " ++ String.fromInt pid) ]
+                        , div [ class "piece-info-row" ] [ text ("Bricks: " ++ String.fromInt (List.length piece.brickIds)) ]
+                        , div [ class "piece-info-row" ]
+                            [ text ("Brick IDs: " ++ String.join ", " (List.map String.fromInt piece.brickIds)) ]
+                        , button
+                            [ class "primary"
+                            , onClick StartEdit
+                            , disabled model.recomputing
+                            ]
+                            [ text "Edit Piece" ]
+                        ]
+
+                    Nothing ->
                         [ div [ class "piece-info-label" ] [ text ("Piece #" ++ String.fromInt pid) ]
                         , button
                             [ class "primary"
                             , onClick StartEdit
                             , disabled model.recomputing
                             ]
-                            [ text ("Edit Piece #" ++ String.fromInt pid) ]
+                            [ text "Edit Piece" ]
                         ]
+                )
 
-                Nothing ->
-                    div [ class "piece-info-empty" ] [ text "Click a piece to select" ]
-            ]
-        )
+        Nothing ->
+            div [ class "piece-info-empty" ] [ text "Click or hover a piece to inspect" ]
 
 
 viewBlueprintTools : Model -> Html Msg
@@ -1790,6 +1892,7 @@ viewMainSvg response model =
         h =
             String.fromFloat ch
 
+
         isGenerated =
             model.generateState == Generated
 
@@ -1806,7 +1909,17 @@ viewMainSvg response model =
                 |> List.concatMap .pieceIds
 
         visiblePieces =
-            List.filter (\p -> not (List.member p.id hiddenPieceIds)) model.pieces
+            let
+                filtered =
+                    List.filter (\p -> not (List.member p.id hiddenPieceIds)) model.pieces
+            in
+            case model.draggingPieceId of
+                Just dragId ->
+                    List.filter (\p -> p.id /= dragId) filtered
+                        ++ List.filter (\p -> p.id == dragId) filtered
+
+                Nothing ->
+                    filtered
 
         -- Blueprint layer: always shown post-gen (underneath everything) so hidden-wave gaps show piece outlines
         blueprintLayer =
@@ -1825,7 +1938,7 @@ viewMainSvg response model =
                         , SA.y "0"
                         , SA.width w
                         , SA.height h
-                        , attribute "href" "/api/composite.png"
+                        , attribute "href" response.compositeUrl
                         ]
                         []
                     ]
@@ -1837,12 +1950,19 @@ viewMainSvg response model =
                 List.map (viewPieceImage model.pieceGeneration) visiblePieces
 
             else if showComposite then
+                let
+                    bgUrl =
+                        if model.appMode == ModeBlueprint then
+                            Maybe.withDefault response.compositeUrl response.blueprintBgUrl
+                        else
+                            response.compositeUrl
+                in
                 [ Svg.image
                     [ SA.x "0"
                     , SA.y "0"
                     , SA.width w
                     , SA.height h
-                    , attribute "href" "/api/composite.png"
+                    , attribute "href" bgUrl
                     ]
                     []
                 ]
@@ -1850,6 +1970,24 @@ viewMainSvg response model =
             else
                 -- Blueprint or pieces mode post-gen: hide bricks, piece polygons/images show through
                 []
+
+        -- Lights overlay (toggleable, shown when showLights is True and lightsUrl is available)
+        lightsLayer =
+            case ( model.showLights, response.lightsUrl ) of
+                ( True, Just url ) ->
+                    [ Svg.image
+                        [ SA.x "0"
+                        , SA.y "0"
+                        , SA.width w
+                        , SA.height h
+                        , attribute "href" url
+                        , SA.style "pointer-events: none;"
+                        ]
+                        []
+                    ]
+
+                _ ->
+                    []
 
         -- Outlines PNG overlay (pre-gen only, shows vector brick shapes from PDF)
         outlinesPngLayer =
@@ -1914,6 +2052,24 @@ viewMainSvg response model =
 
             else
                 []
+
+        -- Piece position number labels (post-gen, not in edit, when showNumbers is on)
+        piecePositions =
+            model.waves
+                |> List.concatMap (\wv -> List.indexedMap (\i pid -> ( pid, i + 1 )) wv.pieceIds)
+                |> Dict.fromList
+
+        numberLabels =
+            if (not model.editMode) && isGenerated && model.showNumbers && (model.appMode == ModePieces || model.appMode == ModeWaves) then
+                List.filterMap
+                    (\piece ->
+                        Dict.get piece.id piecePositions
+                            |> Maybe.map (viewPieceNumberLabel piece)
+                    )
+                    visiblePieces
+
+            else
+                []
     in
     Svg.svg
         [ SA.viewBox ("-10 -10 " ++ String.fromFloat (cw + 20) ++ " " ++ String.fromFloat (ch + 20))
@@ -1929,11 +2085,13 @@ viewMainSvg response model =
          else
             [ Svg.g [] blueprintLayer
             , Svg.g [] baseLayer
+            , Svg.g [] lightsLayer
             , Svg.g [] compositeOverlays
             , Svg.g [] outlineLayer
             , Svg.g [] gridLayer
             , Svg.g [] pieceOverlays
             , Svg.g [] outlinesPngLayer
+            , Svg.g [] numberLabels
             ]
         )
 
@@ -2095,6 +2253,38 @@ viewPieceOutline piece =
             , SA.class "piece-outline"
             ]
             []
+
+
+viewPieceNumberLabel : Piece -> Int -> Svg.Svg Msg
+viewPieceNumberLabel piece pos =
+    let
+        cx =
+            piece.x + piece.width / 2
+
+        cy =
+            piece.y + piece.height / 2
+
+        label =
+            String.fromInt pos
+    in
+    Svg.g [ SA.class "piece-number-label", attribute "pointer-events" "none" ]
+        [ Svg.text_
+            [ SA.x (String.fromFloat cx)
+            , SA.y (String.fromFloat cy)
+            , SA.textAnchor "middle"
+            , SA.dominantBaseline "central"
+            , SA.class "piece-num-shadow"
+            ]
+            [ Svg.text label ]
+        , Svg.text_
+            [ SA.x (String.fromFloat cx)
+            , SA.y (String.fromFloat cy)
+            , SA.textAnchor "middle"
+            , SA.dominantBaseline "central"
+            , SA.class "piece-num-text"
+            ]
+            [ Svg.text label ]
+        ]
 
 
 waveColorClass : Int -> String
