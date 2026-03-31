@@ -1,15 +1,16 @@
 # -*- mode: python ; coding: utf-8 -*-
 # PyInstaller spec for House Puzzle Editor
 #
-# Build:  pyinstaller house_puzzle.spec
-# Result: dist/house_puzzle/house_puzzle.exe (Windows) or dist/house_puzzle/house_puzzle (Linux)
+# Build (from project root):
+#   Linux/macOS:  pyinstaller house_puzzle.spec --noconfirm
+#   Windows:      pyinstaller house_puzzle.spec --noconfirm
 #
-# No external dependencies required (pure Python TIF parsing).
+# Output: dist/house_puzzle/house_puzzle(.exe on Windows)
+# The dist/house_puzzle/ folder is the distributable — zip it up.
+# Place AI files in dist/house_puzzle/in/ before running.
 
 import sys
 from pathlib import Path
-
-block_cipher = None
 
 a = Analysis(
     ['server.py'],
@@ -21,18 +22,53 @@ a = Analysis(
         ('presets', 'presets'),
         ('VERSION', '.'),
     ],
-    hiddenimports=[],
+    hiddenimports=[
+        # PyMuPDF
+        'fitz',
+        'fitz._fitz',
+        'fitz.table',
+        'fitz.utils',
+        # Shapely
+        'shapely',
+        'shapely.geometry',
+        'shapely.geometry.polygon',
+        'shapely.ops',
+        'shapely.prepared',
+        # zstandard
+        'zstandard',
+        # Pillow
+        'PIL',
+        'PIL.Image',
+        'PIL.ImageDraw',
+        'PIL.ImageFilter',
+        # numpy
+        'numpy',
+        'numpy.core',
+        # flask internals sometimes missed
+        'flask',
+        'werkzeug',
+        'werkzeug.serving',
+        'werkzeug.debug',
+        'jinja2',
+        'jinja2.ext',
+    ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
-    win_no_prefer_redirects=False,
-    win_private_assemblies=False,
-    cipher=block_cipher,
+    excludes=[
+        'tkinter',
+        'matplotlib',
+        'scipy',
+        'IPython',
+        'jupyter',
+        'PyQt5',
+        'PyQt6',
+        'wx',
+    ],
     noarchive=False,
 )
 
-pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+pyz = PYZ(a.pure, a.zipped_data)
 
 exe = EXE(
     pyz,

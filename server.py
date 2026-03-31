@@ -151,7 +151,7 @@ def api_delete_preset(name):
 @app.route("/api/list_pdfs", methods=["GET"])
 def api_list_pdfs():
     """List available PDF files in the in/ directory."""
-    in_dir = Path("in")
+    in_dir = _app_dir / "in"
     if not in_dir.exists():
         return jsonify({"files": []})
 
@@ -165,6 +165,18 @@ def api_list_pdfs():
             })
     return jsonify({"files": files})
 
+
+@app.route("/api/upload_file", methods=["POST"])
+def api_upload_file():
+    """Accept a file upload, save to in/ directory, return its path."""
+    f = request.files.get("file")
+    if not f or not f.filename:
+        return jsonify({"error": "no file"}), 400
+    in_dir = _app_dir / "in"
+    in_dir.mkdir(exist_ok=True)
+    dest = in_dir / Path(f.filename).name
+    f.save(dest)
+    return jsonify({"path": str(dest)})
 
 
 def _vectorize_bricks(bricks, extract_dir: Path) -> dict:

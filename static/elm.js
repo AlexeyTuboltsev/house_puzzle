@@ -6977,6 +6977,31 @@ var $author$project$Main$scrollToBottom = A2(
 		},
 		$elm$core$Process$sleep(0)));
 var $elm$core$String$toFloat = _String_toFloat;
+var $author$project$Main$FileUploaded = function (a) {
+	return {$: 'FileUploaded', a: a};
+};
+var $elm$http$Http$filePart = _Http_pair;
+var $elm$http$Http$multipartBody = function (parts) {
+	return A2(
+		_Http_pair,
+		'',
+		_Http_toFormData(parts));
+};
+var $author$project$Main$uploadFile = function (file) {
+	return $elm$http$Http$post(
+		{
+			body: $elm$http$Http$multipartBody(
+				_List_fromArray(
+					[
+						A2($elm$http$Http$filePart, 'file', file)
+					])),
+			expect: A2(
+				$elm$http$Http$expectJson,
+				$author$project$Main$FileUploaded,
+				A2($elm$json$Json$Decode$field, 'path', $elm$json$Json$Decode$string)),
+			url: '/api/upload_file'
+		});
+};
 var $author$project$Main$update = F2(
 	function (msg, model) {
 		switch (msg.$) {
@@ -7020,10 +7045,20 @@ var $author$project$Main$update = F2(
 							selectedWaveId: $elm$core$Maybe$Nothing,
 							waves: _List_Nil
 						}),
-					A2(
-						$author$project$Main$loadPdf,
-						'in/' + $elm$file$File$name(file),
-						model.availableH));
+					$author$project$Main$uploadFile(file));
+			case 'FileUploaded':
+				if (msg.a.$ === 'Ok') {
+					var path = msg.a.a;
+					return _Utils_Tuple2(
+						model,
+						A2($author$project$Main$loadPdf, path, model.availableH));
+				} else {
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{loadState: $author$project$Main$Idle}),
+						$elm$core$Platform$Cmd$none);
+				}
 			case 'Reset':
 				return _Utils_Tuple2(
 					_Utils_update(
