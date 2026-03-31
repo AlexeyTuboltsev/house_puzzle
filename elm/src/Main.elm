@@ -13,6 +13,7 @@ import Json.Decode as D
 import Json.Encode as E
 import Svg
 import Svg.Attributes as SA
+import Process
 import Task
 
 
@@ -150,8 +151,12 @@ type alias Model =
     , draggingPieceId : Maybe Int
     , dragOverWaveId : Maybe (Maybe Int)
     , dragInsertBeforeId : Maybe Int
+    , lasso : Maybe { x0 : Float, y0 : Float, x1 : Float, y1 : Float }
     , svgScale : Float
-    , viewportHeight : Float
+    , availableH : Float
+    , houseUnitsHigh : Float
+    , zoomLevel : Float
+    , zoomGridActive : Bool
     }
 
 
@@ -161,7 +166,7 @@ init _ =
       , pdfFiles = []
       , loadState = Idle
       , targetCount = 60
-      , minBorder = 5
+      , minBorder = 10
       , seed = 42
       , generateState = NotGenerated
       , pieces = []
@@ -186,8 +191,12 @@ init _ =
       , draggingPieceId = Nothing
       , dragOverWaveId = Nothing
       , dragInsertBeforeId = Nothing
+      , lasso = Nothing
       , svgScale = 1.0
-      , viewportHeight = 900.0
+      , availableH = 900.0
+      , houseUnitsHigh = 15.5
+      , zoomLevel = 1.0
+      , zoomGridActive = False
       }
     , Cmd.batch
         [ fetchPdfList
@@ -244,6 +253,12 @@ type Msg
     | DragEnterPiece Int
     | DropOnWave (Maybe Int)
     | ToggleWaveLock Int
+    | LassoStart Float Float
+    | LassoMove Float Float
+    | LassoEnd
+    | SetZoomLevel Float
+    | SetZoomGridActive Bool
+    | SetHouseUnitsHigh String
     | NoOp
 
 
@@ -259,6 +274,14 @@ port gotExportDone : (Bool -> msg) -> Sub msg
 
 port logBrick : E.Value -> Cmd msg
 
+
+
+scrollToBottom : Cmd Msg
+scrollToBottom =
+    Task.attempt (\_ -> NoOp)
+        (Process.sleep 0
+            |> Task.andThen (\_ -> Browser.Dom.setViewportOf "house-scroll" 0 999999)
+        )
 
 
 -- ── Update ──────────────────────────────────────────────────────────────────
@@ -293,7 +316,7 @@ update msg model =
                 , recomputing = False
                 , appMode = ModeInit
               }
-            , loadPdf ("in/" ++ File.name file) model.viewportHeight
+            , loadPdf ("in/" ++ File.name file) model.availableH
             )
 
         Reset ->
@@ -333,7 +356,7 @@ update msg model =
                 , recomputing = False
                 , appMode = ModeInit
               }
-            , loadPdf path model.viewportHeight
+            , loadPdf path model.availableH
             )
 
         GotLoadResponse (Ok response) ->
@@ -414,6 +437,9 @@ update msg model =
             let
                 baseModel =
                     { model | appMode = mode, editMode = False, editBrickIds = [], editOriginalBrickIds = [] }
+
+                recomputeViewport =
+                    Task.perform GotViewport Browser.Dom.getViewport
             in
             if mode == ModeWaves then
                 case model.waves of
@@ -427,15 +453,15 @@ update msg model =
                                 , pieceIds = []
                                 }
                         in
-                        ( { baseModel | waves = [ newWave ], nextWaveId = model.nextWaveId + 1, selectedWaveId = Just newWave.id }, Cmd.none )
+                        ( { baseModel | waves = [ newWave ], nextWaveId = model.nextWaveId + 1, selectedWaveId = Just newWave.id }, recomputeViewport )
 
                     first :: _ ->
                         ( { baseModel | selectedWaveId = if baseModel.selectedWaveId == Nothing then Just first.id else baseModel.selectedWaveId }
-                        , Task.perform GotViewport Browser.Dom.getViewport
+                        , recomputeViewport
                         )
 
             else
-                ( baseModel, Cmd.none )
+                ( baseModel, recomputeViewport )
 
         ToggleOutlines checked ->
             ( { model | showOutlines = checked }, Cmd.none )
@@ -965,27 +991,151 @@ update msg model =
             let
                 vh =
                     viewport.viewport.height
+
+                -- Wave tray CSS: height = (100vh - 48) * 0.12  (only shown in waves mode)
+                -- The 48px offset in that rule has unclear origin.
+                -- Subtract canvas-area padding-bottom (16px).
+                waveTrayOffset = 48
+                waveTrayHeight = (vh - waveTrayOffset) * 0.12
+                bottomPadding  = 16   -- .canvas-area padding-bottom
+
+                availableH =
+                    if model.appMode == ModeWaves then
+                        vh - waveTrayHeight - bottomPadding
+                    else
+                        vh - bottomPadding
             in
             case model.loadState of
                 Loaded response ->
                     let
-                        -- Available height for SVG = canvas-area height (88% of body) minus padding
-                        availableH =
-                            (vh - 48) * 0.88 - 32
-
                         svgH =
                             response.canvas.height + 20
 
                         scale =
-                            Basics.min 1.0 (availableH / svgH)
+                            availableH * model.houseUnitsHigh / (svgH * 15.5)
                     in
-                    ( { model | svgScale = scale, viewportHeight = vh }, Cmd.none )
+                    ( { model | svgScale = scale, availableH = availableH }
+                    , scrollToBottom
+                    )
 
                 _ ->
-                    ( { model | viewportHeight = vh }, Cmd.none )
+                    ( { model | availableH = availableH }, Cmd.none )
+
+        LassoStart x y ->
+            if model.selectedWaveId /= Nothing then
+                ( { model | lasso = Just { x0 = x, y0 = y, x1 = x, y1 = y } }, Cmd.none )
+
+            else
+                ( model, Cmd.none )
+
+        LassoMove x y ->
+            case model.lasso of
+                Nothing ->
+                    ( model, Cmd.none )
+
+                Just ls ->
+                    ( { model | lasso = Just { ls | x1 = x, y1 = y } }, Cmd.none )
+
+        LassoEnd ->
+            case model.lasso of
+                Nothing ->
+                    ( model, Cmd.none )
+
+                Just ls ->
+                    let
+                        isDrag =
+                            abs (ls.x1 - ls.x0) > 5 || abs (ls.y1 - ls.y0) > 5
+
+                        cleared =
+                            { model | lasso = Nothing }
+                    in
+                    if not isDrag then
+                        ( cleared, Cmd.none )
+
+                    else
+                        case model.selectedWaveId of
+                            Nothing ->
+                                ( cleared, Cmd.none )
+
+                            Just wid ->
+                                let
+                                    lx0 = Basics.min ls.x0 ls.x1
+                                    lx1 = Basics.max ls.x0 ls.x1
+                                    ly0 = Basics.min ls.y0 ls.y1
+                                    ly1 = Basics.max ls.y0 ls.y1
+
+                                    selectedIds =
+                                        model.pieces
+                                            |> List.filter (\p ->
+                                                p.x < lx1
+                                                    && (p.x + p.width) > lx0
+                                                    && p.y < ly1
+                                                    && (p.y + p.height) > ly0
+                                            )
+                                            |> List.map .id
+
+                                    updatedWaves =
+                                        List.foldl
+                                            (\pid waves ->
+                                                let
+                                                    alreadyIn =
+                                                        waves
+                                                            |> List.filter (\w -> w.id == wid)
+                                                            |> List.head
+                                                            |> Maybe.map (\w -> List.member pid w.pieceIds)
+                                                            |> Maybe.withDefault False
+
+                                                    srcLocked =
+                                                        waves |> List.any (\w -> w.locked && List.member pid w.pieceIds)
+
+                                                    tgtLocked =
+                                                        waves |> List.filter (\w -> w.id == wid) |> List.head |> Maybe.map .locked |> Maybe.withDefault False
+                                                in
+                                                if tgtLocked || (not alreadyIn && srcLocked) then
+                                                    waves
+
+                                                else if alreadyIn then
+                                                    waves
+
+                                                else
+                                                    List.map
+                                                        (\w ->
+                                                            if w.id == wid then
+                                                                { w | pieceIds = w.pieceIds ++ [ pid ] }
+
+                                                            else
+                                                                { w | pieceIds = List.filter (\p -> p /= pid) w.pieceIds }
+                                                        )
+                                                        waves
+                                            )
+                                            model.waves
+                                            selectedIds
+                                in
+                                ( { cleared | waves = updatedWaves }, Cmd.none )
+
+        SetZoomLevel z ->
+            ( { model | zoomLevel = z }, Cmd.none )
+
+        SetZoomGridActive b ->
+            ( { model | zoomGridActive = b }, Cmd.none )
+
+        SetHouseUnitsHigh s ->
+            case String.toFloat s of
+                Just h ->
+                    if h > 0 then
+                        ( { model | houseUnitsHigh = h }
+                        , Task.perform GotViewport Browser.Dom.getViewport
+                        )
+
+                    else
+                        ( model, Cmd.none )
+
+                Nothing ->
+                    ( model, Cmd.none )
 
         NoOp ->
             ( model, Cmd.none )
+
 
 
 -- ── Helpers ─────────────────────────────────────────────────────────────────
@@ -1361,10 +1511,9 @@ viewTitleBar model =
         canExport =
             isGenerated && not isBusy && not isGenerating && not hasUnassigned
     in
-    div [ class "title-bar" ]
+    div [ class "left-sidebar" ]
         [ span [ class "app-title" ] [ text "House Puzzle" ]
-        , span [ class "version-tag" ] [ text "v0.1" ]
-        , div [ class "mode-buttons" ]
+        , div [ class "sidebar-nav" ]
             [ button
                 [ classList
                     [ ( "mode-btn", True )
@@ -1385,7 +1534,7 @@ viewTitleBar model =
                         "Start"
                     )
                 ]
-            , span [ class "mode-sep" ] [ text "\u{2192}" ]
+            , span [ class "mode-sep" ] [ text "\u{2193}" ]
             , button
                 [ classList
                     [ ( "mode-btn", True )
@@ -1403,7 +1552,7 @@ viewTitleBar model =
                         "Generate"
                     )
                 ]
-            , span [ class "mode-sep" ] [ text "\u{2192}" ]
+            , span [ class "mode-sep" ] [ text "\u{2193}" ]
             , button
                 [ classList
                     [ ( "mode-btn", True )
@@ -1414,7 +1563,7 @@ viewTitleBar model =
                 , onClick (SetAppMode ModePieces)
                 ]
                 [ text "Pieces" ]
-            , span [ class "mode-sep" ] [ text "\u{21C4}" ]
+            , span [ class "mode-sep" ] [ text "\u{2195}" ]
             , button
                 [ classList
                     [ ( "mode-btn", True )
@@ -1424,7 +1573,7 @@ viewTitleBar model =
                 , onClick (SetAppMode ModeBlueprint)
                 ]
                 [ text "Blueprint" ]
-            , span [ class "mode-sep" ] [ text "\u{21C4}" ]
+            , span [ class "mode-sep" ] [ text "\u{2195}" ]
             , button
                 [ classList
                     [ ( "mode-btn", True )
@@ -1434,7 +1583,7 @@ viewTitleBar model =
                 , onClick (SetAppMode ModeWaves)
                 ]
                 [ text "Waves" ]
-            , span [ class "mode-sep" ] [ text "\u{2192}" ]
+            , span [ class "mode-sep" ] [ text "\u{2193}" ]
             , button
                 [ classList
                     [ ( "mode-btn", True )
@@ -1454,19 +1603,62 @@ viewTitleBar model =
                 ]
                 [ text "Export" ]
             ]
+        , span [ class "version-tag" ] [ text "v0.1" ]
+        ]
+
+
+viewZoomSlider : Model -> Html Msg
+viewZoomSlider model =
+    let
+        pct =
+            round (model.zoomLevel * 100)
+
+        label =
+            String.fromInt pct ++ "%"
+    in
+    div [ class "zoom-slider-bar" ]
+        [ span [ class "zoom-icon" ] [ text "+" ]
+        , div [ class "zoom-slider-wrap" ]
+            [ input
+                [ type_ "range"
+                , class "zoom-slider"
+                , Html.Attributes.list "zoom-ticks"
+                , Html.Attributes.min "0.25"
+                , Html.Attributes.max "4.0"
+                , Html.Attributes.step "0.05"
+                , value (String.fromFloat model.zoomLevel)
+                , onInput (\s -> Maybe.withDefault NoOp (Maybe.map SetZoomLevel (String.toFloat s)))
+                , onMouseEnter (SetZoomGridActive True)
+                , onMouseLeave (SetZoomGridActive False)
+                ]
+                []
+            , Html.node "datalist" [ id "zoom-ticks" ]
+                [ Html.option [ value "1" ] [] ]
+            , button
+                [ class "zoom-notch-label"
+                , onClick (SetZoomLevel 1.0)
+                ]
+                [ text "100%" ]
+            ]
+        , span [ class "zoom-icon" ] [ text "−" ]
+        , span [ class "zoom-val" ] [ text label ]
         ]
 
 
 viewCanvasCol : Model -> LoadResponse -> Html Msg
 viewCanvasCol model response =
     div [ class "canvas-col" ]
-        ([ div [ class "canvas-area" ]
-            [ viewMainSvg response model
-            , if model.recomputing then
-                div [ class "canvas-spinner-overlay" ] [ div [ class "canvas-spinner" ] [] ]
+        ([ div [ class "canvas-house-wrap" ]
+            [ div [ class "canvas-area", id "house-scroll" ]
+                [ div [ class "canvas-spacer" ] []
+                , viewMainSvg response model
+                , if model.recomputing then
+                    div [ class "canvas-spinner-overlay" ] [ div [ class "canvas-spinner" ] [] ]
 
-              else
-                text ""
+                  else
+                    text ""
+                ]
+            , viewZoomSlider model
             ]
          ]
             ++ (if model.appMode == ModeWaves then
@@ -1626,7 +1818,7 @@ viewPdfTools model response =
             , input [ type_ "range", Html.Attributes.min "5", Html.Attributes.max "181", value (String.fromInt model.targetCount), onInput SetTargetCount ] []
             ]
         , div [ class "param-group" ]
-            [ label [] [ text "Min Border ", span [ class "value" ] [ text (String.fromInt model.minBorder) ], text "px" ]
+            [ label [] [ text "Min. Common Border Length ", span [ class "value" ] [ text (String.fromInt model.minBorder) ], text "px" ]
             , input [ type_ "range", Html.Attributes.min "0", Html.Attributes.max "50", value (String.fromInt model.minBorder), onInput SetMinBorder ] []
             ]
         , div [ class "param-group" ]
@@ -1643,6 +1835,10 @@ viewPdfTools model response =
 
           else
             text ""
+        , div [ class "checkbox-group" ]
+            [ input [ type_ "checkbox", id "showGrid", checked model.showGrid, onCheck ToggleGrid ] []
+            , label [ for "showGrid" ] [ text "Show grid" ]
+            ]
         , div [ class "tools-divider" ] []
         , button
             [ class "primary"
@@ -1675,12 +1871,6 @@ viewPiecesTools model =
                 [ input [ type_ "checkbox", id "showGrid", checked model.showGrid, onCheck ToggleGrid ] []
                 , label [ for "showGrid" ] [ text "Show grid" ]
                 ]
-            , div [ class "checkbox-group" ]
-                [ input [ type_ "checkbox", id "showNumbers", checked model.showNumbers, onCheck ToggleNumbers ] []
-                , label [ for "showNumbers" ] [ text "Show position numbers" ]
-                ]
-            , div [ class "tools-divider" ] []
-            , viewPieceInfoBox model
             ]
         )
 
@@ -1695,43 +1885,17 @@ viewPieceInfoBox model =
 
                 Nothing ->
                     model.selectedPieceId
-
-        piecePositions =
-            model.waves
-                |> List.concatMap (\wv -> List.indexedMap (\i pid -> ( pid, i + 1 )) wv.pieceIds)
-                |> Dict.fromList
-
-        waveOfPiece pid =
-            model.waves
-                |> List.indexedMap (\i wv -> ( i + 1, wv ))
-                |> List.filter (\( _, wv ) -> List.member pid wv.pieceIds)
-                |> List.head
-                |> Maybe.map (\( i, wv ) -> ( i, wv.name ))
     in
     case focusId of
         Just pid ->
             let
                 maybePiece =
                     model.pieces |> List.filter (\p -> p.id == pid) |> List.head
-
-                posLabel =
-                    case Dict.get pid piecePositions of
-                        Just pos ->
-                            case waveOfPiece pid of
-                                Just ( _, wname ) ->
-                                    "Position " ++ String.fromInt pos ++ " in " ++ wname
-
-                                Nothing ->
-                                    "Position " ++ String.fromInt pos
-
-                        Nothing ->
-                            "Unassigned"
             in
             div [ class "piece-info" ]
                 (case maybePiece of
                     Just piece ->
-                        [ div [ class "piece-info-label" ] [ text posLabel ]
-                        , div [ class "piece-info-row" ] [ text ("Piece ID: " ++ String.fromInt pid) ]
+                        [ div [ class "piece-info-row" ] [ text ("Piece ID: " ++ String.fromInt pid) ]
                         , div [ class "piece-info-row" ] [ text ("Bricks: " ++ String.fromInt (List.length piece.brickIds)) ]
                         , div [ class "piece-info-row" ]
                             [ text ("Brick IDs: " ++ String.join ", " (List.map String.fromInt piece.brickIds)) ]
@@ -1755,7 +1919,67 @@ viewPieceInfoBox model =
                 )
 
         Nothing ->
-            div [ class "piece-info-empty" ] [ text "Click or hover a piece to inspect" ]
+            div [ class "piece-info-empty" ] [ text "Hover a piece to inspect" ]
+
+
+viewWavePieceInfoBox : Model -> Html Msg
+viewWavePieceInfoBox model =
+    let
+        focusId =
+            case model.hoveredPieceId of
+                Just pid ->
+                    Just pid
+
+                Nothing ->
+                    model.selectedPieceId
+
+        piecePositions =
+            model.waves
+                |> List.concatMap (\wv -> List.indexedMap (\i pid -> ( pid, i + 1 )) wv.pieceIds)
+                |> Dict.fromList
+
+        waveOfPiece pid =
+            model.waves
+                |> List.indexedMap (\i wv -> ( i + 1, wv ))
+                |> List.filter (\( _, wv ) -> List.member pid wv.pieceIds)
+                |> List.head
+                |> Maybe.map Tuple.first
+    in
+    case focusId of
+        Just pid ->
+            let
+                maybePiece =
+                    model.pieces |> List.filter (\p -> p.id == pid) |> List.head
+
+                posLabel =
+                    case Dict.get pid piecePositions of
+                        Just pos ->
+                            case waveOfPiece pid of
+                                Just waveNum ->
+                                    "Wave " ++ String.fromInt waveNum ++ ", position " ++ String.fromInt pos
+
+                                Nothing ->
+                                    "Position " ++ String.fromInt pos
+
+                        Nothing ->
+                            "Unassigned"
+            in
+            div [ class "piece-info" ]
+                (case maybePiece of
+                    Just piece ->
+                        [ div [ class "piece-info-label" ] [ text posLabel ]
+                        , div [ class "piece-info-row" ] [ text ("Piece ID: " ++ String.fromInt pid) ]
+                        , div [ class "piece-info-row" ] [ text ("Bricks: " ++ String.fromInt (List.length piece.brickIds)) ]
+                        ]
+
+                    Nothing ->
+                        [ div [ class "piece-info-label" ] [ text posLabel ]
+                        , div [ class "piece-info-row" ] [ text ("Piece ID: " ++ String.fromInt pid) ]
+                        ]
+                )
+
+        Nothing ->
+            div [ class "piece-info-empty" ] [ text "Hover a piece to inspect" ]
 
 
 viewBlueprintTools : Model -> Html Msg
@@ -1797,11 +2021,22 @@ viewWavesTools model =
                 ]
             ]
         , div [ class "wave-toolbar" ]
-            [ button [ onClick AddWave ] [ text "New wave" ] ]
+            [ button [ onClick AddWave ] [ text "New wave" ]
+            , div [ class "checkbox-group" ]
+                [ input [ type_ "checkbox", id "showNumbers", checked model.showNumbers, onCheck ToggleNumbers ] []
+                , label [ for "showNumbers" ] [ text "Show position numbers" ]
+                ]
+            , div [ class "checkbox-group" ]
+                [ input [ type_ "checkbox", id "showGrid", checked model.showGrid, onCheck ToggleGrid ] []
+                , label [ for "showGrid" ] [ text "Show grid" ]
+                ]
+            ]
         , div [ class "waves-body" ]
             (List.map (viewWaveRow model model.waves) model.waves
                 ++ [ viewUnassignedRow model unassignedPieces ]
             )
+        , div [ class "tools-divider" ] []
+        , viewWavePieceInfoBox model
         ]
 
 
@@ -1841,7 +2076,11 @@ viewExportTools model =
     div [ class "tools-pane" ]
         (renderDpiInfo
             ++ warningItems
-            ++ [ div [ class "field-row" ]
+            ++ [ div [ class "checkbox-group" ]
+                    [ input [ type_ "checkbox", id "showGrid", checked model.showGrid, onCheck ToggleGrid ] []
+                    , label [ for "showGrid" ] [ text "Show grid" ]
+                    ]
+               , div [ class "field-row" ]
                     [ label [] [ text "Export height (px)" ]
                     , input
                         [ type_ "number"
@@ -1850,6 +2089,17 @@ viewExportTools model =
                         , Html.Attributes.min "100"
                         , Html.Attributes.max "10000"
                         , Html.Attributes.step "100"
+                        ]
+                        []
+                    ]
+               , div [ class "field-row" ]
+                    [ label [] [ text "House height (units)" ]
+                    , input
+                        [ type_ "number"
+                        , value (String.fromFloat model.houseUnitsHigh)
+                        , onInput SetHouseUnitsHigh
+                        , Html.Attributes.min "0.1"
+                        , Html.Attributes.step "0.5"
                         ]
                         []
                     ]
@@ -2037,10 +2287,13 @@ viewMainSvg response model =
             else
                 []
 
+        effectiveScale =
+            model.svgScale * model.zoomLevel
+
         -- Grid lines
         gridLayer =
-            if (not model.editMode) && model.showGrid then
-                viewGrid cw ch (model.appMode == ModeBlueprint)
+            if (not model.editMode) && (model.showGrid || model.zoomGridActive) then
+                viewGrid cw ch (model.appMode == ModeBlueprint) model.houseUnitsHigh
 
             else
                 []
@@ -2061,9 +2314,12 @@ viewMainSvg response model =
             else
                 model.hoveredPieceId
 
+        isLassoing =
+            model.lasso /= Nothing
+
         pieceOverlays =
             if (not model.editMode) && isGenerated then
-                List.map (viewPieceOverlay model.appMode effectiveHoverId model.selectedPieceId model.selectedWaveId model.waves) visiblePieces
+                List.map (viewPieceOverlay model.appMode effectiveHoverId model.selectedPieceId model.selectedWaveId model.waves isLassoing) visiblePieces
 
             else
                 []
@@ -2085,13 +2341,77 @@ viewMainSvg response model =
 
             else
                 []
+        -- Decoder: convert offsetX/offsetY (CSS px relative to SVG element) → SVG coords
+        decodeLassoCoords toMsg =
+            D.map2 toMsg
+                (D.map (\x -> x / effectiveScale - 10) (D.field "offsetX" D.float))
+                (D.map (\y -> y / effectiveScale - 10) (D.field "offsetY" D.float))
+
+        -- Transparent background rect to catch lasso mousedown (only in waves mode with wave selected)
+        lassoBackdrop =
+            if (not model.editMode) && isGenerated && model.selectedWaveId /= Nothing then
+                [ Svg.rect
+                    [ SA.x "-10"
+                    , SA.y "-10"
+                    , SA.width (String.fromFloat (cw + 20))
+                    , SA.height (String.fromFloat (ch + 20))
+                    , SA.fill "transparent"
+                    , SA.style "cursor: crosshair;"
+                    , on "mousedown" (decodeLassoCoords LassoStart)
+                    ]
+                    []
+                ]
+
+            else
+                []
+
+        -- Lasso selection rectangle (shown while dragging)
+        lassoRect =
+            case model.lasso of
+                Nothing ->
+                    []
+
+                Just ls ->
+                    let
+                        rx = Basics.min ls.x0 ls.x1
+                        ry = Basics.min ls.y0 ls.y1
+                        rw = abs (ls.x1 - ls.x0)
+                        rh = abs (ls.y1 - ls.y0)
+                    in
+                    [ Svg.rect
+                        [ SA.x (String.fromFloat rx)
+                        , SA.y (String.fromFloat ry)
+                        , SA.width (String.fromFloat rw)
+                        , SA.height (String.fromFloat rh)
+                        , SA.fill "rgba(64,120,255,0.1)"
+                        , SA.stroke "rgba(64,120,255,0.8)"
+                        , SA.strokeWidth "1.5"
+                        , SA.strokeDasharray "4 3"
+                        , attribute "vector-effect" "non-scaling-stroke"
+                        , SA.style "pointer-events: none;"
+                        ]
+                        []
+                    ]
+
+        -- SVG-level mouse events for lasso drag tracking
+        lassoSvgAttrs =
+            if isLassoing then
+                [ on "mousemove" (decodeLassoCoords LassoMove)
+                , on "mouseup" (D.succeed LassoEnd)
+                , on "mouseleave" (D.succeed LassoEnd)
+                ]
+
+            else
+                []
     in
     Svg.svg
-        [ SA.viewBox ("-10 -10 " ++ String.fromFloat (cw + 20) ++ " " ++ String.fromFloat (ch + 20))
-        , SA.class "house-svg"
-        , SA.width (String.fromFloat (cw + 20))
-        , SA.height (String.fromFloat (ch + 20))
-        ]
+        ([ SA.viewBox ("-10 -10 " ++ String.fromFloat (cw + 20) ++ " " ++ String.fromFloat (ch + 20))
+         , SA.class "house-svg"
+         , SA.width (String.fromFloat ((cw + 20) * effectiveScale))
+         , SA.height (String.fromFloat ((ch + 20) * effectiveScale))
+         ]
+            ++ lassoSvgAttrs
+        )
         (if model.editMode then
             [ Svg.g [] baseLayer
             , Svg.g [] editOverlays
@@ -2105,9 +2425,11 @@ viewMainSvg response model =
             , Svg.g [] compositeOverlays
             , Svg.g [] outlineLayer
             , Svg.g [] gridLayer
+            , Svg.g [] lassoBackdrop
             , Svg.g [] pieceOverlays
             , Svg.g [] outlinesPngLayer
             , Svg.g [] numberLabels
+            , Svg.g [] lassoRect
             ]
         )
 
@@ -2307,8 +2629,8 @@ waveColorClass idx =
     "wc-" ++ String.fromInt (modBy 7 idx)
 
 
-viewPieceOverlay : AppMode -> Maybe Int -> Maybe Int -> Maybe Int -> List Wave -> Piece -> Svg.Svg Msg
-viewPieceOverlay appMode hoveredId selectedId selectedWaveId waves piece =
+viewPieceOverlay : AppMode -> Maybe Int -> Maybe Int -> Maybe Int -> List Wave -> Bool -> Piece -> Svg.Svg Msg
+viewPieceOverlay appMode hoveredId selectedId selectedWaveId waves isLassoing piece =
     let
         inAssignMode =
             selectedWaveId /= Nothing
@@ -2356,20 +2678,28 @@ viewPieceOverlay appMode hoveredId selectedId selectedWaveId waves piece =
                     |> String.join " "
         in
         Svg.polygon
-            [ SA.points pointsAttr
-            , SA.class clsStr
-            , onClick clickMsg
-            , onMouseEnter (SetHoveredPiece (Just piece.id))
-            , onMouseLeave (SetHoveredPiece Nothing)
-            ]
+            ([ SA.points pointsAttr
+             , SA.class clsStr
+             , SA.style (if isLassoing then "pointer-events: none;" else "")
+             ]
+                ++ (if isLassoing then
+                        []
+
+                    else
+                        [ onClick clickMsg
+                        , onMouseEnter (SetHoveredPiece (Just piece.id))
+                        , onMouseLeave (SetHoveredPiece Nothing)
+                        ]
+                   )
+            )
             []
 
 
-viewGrid : Float -> Float -> Bool -> List (Svg.Svg Msg)
-viewGrid cw ch isBlueprint =
+viewGrid : Float -> Float -> Bool -> Float -> List (Svg.Svg Msg)
+viewGrid cw ch isBlueprint houseUnitsHigh =
     let
         gridStep =
-            211.0
+            ch / houseUnitsHigh
 
         color =
             if isBlueprint then
@@ -2535,7 +2865,7 @@ viewWaveRow model allWaves wave =
             ]
         , div [ class "wave-pieces" ]
             (List.concatMap
-                (\pid ->
+                (\( pos, pid ) ->
                     let
                         showMarker =
                             not wave.locked && model.draggingPieceId /= Nothing && model.dragInsertBeforeId == Just pid
@@ -2551,13 +2881,13 @@ viewWaveRow model allWaves wave =
                             model.pieces
                                 |> List.filter (\p -> p.id == pid)
                                 |> List.head
-                                |> Maybe.map (\piece -> viewPieceThumb (Just ( wave.id, pid )) wave.locked model.hoveredPieceId pid (piece.imgUrl ++ "?v=" ++ String.fromInt model.pieceGeneration))
+                                |> Maybe.map (\piece -> viewPieceThumb (Just ( wave.id, pid )) wave.locked model.hoveredPieceId pid (piece.imgUrl ++ "?v=" ++ String.fromInt model.pieceGeneration) (Just pos))
                                 |> Maybe.map List.singleton
                                 |> Maybe.withDefault []
                     in
                     marker ++ thumb
                 )
-                wave.pieceIds
+                (List.indexedMap (\i pid -> ( i + 1, pid )) wave.pieceIds)
                 ++ (if not wave.locked && model.draggingPieceId /= Nothing && model.dragInsertBeforeId == Nothing && model.dragOverWaveId == Just (Just wave.id) then
                         [ div [ class "drag-insert-marker" ] [] ]
 
@@ -2591,15 +2921,15 @@ viewUnassignedRow model unassignedPieces =
             , div [ class "wave-pieces" ]
                 (List.map
                     (\p ->
-                        viewPieceThumb Nothing False model.hoveredPieceId p.id (p.imgUrl ++ "?v=" ++ String.fromInt model.pieceGeneration)
+                        viewPieceThumb Nothing False model.hoveredPieceId p.id (p.imgUrl ++ "?v=" ++ String.fromInt model.pieceGeneration) Nothing
                     )
                     unassignedPieces
                 )
             ]
 
 
-viewPieceThumb : Maybe ( Int, Int ) -> Bool -> Maybe Int -> Int -> String -> Html Msg
-viewPieceThumb removeInfo isLocked hoveredId pieceId dataUrl =
+viewPieceThumb : Maybe ( Int, Int ) -> Bool -> Maybe Int -> Int -> String -> Maybe Int -> Html Msg
+viewPieceThumb removeInfo isLocked hoveredId pieceId dataUrl maybePos =
     let
         isHovered =
             hoveredId == Just pieceId
@@ -2629,8 +2959,14 @@ viewPieceThumb removeInfo isLocked hoveredId pieceId dataUrl =
             , style "display" "block"
             ]
             []
-         , div [ class "piece-thumb-label" ] [ text ("#" ++ String.fromInt pieceId) ]
          ]
+            ++ (case maybePos of
+                    Just pos ->
+                        [ div [ class "tray-thumb-num" ] [ text (String.fromInt pos) ] ]
+
+                    Nothing ->
+                        []
+               )
             ++ (case removeInfo of
                     Just ( wid, pid ) ->
                         [ button
