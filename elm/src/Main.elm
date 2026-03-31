@@ -214,6 +214,7 @@ type Msg
     = GotFileList (Result Http.Error (List { name : String, path : String }))
     | PickFile
     | FileSelected File
+    | FileUploaded (Result Http.Error String)
     | LoadFile String
     | Reset
     | GotLoadResponse (Result Http.Error LoadResponse)
@@ -316,8 +317,14 @@ update msg model =
                 , recomputing = False
                 , appMode = ModeInit
               }
-            , loadPdf ("in/" ++ File.name file) model.availableH
+            , uploadFile file
             )
+
+        FileUploaded (Ok path) ->
+            ( model, loadPdf path model.availableH )
+
+        FileUploaded (Err _) ->
+            ( { model | loadState = Idle }, Cmd.none )
 
         Reset ->
             ( { model
@@ -1197,6 +1204,15 @@ decodePdfFile =
     D.map2 (\n p -> { name = n, path = p })
         (D.field "name" D.string)
         (D.field "path" D.string)
+
+
+uploadFile : File -> Cmd Msg
+uploadFile file =
+    Http.post
+        { url = "/api/upload_file"
+        , body = Http.multipartBody [ Http.filePart "file" file ]
+        , expect = Http.expectJson FileUploaded (D.field "path" D.string)
+        }
 
 
 loadPdf : String -> Float -> Cmd Msg
