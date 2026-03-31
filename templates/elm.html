@@ -14,58 +14,65 @@ body {
     overflow: hidden;
 }
 
-.app { display: flex; flex-direction: column; height: 100vh; }
+.app { display: flex; height: 100vh; }
 
-/* ── Title bar ─────────────────────────────────────────────────────────────── */
-.title-bar {
-    display: flex;
-    align-items: center;
-    padding: 0 16px;
-    background: #ffffff;
-    border-bottom: 1px solid #ddd;
-    height: 48px;
+/* ── Left sidebar ───────────────────────────────────────────────────────────── */
+.left-sidebar {
+    width: 80px;
+    min-width: 80px;
     flex-shrink: 0;
-    position: relative;
+    background: #ffffff;
+    border-right: 1px solid #ddd;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 12px 6px 10px;
+    gap: 0;
+    overflow: hidden;
+    z-index: 20;
 }
 .app-title {
-    font-size: 15px;
-    font-weight: 600;
+    font-size: 11px;
+    font-weight: 700;
     color: #2060b0;
     white-space: nowrap;
-    position: absolute;
-    left: 16px;
+    text-align: center;
+    margin-bottom: 14px;
+    letter-spacing: 0.02em;
 }
 .version-tag {
-    font-size: 11px;
-    color: #aaa;
+    font-size: 10px;
+    color: #bbb;
     white-space: nowrap;
-    position: absolute;
-    right: 16px;
+    margin-top: auto;
 }
-.mode-buttons {
+.sidebar-nav {
     display: flex;
-    gap: 9px;
+    flex-direction: column;
     align-items: center;
-    flex: 1;
-    justify-content: center;
+    gap: 0;
+    width: 100%;
 }
 .mode-btn {
-    padding: 5px 21px;
+    width: 100%;
+    padding: 7px 4px;
     border: 1px solid #ccc;
     border-radius: 4px;
     background: #f0f0f0;
     color: #333;
     cursor: pointer;
-    font-size: 13px;
+    font-size: 11px;
     white-space: nowrap;
     transition: background 0.1s;
+    text-align: center;
 }
 .mode-sep {
-    color: #aaa;
-    font-size: 14px;
+    color: #ccc;
+    font-size: 12px;
     user-select: none;
     pointer-events: none;
     flex-shrink: 0;
+    line-height: 1.4;
 }
 .mode-btn:hover:not(:disabled) { background: #e4e4e4; }
 .mode-btn:disabled { opacity: 0.4; cursor: not-allowed; }
@@ -139,7 +146,7 @@ body {
 .app-body {
     display: flex;
     flex: 1;
-    height: calc(100vh - 48px);
+    min-width: 0;
     overflow: hidden; /* clips the extended wave tray */
     position: relative;
 }
@@ -181,16 +188,28 @@ body {
 }
 
 /* ── Canvas area ────────────────────────────────────────────────────────────── */
-.canvas-area {
+.canvas-house-wrap {
     flex: 1;
     min-height: 0;
-    overflow: hidden;
+    overflow: hidden; /* hard ceiling so canvas-area overflows instead of growing */
+    position: relative; /* positioning context for zoom slider */
+    display: flex;
+    flex-direction: column;
+}
+.canvas-area {
+    flex: 1;
+    width: 100%;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: auto;
     background: #999999;
     display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 16px;
-    position: relative;
+    flex-direction: column;
+    padding-bottom: 16px;
+}
+.canvas-spacer {
+    flex: 1;
+    min-height: 0;
 }
 .canvas-info {
     color: #aaa;
@@ -198,10 +217,75 @@ body {
 }
 .house-svg {
     display: block;
-    max-width: 100%;
-    max-height: 100%;
-    width: auto;
-    height: auto;
+    flex-shrink: 0; /* prevent flex from shrinking SVG to fit container — overflow instead */
+    margin: 0 auto; /* centers when narrower than container; computes to 0 when overflowing — no size cap */
+}
+/* ── Zoom slider ────────────────────────────────────────────────────────────── */
+.zoom-slider-bar {
+    position: absolute;
+    right: 6px;
+    top: 16px;    /* vertical margin from canvas edge */
+    bottom: 16px; /* vertical margin from canvas edge */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center; /* centers ＋ slider − label in the available height */
+    gap: 4px;
+    z-index: 15;
+    background: rgba(0,0,0,0.35);
+    border-radius: 12px;
+    padding: 8px 4px;
+    user-select: none;
+}
+.zoom-icon {
+    font-size: 14px;
+    font-weight: 700;
+    color: #fff;
+    line-height: 1;
+    width: 18px;
+    text-align: center;
+}
+.zoom-slider-wrap {
+    position: relative;
+    flex: 1;
+    min-height: 60px;
+    max-height: 300px;
+}
+input.zoom-slider {
+    writing-mode: vertical-lr;
+    direction: rtl;
+    width: 6px;
+    height: 100%;
+    cursor: pointer;
+    accent-color: #fff;
+}
+/* notch label: positioned at the 1.0 value on the track.
+   top = (max - 1.0) / (max - min) = (4.0 - 1.0) / (4.0 - 0.25) ≈ 80% from top */
+.zoom-notch-label {
+    position: absolute;
+    top: 80%;
+    right: calc(100% + 6px);
+    transform: translateY(-50%);
+    background: rgba(0,0,0,0.5);
+    border: none;
+    color: #fff;
+    font-size: 9px;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 2px 5px;
+    border-radius: 3px;
+    white-space: nowrap;
+    pointer-events: auto;
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+.zoom-slider-bar:hover .zoom-notch-label { opacity: 1; }
+.zoom-notch-label:hover { background: rgba(255,255,255,0.25); }
+.zoom-val {
+    font-size: 10px;
+    color: #fff;
+    font-weight: 600;
+    margin-top: 2px;
 }
 .brick-path { cursor: pointer; }
 .brick-path:hover { fill: #1a4590; }
@@ -408,7 +492,7 @@ body {
 }
 .tools-pane button.primary:hover:not(:disabled) { background: #3070c0; }
 
-/* ── Param groups (PDF tools) ──────────────────────────────────────────────── */
+/* ── Param groups (TIF tools) ──────────────────────────────────────────────── */
 .param-group { margin-bottom: 4px; }
 .param-group label {
     display: flex;
@@ -639,7 +723,7 @@ body {
     overflow-y: hidden;
     min-height: 56px;
     align-items: center;
-    background: #f2f4f7;
+    background: #808080;
 }
 .wave-pieces::-webkit-scrollbar { height: 4px; }
 .wave-pieces::-webkit-scrollbar-track { background: #f0f0f0; border-radius: 2px; }
