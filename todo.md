@@ -39,6 +39,14 @@ existing houses. Needs experimenting with `stroke_width` in `_rasterize_outlines
 
 ## UI/UX polish
 
+### Puzzle generation is very slow
+Generation (merge + compositing) takes noticeably long. Needs profiling — likely
+the Python merge algorithm or the JS canvas compositing of many bricks.
+
+### Piece regen after edit is very slow
+After manually editing a piece (adding/removing bricks), the recomposite step is
+slow. Should only recomposite the affected piece, not the full set.
+
 ### Selection is very slow
 Selecting pieces (lasso or click) is noticeably laggy. Needs profiling and
 optimization — likely re-rendering or hit-testing on every mouse move.
