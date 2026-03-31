@@ -10776,7 +10776,7 @@ var $author$project$Main$Reset = {$: 'Reset'};
 var $author$project$Main$SetAppMode = function (a) {
 	return {$: 'SetAppMode', a: a};
 };
-var $author$project$Main$viewSidebar = function (model) {
+var $author$project$Main$viewTitleBar = function (model) {
 	var isLoadingPdf = _Utils_eq(model.loadState, $author$project$Main$Loading);
 	var isLoaded = function () {
 		var _v0 = model.loadState;
@@ -10807,7 +10807,7 @@ var $author$project$Main$viewSidebar = function (model) {
 		$elm$html$Html$div,
 		_List_fromArray(
 			[
-				$elm$html$Html$Attributes$class('left-sidebar')
+				$elm$html$Html$Attributes$class('title-bar')
 			]),
 		_List_fromArray(
 			[
@@ -10822,10 +10822,20 @@ var $author$project$Main$viewSidebar = function (model) {
 						$elm$html$Html$text('House Puzzle')
 					])),
 				A2(
+				$elm$html$Html$span,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('version-tag')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text('v0.1')
+					])),
+				A2(
 				$elm$html$Html$div,
 				_List_fromArray(
 					[
-						$elm$html$Html$Attributes$class('sidebar-nav')
+						$elm$html$Html$Attributes$class('mode-buttons')
 					]),
 				_List_fromArray(
 					[
@@ -10858,7 +10868,7 @@ var $author$project$Main$viewSidebar = function (model) {
 							]),
 						_List_fromArray(
 							[
-								$elm$html$Html$text('\u2193')
+								$elm$html$Html$text('\u2192')
 							])),
 						A2(
 						$elm$html$Html$button,
@@ -10890,7 +10900,7 @@ var $author$project$Main$viewSidebar = function (model) {
 							]),
 						_List_fromArray(
 							[
-								$elm$html$Html$text('\u2193')
+								$elm$html$Html$text('\u2192')
 							])),
 						A2(
 						$elm$html$Html$button,
@@ -10923,7 +10933,7 @@ var $author$project$Main$viewSidebar = function (model) {
 							]),
 						_List_fromArray(
 							[
-								$elm$html$Html$text('\u2195')
+								$elm$html$Html$text('\u21C4')
 							])),
 						A2(
 						$elm$html$Html$button,
@@ -10953,7 +10963,7 @@ var $author$project$Main$viewSidebar = function (model) {
 							]),
 						_List_fromArray(
 							[
-								$elm$html$Html$text('\u2195')
+								$elm$html$Html$text('\u21C4')
 							])),
 						A2(
 						$elm$html$Html$button,
@@ -10983,7 +10993,7 @@ var $author$project$Main$viewSidebar = function (model) {
 							]),
 						_List_fromArray(
 							[
-								$elm$html$Html$text('\u2193')
+								$elm$html$Html$text('\u2192')
 							])),
 						A2(
 						$elm$html$Html$button,
@@ -11009,16 +11019,6 @@ var $author$project$Main$viewSidebar = function (model) {
 							[
 								$elm$html$Html$text('Export')
 							]))
-					])),
-				A2(
-				$elm$html$Html$span,
-				_List_fromArray(
-					[
-						$elm$html$Html$Attributes$class('version-tag')
-					]),
-				_List_fromArray(
-					[
-						$elm$html$Html$text('v0.1')
 					]))
 			]));
 };
@@ -11031,7 +11031,7 @@ var $author$project$Main$view = function (model) {
 			]),
 		_List_fromArray(
 			[
-				$author$project$Main$viewSidebar(model),
+				$author$project$Main$viewTitleBar(model),
 				$author$project$Main$viewBody(model)
 			]));
 };

@@ -1235,7 +1235,7 @@ httpErrorToString err =
 view : Model -> Html Msg
 view model =
     div [ class "app" ]
-        [ viewSidebar model
+        [ viewTitleBar model
         , viewBody model
         ]
 
@@ -1326,8 +1326,8 @@ viewBodyOverlay model =
                 ]
 
 
-viewSidebar : Model -> Html Msg
-viewSidebar model =
+viewTitleBar : Model -> Html Msg
+viewTitleBar model =
     let
         isLoaded =
             case model.loadState of
@@ -1361,9 +1361,10 @@ viewSidebar model =
         canExport =
             isGenerated && not isBusy && not isGenerating && not hasUnassigned
     in
-    div [ class "left-sidebar" ]
+    div [ class "title-bar" ]
         [ span [ class "app-title" ] [ text "House Puzzle" ]
-        , div [ class "sidebar-nav" ]
+        , span [ class "version-tag" ] [ text "v0.1" ]
+        , div [ class "mode-buttons" ]
             [ button
                 [ classList
                     [ ( "mode-btn", True )
@@ -1384,7 +1385,7 @@ viewSidebar model =
                         "Start"
                     )
                 ]
-            , span [ class "mode-sep" ] [ text "\u{2193}" ]
+            , span [ class "mode-sep" ] [ text "\u{2192}" ]
             , button
                 [ classList
                     [ ( "mode-btn", True )
@@ -1402,7 +1403,7 @@ viewSidebar model =
                         "Generate"
                     )
                 ]
-            , span [ class "mode-sep" ] [ text "\u{2193}" ]
+            , span [ class "mode-sep" ] [ text "\u{2192}" ]
             , button
                 [ classList
                     [ ( "mode-btn", True )
@@ -1413,7 +1414,7 @@ viewSidebar model =
                 , onClick (SetAppMode ModePieces)
                 ]
                 [ text "Pieces" ]
-            , span [ class "mode-sep" ] [ text "\u{2195}" ]
+            , span [ class "mode-sep" ] [ text "\u{21C4}" ]
             , button
                 [ classList
                     [ ( "mode-btn", True )
@@ -1423,7 +1424,7 @@ viewSidebar model =
                 , onClick (SetAppMode ModeBlueprint)
                 ]
                 [ text "Blueprint" ]
-            , span [ class "mode-sep" ] [ text "\u{2195}" ]
+            , span [ class "mode-sep" ] [ text "\u{21C4}" ]
             , button
                 [ classList
                     [ ( "mode-btn", True )
@@ -1433,7 +1434,7 @@ viewSidebar model =
                 , onClick (SetAppMode ModeWaves)
                 ]
                 [ text "Waves" ]
-            , span [ class "mode-sep" ] [ text "\u{2193}" ]
+            , span [ class "mode-sep" ] [ text "\u{2192}" ]
             , button
                 [ classList
                     [ ( "mode-btn", True )
@@ -1453,7 +1454,6 @@ viewSidebar model =
                 ]
                 [ text "Export" ]
             ]
-        , span [ class "version-tag" ] [ text "v0.1" ]
         ]
 
 
@@ -1891,7 +1891,6 @@ viewMainSvg response model =
 
         h =
             String.fromFloat ch
-
 
         isGenerated =
             model.generateState == Generated
