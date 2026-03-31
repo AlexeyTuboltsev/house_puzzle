@@ -7,7 +7,28 @@ on:
       - 'v*'
 
 jobs:
-  build-macos:
+  build-macos-intel:
+    runs-on: macos-13
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt pyinstaller
+
+      - name: Build with PyInstaller
+        run: pyinstaller house_puzzle.spec --noconfirm
+
+      - name: Upload dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-macos-intel
+          path: dist/house_puzzle/
+
+  build-macos-arm:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -16,32 +37,70 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Read version
-        id: version
-        run: echo "ver=$(cat VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
-
       - name: Install dependencies
         run: pip install -r requirements.txt pyinstaller
 
       - name: Build with PyInstaller
         run: pyinstaller house_puzzle.spec --noconfirm
 
+      - name: Upload dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-macos-arm
+          path: dist/house_puzzle/
+
+  combine-macos-universal:
+    needs: [build-macos-intel, build-macos-arm]
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read version
+        id: version
+        run: echo "ver=$(cat VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
+
+      - name: Download Intel dist
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-macos-intel
+          path: dist-intel/
+
+      - name: Download ARM dist
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-macos-arm
+          path: dist-arm/
+
+      - name: Combine into universal binary
+        run: |
+          cp -R dist-arm/ dist-universal/
+          find dist-intel/ -type f | while read intel_file; do
+            rel="${intel_file#dist-intel/}"
+            arm_file="dist-arm/$rel"
+            out_file="dist-universal/$rel"
+            if [ -f "$arm_file" ]; then
+              if lipo -info "$intel_file" > /dev/null 2>&1; then
+                lipo -create "$intel_file" "$arm_file" -output "$out_file" 2>/dev/null || true
+              fi
+            fi
+          done
+
       - name: Create ZIP
         run: |
-          cd dist
-          zip -r ../house_puzzle_${{ steps.version.outputs.ver }}_macos.zip house_puzzle/
+          cd dist-universal
+          zip -r ../house_puzzle_${{ steps.version.outputs.ver }}_macos_universal.zip .
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: house_puzzle_${{ steps.version.outputs.ver }}_macos
-          path: house_puzzle_${{ steps.version.outputs.ver }}_macos.zip
+          name: house_puzzle_${{ steps.version.outputs.ver }}_macos_universal
+          path: house_puzzle_${{ steps.version.outputs.ver }}_macos_universal.zip
 
       - name: Upload to release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: house_puzzle_${{ steps.version.outputs.ver }}_macos.zip
+          files: house_puzzle_${{ steps.version.outputs.ver }}_macos_universal.zip
 
   build-windows:
     runs-on: windows-latest
