@@ -85,16 +85,17 @@ jobs:
             fi
           done
 
-      - name: Create ZIP
-        run: |
-          cd dist-universal
-          zip -r ../house_puzzle_${{ steps.version.outputs.ver }}_macos_universal.zip .
-
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: house_puzzle_${{ steps.version.outputs.ver }}_macos_universal
-          path: house_puzzle_${{ steps.version.outputs.ver }}_macos_universal.zip
+          path: dist-universal/
+
+      - name: Create ZIP for release
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          cd dist-universal
+          zip -r ../house_puzzle_${{ steps.version.outputs.ver }}_macos_universal.zip .
 
       - name: Upload to release
         if: startsWith(github.ref, 'refs/tags/')
@@ -123,14 +124,15 @@ jobs:
       - name: Build with PyInstaller
         run: pyinstaller house_puzzle.spec --noconfirm
 
-      - name: Create ZIP
-        run: Compress-Archive -Path dist\house_puzzle\* -DestinationPath house_puzzle_${{ steps.version.outputs.ver }}_windows.zip
-
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: house_puzzle_${{ steps.version.outputs.ver }}_windows
-          path: house_puzzle_${{ steps.version.outputs.ver }}_windows.zip
+          path: dist\house_puzzle\
+
+      - name: Create ZIP for release
+        if: startsWith(github.ref, 'refs/tags/')
+        run: Compress-Archive -Path dist\house_puzzle\* -DestinationPath house_puzzle_${{ steps.version.outputs.ver }}_windows.zip
 
       - name: Upload to release
         if: startsWith(github.ref, 'refs/tags/')
