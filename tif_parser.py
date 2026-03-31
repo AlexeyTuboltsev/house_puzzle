@@ -35,6 +35,9 @@ class HouseData:
     base: BrickLayer | None = None
     bricks: list[BrickLayer] = field(default_factory=list)
     total_layers: int = 0
+    render_dpi: float = 0.0
+    warnings: list[str] = field(default_factory=list)
+    clip_rect: tuple[float, float, float, float] | None = None  # PDF page clip (x0,y0,x1,y1) in pts
 
 
 # ---------------------------------------------------------------------------

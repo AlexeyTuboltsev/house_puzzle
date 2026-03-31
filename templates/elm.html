@@ -103,9 +103,39 @@ body {
 /* ── Body layout ────────────────────────────────────────────────────────────── */
 .app-body-empty {
     flex: 1;
+    min-width: 0;
     background: #999999;
-    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
+.file-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 24px;
+    background: #fff;
+    border-radius: 8px;
+    min-width: 280px;
+    max-height: 80vh;
+    overflow-y: auto;
+}
+.file-list-empty {
+    color: #888;
+    font-size: 14px;
+}
+.file-entry {
+    background: #f0f4ff;
+    border: 1px solid #c0ccee;
+    border-radius: 4px;
+    padding: 8px 12px;
+    text-align: left;
+    cursor: pointer;
+    font-size: 14px;
+    color: #1a3a7a;
+}
+.file-entry:hover { background: #dce6ff; }
+.file-entry:disabled { opacity: 0.5; cursor: default; }
 .app-body {
     display: flex;
     flex: 1;
@@ -276,6 +306,18 @@ body {
     height: 100%;
     display: block;
 }
+.tray-thumb-num {
+    position: absolute;
+    top: 2px;
+    left: 3px;
+    font-size: 10px;
+    font-weight: 700;
+    color: #fff;
+    line-height: 1;
+    text-shadow: 0 0 3px #000, 0 0 3px #000;
+    pointer-events: none;
+    user-select: none;
+}
 .drag-insert-marker-v {
     width: 3px;
     min-width: 3px;
@@ -315,12 +357,32 @@ body {
 }
 .piece-info-label {
     font-size: 12px;
+    font-weight: 600;
     color: #2060b0;
+}
+.piece-info-row {
+    font-size: 11px;
+    color: #444;
 }
 .piece-info-empty {
     font-size: 11px;
     color: #aaa;
     font-style: italic;
+}
+.piece-num-shadow {
+    font-size: 28px;
+    font-weight: 900;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    fill: none;
+    stroke: rgba(0,0,0,0.55);
+    stroke-width: 6px;
+    paint-order: stroke fill;
+}
+.piece-num-text {
+    font-size: 28px;
+    font-weight: 900;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    fill: white;
 }
 
 /* ── Buttons (tools pane context) ──────────────────────────────────────────── */
@@ -346,7 +408,7 @@ body {
 }
 .tools-pane button.primary:hover:not(:disabled) { background: #3070c0; }
 
-/* ── Param groups (TIF tools) ──────────────────────────────────────────────── */
+/* ── Param groups (PDF tools) ──────────────────────────────────────────────── */
 .param-group { margin-bottom: 4px; }
 .param-group label {
     display: flex;
@@ -404,6 +466,41 @@ body {
 .status.loading { color: #1050a0; }
 .status.error   { color: #c03020; }
 .status.ok      { color: #208020; }
+
+/* ── Export pane ───────────────────────────────────────────────────────────── */
+.field-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+    font-size: 12px;
+    color: #444;
+}
+.field-row label { flex: 1; }
+.field-row input[type="number"] {
+    width: 80px;
+    background: #fff;
+    border: 1px solid #ccc;
+    color: #333;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 12px;
+}
+.dpi-info {
+    color: #2060b0;
+    font-weight: 600;
+}
+.warning-item {
+    background: #fff8e8;
+    border: 1px solid #f0c040;
+    border-radius: 4px;
+    padding: 5px 8px;
+    font-size: 11px;
+    color: #705000;
+    margin-bottom: 6px;
+    line-height: 1.4;
+}
 
 /* ── Waves tools (right column) ────────────────────────────────────────────── */
 .waves-tools {
@@ -665,26 +762,10 @@ window.addEventListener('error', function(e) {
   }
 }, true);
 </script>
-<script src="/static/elm.js" onerror="document.getElementById('not-built').style.display='block'"></script>
+<script src="/static/elm.js?v={{ elm_version }}" onerror="document.getElementById('not-built').style.display='block'"></script>
 <script>
 if (window.Elm && window.Elm.Main) {
   const app = window.Elm.Main.init({ node: document.getElementById('elm-root') });
-
-  // ── Port: compositePieces ───────────────────────────────────────────────────────
-  // Receives: [{id, x, y, w, h, bricks: [{id, x, y, w, h}, ...]}]
-  // Sends back via gotPieceImages: [{id, dataUrl}]
-
-  const _imgCache = {};
-
-  function loadImg(src) {
-    if (_imgCache[src]) return Promise.resolve(_imgCache[src]);
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => { _imgCache[src] = img; resolve(img); };
-      img.onerror = reject;
-      img.src = src;
-    });
-  }
 
   app.ports.exportZip.subscribe(async function(payload) {
     try {
@@ -713,31 +794,6 @@ if (window.Elm && window.Elm.Main) {
       alert('Export error: ' + e.message);
       app.ports.gotExportDone.send(false);
     }
-  });
-
-  app.ports.compositePieces.subscribe(async function(pieces) {
-    const results = [];
-    for (const piece of pieces) {
-      const canvas = document.createElement('canvas');
-      canvas.width  = Math.round(piece.w);
-      canvas.height = Math.round(piece.h);
-      const ctx = canvas.getContext('2d');
-
-      for (const brick of piece.bricks) {
-        try {
-          const img = await loadImg(`/api/brick/${brick.id}.png`);
-          ctx.drawImage(img,
-            Math.round(brick.x - piece.x),
-            Math.round(brick.y - piece.y)
-          );
-        } catch (e) {
-          console.warn('Failed to load brick', brick.id, e);
-        }
-      }
-
-      results.push({ id: piece.id, dataUrl: canvas.toDataURL() });
-    }
-    app.ports.gotPieceImages.send(results);
   });
 
   app.ports.logBrick.subscribe(function(data) {

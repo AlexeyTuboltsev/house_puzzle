@@ -157,7 +157,8 @@ def compute_borders_and_areas(bricks: list[Brick],
             ~padded[1:-1, 2:]
         )
         ys, xs = np.where(border_mask)
-        borders[b.id] = set(zip((xs + b.x).tolist(), (ys + b.y).tolist()))
+        # Brick PNGs are canvas-sized: pixel coords are already canvas-absolute.
+        borders[b.id] = set(zip(xs.tolist(), ys.tolist()))
 
     return borders, areas
 
