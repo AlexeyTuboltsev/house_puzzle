@@ -7285,6 +7285,17 @@ var $author$project$Main$scrollToBottom = A2(
 			return A3($elm$browser$Browser$Dom$setViewportOf, 'house-scroll', 0, 999999);
 		},
 		$elm$core$Process$sleep(0)));
+var $author$project$Main$scrollTrayToEnd = A2(
+	$elm$core$Task$attempt,
+	function (_v0) {
+		return $author$project$Main$NoOp;
+	},
+	A2(
+		$elm$core$Task$andThen,
+		function (_v1) {
+			return A3($elm$browser$Browser$Dom$setViewportOf, 'wave-tray-scroll', 999999, 0);
+		},
+		$elm$core$Process$sleep(0)));
 var $elm$core$String$toFloat = _String_toFloat;
 var $author$project$Main$FileUploaded = function (a) {
 	return {$: 'FileUploaded', a: a};
@@ -7675,6 +7686,7 @@ var $author$project$Main$update = F2(
 								return A2($elm$core$List$member, pid, w.pieceIds);
 							},
 							targetWave));
+					var didAdd = (!targetLocked) && ((!alreadyIn) && (!sourceLocked));
 					var updatedWaves = (targetLocked || ((!alreadyIn) && sourceLocked)) ? model.waves : A2(
 						$elm$core$List$map,
 						function (w) {
@@ -7710,7 +7722,7 @@ var $author$project$Main$update = F2(
 						_Utils_update(
 							model,
 							{waves: updatedWaves}),
-						$elm$core$Platform$Cmd$none);
+						didAdd ? $author$project$Main$scrollTrayToEnd : $elm$core$Platform$Cmd$none);
 				}
 			case 'RemovePieceFromWave':
 				var wid = msg.a;
@@ -9659,7 +9671,8 @@ var $author$project$Main$viewWaveTray = F2(
 					$elm$html$Html$div,
 					_List_fromArray(
 						[
-							$elm$html$Html$Attributes$class('wave-tray-scroll')
+							$elm$html$Html$Attributes$class('wave-tray-scroll'),
+							$elm$html$Html$Attributes$id('wave-tray-scroll')
 						]),
 					_Utils_ap(
 						A2(

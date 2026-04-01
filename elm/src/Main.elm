@@ -303,6 +303,14 @@ scrollToBottom =
         )
 
 
+scrollTrayToEnd : Cmd Msg
+scrollTrayToEnd =
+    Task.attempt (\_ -> NoOp)
+        (Process.sleep 0
+            |> Task.andThen (\_ -> Browser.Dom.setViewportOf "wave-tray-scroll" 999999 0)
+        )
+
+
 -- ── Update ──────────────────────────────────────────────────────────────────
 
 
@@ -612,8 +620,10 @@ update msg model =
                                             w
                                     )
                                     model.waves
+                        didAdd =
+                            not targetLocked && not alreadyIn && not sourceLocked
                     in
-                    ( { model | waves = updatedWaves }, Cmd.none )
+                    ( { model | waves = updatedWaves }, if didAdd then scrollTrayToEnd else Cmd.none )
 
         RemovePieceFromWave wid pid ->
             let
@@ -1825,7 +1835,7 @@ viewWaveTray model _ =
         , on "dragenter" (D.succeed (DragEnterWave activeWaveId))
         , on "drop" (D.succeed (DropOnWave activeWaveId))
         ]
-        [ div [ class "wave-tray-scroll" ]
+        [ div [ class "wave-tray-scroll", id "wave-tray-scroll" ]
             (List.concatMap
                 (\( pos, pid ) ->
                     let
