@@ -21,9 +21,9 @@
 - All commits must appear as `k5qkop-bot`. Never commit under the user's personal identity.
 - If the github MCP server is unavailable or throws an auth error: STOP and tell the user.
   Do not fall back to any other method without explicit permission.
-- Before any git commit or push, check `git branch --merged origin/main` and block if the
-  current branch is already merged. Use `origin/main` (not local `main`) to get the true
-  remote state — local main may be stale.
+- Before EVERY push: run `git fetch origin`, then `git branch --merged origin/main`.
+  Block if the current branch is already merged. Do this IMMEDIATELY before pushing —
+  never assume a branch is unmerged based on an earlier check, even from the same session.
 
 ### Bash Commands
 - NEVER chain multiple commands with `&&`, `||`, or `;` in a single Bash tool call.

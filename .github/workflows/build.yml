@@ -85,23 +85,20 @@ jobs:
             fi
           done
 
+      - name: Create tar.gz (preserves executable permissions)
+        run: tar -czf house_puzzle_${{ steps.version.outputs.ver }}_macos_universal.tar.gz -C dist-universal .
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: house_puzzle_${{ steps.version.outputs.ver }}_macos_universal
-          path: dist-universal/
-
-      - name: Create ZIP for release
-        if: startsWith(github.ref, 'refs/tags/')
-        run: |
-          cd dist-universal
-          zip -r ../house_puzzle_${{ steps.version.outputs.ver }}_macos_universal.zip .
+          path: house_puzzle_${{ steps.version.outputs.ver }}_macos_universal.tar.gz
 
       - name: Upload to release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: house_puzzle_${{ steps.version.outputs.ver }}_macos_universal.zip
+          files: house_puzzle_${{ steps.version.outputs.ver }}_macos_universal.tar.gz
 
   build-windows:
     runs-on: windows-latest
