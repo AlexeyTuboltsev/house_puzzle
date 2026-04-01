@@ -2546,6 +2546,12 @@ viewGroupRow model allGroups group =
                 )
             ]
             [ span
+                [ classList [ ( "wave-lock", True ), ( "locked", group.locked ) ]
+                , stopPropagationOn "click" (D.succeed ( ToggleGroupLock group.id, True ))
+                , title (if group.locked then "Unlock group" else "Lock group")
+                ]
+                [ if group.locked then iconLockClosed else iconLockOpen ]
+            , span
                 [ class "wave-swatch"
                 , style "background-color" swatchColor
                 , stopPropagationOn "mousedown"
@@ -2561,13 +2567,7 @@ viewGroupRow model allGroups group =
             , span [ class "wave-name-label" ] [ text group.name ]
             , span [ class "wave-row-spacer" ] []
             , span [ class "wave-actions" ]
-                [ span
-                    [ classList [ ( "wave-lock", True ), ( "locked", group.locked ) ]
-                    , stopPropagationOn "click" (D.succeed ( ToggleGroupLock group.id, True ))
-                    , title (if group.locked then "Unlock group" else "Lock group")
-                    ]
-                    [ if group.locked then iconLockClosed else iconLockOpen ]
-                , button
+                [ button
                     [ stopPropagationOn "click" (D.succeed ( RemoveGroup group.id, True ))
                     , disabled (groupCount <= 1)
                     , title "Delete group"
@@ -2925,9 +2925,23 @@ viewMainSvg response model =
                 []
 
         -- Piece position number labels (post-gen, not in edit, when showNumbers is on)
+        -- Groups count as one slot: all pieces in a group share the same position number.
         piecePositions =
             model.waves
-                |> List.concatMap (\wv -> List.indexedMap (\i pid -> ( pid, i + 1 )) wv.pieceIds)
+                |> List.concatMap
+                    (\wv ->
+                        toPieceDisplays model.groups wv.pieceIds
+                            |> List.indexedMap
+                                (\i display ->
+                                    case display of
+                                        SinglePiece pid ->
+                                            [ ( pid, i + 1 ) ]
+
+                                        GroupedPiece _ allIds ->
+                                            List.map (\pid -> ( pid, i + 1 )) allIds
+                                )
+                            |> List.concat
+                    )
                 |> Dict.fromList
 
         numberLabels =

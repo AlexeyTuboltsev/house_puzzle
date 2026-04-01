@@ -9196,6 +9196,76 @@ var $elm$svg$Svg$Attributes$strokeDasharray = _VirtualDom_attribute('stroke-dash
 var $elm$svg$Svg$Attributes$strokeWidth = _VirtualDom_attribute('stroke-width');
 var $elm$svg$Svg$Attributes$style = _VirtualDom_attribute('style');
 var $elm$svg$Svg$svg = $elm$svg$Svg$trustedNode('svg');
+var $author$project$Main$GroupedPiece = F2(
+	function (a, b) {
+		return {$: 'GroupedPiece', a: a, b: b};
+	});
+var $author$project$Main$SinglePiece = function (a) {
+	return {$: 'SinglePiece', a: a};
+};
+var $author$project$Main$toPieceDisplays = F2(
+	function (groups, pieceIds) {
+		var go = F3(
+			function (remaining, seen, acc) {
+				go:
+				while (true) {
+					if (!remaining.b) {
+						return $elm$core$List$reverse(acc);
+					} else {
+						var pid = remaining.a;
+						var rest = remaining.b;
+						var _v1 = $elm$core$List$head(
+							A2(
+								$elm$core$List$filter,
+								function (g) {
+									return (!$elm$core$List$isEmpty(g.pieceIds)) && A2($elm$core$List$member, pid, g.pieceIds);
+								},
+								groups));
+						if (_v1.$ === 'Just') {
+							var g = _v1.a;
+							if (A2($elm$core$List$member, g.id, seen)) {
+								var $temp$remaining = rest,
+									$temp$seen = seen,
+									$temp$acc = acc;
+								remaining = $temp$remaining;
+								seen = $temp$seen;
+								acc = $temp$acc;
+								continue go;
+							} else {
+								var $temp$remaining = rest,
+									$temp$seen = A2($elm$core$List$cons, g.id, seen),
+									$temp$acc = A2(
+									$elm$core$List$cons,
+									A2(
+										$author$project$Main$GroupedPiece,
+										A2(
+											$elm$core$Maybe$withDefault,
+											pid,
+											$elm$core$List$head(g.pieceIds)),
+										g.pieceIds),
+									acc);
+								remaining = $temp$remaining;
+								seen = $temp$seen;
+								acc = $temp$acc;
+								continue go;
+							}
+						} else {
+							var $temp$remaining = rest,
+								$temp$seen = seen,
+								$temp$acc = A2(
+								$elm$core$List$cons,
+								$author$project$Main$SinglePiece(pid),
+								acc);
+							remaining = $temp$remaining;
+							seen = $temp$seen;
+							acc = $temp$acc;
+							continue go;
+						}
+					}
+				}
+			});
+		return A3(go, pieceIds, _List_Nil, _List_Nil);
+	});
 var $elm$svg$Svg$Attributes$viewBox = _VirtualDom_attribute('viewBox');
 var $author$project$Main$ToggleBrickInEdit = function (a) {
 	return {$: 'ToggleBrickInEdit', a: a};
@@ -9722,13 +9792,28 @@ var $author$project$Main$viewMainSvg = F2(
 			A2(
 				$elm$core$List$concatMap,
 				function (wv) {
-					return A2(
-						$elm$core$List$indexedMap,
-						F2(
-							function (i, pid) {
-								return _Utils_Tuple2(pid, i + 1);
-							}),
-						wv.pieceIds);
+					return $elm$core$List$concat(
+						A2(
+							$elm$core$List$indexedMap,
+							F2(
+								function (i, display) {
+									if (display.$ === 'SinglePiece') {
+										var pid = display.a;
+										return _List_fromArray(
+											[
+												_Utils_Tuple2(pid, i + 1)
+											]);
+									} else {
+										var allIds = display.b;
+										return A2(
+											$elm$core$List$map,
+											function (pid) {
+												return _Utils_Tuple2(pid, i + 1);
+											},
+											allIds);
+									}
+								}),
+							A2($author$project$Main$toPieceDisplays, model.groups, wv.pieceIds)));
 				},
 				model.waves));
 		var lassoRect = function () {
@@ -10054,76 +10139,6 @@ var $elm$html$Html$Events$preventDefaultOn = F2(
 			$elm$virtual_dom$VirtualDom$on,
 			event,
 			$elm$virtual_dom$VirtualDom$MayPreventDefault(decoder));
-	});
-var $author$project$Main$GroupedPiece = F2(
-	function (a, b) {
-		return {$: 'GroupedPiece', a: a, b: b};
-	});
-var $author$project$Main$SinglePiece = function (a) {
-	return {$: 'SinglePiece', a: a};
-};
-var $author$project$Main$toPieceDisplays = F2(
-	function (groups, pieceIds) {
-		var go = F3(
-			function (remaining, seen, acc) {
-				go:
-				while (true) {
-					if (!remaining.b) {
-						return $elm$core$List$reverse(acc);
-					} else {
-						var pid = remaining.a;
-						var rest = remaining.b;
-						var _v1 = $elm$core$List$head(
-							A2(
-								$elm$core$List$filter,
-								function (g) {
-									return (!$elm$core$List$isEmpty(g.pieceIds)) && A2($elm$core$List$member, pid, g.pieceIds);
-								},
-								groups));
-						if (_v1.$ === 'Just') {
-							var g = _v1.a;
-							if (A2($elm$core$List$member, g.id, seen)) {
-								var $temp$remaining = rest,
-									$temp$seen = seen,
-									$temp$acc = acc;
-								remaining = $temp$remaining;
-								seen = $temp$seen;
-								acc = $temp$acc;
-								continue go;
-							} else {
-								var $temp$remaining = rest,
-									$temp$seen = A2($elm$core$List$cons, g.id, seen),
-									$temp$acc = A2(
-									$elm$core$List$cons,
-									A2(
-										$author$project$Main$GroupedPiece,
-										A2(
-											$elm$core$Maybe$withDefault,
-											pid,
-											$elm$core$List$head(g.pieceIds)),
-										g.pieceIds),
-									acc);
-								remaining = $temp$remaining;
-								seen = $temp$seen;
-								acc = $temp$acc;
-								continue go;
-							}
-						} else {
-							var $temp$remaining = rest,
-								$temp$seen = seen,
-								$temp$acc = A2(
-								$elm$core$List$cons,
-								$author$project$Main$SinglePiece(pid),
-								acc);
-							remaining = $temp$remaining;
-							seen = $temp$seen;
-							acc = $temp$acc;
-							continue go;
-						}
-					}
-				}
-			});
-		return A3(go, pieceIds, _List_Nil, _List_Nil);
 	});
 var $author$project$Main$DragEnterPiece = function (a) {
 	return {$: 'DragEnterPiece', a: a};
@@ -11085,6 +11100,30 @@ var $author$project$Main$viewGroupRow = F3(
 							$elm$html$Html$span,
 							_List_fromArray(
 								[
+									$elm$html$Html$Attributes$classList(
+									_List_fromArray(
+										[
+											_Utils_Tuple2('wave-lock', true),
+											_Utils_Tuple2('locked', group.locked)
+										])),
+									A2(
+									$elm$html$Html$Events$stopPropagationOn,
+									'click',
+									$elm$json$Json$Decode$succeed(
+										_Utils_Tuple2(
+											$author$project$Main$ToggleGroupLock(group.id),
+											true))),
+									$elm$html$Html$Attributes$title(
+									group.locked ? 'Unlock group' : 'Lock group')
+								]),
+							_List_fromArray(
+								[
+									group.locked ? $author$project$Main$iconLockClosed : $author$project$Main$iconLockOpen
+								])),
+							A2(
+							$elm$html$Html$span,
+							_List_fromArray(
+								[
 									$elm$html$Html$Attributes$class('wave-swatch'),
 									A2($elm$html$Html$Attributes$style, 'background-color', swatchColor),
 									A2(
@@ -11148,30 +11187,6 @@ var $author$project$Main$viewGroupRow = F3(
 								]),
 							_List_fromArray(
 								[
-									A2(
-									$elm$html$Html$span,
-									_List_fromArray(
-										[
-											$elm$html$Html$Attributes$classList(
-											_List_fromArray(
-												[
-													_Utils_Tuple2('wave-lock', true),
-													_Utils_Tuple2('locked', group.locked)
-												])),
-											A2(
-											$elm$html$Html$Events$stopPropagationOn,
-											'click',
-											$elm$json$Json$Decode$succeed(
-												_Utils_Tuple2(
-													$author$project$Main$ToggleGroupLock(group.id),
-													true))),
-											$elm$html$Html$Attributes$title(
-											group.locked ? 'Unlock group' : 'Lock group')
-										]),
-									_List_fromArray(
-										[
-											group.locked ? $author$project$Main$iconLockClosed : $author$project$Main$iconLockOpen
-										])),
 									A2(
 									$elm$html$Html$button,
 									_List_fromArray(
