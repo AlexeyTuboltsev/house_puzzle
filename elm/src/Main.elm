@@ -79,6 +79,7 @@ type alias LoadResponse =
     , compositeUrl : String
     , blueprintBgUrl : Maybe String
     , lightsUrl : Maybe String
+    , houseUnitsHigh : Float
     }
 
 
@@ -433,6 +434,7 @@ update msg model =
                         |> List.map (\b -> ( b.id, b ))
                         |> Dict.fromList
                 , appMode = ModePdf
+                , houseUnitsHigh = response.houseUnitsHigh
               }
             , Cmd.none
             )
@@ -1634,7 +1636,8 @@ decodeLoadResponse =
     D.map8
         (\canvas bricks hasComposite hasBase renderDpi warnings outlinesUrl compositeUrl ->
             \blueprintBgUrl lightsUrl ->
-                LoadResponse canvas bricks hasComposite hasBase renderDpi warnings outlinesUrl compositeUrl blueprintBgUrl lightsUrl
+                \houseUnitsHigh ->
+                    LoadResponse canvas bricks hasComposite hasBase renderDpi warnings outlinesUrl compositeUrl blueprintBgUrl lightsUrl houseUnitsHigh
         )
         (D.field "canvas" decodeCanvas)
         (D.field "bricks" (D.list decodeBrick))
@@ -1646,6 +1649,7 @@ decodeLoadResponse =
         (D.field "composite_url" D.string |> D.maybe |> D.map (Maybe.withDefault "/api/composite.png"))
         |> D.andThen (\f -> D.map f (D.field "blueprint_bg_url" D.string |> D.maybe))
         |> D.andThen (\f -> D.map f (D.field "lights_url" D.string |> D.maybe))
+        |> D.andThen (\f -> D.map f (D.field "houseUnitsHigh" D.float |> D.maybe |> D.map (Maybe.withDefault 15.5)))
 
 
 decodeCanvas : D.Decoder Canvas

@@ -6877,7 +6877,9 @@ var $author$project$Main$LoadResponse = function (canvas) {
 							return function (compositeUrl) {
 								return function (blueprintBgUrl) {
 									return function (lightsUrl) {
-										return {blueprintBgUrl: blueprintBgUrl, bricks: bricks, canvas: canvas, compositeUrl: compositeUrl, hasBase: hasBase, hasComposite: hasComposite, lightsUrl: lightsUrl, outlinesUrl: outlinesUrl, renderDpi: renderDpi, warnings: warnings};
+										return function (houseUnitsHigh) {
+											return {blueprintBgUrl: blueprintBgUrl, bricks: bricks, canvas: canvas, compositeUrl: compositeUrl, hasBase: hasBase, hasComposite: hasComposite, houseUnitsHigh: houseUnitsHigh, lightsUrl: lightsUrl, outlinesUrl: outlinesUrl, renderDpi: renderDpi, warnings: warnings};
+										};
 									};
 								};
 							};
@@ -6955,8 +6957,11 @@ var $author$project$Main$decodeLoadResponse = A2(
 		return A2(
 			$elm$json$Json$Decode$map,
 			f,
-			$elm$json$Json$Decode$maybe(
-				A2($elm$json$Json$Decode$field, 'lights_url', $elm$json$Json$Decode$string)));
+			A2(
+				$elm$json$Json$Decode$map,
+				$elm$core$Maybe$withDefault(15.5),
+				$elm$json$Json$Decode$maybe(
+					A2($elm$json$Json$Decode$field, 'houseUnitsHigh', $elm$json$Json$Decode$float))));
 	},
 	A2(
 		$elm$json$Json$Decode$andThen,
@@ -6965,39 +6970,50 @@ var $author$project$Main$decodeLoadResponse = A2(
 				$elm$json$Json$Decode$map,
 				f,
 				$elm$json$Json$Decode$maybe(
-					A2($elm$json$Json$Decode$field, 'blueprint_bg_url', $elm$json$Json$Decode$string)));
+					A2($elm$json$Json$Decode$field, 'lights_url', $elm$json$Json$Decode$string)));
 		},
-		A9(
-			$elm$json$Json$Decode$map8,
-			F8(
-				function (canvas, bricks, hasComposite, hasBase, renderDpi, warnings, outlinesUrl, compositeUrl) {
-					return F2(
-						function (blueprintBgUrl, lightsUrl) {
-							return $author$project$Main$LoadResponse(canvas)(bricks)(hasComposite)(hasBase)(renderDpi)(warnings)(outlinesUrl)(compositeUrl)(blueprintBgUrl)(lightsUrl);
-						});
-				}),
-			A2($elm$json$Json$Decode$field, 'canvas', $author$project$Main$decodeCanvas),
-			A2(
-				$elm$json$Json$Decode$field,
-				'bricks',
-				$elm$json$Json$Decode$list($author$project$Main$decodeBrick)),
-			A2($elm$json$Json$Decode$field, 'has_composite', $elm$json$Json$Decode$bool),
-			A2($elm$json$Json$Decode$field, 'has_base', $elm$json$Json$Decode$bool),
-			A2($elm$json$Json$Decode$field, 'render_dpi', $elm$json$Json$Decode$float),
-			A2(
-				$elm$json$Json$Decode$field,
-				'warnings',
-				$elm$json$Json$Decode$list($elm$json$Json$Decode$string)),
-			A2(
-				$elm$json$Json$Decode$map,
-				$elm$core$Maybe$withDefault('/api/outlines.png'),
-				$elm$json$Json$Decode$maybe(
-					A2($elm$json$Json$Decode$field, 'outlines_url', $elm$json$Json$Decode$string))),
-			A2(
-				$elm$json$Json$Decode$map,
-				$elm$core$Maybe$withDefault('/api/composite.png'),
-				$elm$json$Json$Decode$maybe(
-					A2($elm$json$Json$Decode$field, 'composite_url', $elm$json$Json$Decode$string))))));
+		A2(
+			$elm$json$Json$Decode$andThen,
+			function (f) {
+				return A2(
+					$elm$json$Json$Decode$map,
+					f,
+					$elm$json$Json$Decode$maybe(
+						A2($elm$json$Json$Decode$field, 'blueprint_bg_url', $elm$json$Json$Decode$string)));
+			},
+			A9(
+				$elm$json$Json$Decode$map8,
+				F8(
+					function (canvas, bricks, hasComposite, hasBase, renderDpi, warnings, outlinesUrl, compositeUrl) {
+						return F2(
+							function (blueprintBgUrl, lightsUrl) {
+								return function (houseUnitsHigh) {
+									return $author$project$Main$LoadResponse(canvas)(bricks)(hasComposite)(hasBase)(renderDpi)(warnings)(outlinesUrl)(compositeUrl)(blueprintBgUrl)(lightsUrl)(houseUnitsHigh);
+								};
+							});
+					}),
+				A2($elm$json$Json$Decode$field, 'canvas', $author$project$Main$decodeCanvas),
+				A2(
+					$elm$json$Json$Decode$field,
+					'bricks',
+					$elm$json$Json$Decode$list($author$project$Main$decodeBrick)),
+				A2($elm$json$Json$Decode$field, 'has_composite', $elm$json$Json$Decode$bool),
+				A2($elm$json$Json$Decode$field, 'has_base', $elm$json$Json$Decode$bool),
+				A2($elm$json$Json$Decode$field, 'render_dpi', $elm$json$Json$Decode$float),
+				A2(
+					$elm$json$Json$Decode$field,
+					'warnings',
+					$elm$json$Json$Decode$list($elm$json$Json$Decode$string)),
+				A2(
+					$elm$json$Json$Decode$map,
+					$elm$core$Maybe$withDefault('/api/outlines.png'),
+					$elm$json$Json$Decode$maybe(
+						A2($elm$json$Json$Decode$field, 'outlines_url', $elm$json$Json$Decode$string))),
+				A2(
+					$elm$json$Json$Decode$map,
+					$elm$core$Maybe$withDefault('/api/composite.png'),
+					$elm$json$Json$Decode$maybe(
+						A2($elm$json$Json$Decode$field, 'composite_url', $elm$json$Json$Decode$string)))))));
 var $elm$http$Http$jsonBody = function (value) {
 	return A2(
 		_Http_pair,
@@ -7542,6 +7558,7 @@ var $author$project$Main$update = F2(
 											return _Utils_Tuple2(b.id, b);
 										},
 										response.bricks)),
+								houseUnitsHigh: response.houseUnitsHigh,
 								loadState: $author$project$Main$Loaded(response)
 							}),
 						$elm$core$Platform$Cmd$none);

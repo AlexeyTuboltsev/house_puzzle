@@ -298,6 +298,7 @@ def api_load_pdf():
         "has_base": house.base is not None,
         "render_dpi": round(house.render_dpi, 2),
         "warnings": house.warnings,
+        "houseUnitsHigh": round(house.canvas_height / house.screen_frame_height_px * 15.5, 4) if house.screen_frame_height_px > 0 else 15.5,
         "composite_url": "/api/composite.png?f=" + Path(file_path).stem,
         "outlines_url": "/api/outlines.png?f=" + Path(file_path).stem,
         "lights_url": "/api/lights.png?f=" + Path(file_path).stem if (extract_dir / "lights.png").exists() else None,
