@@ -278,6 +278,7 @@ type Msg
     | StartColorPick ColorPickTarget Float Float
     | ColorPickMove Float Float
     | EndColorPick
+    | ScrollTrayBy Float
     | NoOp
 
 
@@ -1247,6 +1248,14 @@ update msg model =
         EndColorPick ->
             ( { model | colorPicking = Nothing }, Cmd.none )
 
+        ScrollTrayBy delta ->
+            ( model
+            , Task.attempt (\_ -> NoOp)
+                (Browser.Dom.getViewportOf "wave-tray-scroll"
+                    |> Task.andThen (\vp -> Browser.Dom.setViewportOf "wave-tray-scroll" (vp.viewport.x + delta) 0)
+                )
+            )
+
         NoOp ->
             ( model, Cmd.none )
 
@@ -1835,7 +1844,16 @@ viewWaveTray model _ =
         , on "dragenter" (D.succeed (DragEnterWave activeWaveId))
         , on "drop" (D.succeed (DropOnWave activeWaveId))
         ]
-        [ div [ class "wave-tray-scroll", id "wave-tray-scroll" ]
+        [ div
+            [ class "wave-tray-bg"
+            , preventDefaultOn "wheel"
+                (D.map2 (\dx dy -> ( ScrollTrayBy (if dx /= 0 then dx else dy), True ))
+                    (D.field "deltaX" D.float)
+                    (D.field "deltaY" D.float)
+                )
+            ]
+            []
+        , div [ class "wave-tray-scroll", id "wave-tray-scroll" ]
             (List.concatMap
                 (\( pos, pid ) ->
                     let

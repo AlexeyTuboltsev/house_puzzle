@@ -356,6 +356,11 @@ input.zoom-slider {
     background: color-mix(in srgb, #808080, rgba(60,120,255,0.35));
     outline: 1px dashed rgba(60,120,255,0.6);
 }
+.wave-tray-bg {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+}
 .wave-tray-scroll {
     position: absolute;
     bottom: 0;
@@ -368,7 +373,7 @@ input.zoom-slider {
     align-items: flex-end;
     gap: 4px;
     padding: 0 50% 8px;
-    z-index: 1;
+    z-index: 2;
     pointer-events: none;
 }
 .wave-tray-scroll::-webkit-scrollbar { height: 4px; }

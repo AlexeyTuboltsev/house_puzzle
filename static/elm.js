@@ -6672,6 +6672,7 @@ var $author$project$Main$Loading = {$: 'Loading'};
 var $author$project$Main$ModePdf = {$: 'ModePdf'};
 var $author$project$Main$ModePieces = {$: 'ModePieces'};
 var $author$project$Main$ModeWaves = {$: 'ModeWaves'};
+var $author$project$Main$NoOp = {$: 'NoOp'};
 var $author$project$Main$OutlineColorTarget = {$: 'OutlineColorTarget'};
 var $elm$core$Basics$negate = function (n) {
 	return -n;
@@ -6699,6 +6700,30 @@ var $elm$core$List$any = F2(
 				}
 			}
 		}
+	});
+var $elm$core$Basics$composeL = F3(
+	function (g, f, x) {
+		return g(
+			f(x));
+	});
+var $elm$core$Task$onError = _Scheduler_onError;
+var $elm$core$Task$attempt = F2(
+	function (resultToMessage, task) {
+		return $elm$core$Task$command(
+			$elm$core$Task$Perform(
+				A2(
+					$elm$core$Task$onError,
+					A2(
+						$elm$core$Basics$composeL,
+						A2($elm$core$Basics$composeL, $elm$core$Task$succeed, resultToMessage),
+						$elm$core$Result$Err),
+					A2(
+						$elm$core$Task$andThen,
+						A2(
+							$elm$core$Basics$composeL,
+							A2($elm$core$Basics$composeL, $elm$core$Task$succeed, resultToMessage),
+							$elm$core$Result$Ok),
+						task))));
 	});
 var $elm$core$Basics$clamp = F3(
 	function (low, high, number) {
@@ -6786,6 +6811,7 @@ var $elm$core$List$filter = F2(
 	});
 var $elm$json$Json$Encode$float = _Json_wrap;
 var $elm$core$Basics$ge = _Utils_ge;
+var $elm$browser$Browser$Dom$getViewportOf = _Browser_getViewportOf;
 var $elm$core$List$head = function (list) {
 	if (list.b) {
 		var x = list.a;
@@ -7247,31 +7273,6 @@ var $author$project$Main$recomputePiecePolygons = function (pieces) {
 			url: '/api/merge'
 		});
 };
-var $author$project$Main$NoOp = {$: 'NoOp'};
-var $elm$core$Basics$composeL = F3(
-	function (g, f, x) {
-		return g(
-			f(x));
-	});
-var $elm$core$Task$onError = _Scheduler_onError;
-var $elm$core$Task$attempt = F2(
-	function (resultToMessage, task) {
-		return $elm$core$Task$command(
-			$elm$core$Task$Perform(
-				A2(
-					$elm$core$Task$onError,
-					A2(
-						$elm$core$Basics$composeL,
-						A2($elm$core$Basics$composeL, $elm$core$Task$succeed, resultToMessage),
-						$elm$core$Result$Err),
-					A2(
-						$elm$core$Task$andThen,
-						A2(
-							$elm$core$Basics$composeL,
-							A2($elm$core$Basics$composeL, $elm$core$Task$succeed, resultToMessage),
-							$elm$core$Result$Ok),
-						task))));
-	});
 var $elm$browser$Browser$Dom$setViewportOf = _Browser_setViewportOf;
 var $elm$core$Process$sleep = _Process_sleep;
 var $author$project$Main$scrollToBottom = A2(
@@ -8597,6 +8598,21 @@ var $author$project$Main$update = F2(
 						model,
 						{colorPicking: $elm$core$Maybe$Nothing}),
 					$elm$core$Platform$Cmd$none);
+			case 'ScrollTrayBy':
+				var delta = msg.a;
+				return _Utils_Tuple2(
+					model,
+					A2(
+						$elm$core$Task$attempt,
+						function (_v30) {
+							return $author$project$Main$NoOp;
+						},
+						A2(
+							$elm$core$Task$andThen,
+							function (vp) {
+								return A3($elm$browser$Browser$Dom$setViewportOf, 'wave-tray-scroll', vp.viewport.x + delta, 0);
+							},
+							$elm$browser$Browser$Dom$getViewportOf('wave-tray-scroll'))));
 			default:
 				return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 		}
@@ -9483,6 +9499,9 @@ var $author$project$Main$DragEnterWave = function (a) {
 var $author$project$Main$DropOnWave = function (a) {
 	return {$: 'DropOnWave', a: a};
 };
+var $author$project$Main$ScrollTrayBy = function (a) {
+	return {$: 'ScrollTrayBy', a: a};
+};
 var $elm$core$Tuple$second = function (_v0) {
 	var y = _v0.b;
 	return y;
@@ -9667,6 +9686,27 @@ var $author$project$Main$viewWaveTray = F2(
 				]),
 			_List_fromArray(
 				[
+					A2(
+					$elm$html$Html$div,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('wave-tray-bg'),
+							A2(
+							$elm$html$Html$Events$preventDefaultOn,
+							'wheel',
+							A3(
+								$elm$json$Json$Decode$map2,
+								F2(
+									function (dx, dy) {
+										return _Utils_Tuple2(
+											$author$project$Main$ScrollTrayBy(
+												(!(!dx)) ? dx : dy),
+											true);
+									}),
+								A2($elm$json$Json$Decode$field, 'deltaX', $elm$json$Json$Decode$float),
+								A2($elm$json$Json$Decode$field, 'deltaY', $elm$json$Json$Decode$float)))
+						]),
+					_List_Nil),
 					A2(
 					$elm$html$Html$div,
 					_List_fromArray(
