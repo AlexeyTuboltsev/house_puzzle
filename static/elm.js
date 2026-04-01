@@ -6334,7 +6334,7 @@ var $author$project$Main$fetchPdfList = $elm$http$Http$get(
 var $elm$browser$Browser$Dom$getViewport = _Browser_withWindow(_Browser_getViewport);
 var $author$project$Main$init = function (_v0) {
 	return _Utils_Tuple2(
-		{appMode: $author$project$Main$ModeInit, availableH: 900.0, bricksById: $elm$core$Dict$empty, colorPicking: $elm$core$Maybe$Nothing, dragInsertBeforeId: $elm$core$Maybe$Nothing, dragOverWaveId: $elm$core$Maybe$Nothing, draggingPieceId: $elm$core$Maybe$Nothing, editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, exportCanvasHeight: '900', exporting: false, generateState: $author$project$Main$NotGenerated, houseUnitsHigh: 15.5, hoveredPieceId: $elm$core$Maybe$Nothing, lasso: $elm$core$Maybe$Nothing, loadState: $author$project$Main$Idle, minBorder: 10, nextWaveId: 1, pdfFiles: _List_Nil, pieceGeneration: 0, pieces: _List_Nil, recomputing: false, seed: 42, selectedFileName: '', selectedPieceId: $elm$core$Maybe$Nothing, selectedWaveId: $elm$core$Maybe$Nothing, showGrid: false, showLights: false, showNumbers: true, showOutlines: true, svgScale: 1.0, targetCount: 60, waves: _List_Nil, zoomGridActive: false, zoomLevel: 1.0},
+		{appMode: $author$project$Main$ModeInit, availableH: 900.0, bricksById: $elm$core$Dict$empty, colorPicking: $elm$core$Maybe$Nothing, dragInsertBeforeId: $elm$core$Maybe$Nothing, dragOverWaveId: $elm$core$Maybe$Nothing, draggingPieceId: $elm$core$Maybe$Nothing, editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, exportCanvasHeight: '900', exporting: false, generateState: $author$project$Main$NotGenerated, gridHue: 35.0, gridOpacity: 0.7, houseUnitsHigh: 15.5, hoveredPieceId: $elm$core$Maybe$Nothing, lasso: $elm$core$Maybe$Nothing, loadState: $author$project$Main$Idle, minBorder: 10, nextWaveId: 1, pdfFiles: _List_Nil, pieceGeneration: 0, pieces: _List_Nil, recomputing: false, seed: 42, selectedFileName: '', selectedPieceId: $elm$core$Maybe$Nothing, selectedWaveId: $elm$core$Maybe$Nothing, showGrid: false, showLights: false, showNumbers: true, showOutlines: true, svgScale: 1.0, targetCount: 60, waves: _List_Nil, zoomGridActive: false, zoomLevel: 1.0},
 		$elm$core$Platform$Cmd$batch(
 			_List_fromArray(
 				[
@@ -8493,32 +8493,41 @@ var $author$project$Main$update = F2(
 					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 				}
 			case 'StartColorPick':
-				var waveId = msg.a;
+				var target = msg.a;
 				var px = msg.b;
 				var py = msg.c;
 				var _v26 = function () {
-					var _v27 = $elm$core$List$head(
-						A2(
-							$elm$core$List$filter,
-							function (w) {
-								return _Utils_eq(w.id, waveId);
-							},
-							model.waves));
-					if (_v27.$ === 'Just') {
-						var wv = _v27.a;
-						return _Utils_Tuple2((px - 10) - ((wv.hue / 360) * 240), (py - 10) - ((1 - wv.opacity) * 96));
+					if (target.$ === 'WaveColorTarget') {
+						var waveId = target.a;
+						return A2(
+							$elm$core$Maybe$withDefault,
+							_Utils_Tuple2(0, 0.3),
+							A2(
+								$elm$core$Maybe$map,
+								function (w) {
+									return _Utils_Tuple2(w.hue, w.opacity);
+								},
+								$elm$core$List$head(
+									A2(
+										$elm$core$List$filter,
+										function (w) {
+											return _Utils_eq(w.id, waveId);
+										},
+										model.waves))));
 					} else {
-						return _Utils_Tuple2(px - 10, py - 116);
+						return _Utils_Tuple2(model.gridHue, model.gridOpacity);
 					}
 				}();
-				var panelX = _v26.a;
-				var panelY = _v26.b;
+				var currentHue = _v26.a;
+				var currentOpacity = _v26.b;
+				var panelX = (px - 10) - ((currentHue / 360) * 240);
+				var panelY = (py - 10) - ((1 - currentOpacity) * 96);
 				return _Utils_Tuple2(
 					_Utils_update(
 						model,
 						{
 							colorPicking: $elm$core$Maybe$Just(
-								{panelX: panelX, panelY: panelY, waveId: waveId})
+								{panelX: panelX, panelY: panelY, target: target})
 						}),
 					$elm$core$Platform$Cmd$none);
 			case 'ColorPickMove':
@@ -8531,19 +8540,30 @@ var $author$project$Main$update = F2(
 					var cp = _v28.a;
 					var newOpacity = A3($elm$core$Basics$clamp, 0.05, 1.0, 1.0 - (((my - cp.panelY) - 10) / 96));
 					var newHue = A3($elm$core$Basics$clamp, 0, 360, (((mx - cp.panelX) - 10) / 240) * 360);
-					var updatedWaves = A2(
-						$elm$core$List$map,
-						function (w) {
-							return _Utils_eq(w.id, cp.waveId) ? _Utils_update(
-								w,
-								{hue: newHue, opacity: newOpacity}) : w;
-						},
-						model.waves);
-					return _Utils_Tuple2(
-						_Utils_update(
-							model,
-							{waves: updatedWaves}),
-						$elm$core$Platform$Cmd$none);
+					var _v29 = cp.target;
+					if (_v29.$ === 'WaveColorTarget') {
+						var waveId = _v29.a;
+						return _Utils_Tuple2(
+							_Utils_update(
+								model,
+								{
+									waves: A2(
+										$elm$core$List$map,
+										function (w) {
+											return _Utils_eq(w.id, waveId) ? _Utils_update(
+												w,
+												{hue: newHue, opacity: newOpacity}) : w;
+										},
+										model.waves)
+								}),
+							$elm$core$Platform$Cmd$none);
+					} else {
+						return _Utils_Tuple2(
+							_Utils_update(
+								model,
+								{gridHue: newHue, gridOpacity: newOpacity}),
+							$elm$core$Platform$Cmd$none);
+					}
 				}
 			case 'EndColorPick':
 				return _Utils_Tuple2(
@@ -8812,11 +8832,9 @@ var $elm$svg$Svg$Attributes$x2 = _VirtualDom_attribute('x2');
 var $elm$svg$Svg$Attributes$y1 = _VirtualDom_attribute('y1');
 var $elm$svg$Svg$Attributes$y2 = _VirtualDom_attribute('y2');
 var $author$project$Main$viewGrid = F4(
-	function (cw, ch, isBlueprint, houseUnitsHigh) {
+	function (cw, ch, color, houseUnitsHigh) {
 		var gridStep = ch / houseUnitsHigh;
 		var numH = $elm$core$Basics$floor(ch / gridStep);
-		var numV = $elm$core$Basics$floor(cw / gridStep);
-		var color = isBlueprint ? '#ff0000' : '#e0a050';
 		var hLines = A2(
 			$elm$core$List$map,
 			function (i) {
@@ -8839,6 +8857,7 @@ var $author$project$Main$viewGrid = F4(
 					_List_Nil);
 			},
 			A2($elm$core$List$range, 1, numH));
+		var numV = $elm$core$Basics$floor(cw / gridStep);
 		var vLines = A2(
 			$elm$core$List$map,
 			function (i) {
@@ -9276,7 +9295,7 @@ var $author$project$Main$viewMainSvg = F2(
 			$author$project$Main$viewGrid,
 			cw,
 			ch,
-			_Utils_eq(model.appMode, $author$project$Main$ModeBlueprint),
+			A2($author$project$Main$waveColor, model.gridHue, model.gridOpacity),
 			model.houseUnitsHigh) : _List_Nil;
 		var h = $elm$core$String$fromFloat(ch);
 		var lightsLayer = function () {
@@ -9981,6 +10000,39 @@ var $elm$html$Html$Events$onCheck = function (tagger) {
 		'change',
 		A2($elm$json$Json$Decode$map, tagger, $elm$html$Html$Events$targetChecked));
 };
+var $author$project$Main$GridColorTarget = {$: 'GridColorTarget'};
+var $author$project$Main$StartColorPick = F3(
+	function (a, b, c) {
+		return {$: 'StartColorPick', a: a, b: b, c: c};
+	});
+var $elm$html$Html$Attributes$title = $elm$html$Html$Attributes$stringProperty('title');
+var $author$project$Main$viewGridColorSwatch = function (model) {
+	return A2(
+		$elm$html$Html$span,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('wave-swatch wave-swatch-sm'),
+				A2(
+				$elm$html$Html$Attributes$style,
+				'background-color',
+				A2($author$project$Main$waveColor, model.gridHue, model.gridOpacity)),
+				A2(
+				$elm$html$Html$Events$stopPropagationOn,
+				'mousedown',
+				A3(
+					$elm$json$Json$Decode$map2,
+					F2(
+						function (mx, my) {
+							return _Utils_Tuple2(
+								A3($author$project$Main$StartColorPick, $author$project$Main$GridColorTarget, mx, my),
+								true);
+						}),
+					A2($elm$json$Json$Decode$field, 'clientX', $elm$json$Json$Decode$float),
+					A2($elm$json$Json$Decode$field, 'clientY', $elm$json$Json$Decode$float))),
+				$elm$html$Html$Attributes$title('Pick grid color')
+			]),
+		_List_Nil);
+};
 var $author$project$Main$viewBlueprintTools = function (model) {
 	return A2(
 		$elm$html$Html$div,
@@ -10017,7 +10069,8 @@ var $author$project$Main$viewBlueprintTools = function (model) {
 						_List_fromArray(
 							[
 								$elm$html$Html$text('Show grid')
-							]))
+							])),
+						$author$project$Main$viewGridColorSwatch(model)
 					]))
 			]));
 };
@@ -10028,7 +10081,6 @@ var $author$project$Main$SetExportCanvasHeight = function (a) {
 var $author$project$Main$SetHouseUnitsHigh = function (a) {
 	return {$: 'SetHouseUnitsHigh', a: a};
 };
-var $elm$html$Html$Attributes$title = $elm$html$Html$Attributes$stringProperty('title');
 var $author$project$Main$viewExportTools = function (model) {
 	var warningItems = function () {
 		var _v1 = model.loadState;
@@ -10584,7 +10636,8 @@ var $author$project$Main$viewPdfTools = F2(
 							_List_fromArray(
 								[
 									$elm$html$Html$text('Show grid')
-								]))
+								])),
+							$author$project$Main$viewGridColorSwatch(model)
 						])),
 					A2(
 					$elm$html$Html$div,
@@ -11123,15 +11176,14 @@ var $author$project$Main$RemoveWave = function (a) {
 var $author$project$Main$SelectWave = function (a) {
 	return {$: 'SelectWave', a: a};
 };
-var $author$project$Main$StartColorPick = F3(
-	function (a, b, c) {
-		return {$: 'StartColorPick', a: a, b: b, c: c};
-	});
 var $author$project$Main$ToggleWaveLock = function (a) {
 	return {$: 'ToggleWaveLock', a: a};
 };
 var $author$project$Main$ToggleWaveVisibility = function (a) {
 	return {$: 'ToggleWaveVisibility', a: a};
+};
+var $author$project$Main$WaveColorTarget = function (a) {
+	return {$: 'WaveColorTarget', a: a};
 };
 var $elm$svg$Svg$Attributes$d = _VirtualDom_attribute('d');
 var $elm$svg$Svg$path = $elm$svg$Svg$trustedNode('path');
@@ -11343,7 +11395,11 @@ var $author$project$Main$viewWaveRow = F3(
 										F2(
 											function (mx, my) {
 												return _Utils_Tuple2(
-													A3($author$project$Main$StartColorPick, wave.id, mx, my),
+													A3(
+														$author$project$Main$StartColorPick,
+														$author$project$Main$WaveColorTarget(wave.id),
+														mx,
+														my),
 													true);
 											}),
 										A2($elm$json$Json$Decode$field, 'clientX', $elm$json$Json$Decode$float),

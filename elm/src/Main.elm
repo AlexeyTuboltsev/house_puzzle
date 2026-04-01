@@ -87,6 +87,11 @@ type alias MergeResponse =
     }
 
 
+type ColorPickTarget
+    = WaveColorTarget Int
+    | GridColorTarget
+
+
 type alias Wave =
     { id : Int
     , name : String
@@ -155,7 +160,9 @@ type alias Model =
     , dragOverWaveId : Maybe (Maybe Int)
     , dragInsertBeforeId : Maybe Int
     , lasso : Maybe { x0 : Float, y0 : Float, x1 : Float, y1 : Float }
-    , colorPicking : Maybe { waveId : Int, panelX : Float, panelY : Float }
+    , colorPicking : Maybe { target : ColorPickTarget, panelX : Float, panelY : Float }
+    , gridHue : Float
+    , gridOpacity : Float
     , svgScale : Float
     , availableH : Float
     , houseUnitsHigh : Float
@@ -197,6 +204,8 @@ init _ =
       , dragInsertBeforeId = Nothing
       , lasso = Nothing
       , colorPicking = Nothing
+      , gridHue = 35.0
+      , gridOpacity = 0.7
       , svgScale = 1.0
       , availableH = 900.0
       , houseUnitsHigh = 15.5
@@ -265,7 +274,7 @@ type Msg
     | SetZoomLevel Float
     | SetZoomGridActive Bool
     | SetHouseUnitsHigh String
-    | StartColorPick Int Float Float
+    | StartColorPick ColorPickTarget Float Float
     | ColorPickMove Float Float
     | EndColorPick
     | NoOp
@@ -1152,20 +1161,27 @@ update msg model =
                 Nothing ->
                     ( model, Cmd.none )
 
-        StartColorPick waveId px py ->
+        StartColorPick target px py ->
             let
-                ( panelX, panelY ) =
-                    case List.filter (\w -> w.id == waveId) model.waves |> List.head of
-                        Just wv ->
-                            -- Position panel so cursor falls on the current hue/opacity point
-                            ( px - 10 - (wv.hue / 360) * 240
-                            , py - 10 - (1 - wv.opacity) * 96
-                            )
+                ( currentHue, currentOpacity ) =
+                    case target of
+                        WaveColorTarget waveId ->
+                            model.waves
+                                |> List.filter (\w -> w.id == waveId)
+                                |> List.head
+                                |> Maybe.map (\w -> ( w.hue, w.opacity ))
+                                |> Maybe.withDefault ( 0, 0.3 )
 
-                        Nothing ->
-                            ( px - 10, py - 116 )
+                        GridColorTarget ->
+                            ( model.gridHue, model.gridOpacity )
+
+                panelX =
+                    px - 10 - (currentHue / 360) * 240
+
+                panelY =
+                    py - 10 - (1 - currentOpacity) * 96
             in
-            ( { model | colorPicking = Just { waveId = waveId, panelX = panelX, panelY = panelY } }, Cmd.none )
+            ( { model | colorPicking = Just { target = target, panelX = panelX, panelY = panelY } }, Cmd.none )
 
         ColorPickMove mx my ->
             case model.colorPicking of
@@ -1180,18 +1196,26 @@ update msg model =
                         newOpacity =
                             clamp 0.05 1.0 (1.0 - (my - cp.panelY - 10) / 96)
 
-                        updatedWaves =
-                            List.map
-                                (\w ->
-                                    if w.id == cp.waveId then
-                                        { w | hue = newHue, opacity = newOpacity }
-
-                                    else
-                                        w
-                                )
-                                model.waves
                     in
-                    ( { model | waves = updatedWaves }, Cmd.none )
+                    case cp.target of
+                        WaveColorTarget waveId ->
+                            ( { model
+                                | waves =
+                                    List.map
+                                        (\w ->
+                                            if w.id == waveId then
+                                                { w | hue = newHue, opacity = newOpacity }
+
+                                            else
+                                                w
+                                        )
+                                        model.waves
+                              }
+                            , Cmd.none
+                            )
+
+                        GridColorTarget ->
+                            ( { model | gridHue = newHue, gridOpacity = newOpacity }, Cmd.none )
 
         EndColorPick ->
             ( { model | colorPicking = Nothing }, Cmd.none )
@@ -1928,6 +1952,7 @@ viewPdfTools model response =
         , div [ class "checkbox-group" ]
             [ input [ type_ "checkbox", id "showGrid", checked model.showGrid, onCheck ToggleGrid ] []
             , label [ for "showGrid" ] [ text "Show grid" ]
+            , viewGridColorSwatch model
             ]
         , div [ class "tools-divider" ] []
         , button
@@ -2072,12 +2097,28 @@ viewWavePieceInfoBox model =
             div [ class "piece-info-empty" ] [ text "Hover a piece to inspect" ]
 
 
+viewGridColorSwatch : Model -> Html Msg
+viewGridColorSwatch model =
+    span
+        [ class "wave-swatch wave-swatch-sm"
+        , style "background-color" (waveColor model.gridHue model.gridOpacity)
+        , stopPropagationOn "mousedown"
+            (D.map2 (\mx my -> ( StartColorPick GridColorTarget mx my, True ))
+                (D.field "clientX" D.float)
+                (D.field "clientY" D.float)
+            )
+        , title "Pick grid color"
+        ]
+        []
+
+
 viewBlueprintTools : Model -> Html Msg
 viewBlueprintTools model =
     div [ class "tools-pane" ]
         [ div [ class "checkbox-group" ]
             [ input [ type_ "checkbox", id "showGrid", checked model.showGrid, onCheck ToggleGrid ] []
             , label [ for "showGrid" ] [ text "Show grid" ]
+            , viewGridColorSwatch model
             ]
         ]
 
@@ -2383,7 +2424,7 @@ viewMainSvg response model =
         -- Grid lines
         gridLayer =
             if (not model.editMode) && (model.showGrid || model.zoomGridActive) then
-                viewGrid cw ch (model.appMode == ModeBlueprint) model.houseUnitsHigh
+                viewGrid cw ch (waveColor model.gridHue model.gridOpacity) model.houseUnitsHigh
 
             else
                 []
@@ -2831,18 +2872,11 @@ viewPieceOverlay appMode hoveredId selectedId selectedWaveId waves isLassoing pi
             []
 
 
-viewGrid : Float -> Float -> Bool -> Float -> List (Svg.Svg Msg)
-viewGrid cw ch isBlueprint houseUnitsHigh =
+viewGrid : Float -> Float -> String -> Float -> List (Svg.Svg Msg)
+viewGrid cw ch color houseUnitsHigh =
     let
         gridStep =
             ch / houseUnitsHigh
-
-        color =
-            if isBlueprint then
-                "#ff0000"
-
-            else
-                "#e0a050"
 
         numV =
             floor (cw / gridStep)
@@ -2983,7 +3017,7 @@ viewWaveRow model allWaves wave =
                 [ class "wave-swatch"
                 , style "background-color" swatchColor
                 , stopPropagationOn "mousedown"
-                    (D.map2 (\mx my -> ( StartColorPick wave.id mx my, True ))
+                    (D.map2 (\mx my -> ( StartColorPick (WaveColorTarget wave.id) mx my, True ))
                         (D.field "clientX" D.float)
                         (D.field "clientY" D.float)
                     )
