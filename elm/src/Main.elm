@@ -3004,11 +3004,17 @@ iconEyeCrossed =
         ]
 
 
-iconLock : Html msg
-iconLock =
+iconLockClosed : Html msg
+iconLockClosed =
     Svg.svg [ SA.viewBox "0 0 24 24", SA.width "14", SA.height "14", SA.fill "currentColor" ]
-        [ Svg.path [ SA.d "M19,8V7A7,7,0,0,0,5,7V8H2V21a3,3,0,0,0,3,3H19a3,3,0,0,0,3-3V8ZM7,7A5,5,0,0,1,17,7V8H7ZM20,21a1,1,0,0,1-1,1H5a1,1,0,0,1-1-1V10H20Z" ] []
-        , Svg.rect [ SA.x "11", SA.y "14", SA.width "2", SA.height "4" ] []
+        [ Svg.path [ SA.d "M6 22q-.825 0-1.412-.587T4 20V10q0-.825.588-1.412T6 8h1V6q0-2.075 1.463-3.537T12 1t3.538 1.463T17 6v2h1q.825 0 1.413.588T20 10v10q0 .825-.587 1.413T18 22zm0-2h12V10H6zm7.413-3.588Q14 15.826 14 15t-.587-1.412T12 13t-1.412.588T10 15t.588 1.413T12 17t1.413-.587M9 8h6V6q0-1.25-.875-2.125T12 3t-2.125.875T9 6zM6 20V10z" ] []
+        ]
+
+
+iconLockOpen : Html msg
+iconLockOpen =
+    Svg.svg [ SA.viewBox "0 0 24 24", SA.width "14", SA.height "14", SA.fill "currentColor" ]
+        [ Svg.path [ SA.d "M6 20h12V10H6zm7.413-3.588Q14 15.826 14 15t-.587-1.412T12 13t-1.412.588T10 15t.588 1.413T12 17t1.413-.587M6 20V10zm0 2q-.825 0-1.412-.587T4 20V10q0-.825.588-1.412T6 8h7V6q0-2.075 1.463-3.537T18 1t3.538 1.463T23 6h-2q0-1.25-.875-2.125T18 3t-2.125.875T15 6v2h3q.825 0 1.413.588T20 10v10q0 .825-.587 1.413T18 22z" ] []
         ]
 
 
@@ -3074,7 +3080,7 @@ viewWaveRow model allWaves wave =
                         "Lock wave"
                     )
                 ]
-                [ iconLock ]
+                [ if wave.locked then iconLockClosed else iconLockOpen ]
             , span
                 [ class "wave-swatch"
                 , style "background-color" swatchColor
