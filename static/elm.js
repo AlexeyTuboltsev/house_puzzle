@@ -11783,6 +11783,60 @@ var $author$project$Main$viewWavesTools = function (model) {
 						_List_fromArray(
 							[
 								$elm$html$Html$Attributes$type_('checkbox'),
+								$elm$html$Html$Attributes$id('showOutlinesWaves'),
+								$elm$html$Html$Attributes$checked(model.showOutlines),
+								$elm$html$Html$Events$onCheck($author$project$Main$ToggleOutlines)
+							]),
+						_List_Nil),
+						A2(
+						$elm$html$Html$label,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$for('showOutlinesWaves')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text('Show piece outlines')
+							])),
+						A2(
+						$elm$html$Html$span,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('wave-swatch wave-swatch-sm'),
+								A2(
+								$elm$html$Html$Attributes$style,
+								'background-color',
+								A2($author$project$Main$waveColor, model.outlineHue, 1.0)),
+								A2(
+								$elm$html$Html$Events$stopPropagationOn,
+								'mousedown',
+								A3(
+									$elm$json$Json$Decode$map2,
+									F2(
+										function (mx, my) {
+											return _Utils_Tuple2(
+												A3($author$project$Main$StartColorPick, $author$project$Main$OutlineColorTarget, mx, my),
+												true);
+										}),
+									A2($elm$json$Json$Decode$field, 'clientX', $elm$json$Json$Decode$float),
+									A2($elm$json$Json$Decode$field, 'clientY', $elm$json$Json$Decode$float))),
+								$elm$html$Html$Attributes$title('Pick outline color')
+							]),
+						_List_Nil)
+					])),
+				A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('checkbox-group')
+					]),
+				_List_fromArray(
+					[
+						A2(
+						$elm$html$Html$input,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$type_('checkbox'),
 								$elm$html$Html$Attributes$id('showGrid'),
 								$elm$html$Html$Attributes$checked(model.showGrid),
 								$elm$html$Html$Events$onCheck($author$project$Main$ToggleGrid)

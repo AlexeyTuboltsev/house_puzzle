@@ -2199,6 +2199,21 @@ viewWavesTools model =
                 ]
             ]
         , div [ class "checkbox-group" ]
+            [ input [ type_ "checkbox", id "showOutlinesWaves", checked model.showOutlines, onCheck ToggleOutlines ] []
+            , label [ for "showOutlinesWaves" ] [ text "Show piece outlines" ]
+            , span
+                [ class "wave-swatch wave-swatch-sm"
+                , style "background-color" (waveColor model.outlineHue 1.0)
+                , stopPropagationOn "mousedown"
+                    (D.map2 (\mx my -> ( StartColorPick OutlineColorTarget mx my, True ))
+                        (D.field "clientX" D.float)
+                        (D.field "clientY" D.float)
+                    )
+                , title "Pick outline color"
+                ]
+                []
+            ]
+        , div [ class "checkbox-group" ]
             [ input [ type_ "checkbox", id "showGrid", checked model.showGrid, onCheck ToggleGrid ] []
             , label [ for "showGrid" ] [ text "Show grid" ]
             , viewGridColorSwatch model
