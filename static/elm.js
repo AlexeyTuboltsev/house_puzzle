@@ -6334,7 +6334,7 @@ var $author$project$Main$fetchPdfList = $elm$http$Http$get(
 var $elm$browser$Browser$Dom$getViewport = _Browser_withWindow(_Browser_getViewport);
 var $author$project$Main$init = function (_v0) {
 	return _Utils_Tuple2(
-		{appMode: $author$project$Main$ModeInit, availableH: 900.0, bricksById: $elm$core$Dict$empty, colorPicking: $elm$core$Maybe$Nothing, dragInsertBeforeId: $elm$core$Maybe$Nothing, dragOverWaveId: $elm$core$Maybe$Nothing, draggingPieceId: $elm$core$Maybe$Nothing, editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, exportCanvasHeight: '900', exporting: false, generateState: $author$project$Main$NotGenerated, gridHue: 35.0, houseUnitsHigh: 15.5, hoveredPieceId: $elm$core$Maybe$Nothing, lasso: $elm$core$Maybe$Nothing, loadState: $author$project$Main$Idle, minBorder: 10, nextWaveId: 1, outlineHue: 210.0, pdfFiles: _List_Nil, pieceGeneration: 0, pieces: _List_Nil, recomputing: false, seed: 42, selectedFileName: '', selectedPieceId: $elm$core$Maybe$Nothing, selectedWaveId: $elm$core$Maybe$Nothing, showGrid: false, showLights: false, showNumbers: true, showOutlines: true, svgScale: 1.0, targetCount: 60, waves: _List_Nil, zoomGridActive: false, zoomLevel: 1.0},
+		{appMode: $author$project$Main$ModeInit, availableH: 900.0, bricksById: $elm$core$Dict$empty, colorPicking: $elm$core$Maybe$Nothing, dragInsertBeforeId: $elm$core$Maybe$Nothing, dragOverGroupId: $elm$core$Maybe$Nothing, dragOverWaveId: $elm$core$Maybe$Nothing, draggingPieceId: $elm$core$Maybe$Nothing, editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, exportCanvasHeight: '900', exporting: false, generateState: $author$project$Main$NotGenerated, gridHue: 35.0, groups: _List_Nil, houseUnitsHigh: 15.5, hoveredPieceId: $elm$core$Maybe$Nothing, lasso: $elm$core$Maybe$Nothing, loadState: $author$project$Main$Idle, minBorder: 10, nextGroupId: 1, nextWaveId: 1, outlineHue: 210.0, pdfFiles: _List_Nil, pieceGeneration: 0, pieces: _List_Nil, recomputing: false, seed: 42, selectedFileName: '', selectedGroupId: $elm$core$Maybe$Nothing, selectedPieceId: $elm$core$Maybe$Nothing, selectedWaveId: $elm$core$Maybe$Nothing, showGrid: false, showLights: false, showNumbers: true, showOutlines: true, svgScale: 1.0, targetCount: 60, waves: _List_Nil, zoomGridActive: false, zoomLevel: 1.0},
 		$elm$core$Platform$Cmd$batch(
 			_List_fromArray(
 				[
@@ -6669,6 +6669,7 @@ var $author$project$Main$Loaded = function (a) {
 	return {$: 'Loaded', a: a};
 };
 var $author$project$Main$Loading = {$: 'Loading'};
+var $author$project$Main$ModeGroups = {$: 'ModeGroups'};
 var $author$project$Main$ModePdf = {$: 'ModePdf'};
 var $author$project$Main$ModePieces = {$: 'ModePieces'};
 var $author$project$Main$ModeWaves = {$: 'ModeWaves'};
@@ -6705,6 +6706,14 @@ var $elm$core$Basics$composeL = F3(
 	function (g, f, x) {
 		return g(
 			f(x));
+	});
+var $elm$core$Basics$not = _Basics_not;
+var $elm$core$List$all = F2(
+	function (isOkay, list) {
+		return !A2(
+			$elm$core$List$any,
+			A2($elm$core$Basics$composeL, $elm$core$Basics$not, isOkay),
+			list);
 	});
 var $elm$core$Task$onError = _Scheduler_onError;
 var $elm$core$Task$attempt = F2(
@@ -7139,7 +7148,6 @@ var $elm$core$Basics$min = F2(
 var $elm$file$File$name = _File_name;
 var $elm$core$Basics$neq = _Utils_notEqual;
 var $elm$core$Platform$Cmd$none = $elm$core$Platform$Cmd$batch(_List_Nil);
-var $elm$core$Basics$not = _Basics_not;
 var $elm$json$Json$Encode$null = _Json_encodeNull;
 var $elm$core$List$maximum = function (list) {
 	if (list.b) {
@@ -7297,6 +7305,132 @@ var $author$project$Main$scrollTrayToEnd = A2(
 			return A3($elm$browser$Browser$Dom$setViewportOf, 'wave-tray-scroll', 999999, 0);
 		},
 		$elm$core$Process$sleep(0)));
+var $elm$core$List$takeReverse = F3(
+	function (n, list, kept) {
+		takeReverse:
+		while (true) {
+			if (n <= 0) {
+				return kept;
+			} else {
+				if (!list.b) {
+					return kept;
+				} else {
+					var x = list.a;
+					var xs = list.b;
+					var $temp$n = n - 1,
+						$temp$list = xs,
+						$temp$kept = A2($elm$core$List$cons, x, kept);
+					n = $temp$n;
+					list = $temp$list;
+					kept = $temp$kept;
+					continue takeReverse;
+				}
+			}
+		}
+	});
+var $elm$core$List$takeTailRec = F2(
+	function (n, list) {
+		return $elm$core$List$reverse(
+			A3($elm$core$List$takeReverse, n, list, _List_Nil));
+	});
+var $elm$core$List$takeFast = F3(
+	function (ctr, n, list) {
+		if (n <= 0) {
+			return _List_Nil;
+		} else {
+			var _v0 = _Utils_Tuple2(n, list);
+			_v0$1:
+			while (true) {
+				_v0$5:
+				while (true) {
+					if (!_v0.b.b) {
+						return list;
+					} else {
+						if (_v0.b.b.b) {
+							switch (_v0.a) {
+								case 1:
+									break _v0$1;
+								case 2:
+									var _v2 = _v0.b;
+									var x = _v2.a;
+									var _v3 = _v2.b;
+									var y = _v3.a;
+									return _List_fromArray(
+										[x, y]);
+								case 3:
+									if (_v0.b.b.b.b) {
+										var _v4 = _v0.b;
+										var x = _v4.a;
+										var _v5 = _v4.b;
+										var y = _v5.a;
+										var _v6 = _v5.b;
+										var z = _v6.a;
+										return _List_fromArray(
+											[x, y, z]);
+									} else {
+										break _v0$5;
+									}
+								default:
+									if (_v0.b.b.b.b && _v0.b.b.b.b.b) {
+										var _v7 = _v0.b;
+										var x = _v7.a;
+										var _v8 = _v7.b;
+										var y = _v8.a;
+										var _v9 = _v8.b;
+										var z = _v9.a;
+										var _v10 = _v9.b;
+										var w = _v10.a;
+										var tl = _v10.b;
+										return (ctr > 1000) ? A2(
+											$elm$core$List$cons,
+											x,
+											A2(
+												$elm$core$List$cons,
+												y,
+												A2(
+													$elm$core$List$cons,
+													z,
+													A2(
+														$elm$core$List$cons,
+														w,
+														A2($elm$core$List$takeTailRec, n - 4, tl))))) : A2(
+											$elm$core$List$cons,
+											x,
+											A2(
+												$elm$core$List$cons,
+												y,
+												A2(
+													$elm$core$List$cons,
+													z,
+													A2(
+														$elm$core$List$cons,
+														w,
+														A3($elm$core$List$takeFast, ctr + 1, n - 4, tl)))));
+									} else {
+										break _v0$5;
+									}
+							}
+						} else {
+							if (_v0.a === 1) {
+								break _v0$1;
+							} else {
+								break _v0$5;
+							}
+						}
+					}
+				}
+				return list;
+			}
+			var _v1 = _v0.b;
+			var x = _v1.a;
+			return _List_fromArray(
+				[x]);
+		}
+	});
+var $elm$core$List$take = F2(
+	function (n, list) {
+		return A3($elm$core$List$takeFast, 0, n, list);
+	});
 var $elm$core$String$toFloat = _String_toFloat;
 var $author$project$Main$FileUploaded = function (a) {
 	return {$: 'FileUploaded', a: a};
@@ -7532,7 +7666,38 @@ var $author$project$Main$update = F2(
 							recomputeViewport);
 					}
 				} else {
-					return _Utils_Tuple2(baseModel, recomputeViewport);
+					if (_Utils_eq(mode, $author$project$Main$ModeGroups)) {
+						var _v6 = model.groups;
+						if (!_v6.b) {
+							var newGroup = {
+								hue: $author$project$Main$defaultHue(model.nextGroupId - 1),
+								id: model.nextGroupId,
+								name: 'Group ' + $elm$core$String$fromInt(model.nextGroupId),
+								pieceIds: _List_Nil
+							};
+							return _Utils_Tuple2(
+								_Utils_update(
+									baseModel,
+									{
+										groups: _List_fromArray(
+											[newGroup]),
+										nextGroupId: model.nextGroupId + 1,
+										selectedGroupId: $elm$core$Maybe$Just(newGroup.id)
+									}),
+								recomputeViewport);
+						} else {
+							var first = _v6.a;
+							return _Utils_Tuple2(
+								_Utils_update(
+									baseModel,
+									{
+										selectedGroupId: _Utils_eq(baseModel.selectedGroupId, $elm$core$Maybe$Nothing) ? $elm$core$Maybe$Just(first.id) : baseModel.selectedGroupId
+									}),
+								recomputeViewport);
+						}
+					} else {
+						return _Utils_Tuple2(baseModel, recomputeViewport);
+					}
 				}
 			case 'ToggleOutlines':
 				var checked = msg.a;
@@ -7630,17 +7795,17 @@ var $author$project$Main$update = F2(
 					$elm$core$Platform$Cmd$none);
 			case 'SelectAndEdit':
 				var pid = msg.a;
-				var _v6 = $elm$core$List$head(
+				var _v7 = $elm$core$List$head(
 					A2(
 						$elm$core$List$filter,
 						function (p) {
 							return _Utils_eq(p.id, pid);
 						},
 						model.pieces));
-				if (_v6.$ === 'Nothing') {
+				if (_v7.$ === 'Nothing') {
 					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 				} else {
-					var piece = _v6.a;
+					var piece = _v7.a;
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
@@ -7661,11 +7826,11 @@ var $author$project$Main$update = F2(
 					$elm$core$Platform$Cmd$none);
 			case 'AssignPieceToWave':
 				var pid = msg.a;
-				var _v7 = model.selectedWaveId;
-				if (_v7.$ === 'Nothing') {
+				var _v8 = model.selectedWaveId;
+				if (_v8.$ === 'Nothing') {
 					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 				} else {
-					var wid = _v7.a;
+					var wid = _v8.a;
 					var targetWave = $elm$core$List$head(
 						A2(
 							$elm$core$List$filter,
@@ -7775,8 +7940,8 @@ var $author$project$Main$update = F2(
 					$elm$core$List$head(
 						A2(
 							$elm$core$List$filter,
-							function (_v9) {
-								var w = _v9.b;
+							function (_v10) {
+								var w = _v10.b;
 								return _Utils_eq(w.id, wid);
 							},
 							indexed)));
@@ -7848,22 +8013,22 @@ var $author$project$Main$update = F2(
 						{selectedWaveId: newSelectedWaveId, waves: renumbered}),
 					$elm$core$Platform$Cmd$none);
 			case 'StartEdit':
-				var _v10 = model.selectedPieceId;
-				if (_v10.$ === 'Nothing') {
+				var _v11 = model.selectedPieceId;
+				if (_v11.$ === 'Nothing') {
 					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 				} else {
-					var pid = _v10.a;
-					var _v11 = $elm$core$List$head(
+					var pid = _v11.a;
+					var _v12 = $elm$core$List$head(
 						A2(
 							$elm$core$List$filter,
 							function (p) {
 								return _Utils_eq(p.id, pid);
 							},
 							model.pieces));
-					if (_v11.$ === 'Nothing') {
+					if (_v12.$ === 'Nothing') {
 						return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 					} else {
-						var piece = _v11.a;
+						var piece = _v12.a;
 						return _Utils_Tuple2(
 							_Utils_update(
 								model,
@@ -7888,15 +8053,15 @@ var $author$project$Main$update = F2(
 						{editBrickIds: newList}),
 					$elm$core$Platform$Cmd$none);
 			case 'SaveEdit':
-				var _v12 = model.selectedPieceId;
-				if (_v12.$ === 'Nothing') {
+				var _v13 = model.selectedPieceId;
+				if (_v13.$ === 'Nothing') {
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
 							{editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil}),
 						$elm$core$Platform$Cmd$none);
 				} else {
-					var editedPieceId = _v12.a;
+					var editedPieceId = _v13.a;
 					var newBrickIds = model.editBrickIds;
 					var removedBrickIds = A2(
 						$elm$core$Maybe$withDefault,
@@ -7950,9 +8115,9 @@ var $author$project$Main$update = F2(
 						F2(
 							function (i, bid) {
 								var newId = (maxId + i) + 1;
-								var _v13 = A2($elm$core$Dict$get, bid, model.bricksById);
-								if (_v13.$ === 'Just') {
-									var brick = _v13.a;
+								var _v14 = A2($elm$core$Dict$get, bid, model.bricksById);
+								if (_v14.$ === 'Just') {
+									var brick = _v14.a;
 									return {
 										brickIds: _List_fromArray(
 											[bid]),
@@ -8044,9 +8209,9 @@ var $author$project$Main$update = F2(
 					var updatedPieces = A2(
 						$elm$core$List$map,
 						function (p) {
-							var _v14 = A2($elm$core$Dict$get, p.id, polyDict);
-							if (_v14.$ === 'Just') {
-								var poly = _v14.a;
+							var _v15 = A2($elm$core$Dict$get, p.id, polyDict);
+							if (_v15.$ === 'Just') {
+								var poly = _v15.a;
 								return _Utils_update(
 									p,
 									{polygon: poly});
@@ -8077,9 +8242,9 @@ var $author$project$Main$update = F2(
 			case 'RequestExport':
 				var wavesJson = A2(
 					$elm$json$Json$Encode$list,
-					function (_v16) {
-						var idx = _v16.a;
-						var wv = _v16.b;
+					function (_v17) {
+						var idx = _v17.a;
+						var wv = _v17.b;
 						return $elm$json$Json$Encode$object(
 							_List_fromArray(
 								[
@@ -8102,9 +8267,9 @@ var $author$project$Main$update = F2(
 									'points',
 									A2(
 										$elm$json$Json$Encode$list,
-										function (_v15) {
-											var x = _v15.a;
-											var y = _v15.b;
+										function (_v16) {
+											var x = _v16.a;
+											var y = _v16.b;
 											return A2(
 												$elm$json$Json$Encode$list,
 												$elm$json$Json$Encode$float,
@@ -8230,15 +8395,15 @@ var $author$project$Main$update = F2(
 					$elm$core$Platform$Cmd$none);
 			case 'DropOnWave':
 				var targetWaveId = msg.a;
-				var _v17 = model.draggingPieceId;
-				if (_v17.$ === 'Nothing') {
+				var _v18 = model.draggingPieceId;
+				if (_v18.$ === 'Nothing') {
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
 							{dragInsertBeforeId: $elm$core$Maybe$Nothing, dragOverWaveId: $elm$core$Maybe$Nothing}),
 						$elm$core$Platform$Cmd$none);
 				} else {
-					var pid = _v17.a;
+					var pid = _v18.a;
 					var targetIsLocked = function () {
 						if (targetWaveId.$ === 'Just') {
 							var wid = targetWaveId.a;
@@ -8330,6 +8495,294 @@ var $author$project$Main$update = F2(
 								model.waves)
 						}),
 					$elm$core$Platform$Cmd$none);
+			case 'AddGroup':
+				var newGroup = {
+					hue: $author$project$Main$defaultHue(model.nextGroupId - 1),
+					id: model.nextGroupId,
+					name: 'Group ' + $elm$core$String$fromInt(model.nextGroupId),
+					pieceIds: _List_Nil
+				};
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{
+							groups: _Utils_ap(
+								model.groups,
+								_List_fromArray(
+									[newGroup])),
+							nextGroupId: model.nextGroupId + 1,
+							selectedGroupId: $elm$core$Maybe$Just(newGroup.id)
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'SelectGroup':
+				var mgid = msg.a;
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{selectedGroupId: mgid}),
+					$elm$core$Platform$Cmd$none);
+			case 'RemoveGroup':
+				var gid = msg.a;
+				var newGroups = A2(
+					$elm$core$List$filter,
+					function (g) {
+						return !_Utils_eq(g.id, gid);
+					},
+					model.groups);
+				var newSelectedGroupId = _Utils_eq(
+					model.selectedGroupId,
+					$elm$core$Maybe$Just(gid)) ? A2(
+					$elm$core$Maybe$map,
+					function ($) {
+						return $.id;
+					},
+					$elm$core$List$head(newGroups)) : model.selectedGroupId;
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{groups: newGroups, selectedGroupId: newSelectedGroupId}),
+					$elm$core$Platform$Cmd$none);
+			case 'MoveGroup':
+				var gid = msg.a;
+				var dir = msg.b;
+				var moveItem = function (lst) {
+					var indexed = A2($elm$core$List$indexedMap, $elm$core$Tuple$pair, lst);
+					var idx = A2(
+						$elm$core$Maybe$withDefault,
+						0,
+						A2(
+							$elm$core$Maybe$map,
+							$elm$core$Tuple$first,
+							$elm$core$List$head(
+								A2(
+									$elm$core$List$filter,
+									function (_v23) {
+										var g = _v23.b;
+										return _Utils_eq(g.id, gid);
+									},
+									indexed))));
+					var item = $elm$core$List$head(
+						A2($elm$core$List$drop, idx, lst));
+					var newIdx = A2(
+						$elm$core$Basics$max,
+						0,
+						A2(
+							$elm$core$Basics$min,
+							$elm$core$List$length(lst) - 1,
+							idx + dir));
+					var without = _Utils_ap(
+						A2($elm$core$List$take, idx, lst),
+						A2($elm$core$List$drop, idx + 1, lst));
+					if (item.$ === 'Just') {
+						var g = item.a;
+						return _Utils_ap(
+							A2($elm$core$List$take, newIdx, without),
+							_Utils_ap(
+								_List_fromArray(
+									[g]),
+								A2($elm$core$List$drop, newIdx, without)));
+					} else {
+						return lst;
+					}
+				};
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{
+							groups: moveItem(model.groups)
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'AssignPieceToGroup':
+				var pid = msg.a;
+				var _v24 = model.selectedGroupId;
+				if (_v24.$ === 'Nothing') {
+					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
+				} else {
+					var gid = _v24.a;
+					var alreadyIn = A2(
+						$elm$core$List$any,
+						function (g) {
+							return _Utils_eq(g.id, gid) && A2($elm$core$List$member, pid, g.pieceIds);
+						},
+						model.groups);
+					var updatedGroups = A2(
+						$elm$core$List$map,
+						function (g) {
+							return _Utils_eq(g.id, gid) ? (alreadyIn ? _Utils_update(
+								g,
+								{
+									pieceIds: A2(
+										$elm$core$List$filter,
+										function (p) {
+											return !_Utils_eq(p, pid);
+										},
+										g.pieceIds)
+								}) : _Utils_update(
+								g,
+								{
+									pieceIds: _Utils_ap(
+										g.pieceIds,
+										_List_fromArray(
+											[pid]))
+								})) : ((!alreadyIn) ? _Utils_update(
+								g,
+								{
+									pieceIds: A2(
+										$elm$core$List$filter,
+										function (p) {
+											return !_Utils_eq(p, pid);
+										},
+										g.pieceIds)
+								}) : g);
+						},
+						model.groups);
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{groups: updatedGroups}),
+						$elm$core$Platform$Cmd$none);
+				}
+			case 'DragEnterGroup':
+				var mgid = msg.a;
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{
+							dragOverGroupId: $elm$core$Maybe$Just(mgid)
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'DropOnGroup':
+				var mgid = msg.a;
+				var _v25 = model.draggingPieceId;
+				if (_v25.$ === 'Nothing') {
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{dragOverGroupId: $elm$core$Maybe$Nothing}),
+						$elm$core$Platform$Cmd$none);
+				} else {
+					var pid = _v25.a;
+					var updatedGroups = function () {
+						if (mgid.$ === 'Nothing') {
+							return A2(
+								$elm$core$List$map,
+								function (g) {
+									return _Utils_update(
+										g,
+										{
+											pieceIds: A2(
+												$elm$core$List$filter,
+												$elm$core$Basics$neq(pid),
+												g.pieceIds)
+										});
+								},
+								model.groups);
+						} else {
+							var gid = mgid.a;
+							return A2(
+								$elm$core$List$map,
+								function (g) {
+									return _Utils_eq(g.id, gid) ? (A2($elm$core$List$member, pid, g.pieceIds) ? g : _Utils_update(
+										g,
+										{
+											pieceIds: _Utils_ap(
+												g.pieceIds,
+												_List_fromArray(
+													[pid]))
+										})) : _Utils_update(
+										g,
+										{
+											pieceIds: A2(
+												$elm$core$List$filter,
+												$elm$core$Basics$neq(pid),
+												g.pieceIds)
+										});
+								},
+								model.groups);
+						}
+					}();
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{dragOverGroupId: $elm$core$Maybe$Nothing, draggingPieceId: $elm$core$Maybe$Nothing, groups: updatedGroups}),
+						$elm$core$Platform$Cmd$none);
+				}
+			case 'AssignGroupToWave':
+				var gid = msg.a;
+				var wid = msg.b;
+				var _v27 = $elm$core$List$head(
+					A2(
+						$elm$core$List$filter,
+						function (g) {
+							return _Utils_eq(g.id, gid);
+						},
+						model.groups));
+				if (_v27.$ === 'Nothing') {
+					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
+				} else {
+					var group = _v27.a;
+					var targetLocked = A2(
+						$elm$core$List$any,
+						function (w) {
+							return _Utils_eq(w.id, wid) && w.locked;
+						},
+						model.waves);
+					var pids = group.pieceIds;
+					var alreadyAll = (!$elm$core$List$isEmpty(pids)) && A2(
+						$elm$core$List$all,
+						function (pid) {
+							return A2(
+								$elm$core$List$any,
+								function (w) {
+									return _Utils_eq(w.id, wid) && A2($elm$core$List$member, pid, w.pieceIds);
+								},
+								model.waves);
+						},
+						pids);
+					var updatedWaves = targetLocked ? model.waves : (alreadyAll ? A2(
+						$elm$core$List$map,
+						function (w) {
+							return _Utils_eq(w.id, wid) ? _Utils_update(
+								w,
+								{
+									pieceIds: A2(
+										$elm$core$List$filter,
+										function (p) {
+											return !A2($elm$core$List$member, p, pids);
+										},
+										w.pieceIds)
+								}) : w;
+						},
+						model.waves) : A2(
+						$elm$core$List$map,
+						function (w) {
+							return _Utils_eq(w.id, wid) ? _Utils_update(
+								w,
+								{
+									pieceIds: _Utils_ap(w.pieceIds, pids)
+								}) : w;
+						},
+						A2(
+							$elm$core$List$map,
+							function (w) {
+								return _Utils_update(
+									w,
+									{
+										pieceIds: A2(
+											$elm$core$List$filter,
+											function (p) {
+												return !A2($elm$core$List$member, p, pids);
+											},
+											w.pieceIds)
+									});
+							},
+							model.waves)));
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{waves: updatedWaves}),
+						targetLocked ? $elm$core$Platform$Cmd$none : $author$project$Main$scrollTrayToEnd);
+				}
 			case 'GotViewport':
 				var viewport = msg.a;
 				var waveTrayOffset = 48;
@@ -8337,9 +8790,9 @@ var $author$project$Main$update = F2(
 				var waveTrayHeight = (vh - waveTrayOffset) * 0.12;
 				var bottomPadding = 16;
 				var availableH = _Utils_eq(model.appMode, $author$project$Main$ModeWaves) ? ((vh - waveTrayHeight) - bottomPadding) : (vh - bottomPadding);
-				var _v21 = model.loadState;
-				if (_v21.$ === 'Loaded') {
-					var response = _v21.a;
+				var _v28 = model.loadState;
+				if (_v28.$ === 'Loaded') {
+					var response = _v28.a;
 					var svgH = response.canvas.height + 20;
 					var scale = (availableH * model.houseUnitsHigh) / (svgH * 15.5);
 					return _Utils_Tuple2(
@@ -8368,11 +8821,11 @@ var $author$project$Main$update = F2(
 			case 'LassoMove':
 				var x = msg.a;
 				var y = msg.b;
-				var _v22 = model.lasso;
-				if (_v22.$ === 'Nothing') {
+				var _v29 = model.lasso;
+				if (_v29.$ === 'Nothing') {
 					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 				} else {
-					var ls = _v22.a;
+					var ls = _v29.a;
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
@@ -8385,11 +8838,11 @@ var $author$project$Main$update = F2(
 						$elm$core$Platform$Cmd$none);
 				}
 			case 'LassoEnd':
-				var _v23 = model.lasso;
-				if (_v23.$ === 'Nothing') {
+				var _v30 = model.lasso;
+				if (_v30.$ === 'Nothing') {
 					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 				} else {
-					var ls = _v23.a;
+					var ls = _v30.a;
 					var isDrag = ($elm$core$Basics$abs(ls.x1 - ls.x0) > 5) || ($elm$core$Basics$abs(ls.y1 - ls.y0) > 5);
 					var cleared = _Utils_update(
 						model,
@@ -8397,11 +8850,11 @@ var $author$project$Main$update = F2(
 					if (!isDrag) {
 						return _Utils_Tuple2(cleared, $elm$core$Platform$Cmd$none);
 					} else {
-						var _v24 = model.selectedWaveId;
-						if (_v24.$ === 'Nothing') {
+						var _v31 = model.selectedWaveId;
+						if (_v31.$ === 'Nothing') {
 							return _Utils_Tuple2(cleared, $elm$core$Platform$Cmd$none);
 						} else {
-							var wid = _v24.a;
+							var wid = _v31.a;
 							var ly1 = A2($elm$core$Basics$max, ls.y0, ls.y1);
 							var ly0 = A2($elm$core$Basics$min, ls.y0, ls.y1);
 							var lx1 = A2($elm$core$Basics$max, ls.x0, ls.x1);
@@ -8506,9 +8959,9 @@ var $author$project$Main$update = F2(
 					$elm$core$Platform$Cmd$none);
 			case 'SetHouseUnitsHigh':
 				var s = msg.a;
-				var _v25 = $elm$core$String$toFloat(s);
-				if (_v25.$ === 'Just') {
-					var h = _v25.a;
+				var _v32 = $elm$core$String$toFloat(s);
+				if (_v32.$ === 'Just') {
+					var h = _v32.a;
 					return (h > 0) ? _Utils_Tuple2(
 						_Utils_update(
 							model,
@@ -8523,7 +8976,7 @@ var $author$project$Main$update = F2(
 				var py = msg.c;
 				var hueOnly = _Utils_eq(target, $author$project$Main$GridColorTarget) || _Utils_eq(target, $author$project$Main$OutlineColorTarget);
 				var innerH = hueOnly ? 20 : 96;
-				var _v26 = function () {
+				var _v33 = function () {
 					switch (target.$) {
 						case 'WaveColorTarget':
 							var waveId = target.a;
@@ -8542,14 +8995,31 @@ var $author$project$Main$update = F2(
 												return _Utils_eq(w.id, waveId);
 											},
 											model.waves))));
+						case 'GroupColorTarget':
+							var groupId = target.a;
+							return A2(
+								$elm$core$Maybe$withDefault,
+								_Utils_Tuple2(0, 1.0),
+								A2(
+									$elm$core$Maybe$map,
+									function (g) {
+										return _Utils_Tuple2(g.hue, 1.0);
+									},
+									$elm$core$List$head(
+										A2(
+											$elm$core$List$filter,
+											function (g) {
+												return _Utils_eq(g.id, groupId);
+											},
+											model.groups))));
 						case 'GridColorTarget':
 							return _Utils_Tuple2(model.gridHue, 1.0);
 						default:
 							return _Utils_Tuple2(model.outlineHue, 1.0);
 					}
 				}();
-				var currentHue = _v26.a;
-				var currentOpacity = _v26.b;
+				var currentHue = _v33.a;
+				var currentOpacity = _v33.b;
 				var panelX = (px - 10) - ((currentHue / 360) * 240);
 				var panelY = (py - 10) - ((1 - currentOpacity) * innerH);
 				return _Utils_Tuple2(
@@ -8563,17 +9033,17 @@ var $author$project$Main$update = F2(
 			case 'ColorPickMove':
 				var mx = msg.a;
 				var my = msg.b;
-				var _v28 = model.colorPicking;
-				if (_v28.$ === 'Nothing') {
+				var _v35 = model.colorPicking;
+				if (_v35.$ === 'Nothing') {
 					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 				} else {
-					var cp = _v28.a;
+					var cp = _v35.a;
 					var newOpacity = cp.hueOnly ? 1.0 : A3($elm$core$Basics$clamp, 0.05, 1.0, 1.0 - (((my - cp.panelY) - 10) / 96));
 					var newHue = A3($elm$core$Basics$clamp, 0, 360, (((mx - cp.panelX) - 10) / 240) * 360);
-					var _v29 = cp.target;
-					switch (_v29.$) {
+					var _v36 = cp.target;
+					switch (_v36.$) {
 						case 'WaveColorTarget':
-							var waveId = _v29.a;
+							var waveId = _v36.a;
 							return _Utils_Tuple2(
 								_Utils_update(
 									model,
@@ -8586,6 +9056,22 @@ var $author$project$Main$update = F2(
 													{hue: newHue, opacity: newOpacity}) : w;
 											},
 											model.waves)
+									}),
+								$elm$core$Platform$Cmd$none);
+						case 'GroupColorTarget':
+							var groupId = _v36.a;
+							return _Utils_Tuple2(
+								_Utils_update(
+									model,
+									{
+										groups: A2(
+											$elm$core$List$map,
+											function (g) {
+												return _Utils_eq(g.id, groupId) ? _Utils_update(
+													g,
+													{hue: newHue}) : g;
+											},
+											model.groups)
 									}),
 								$elm$core$Platform$Cmd$none);
 						case 'GridColorTarget':
@@ -8614,7 +9100,7 @@ var $author$project$Main$update = F2(
 					model,
 					A2(
 						$elm$core$Task$attempt,
-						function (_v30) {
+						function (_v37) {
 							return $author$project$Main$NoOp;
 						},
 						A2(
@@ -9069,6 +9555,13 @@ var $author$project$Main$viewPieceOutline = F2(
 				_List_Nil);
 		}
 	});
+var $author$project$Main$AssignGroupToWave = F2(
+	function (a, b) {
+		return {$: 'AssignGroupToWave', a: a, b: b};
+	});
+var $author$project$Main$AssignPieceToGroup = function (a) {
+	return {$: 'AssignPieceToGroup', a: a};
+};
 var $author$project$Main$AssignPieceToWave = function (a) {
 	return {$: 'AssignPieceToWave', a: a};
 };
@@ -9123,8 +9616,8 @@ var $author$project$Main$waveColor = F2(
 		var b = _v0.c;
 		return 'rgba(' + ($elm$core$String$fromInt(r) + (',' + ($elm$core$String$fromInt(g) + (',' + ($elm$core$String$fromInt(b) + (',' + ($elm$core$String$fromFloat(opacity) + ')')))))));
 	});
-var $author$project$Main$viewPieceOverlay = F7(
-	function (appMode, hoveredId, selectedId, selectedWaveId, waves, isLassoing, piece) {
+var $author$project$Main$viewPieceOverlay = F9(
+	function (appMode, hoveredId, selectedId, selectedWaveId, waves, groups, selectedGroupId, isLassoing, piece) {
 		var maybeWave = $elm$core$List$head(
 			A2(
 				$elm$core$List$filter,
@@ -9132,20 +9625,38 @@ var $author$project$Main$viewPieceOverlay = F7(
 					return w.visible && A2($elm$core$List$member, piece.id, w.pieceIds);
 				},
 				waves));
+		var maybeGroup = $elm$core$List$head(
+			A2(
+				$elm$core$List$filter,
+				function (g) {
+					return A2($elm$core$List$member, piece.id, g.pieceIds);
+				},
+				groups));
 		var isHov = _Utils_eq(
 			hoveredId,
 			$elm$core$Maybe$Just(piece.id));
-		var inAssignMode = !_Utils_eq(selectedWaveId, $elm$core$Maybe$Nothing);
-		var isSel = (!inAssignMode) && _Utils_eq(
+		var inWaveAssign = !_Utils_eq(selectedWaveId, $elm$core$Maybe$Nothing);
+		var inGroupAssign = _Utils_eq(appMode, $author$project$Main$ModeGroups) && (!_Utils_eq(selectedGroupId, $elm$core$Maybe$Nothing));
+		var isSel = (!inWaveAssign) && ((!inGroupAssign) && _Utils_eq(
 			selectedId,
-			$elm$core$Maybe$Just(piece.id));
+			$elm$core$Maybe$Just(piece.id)));
 		var fillStyle = function () {
-			if (maybeWave.$ === 'Just') {
-				var wv = maybeWave.a;
-				var eff = isHov ? A2($elm$core$Basics$min, 1.0, wv.opacity + 0.15) : wv.opacity;
-				return 'fill: ' + (A2($author$project$Main$waveColor, wv.hue, eff) + ';');
+			if (_Utils_eq(appMode, $author$project$Main$ModeGroups)) {
+				if (maybeGroup.$ === 'Just') {
+					var g = maybeGroup.a;
+					var eff = isHov ? A2($elm$core$Basics$min, 1.0, 0.35 + 0.15) : 0.35;
+					return 'fill: ' + (A2($author$project$Main$waveColor, g.hue, eff) + ';');
+				} else {
+					return isHov ? 'fill: rgba(64,120,255,0.2);' : 'fill: transparent;';
+				}
 			} else {
-				return isHov ? 'fill: rgba(64,120,255,0.2);' : (isSel ? 'fill: rgba(64,120,255,0.45);' : 'fill: transparent;');
+				if (maybeWave.$ === 'Just') {
+					var wv = maybeWave.a;
+					var eff = isHov ? A2($elm$core$Basics$min, 1.0, wv.opacity + 0.15) : wv.opacity;
+					return 'fill: ' + (A2($author$project$Main$waveColor, wv.hue, eff) + ';');
+				} else {
+					return isHov ? 'fill: rgba(64,120,255,0.2);' : (isSel ? 'fill: rgba(64,120,255,0.45);' : 'fill: transparent;');
+				}
 			}
 		}();
 		var clsStr = A2(
@@ -9159,7 +9670,28 @@ var $author$project$Main$viewPieceOverlay = F7(
 						'piece-overlay',
 						(isSel && _Utils_eq(maybeWave, $elm$core$Maybe$Nothing)) ? 'selected' : ''
 					])));
-		var clickMsg = inAssignMode ? $author$project$Main$AssignPieceToWave(piece.id) : (_Utils_eq(appMode, $author$project$Main$ModePieces) ? $author$project$Main$SelectAndEdit(piece.id) : $author$project$Main$SelectPiece(piece.id));
+		var clickMsg = function () {
+			if (inGroupAssign) {
+				return $author$project$Main$AssignPieceToGroup(piece.id);
+			} else {
+				if (inWaveAssign) {
+					var _v1 = _Utils_Tuple2(maybeGroup, selectedWaveId);
+					if ((_v1.a.$ === 'Just') && (_v1.b.$ === 'Just')) {
+						var g = _v1.a.a;
+						var wid = _v1.b.a;
+						return A2($author$project$Main$AssignGroupToWave, g.id, wid);
+					} else {
+						return $author$project$Main$AssignPieceToWave(piece.id);
+					}
+				} else {
+					if (_Utils_eq(appMode, $author$project$Main$ModePieces)) {
+						return $author$project$Main$SelectAndEdit(piece.id);
+					} else {
+						return $author$project$Main$SelectPiece(piece.id);
+					}
+				}
+			}
+		}();
 		if ($elm$core$List$isEmpty(piece.polygon)) {
 			return A2($elm$svg$Svg$g, _List_Nil, _List_Nil);
 		} else {
@@ -9250,7 +9782,7 @@ var $author$project$Main$viewMainSvg = F2(
 		var isLassoing = !_Utils_eq(model.lasso, $elm$core$Maybe$Nothing);
 		var isGenerated = _Utils_eq(model.generateState, $author$project$Main$Generated);
 		var showComposite = (!isGenerated) && response.hasComposite;
-		var showPieceImages = (_Utils_eq(model.appMode, $author$project$Main$ModePieces) || _Utils_eq(model.appMode, $author$project$Main$ModeWaves)) && (isGenerated && (!$elm$core$List$isEmpty(model.pieces)));
+		var showPieceImages = (_Utils_eq(model.appMode, $author$project$Main$ModePieces) || (_Utils_eq(model.appMode, $author$project$Main$ModeGroups) || _Utils_eq(model.appMode, $author$project$Main$ModeWaves))) && (isGenerated && (!$elm$core$List$isEmpty(model.pieces)));
 		var hiddenPieceIds = A2(
 			$elm$core$List$concatMap,
 			function ($) {
@@ -9298,7 +9830,7 @@ var $author$project$Main$viewMainSvg = F2(
 					A2($elm$core$Dict$get, piece.id, piecePositions));
 			},
 			visiblePieces) : _List_Nil;
-		var outlineLayer = ((!model.editMode) && (isGenerated && (model.showOutlines && (_Utils_eq(model.appMode, $author$project$Main$ModePieces) || (_Utils_eq(model.appMode, $author$project$Main$ModeWaves) || _Utils_eq(model.appMode, $author$project$Main$ModeExport)))))) ? A2(
+		var outlineLayer = ((!model.editMode) && (isGenerated && (model.showOutlines && (_Utils_eq(model.appMode, $author$project$Main$ModePieces) || (_Utils_eq(model.appMode, $author$project$Main$ModeGroups) || (_Utils_eq(model.appMode, $author$project$Main$ModeWaves) || _Utils_eq(model.appMode, $author$project$Main$ModeExport))))))) ? A2(
 			$elm$core$List$map,
 			$author$project$Main$viewPieceOutline(
 				A2($author$project$Main$waveColor, model.outlineHue, 1.0)),
@@ -9307,7 +9839,7 @@ var $author$project$Main$viewMainSvg = F2(
 		var effectiveHoverId = (!_Utils_eq(model.draggingPieceId, $elm$core$Maybe$Nothing)) ? model.draggingPieceId : model.hoveredPieceId;
 		var pieceOverlays = ((!model.editMode) && isGenerated) ? A2(
 			$elm$core$List$map,
-			A6($author$project$Main$viewPieceOverlay, model.appMode, effectiveHoverId, model.selectedPieceId, model.selectedWaveId, model.waves, isLassoing),
+			A8($author$project$Main$viewPieceOverlay, model.appMode, effectiveHoverId, model.selectedPieceId, model.selectedWaveId, model.waves, model.groups, model.selectedGroupId, isLassoing),
 			visiblePieces) : _List_Nil;
 		var editOverlays = model.editMode ? A2(
 			$elm$core$List$map,
@@ -10226,6 +10758,591 @@ var $author$project$Main$viewExportTools = function (model) {
 					]))
 			]));
 };
+var $author$project$Main$AddGroup = {$: 'AddGroup'};
+var $author$project$Main$ToggleOutlines = function (a) {
+	return {$: 'ToggleOutlines', a: a};
+};
+var $elm$html$Html$h2 = _VirtualDom_node('h2');
+var $author$project$Main$DragEnterGroup = function (a) {
+	return {$: 'DragEnterGroup', a: a};
+};
+var $author$project$Main$DropOnGroup = function (a) {
+	return {$: 'DropOnGroup', a: a};
+};
+var $author$project$Main$GroupColorTarget = function (a) {
+	return {$: 'GroupColorTarget', a: a};
+};
+var $author$project$Main$MoveGroup = F2(
+	function (a, b) {
+		return {$: 'MoveGroup', a: a, b: b};
+	});
+var $author$project$Main$RemoveGroup = function (a) {
+	return {$: 'RemoveGroup', a: a};
+};
+var $author$project$Main$SelectGroup = function (a) {
+	return {$: 'SelectGroup', a: a};
+};
+var $author$project$Main$RemovePieceFromWave = F2(
+	function (a, b) {
+		return {$: 'RemovePieceFromWave', a: a, b: b};
+	});
+var $author$project$Main$viewPieceThumb = F6(
+	function (removeInfo, isLocked, hoveredId, pieceId, dataUrl, maybePos) {
+		var isHovered = _Utils_eq(
+			hoveredId,
+			$elm$core$Maybe$Just(pieceId));
+		var dragAttrs = isLocked ? _List_Nil : _List_fromArray(
+			[
+				A2($elm$html$Html$Attributes$attribute, 'draggable', 'true'),
+				A2(
+				$elm$html$Html$Events$on,
+				'dragstart',
+				$elm$json$Json$Decode$succeed(
+					$author$project$Main$DragPieceStart(pieceId))),
+				A2(
+				$elm$html$Html$Events$on,
+				'dragend',
+				$elm$json$Json$Decode$succeed($author$project$Main$DragPieceEnd)),
+				A2(
+				$elm$html$Html$Events$stopPropagationOn,
+				'dragenter',
+				$elm$json$Json$Decode$succeed(
+					_Utils_Tuple2(
+						$author$project$Main$DragEnterPiece(pieceId),
+						true)))
+			]);
+		return A2(
+			$elm$html$Html$div,
+			_Utils_ap(
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$classList(
+						_List_fromArray(
+							[
+								_Utils_Tuple2('piece-thumb', true),
+								_Utils_Tuple2('hovered', isHovered)
+							])),
+						$elm$html$Html$Events$onMouseEnter(
+						$author$project$Main$SetHoveredPiece(
+							$elm$core$Maybe$Just(pieceId))),
+						$elm$html$Html$Events$onMouseLeave(
+						$author$project$Main$SetHoveredPiece($elm$core$Maybe$Nothing))
+					]),
+				dragAttrs),
+			_Utils_ap(
+				_List_fromArray(
+					[
+						A2(
+						$elm$html$Html$img,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$src(dataUrl),
+								A2($elm$html$Html$Attributes$style, 'max-height', '48px'),
+								A2($elm$html$Html$Attributes$style, 'max-width', '80px'),
+								A2($elm$html$Html$Attributes$style, 'display', 'block')
+							]),
+						_List_Nil)
+					]),
+				_Utils_ap(
+					function () {
+						if (maybePos.$ === 'Just') {
+							var pos = maybePos.a;
+							return _List_fromArray(
+								[
+									A2(
+									$elm$html$Html$div,
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$class('tray-thumb-num')
+										]),
+									_List_fromArray(
+										[
+											$elm$html$Html$text(
+											$elm$core$String$fromInt(pos))
+										]))
+								]);
+						} else {
+							return _List_Nil;
+						}
+					}(),
+					function () {
+						if (removeInfo.$ === 'Just') {
+							var _v2 = removeInfo.a;
+							var wid = _v2.a;
+							var pid = _v2.b;
+							return _List_fromArray(
+								[
+									A2(
+									$elm$html$Html$button,
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$class('piece-thumb-remove'),
+											$elm$html$Html$Events$onClick(
+											A2($author$project$Main$RemovePieceFromWave, wid, pid)),
+											$elm$html$Html$Attributes$disabled(isLocked),
+											$elm$html$Html$Attributes$title('Remove from wave')
+										]),
+									_List_fromArray(
+										[
+											$elm$html$Html$text('\u2715')
+										]))
+								]);
+						} else {
+							return _List_Nil;
+						}
+					}())));
+	});
+var $author$project$Main$viewGroupRow = F3(
+	function (model, allGroups, group) {
+		var swatchColor = A2($author$project$Main$waveColor, group.hue, 0.85);
+		var isSelected = _Utils_eq(
+			model.selectedGroupId,
+			$elm$core$Maybe$Just(group.id));
+		var groupIdx = A2(
+			$elm$core$Maybe$withDefault,
+			0,
+			A2(
+				$elm$core$Maybe$map,
+				$elm$core$Tuple$first,
+				$elm$core$List$head(
+					A2(
+						$elm$core$List$filter,
+						function (_v0) {
+							var g = _v0.b;
+							return _Utils_eq(g.id, group.id);
+						},
+						A2($elm$core$List$indexedMap, $elm$core$Tuple$pair, allGroups)))));
+		var groupCount = $elm$core$List$length(allGroups);
+		return A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$classList(
+					_List_fromArray(
+						[
+							_Utils_Tuple2('wave-row', true),
+							_Utils_Tuple2('selected', isSelected),
+							_Utils_Tuple2(
+							'drag-over',
+							_Utils_eq(
+								model.dragOverGroupId,
+								$elm$core$Maybe$Just(
+									$elm$core$Maybe$Just(group.id))))
+						])),
+					A2(
+					$elm$html$Html$Events$preventDefaultOn,
+					'dragover',
+					$elm$json$Json$Decode$succeed(
+						_Utils_Tuple2($author$project$Main$NoOp, true))),
+					A2(
+					$elm$html$Html$Events$on,
+					'dragenter',
+					$elm$json$Json$Decode$succeed(
+						$author$project$Main$DragEnterGroup(
+							$elm$core$Maybe$Just(group.id)))),
+					A2(
+					$elm$html$Html$Events$on,
+					'drop',
+					$elm$json$Json$Decode$succeed(
+						$author$project$Main$DropOnGroup(
+							$elm$core$Maybe$Just(group.id))))
+				]),
+			_List_fromArray(
+				[
+					A2(
+					$elm$html$Html$div,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('wave-row-header'),
+							$elm$html$Html$Events$onClick(
+							(isSelected && (groupCount > 1)) ? $author$project$Main$SelectGroup($elm$core$Maybe$Nothing) : $author$project$Main$SelectGroup(
+								$elm$core$Maybe$Just(group.id)))
+						]),
+					_List_fromArray(
+						[
+							A2(
+							$elm$html$Html$span,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('wave-swatch'),
+									A2($elm$html$Html$Attributes$style, 'background-color', swatchColor),
+									A2(
+									$elm$html$Html$Events$stopPropagationOn,
+									'mousedown',
+									A3(
+										$elm$json$Json$Decode$map2,
+										F2(
+											function (mx, my) {
+												return _Utils_Tuple2(
+													A3(
+														$author$project$Main$StartColorPick,
+														$author$project$Main$GroupColorTarget(group.id),
+														mx,
+														my),
+													true);
+											}),
+										A2($elm$json$Json$Decode$field, 'clientX', $elm$json$Json$Decode$float),
+										A2($elm$json$Json$Decode$field, 'clientY', $elm$json$Json$Decode$float))),
+									$elm$html$Html$Attributes$title('Pick color')
+								]),
+							_List_Nil),
+							A2(
+							$elm$html$Html$span,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('wave-piece-count-label'),
+									A2(
+									$elm$html$Html$Attributes$style,
+									'color',
+									A2($author$project$Main$waveColor, group.hue, 1.0))
+								]),
+							_List_fromArray(
+								[
+									$elm$html$Html$text(
+									$elm$core$String$fromInt(
+										$elm$core$List$length(group.pieceIds)) + ' pcs')
+								])),
+							A2(
+							$elm$html$Html$span,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('wave-name-label')
+								]),
+							_List_fromArray(
+								[
+									$elm$html$Html$text(group.name)
+								])),
+							A2(
+							$elm$html$Html$span,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('wave-row-spacer')
+								]),
+							_List_Nil),
+							A2(
+							$elm$html$Html$span,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('wave-actions')
+								]),
+							_List_fromArray(
+								[
+									A2(
+									$elm$html$Html$button,
+									_List_fromArray(
+										[
+											A2(
+											$elm$html$Html$Events$stopPropagationOn,
+											'click',
+											$elm$json$Json$Decode$succeed(
+												_Utils_Tuple2(
+													A2($author$project$Main$MoveGroup, group.id, -1),
+													true))),
+											$elm$html$Html$Attributes$disabled(!groupIdx),
+											$elm$html$Html$Attributes$title('Move up')
+										]),
+									_List_fromArray(
+										[
+											$elm$html$Html$text('\u25B2')
+										])),
+									A2(
+									$elm$html$Html$button,
+									_List_fromArray(
+										[
+											A2(
+											$elm$html$Html$Events$stopPropagationOn,
+											'click',
+											$elm$json$Json$Decode$succeed(
+												_Utils_Tuple2(
+													A2($author$project$Main$MoveGroup, group.id, 1),
+													true))),
+											$elm$html$Html$Attributes$disabled(
+											_Utils_cmp(groupIdx, groupCount - 1) > -1),
+											$elm$html$Html$Attributes$title('Move down')
+										]),
+									_List_fromArray(
+										[
+											$elm$html$Html$text('\u25BC')
+										])),
+									A2(
+									$elm$html$Html$button,
+									_List_fromArray(
+										[
+											A2(
+											$elm$html$Html$Events$stopPropagationOn,
+											'click',
+											$elm$json$Json$Decode$succeed(
+												_Utils_Tuple2(
+													$author$project$Main$RemoveGroup(group.id),
+													true))),
+											$elm$html$Html$Attributes$disabled(groupCount <= 1),
+											$elm$html$Html$Attributes$title('Delete group')
+										]),
+									_List_fromArray(
+										[
+											$elm$html$Html$text('\u2715')
+										]))
+								]))
+						])),
+					A2(
+					$elm$html$Html$div,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('wave-pieces')
+						]),
+					A2(
+						$elm$core$List$filterMap,
+						function (pid) {
+							return A2(
+								$elm$core$Maybe$map,
+								function (piece) {
+									return A6(
+										$author$project$Main$viewPieceThumb,
+										$elm$core$Maybe$Just(
+											_Utils_Tuple2(group.id, pid)),
+										false,
+										model.hoveredPieceId,
+										pid,
+										piece.imgUrl + ('?v=' + $elm$core$String$fromInt(model.pieceGeneration)),
+										$elm$core$Maybe$Nothing);
+								},
+								$elm$core$List$head(
+									A2(
+										$elm$core$List$filter,
+										function (p) {
+											return _Utils_eq(p.id, pid);
+										},
+										model.pieces)));
+						},
+						group.pieceIds))
+				]));
+	});
+var $author$project$Main$viewGroupUnassignedRow = F2(
+	function (model, unassignedPieces) {
+		return $elm$core$List$isEmpty(model.pieces) ? $elm$html$Html$text('') : A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$classList(
+					_List_fromArray(
+						[
+							_Utils_Tuple2('wave-row', true),
+							_Utils_Tuple2(
+							'drag-over',
+							_Utils_eq(
+								model.dragOverGroupId,
+								$elm$core$Maybe$Just($elm$core$Maybe$Nothing)))
+						])),
+					A2(
+					$elm$html$Html$Events$preventDefaultOn,
+					'dragover',
+					$elm$json$Json$Decode$succeed(
+						_Utils_Tuple2($author$project$Main$NoOp, true))),
+					A2(
+					$elm$html$Html$Events$on,
+					'dragenter',
+					$elm$json$Json$Decode$succeed(
+						$author$project$Main$DragEnterGroup($elm$core$Maybe$Nothing))),
+					A2(
+					$elm$html$Html$Events$on,
+					'drop',
+					$elm$json$Json$Decode$succeed(
+						$author$project$Main$DropOnGroup($elm$core$Maybe$Nothing)))
+				]),
+			_List_fromArray(
+				[
+					A2(
+					$elm$html$Html$div,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('wave-row-header')
+						]),
+					_List_fromArray(
+						[
+							A2(
+							$elm$html$Html$span,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('wave-label unassigned-label')
+								]),
+							_List_fromArray(
+								[
+									$elm$html$Html$text('Unassigned')
+								])),
+							A2(
+							$elm$html$Html$span,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('wave-piece-count')
+								]),
+							_List_fromArray(
+								[
+									$elm$html$Html$text(
+									$elm$core$String$fromInt(
+										$elm$core$List$length(unassignedPieces)) + ' pcs')
+								]))
+						])),
+					A2(
+					$elm$html$Html$div,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('wave-pieces')
+						]),
+					A2(
+						$elm$core$List$map,
+						function (p) {
+							return A6(
+								$author$project$Main$viewPieceThumb,
+								$elm$core$Maybe$Nothing,
+								false,
+								model.hoveredPieceId,
+								p.id,
+								p.imgUrl + ('?v=' + $elm$core$String$fromInt(model.pieceGeneration)),
+								$elm$core$Maybe$Nothing);
+						},
+						unassignedPieces))
+				]));
+	});
+var $author$project$Main$viewGroupsTools = function (model) {
+	var totalPieces = $elm$core$List$length(model.pieces);
+	var assignedIds = A2(
+		$elm$core$List$concatMap,
+		function ($) {
+			return $.pieceIds;
+		},
+		model.groups);
+	var unassignedPieces = A2(
+		$elm$core$List$filter,
+		function (p) {
+			return !A2($elm$core$List$member, p.id, assignedIds);
+		},
+		model.pieces);
+	var assignedCount = $elm$core$List$length(assignedIds);
+	return A2(
+		$elm$html$Html$div,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('tools-pane waves-tools')
+			]),
+		_List_fromArray(
+			[
+				A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('waves-header')
+					]),
+				_List_fromArray(
+					[
+						A2(
+						$elm$html$Html$h2,
+						_List_Nil,
+						_List_fromArray(
+							[
+								$elm$html$Html$text('Groups')
+							])),
+						A2(
+						$elm$html$Html$span,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('wave-count')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text(
+								(totalPieces > 0) ? ($elm$core$String$fromInt(assignedCount) + ('/' + $elm$core$String$fromInt(totalPieces))) : '')
+							]))
+					])),
+				A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('checkbox-group')
+					]),
+				_List_fromArray(
+					[
+						A2(
+						$elm$html$Html$input,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$type_('checkbox'),
+								$elm$html$Html$Attributes$id('showOutlinesGroups'),
+								$elm$html$Html$Attributes$checked(model.showOutlines),
+								$elm$html$Html$Events$onCheck($author$project$Main$ToggleOutlines)
+							]),
+						_List_Nil),
+						A2(
+						$elm$html$Html$label,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$for('showOutlinesGroups')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text('Show piece outlines')
+							])),
+						A2(
+						$elm$html$Html$span,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('wave-swatch wave-swatch-sm'),
+								A2(
+								$elm$html$Html$Attributes$style,
+								'background-color',
+								A2($author$project$Main$waveColor, model.outlineHue, 1.0)),
+								A2(
+								$elm$html$Html$Events$stopPropagationOn,
+								'mousedown',
+								A3(
+									$elm$json$Json$Decode$map2,
+									F2(
+										function (mx, my) {
+											return _Utils_Tuple2(
+												A3($author$project$Main$StartColorPick, $author$project$Main$OutlineColorTarget, mx, my),
+												true);
+										}),
+									A2($elm$json$Json$Decode$field, 'clientX', $elm$json$Json$Decode$float),
+									A2($elm$json$Json$Decode$field, 'clientY', $elm$json$Json$Decode$float))),
+								$elm$html$Html$Attributes$title('Pick outline color')
+							]),
+						_List_Nil)
+					])),
+				A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('wave-toolbar')
+					]),
+				_List_fromArray(
+					[
+						A2(
+						$elm$html$Html$button,
+						_List_fromArray(
+							[
+								$elm$html$Html$Events$onClick($author$project$Main$AddGroup)
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text('New group')
+							]))
+					])),
+				A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('waves-body')
+					]),
+				_Utils_ap(
+					A2(
+						$elm$core$List$map,
+						A2($author$project$Main$viewGroupRow, model, model.groups),
+						model.groups),
+					_List_fromArray(
+						[
+							A2($author$project$Main$viewGroupUnassignedRow, model, unassignedPieces)
+						])))
+			]));
+};
 var $author$project$Main$RequestGenerate = {$: 'RequestGenerate'};
 var $author$project$Main$SetMinBorder = function (a) {
 	return {$: 'SetMinBorder', a: a};
@@ -10239,7 +11356,6 @@ var $author$project$Main$SetTargetCount = function (a) {
 var $author$project$Main$ToggleLights = function (a) {
 	return {$: 'ToggleLights', a: a};
 };
-var $elm$html$Html$h2 = _VirtualDom_node('h2');
 var $author$project$Main$viewStats = function (model) {
 	var pieceCount = _Utils_eq(model.generateState, $author$project$Main$Generated) ? $elm$core$String$fromInt(
 		$elm$core$List$length(model.pieces)) : '-';
@@ -10618,9 +11734,6 @@ var $author$project$Main$viewPdfTools = F2(
 						]))
 				]));
 	});
-var $author$project$Main$ToggleOutlines = function (a) {
-	return {$: 'ToggleOutlines', a: a};
-};
 var $author$project$Main$CancelEdit = {$: 'CancelEdit'};
 var $author$project$Main$SaveEdit = {$: 'SaveEdit'};
 var $elm$html$Html$br = _VirtualDom_node('br');
@@ -10802,115 +11915,134 @@ var $author$project$Main$AddWave = {$: 'AddWave'};
 var $author$project$Main$ToggleNumbers = function (a) {
 	return {$: 'ToggleNumbers', a: a};
 };
-var $author$project$Main$RemovePieceFromWave = F2(
+var $author$project$Main$GroupedPiece = F2(
 	function (a, b) {
-		return {$: 'RemovePieceFromWave', a: a, b: b};
+		return {$: 'GroupedPiece', a: a, b: b};
 	});
-var $author$project$Main$viewPieceThumb = F6(
-	function (removeInfo, isLocked, hoveredId, pieceId, dataUrl, maybePos) {
+var $author$project$Main$SinglePiece = function (a) {
+	return {$: 'SinglePiece', a: a};
+};
+var $author$project$Main$toPieceDisplays = F2(
+	function (groups, pieceIds) {
+		var go = F3(
+			function (remaining, seen, acc) {
+				go:
+				while (true) {
+					if (!remaining.b) {
+						return $elm$core$List$reverse(acc);
+					} else {
+						var pid = remaining.a;
+						var rest = remaining.b;
+						var _v1 = $elm$core$List$head(
+							A2(
+								$elm$core$List$filter,
+								function (g) {
+									return (!$elm$core$List$isEmpty(g.pieceIds)) && A2($elm$core$List$member, pid, g.pieceIds);
+								},
+								groups));
+						if (_v1.$ === 'Just') {
+							var g = _v1.a;
+							if (A2($elm$core$List$member, g.id, seen)) {
+								var $temp$remaining = rest,
+									$temp$seen = seen,
+									$temp$acc = acc;
+								remaining = $temp$remaining;
+								seen = $temp$seen;
+								acc = $temp$acc;
+								continue go;
+							} else {
+								var $temp$remaining = rest,
+									$temp$seen = A2($elm$core$List$cons, g.id, seen),
+									$temp$acc = A2(
+									$elm$core$List$cons,
+									A2(
+										$author$project$Main$GroupedPiece,
+										A2(
+											$elm$core$Maybe$withDefault,
+											pid,
+											$elm$core$List$head(g.pieceIds)),
+										g.pieceIds),
+									acc);
+								remaining = $temp$remaining;
+								seen = $temp$seen;
+								acc = $temp$acc;
+								continue go;
+							}
+						} else {
+							var $temp$remaining = rest,
+								$temp$seen = seen,
+								$temp$acc = A2(
+								$elm$core$List$cons,
+								$author$project$Main$SinglePiece(pid),
+								acc);
+							remaining = $temp$remaining;
+							seen = $temp$seen;
+							acc = $temp$acc;
+							continue go;
+						}
+					}
+				}
+			});
+		return A3(go, pieceIds, _List_Nil, _List_Nil);
+	});
+var $author$project$Main$viewGroupThumb = F6(
+	function (maybeWaveId, hoveredId, maybeGroup, piece, allIds, generation) {
+		var n = $elm$core$List$length(allIds);
 		var isHovered = _Utils_eq(
 			hoveredId,
-			$elm$core$Maybe$Just(pieceId));
-		var dragAttrs = isLocked ? _List_Nil : _List_fromArray(
-			[
-				A2($elm$html$Html$Attributes$attribute, 'draggable', 'true'),
-				A2(
-				$elm$html$Html$Events$on,
-				'dragstart',
-				$elm$json$Json$Decode$succeed(
-					$author$project$Main$DragPieceStart(pieceId))),
-				A2(
-				$elm$html$Html$Events$on,
-				'dragend',
-				$elm$json$Json$Decode$succeed($author$project$Main$DragPieceEnd)),
-				A2(
-				$elm$html$Html$Events$stopPropagationOn,
-				'dragenter',
-				$elm$json$Json$Decode$succeed(
-					_Utils_Tuple2(
-						$author$project$Main$DragEnterPiece(pieceId),
-						true)))
-			]);
+			$elm$core$Maybe$Just(piece.id));
+		var clickMsg = function () {
+			var _v0 = _Utils_Tuple2(maybeGroup, maybeWaveId);
+			if ((_v0.a.$ === 'Just') && (_v0.b.$ === 'Just')) {
+				var g = _v0.a.a;
+				var wid = _v0.b.a;
+				return A2($author$project$Main$AssignGroupToWave, g.id, wid);
+			} else {
+				return $author$project$Main$NoOp;
+			}
+		}();
 		return A2(
 			$elm$html$Html$div,
-			_Utils_ap(
-				_List_fromArray(
-					[
-						$elm$html$Html$Attributes$classList(
-						_List_fromArray(
-							[
-								_Utils_Tuple2('piece-thumb', true),
-								_Utils_Tuple2('hovered', isHovered)
-							])),
-						$elm$html$Html$Events$onMouseEnter(
-						$author$project$Main$SetHoveredPiece(
-							$elm$core$Maybe$Just(pieceId))),
-						$elm$html$Html$Events$onMouseLeave(
-						$author$project$Main$SetHoveredPiece($elm$core$Maybe$Nothing))
-					]),
-				dragAttrs),
-			_Utils_ap(
-				_List_fromArray(
-					[
-						A2(
-						$elm$html$Html$img,
-						_List_fromArray(
-							[
-								$elm$html$Html$Attributes$src(dataUrl),
-								A2($elm$html$Html$Attributes$style, 'max-height', '48px'),
-								A2($elm$html$Html$Attributes$style, 'max-width', '80px'),
-								A2($elm$html$Html$Attributes$style, 'display', 'block')
-							]),
-						_List_Nil)
-					]),
-				_Utils_ap(
-					function () {
-						if (maybePos.$ === 'Just') {
-							var pos = maybePos.a;
-							return _List_fromArray(
-								[
-									A2(
-									$elm$html$Html$div,
-									_List_fromArray(
-										[
-											$elm$html$Html$Attributes$class('tray-thumb-num')
-										]),
-									_List_fromArray(
-										[
-											$elm$html$Html$text(
-											$elm$core$String$fromInt(pos))
-										]))
-								]);
-						} else {
-							return _List_Nil;
-						}
-					}(),
-					function () {
-						if (removeInfo.$ === 'Just') {
-							var _v2 = removeInfo.a;
-							var wid = _v2.a;
-							var pid = _v2.b;
-							return _List_fromArray(
-								[
-									A2(
-									$elm$html$Html$button,
-									_List_fromArray(
-										[
-											$elm$html$Html$Attributes$class('piece-thumb-remove'),
-											$elm$html$Html$Events$onClick(
-											A2($author$project$Main$RemovePieceFromWave, wid, pid)),
-											$elm$html$Html$Attributes$disabled(isLocked),
-											$elm$html$Html$Attributes$title('Remove from wave')
-										]),
-									_List_fromArray(
-										[
-											$elm$html$Html$text('\u2715')
-										]))
-								]);
-						} else {
-							return _List_Nil;
-						}
-					}())));
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$classList(
+					_List_fromArray(
+						[
+							_Utils_Tuple2('piece-thumb', true),
+							_Utils_Tuple2('hovered', isHovered)
+						])),
+					$elm$html$Html$Events$onMouseEnter(
+					$author$project$Main$SetHoveredPiece(
+						$elm$core$Maybe$Just(piece.id))),
+					$elm$html$Html$Events$onMouseLeave(
+					$author$project$Main$SetHoveredPiece($elm$core$Maybe$Nothing)),
+					$elm$html$Html$Events$onClick(clickMsg)
+				]),
+			_List_fromArray(
+				[
+					A2(
+					$elm$html$Html$img,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$src(
+							piece.imgUrl + ('?v=' + $elm$core$String$fromInt(generation))),
+							A2($elm$html$Html$Attributes$style, 'max-height', '48px'),
+							A2($elm$html$Html$Attributes$style, 'max-width', '80px'),
+							A2($elm$html$Html$Attributes$style, 'display', 'block')
+						]),
+					_List_Nil),
+					(n > 1) ? A2(
+					$elm$html$Html$div,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('group-xn-badge')
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text(
+							'x' + $elm$core$String$fromInt(n))
+						])) : $elm$html$Html$text('')
+				]));
 	});
 var $author$project$Main$viewUnassignedRow = F2(
 	function (model, unassignedPieces) {
@@ -10984,18 +12116,68 @@ var $author$project$Main$viewUnassignedRow = F2(
 							$elm$html$Html$Attributes$class('wave-pieces')
 						]),
 					A2(
-						$elm$core$List$map,
-						function (p) {
-							return A6(
-								$author$project$Main$viewPieceThumb,
-								$elm$core$Maybe$Nothing,
-								false,
-								model.hoveredPieceId,
-								p.id,
-								p.imgUrl + ('?v=' + $elm$core$String$fromInt(model.pieceGeneration)),
-								$elm$core$Maybe$Nothing);
+						$elm$core$List$filterMap,
+						function (display) {
+							if (display.$ === 'SinglePiece') {
+								var pid = display.a;
+								return A2(
+									$elm$core$Maybe$map,
+									function (p) {
+										return A6(
+											$author$project$Main$viewPieceThumb,
+											$elm$core$Maybe$Nothing,
+											false,
+											model.hoveredPieceId,
+											p.id,
+											p.imgUrl + ('?v=' + $elm$core$String$fromInt(model.pieceGeneration)),
+											$elm$core$Maybe$Nothing);
+									},
+									$elm$core$List$head(
+										A2(
+											$elm$core$List$filter,
+											function (p) {
+												return _Utils_eq(p.id, pid);
+											},
+											model.pieces)));
+							} else {
+								var repId = display.a;
+								var allIds = display.b;
+								return A2(
+									$elm$core$Maybe$map,
+									function (p) {
+										return A6(
+											$author$project$Main$viewGroupThumb,
+											model.selectedWaveId,
+											model.hoveredPieceId,
+											$elm$core$List$head(
+												A2(
+													$elm$core$List$filter,
+													function (g) {
+														return A2($elm$core$List$member, repId, g.pieceIds);
+													},
+													model.groups)),
+											p,
+											allIds,
+											model.pieceGeneration);
+									},
+									$elm$core$List$head(
+										A2(
+											$elm$core$List$filter,
+											function (p) {
+												return _Utils_eq(p.id, repId);
+											},
+											model.pieces)));
+							}
 						},
-						unassignedPieces))
+						A2(
+							$author$project$Main$toPieceDisplays,
+							model.groups,
+							A2(
+								$elm$core$List$map,
+								function ($) {
+									return $.id;
+								},
+								unassignedPieces))))
 				]));
 	});
 var $author$project$Main$viewWavePieceInfoBox = function (model) {
@@ -11382,10 +12564,6 @@ var $author$project$Main$iconLockOpen = A2(
 				]),
 			_List_Nil)
 		]));
-var $elm$core$List$singleton = function (value) {
-	return _List_fromArray(
-		[value]);
-};
 var $author$project$Main$viewWaveRow = F3(
 	function (model, allWaves, wave) {
 		var waveIdx = A2(
@@ -11397,8 +12575,8 @@ var $author$project$Main$viewWaveRow = F3(
 				$elm$core$List$head(
 					A2(
 						$elm$core$List$filter,
-						function (_v1) {
-							var wv = _v1.b;
+						function (_v2) {
+							var wv = _v2.b;
 							return _Utils_eq(wv.id, wave.id);
 						},
 						A2($elm$core$List$indexedMap, $elm$core$Tuple$pair, allWaves)))));
@@ -11631,73 +12809,70 @@ var $author$project$Main$viewWaveRow = F3(
 						[
 							$elm$html$Html$Attributes$class('wave-pieces')
 						]),
-					_Utils_ap(
-						A2(
-							$elm$core$List$concatMap,
-							function (_v0) {
-								var pos = _v0.a;
-								var pid = _v0.b;
-								var thumb = A2(
-									$elm$core$Maybe$withDefault,
-									_List_Nil,
-									A2(
-										$elm$core$Maybe$map,
-										$elm$core$List$singleton,
+					A2(
+						$elm$core$List$filterMap,
+						function (_v0) {
+							var pos = _v0.a;
+							var display = _v0.b;
+							if (display.$ === 'SinglePiece') {
+								var pid = display.a;
+								return A2(
+									$elm$core$Maybe$map,
+									function (piece) {
+										return A6(
+											$author$project$Main$viewPieceThumb,
+											$elm$core$Maybe$Just(
+												_Utils_Tuple2(wave.id, pid)),
+											wave.locked,
+											model.hoveredPieceId,
+											pid,
+											piece.imgUrl + ('?v=' + $elm$core$String$fromInt(model.pieceGeneration)),
+											$elm$core$Maybe$Just(pos));
+									},
+									$elm$core$List$head(
 										A2(
-											$elm$core$Maybe$map,
-											function (piece) {
-												return A6(
-													$author$project$Main$viewPieceThumb,
-													$elm$core$Maybe$Just(
-														_Utils_Tuple2(wave.id, pid)),
-													wave.locked,
-													model.hoveredPieceId,
-													pid,
-													piece.imgUrl + ('?v=' + $elm$core$String$fromInt(model.pieceGeneration)),
-													$elm$core$Maybe$Just(pos));
+											$elm$core$List$filter,
+											function (p) {
+												return _Utils_eq(p.id, pid);
 											},
+											model.pieces)));
+							} else {
+								var repId = display.a;
+								var allIds = display.b;
+								return A2(
+									$elm$core$Maybe$map,
+									function (piece) {
+										return A6(
+											$author$project$Main$viewGroupThumb,
+											$elm$core$Maybe$Just(wave.id),
+											model.hoveredPieceId,
 											$elm$core$List$head(
 												A2(
 													$elm$core$List$filter,
-													function (p) {
-														return _Utils_eq(p.id, pid);
+													function (g) {
+														return A2($elm$core$List$member, repId, g.pieceIds);
 													},
-													model.pieces)))));
-								var showMarker = (!wave.locked) && ((!_Utils_eq(model.draggingPieceId, $elm$core$Maybe$Nothing)) && _Utils_eq(
-									model.dragInsertBeforeId,
-									$elm$core$Maybe$Just(pid)));
-								var marker = showMarker ? _List_fromArray(
-									[
+													model.groups)),
+											piece,
+											allIds,
+											model.pieceGeneration);
+									},
+									$elm$core$List$head(
 										A2(
-										$elm$html$Html$div,
-										_List_fromArray(
-											[
-												$elm$html$Html$Attributes$class('drag-insert-marker')
-											]),
-										_List_Nil)
-									]) : _List_Nil;
-								return _Utils_ap(marker, thumb);
-							},
-							A2(
-								$elm$core$List$indexedMap,
-								F2(
-									function (i, pid) {
-										return _Utils_Tuple2(i + 1, pid);
-									}),
-								wave.pieceIds)),
-						((!wave.locked) && ((!_Utils_eq(model.draggingPieceId, $elm$core$Maybe$Nothing)) && (_Utils_eq(model.dragInsertBeforeId, $elm$core$Maybe$Nothing) && _Utils_eq(
-							model.dragOverWaveId,
-							$elm$core$Maybe$Just(
-								$elm$core$Maybe$Just(wave.id)))))) ? _List_fromArray(
-							[
-								A2(
-								$elm$html$Html$div,
-								_List_fromArray(
-									[
-										$elm$html$Html$Attributes$class('drag-insert-marker')
-									]),
-								_List_Nil)
-							]) : _List_Nil))
+											$elm$core$List$filter,
+											function (p) {
+												return _Utils_eq(p.id, repId);
+											},
+											model.pieces)));
+							}
+						},
+						A2(
+							$elm$core$List$indexedMap,
+							F2(
+								function (i, display) {
+									return _Utils_Tuple2(i + 1, display);
+								}),
+							A2($author$project$Main$toPieceDisplays, model.groups, wave.pieceIds))))
 				]));
 	});
 var $author$project$Main$viewWavesTools = function (model) {
@@ -11928,6 +13103,8 @@ var $author$project$Main$viewToolsCol = F2(
 							return $author$project$Main$viewPiecesTools(model);
 						case 'ModeBlueprint':
 							return $author$project$Main$viewBlueprintTools(model);
+						case 'ModeGroups':
+							return $author$project$Main$viewGroupsTools(model);
 						case 'ModeWaves':
 							return $author$project$Main$viewWavesTools(model);
 						default:
@@ -12250,6 +13427,36 @@ var $author$project$Main$viewTitleBar = function (model) {
 						_List_fromArray(
 							[
 								$elm$html$Html$text('\u2195')
+							])),
+						A2(
+						$elm$html$Html$button,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$classList(
+								_List_fromArray(
+									[
+										_Utils_Tuple2('mode-btn', true),
+										_Utils_Tuple2(
+										'active',
+										_Utils_eq(model.appMode, $author$project$Main$ModeGroups))
+									])),
+								$elm$html$Html$Attributes$disabled((!isGenerated) || (isBusy || isGenerating)),
+								$elm$html$Html$Events$onClick(
+								$author$project$Main$SetAppMode($author$project$Main$ModeGroups))
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text('Groups')
+							])),
+						A2(
+						$elm$html$Html$span,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('mode-sep')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text('\u2193')
 							])),
 						A2(
 						$elm$html$Html$button,

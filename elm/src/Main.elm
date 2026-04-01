@@ -89,6 +89,7 @@ type alias MergeResponse =
 
 type ColorPickTarget
     = WaveColorTarget Int
+    | GroupColorTarget Int
     | GridColorTarget
     | OutlineColorTarget
 
@@ -104,11 +105,25 @@ type alias Wave =
     }
 
 
+type alias Group =
+    { id : Int
+    , name : String
+    , pieceIds : List Int
+    , hue : Float
+    }
+
+
+type PieceDisplay
+    = SinglePiece Int
+    | GroupedPiece Int (List Int)
+
+
 type AppMode
     = ModeInit
     | ModePdf
     | ModePieces
     | ModeBlueprint
+    | ModeGroups
     | ModeWaves
     | ModeExport
 
@@ -148,6 +163,10 @@ type alias Model =
     , showLights : Bool
     , waves : List Wave
     , nextWaveId : Int
+    , groups : List Group
+    , nextGroupId : Int
+    , selectedGroupId : Maybe Int
+    , dragOverGroupId : Maybe (Maybe Int)
     , hoveredPieceId : Maybe Int
     , selectedPieceId : Maybe Int
     , selectedWaveId : Maybe Int
@@ -191,6 +210,10 @@ init _ =
       , showLights = False
       , waves = []
       , nextWaveId = 1
+      , groups = []
+      , nextGroupId = 1
+      , selectedGroupId = Nothing
+      , dragOverGroupId = Nothing
       , hoveredPieceId = Nothing
       , selectedPieceId = Nothing
       , selectedWaveId = Nothing
@@ -269,6 +292,14 @@ type Msg
     | DragEnterPiece Int
     | DropOnWave (Maybe Int)
     | ToggleWaveLock Int
+    | AddGroup
+    | SelectGroup (Maybe Int)
+    | RemoveGroup Int
+    | MoveGroup Int Int
+    | AssignPieceToGroup Int
+    | DragEnterGroup (Maybe Int)
+    | DropOnGroup (Maybe Int)
+    | AssignGroupToWave Int Int
     | LassoStart Float Float
     | LassoMove Float Float
     | LassoEnd
@@ -493,6 +524,24 @@ update msg model =
 
                     first :: _ ->
                         ( { baseModel | selectedWaveId = if baseModel.selectedWaveId == Nothing then Just first.id else baseModel.selectedWaveId }
+                        , recomputeViewport
+                        )
+
+            else if mode == ModeGroups then
+                case model.groups of
+                    [] ->
+                        let
+                            newGroup =
+                                { id = model.nextGroupId
+                                , name = "Group " ++ String.fromInt model.nextGroupId
+                                , pieceIds = []
+                                , hue = defaultHue (model.nextGroupId - 1)
+                                }
+                        in
+                        ( { baseModel | groups = [ newGroup ], nextGroupId = model.nextGroupId + 1, selectedGroupId = Just newGroup.id }, recomputeViewport )
+
+                    first :: _ ->
+                        ( { baseModel | selectedGroupId = if baseModel.selectedGroupId == Nothing then Just first.id else baseModel.selectedGroupId }
                         , recomputeViewport
                         )
 
@@ -1037,6 +1086,149 @@ update msg model =
             , Cmd.none
             )
 
+        AddGroup ->
+            let
+                newGroup =
+                    { id = model.nextGroupId
+                    , name = "Group " ++ String.fromInt model.nextGroupId
+                    , pieceIds = []
+                    , hue = defaultHue (model.nextGroupId - 1)
+                    }
+            in
+            ( { model
+                | groups = model.groups ++ [ newGroup ]
+                , nextGroupId = model.nextGroupId + 1
+                , selectedGroupId = Just newGroup.id
+              }
+            , Cmd.none
+            )
+
+        SelectGroup mgid ->
+            ( { model | selectedGroupId = mgid }, Cmd.none )
+
+        RemoveGroup gid ->
+            let
+                newGroups =
+                    List.filter (\g -> g.id /= gid) model.groups
+
+                newSelectedGroupId =
+                    if model.selectedGroupId == Just gid then
+                        List.head newGroups |> Maybe.map .id
+                    else
+                        model.selectedGroupId
+            in
+            ( { model | groups = newGroups, selectedGroupId = newSelectedGroupId }, Cmd.none )
+
+        MoveGroup gid dir ->
+            let
+                moveItem lst =
+                    let
+                        indexed = List.indexedMap Tuple.pair lst
+                        idx = indexed |> List.filter (\( _, g ) -> g.id == gid) |> List.head |> Maybe.map Tuple.first |> Maybe.withDefault 0
+                        newIdx = Basics.max 0 (Basics.min (List.length lst - 1) (idx + dir))
+                        item = lst |> List.drop idx |> List.head
+                        without = List.take idx lst ++ List.drop (idx + 1) lst
+                    in
+                    case item of
+                        Just g -> List.take newIdx without ++ [ g ] ++ List.drop newIdx without
+                        Nothing -> lst
+            in
+            ( { model | groups = moveItem model.groups }, Cmd.none )
+
+        AssignPieceToGroup pid ->
+            case model.selectedGroupId of
+                Nothing ->
+                    ( model, Cmd.none )
+
+                Just gid ->
+                    let
+                        alreadyIn =
+                            model.groups |> List.any (\g -> g.id == gid && List.member pid g.pieceIds)
+
+                        updatedGroups =
+                            List.map
+                                (\g ->
+                                    if g.id == gid then
+                                        if alreadyIn then
+                                            { g | pieceIds = List.filter (\p -> p /= pid) g.pieceIds }
+                                        else
+                                            { g | pieceIds = g.pieceIds ++ [ pid ] }
+                                    else if not alreadyIn then
+                                        { g | pieceIds = List.filter (\p -> p /= pid) g.pieceIds }
+                                    else
+                                        g
+                                )
+                                model.groups
+                    in
+                    ( { model | groups = updatedGroups }, Cmd.none )
+
+        DragEnterGroup mgid ->
+            ( { model | dragOverGroupId = Just mgid }, Cmd.none )
+
+        DropOnGroup mgid ->
+            case model.draggingPieceId of
+                Nothing ->
+                    ( { model | dragOverGroupId = Nothing }, Cmd.none )
+
+                Just pid ->
+                    let
+                        updatedGroups =
+                            case mgid of
+                                Nothing ->
+                                    List.map (\g -> { g | pieceIds = List.filter ((/=) pid) g.pieceIds }) model.groups
+
+                                Just gid ->
+                                    List.map
+                                        (\g ->
+                                            if g.id == gid then
+                                                if List.member pid g.pieceIds then g else { g | pieceIds = g.pieceIds ++ [ pid ] }
+                                            else
+                                                { g | pieceIds = List.filter ((/=) pid) g.pieceIds }
+                                        )
+                                        model.groups
+                    in
+                    ( { model | groups = updatedGroups, draggingPieceId = Nothing, dragOverGroupId = Nothing }, Cmd.none )
+
+        AssignGroupToWave gid wid ->
+            case model.groups |> List.filter (\g -> g.id == gid) |> List.head of
+                Nothing ->
+                    ( model, Cmd.none )
+
+                Just group ->
+                    let
+                        pids =
+                            group.pieceIds
+
+                        targetLocked =
+                            model.waves |> List.any (\w -> w.id == wid && w.locked)
+
+                        alreadyAll =
+                            not (List.isEmpty pids)
+                                && List.all (\pid -> model.waves |> List.any (\w -> w.id == wid && List.member pid w.pieceIds)) pids
+
+                        updatedWaves =
+                            if targetLocked then
+                                model.waves
+
+                            else if alreadyAll then
+                                List.map
+                                    (\w ->
+                                        if w.id == wid then
+                                            { w | pieceIds = List.filter (\p -> not (List.member p pids)) w.pieceIds }
+                                        else
+                                            w
+                                    )
+                                    model.waves
+
+                            else
+                                model.waves
+                                    |> List.map (\w -> { w | pieceIds = List.filter (\p -> not (List.member p pids)) w.pieceIds })
+                                    |> List.map (\w -> if w.id == wid then { w | pieceIds = w.pieceIds ++ pids } else w)
+                    in
+                    ( { model | waves = updatedWaves }
+                    , if targetLocked then Cmd.none else scrollTrayToEnd
+                    )
+
         GotViewport viewport ->
             let
                 vh =
@@ -1197,6 +1389,13 @@ update msg model =
                                 |> Maybe.map (\w -> ( w.hue, w.opacity ))
                                 |> Maybe.withDefault ( 0, 0.3 )
 
+                        GroupColorTarget groupId ->
+                            model.groups
+                                |> List.filter (\g -> g.id == groupId)
+                                |> List.head
+                                |> Maybe.map (\g -> ( g.hue, 1.0 ))
+                                |> Maybe.withDefault ( 0, 1.0 )
+
                         GridColorTarget ->
                             ( model.gridHue, 1.0 )
 
@@ -1245,6 +1444,22 @@ update msg model =
                                                 w
                                         )
                                         model.waves
+                              }
+                            , Cmd.none
+                            )
+
+                        GroupColorTarget groupId ->
+                            ( { model
+                                | groups =
+                                    List.map
+                                        (\g ->
+                                            if g.id == groupId then
+                                                { g | hue = newHue }
+
+                                            else
+                                                g
+                                        )
+                                        model.groups
                               }
                             , Cmd.none
                             )
@@ -1737,6 +1952,16 @@ viewTitleBar model =
             , button
                 [ classList
                     [ ( "mode-btn", True )
+                    , ( "active", model.appMode == ModeGroups )
+                    ]
+                , disabled (not isGenerated || isBusy || isGenerating)
+                , onClick (SetAppMode ModeGroups)
+                ]
+                [ text "Groups" ]
+            , span [ class "mode-sep" ] [ text "\u{2193}" ]
+            , button
+                [ classList
+                    [ ( "mode-btn", True )
                     , ( "active", model.appMode == ModeWaves )
                     ]
                 , disabled (not isGenerated || isBusy || isGenerating)
@@ -1953,6 +2178,9 @@ viewToolsCol model response =
 
             ModeBlueprint ->
                 viewBlueprintTools model
+
+            ModeGroups ->
+                viewGroupsTools model
 
             ModeWaves ->
                 viewWavesTools model
@@ -2212,6 +2440,206 @@ viewBlueprintTools model =
         ]
 
 
+-- ── Groups helpers ──────────────────────────────────────────────────────────
+
+
+toPieceDisplays : List Group -> List Int -> List PieceDisplay
+toPieceDisplays groups pieceIds =
+    let
+        go remaining seen acc =
+            case remaining of
+                [] ->
+                    List.reverse acc
+
+                pid :: rest ->
+                    case groups |> List.filter (\g -> not (List.isEmpty g.pieceIds) && List.member pid g.pieceIds) |> List.head of
+                        Just g ->
+                            if List.member g.id seen then
+                                go rest seen acc
+
+                            else
+                                go rest (g.id :: seen) (GroupedPiece (Maybe.withDefault pid (List.head g.pieceIds)) g.pieceIds :: acc)
+
+                        Nothing ->
+                            go rest seen (SinglePiece pid :: acc)
+    in
+    go pieceIds [] []
+
+
+-- ── Groups tools pane ────────────────────────────────────────────────────────
+
+
+viewGroupsTools : Model -> Html Msg
+viewGroupsTools model =
+    let
+        assignedIds =
+            List.concatMap .pieceIds model.groups
+
+        totalPieces =
+            List.length model.pieces
+
+        assignedCount =
+            List.length assignedIds
+
+        unassignedPieces =
+            List.filter (\p -> not (List.member p.id assignedIds)) model.pieces
+    in
+    div [ class "tools-pane waves-tools" ]
+        [ div [ class "waves-header" ]
+            [ h2 [] [ text "Groups" ]
+            , span [ class "wave-count" ]
+                [ text
+                    (if totalPieces > 0 then
+                        String.fromInt assignedCount ++ "/" ++ String.fromInt totalPieces
+                     else
+                        ""
+                    )
+                ]
+            ]
+        , div [ class "checkbox-group" ]
+            [ input [ type_ "checkbox", id "showOutlinesGroups", checked model.showOutlines, onCheck ToggleOutlines ] []
+            , label [ for "showOutlinesGroups" ] [ text "Show piece outlines" ]
+            , span
+                [ class "wave-swatch wave-swatch-sm"
+                , style "background-color" (waveColor model.outlineHue 1.0)
+                , stopPropagationOn "mousedown"
+                    (D.map2 (\mx my -> ( StartColorPick OutlineColorTarget mx my, True ))
+                        (D.field "clientX" D.float)
+                        (D.field "clientY" D.float)
+                    )
+                , title "Pick outline color"
+                ]
+                []
+            ]
+        , div [ class "wave-toolbar" ]
+            [ button [ onClick AddGroup ] [ text "New group" ]
+            ]
+        , div [ class "waves-body" ]
+            (List.map (viewGroupRow model model.groups) model.groups
+                ++ [ viewGroupUnassignedRow model unassignedPieces ]
+            )
+        ]
+
+
+viewGroupRow : Model -> List Group -> Group -> Html Msg
+viewGroupRow model allGroups group =
+    let
+        isSelected =
+            model.selectedGroupId == Just group.id
+
+        groupIdx =
+            allGroups
+                |> List.indexedMap Tuple.pair
+                |> List.filter (\( _, g ) -> g.id == group.id)
+                |> List.head
+                |> Maybe.map Tuple.first
+                |> Maybe.withDefault 0
+
+        groupCount =
+            List.length allGroups
+
+        swatchColor =
+            waveColor group.hue 0.85
+    in
+    div
+        [ classList
+            [ ( "wave-row", True )
+            , ( "selected", isSelected )
+            , ( "drag-over", model.dragOverGroupId == Just (Just group.id) )
+            ]
+        , preventDefaultOn "dragover" (D.succeed ( NoOp, True ))
+        , on "dragenter" (D.succeed (DragEnterGroup (Just group.id)))
+        , on "drop" (D.succeed (DropOnGroup (Just group.id)))
+        ]
+        [ div
+            [ class "wave-row-header"
+            , onClick
+                (if isSelected && groupCount > 1 then
+                    SelectGroup Nothing
+                 else
+                    SelectGroup (Just group.id)
+                )
+            ]
+            [ span
+                [ class "wave-swatch"
+                , style "background-color" swatchColor
+                , stopPropagationOn "mousedown"
+                    (D.map2 (\mx my -> ( StartColorPick (GroupColorTarget group.id) mx my, True ))
+                        (D.field "clientX" D.float)
+                        (D.field "clientY" D.float)
+                    )
+                , title "Pick color"
+                ]
+                []
+            , span [ class "wave-piece-count-label", style "color" (waveColor group.hue 1.0) ]
+                [ text (String.fromInt (List.length group.pieceIds) ++ " pcs") ]
+            , span [ class "wave-name-label" ] [ text group.name ]
+            , span [ class "wave-row-spacer" ] []
+            , span [ class "wave-actions" ]
+                [ button
+                    [ stopPropagationOn "click" (D.succeed ( MoveGroup group.id -1, True ))
+                    , disabled (groupIdx == 0)
+                    , title "Move up"
+                    ]
+                    [ text "\u{25B2}" ]
+                , button
+                    [ stopPropagationOn "click" (D.succeed ( MoveGroup group.id 1, True ))
+                    , disabled (groupIdx >= groupCount - 1)
+                    , title "Move down"
+                    ]
+                    [ text "\u{25BC}" ]
+                , button
+                    [ stopPropagationOn "click" (D.succeed ( RemoveGroup group.id, True ))
+                    , disabled (groupCount <= 1)
+                    , title "Delete group"
+                    ]
+                    [ text "\u{2715}" ]
+                ]
+            ]
+        , div [ class "wave-pieces" ]
+            (List.filterMap
+                (\pid ->
+                    model.pieces
+                        |> List.filter (\p -> p.id == pid)
+                        |> List.head
+                        |> Maybe.map (\piece -> viewPieceThumb (Just ( group.id, pid )) False model.hoveredPieceId pid (piece.imgUrl ++ "?v=" ++ String.fromInt model.pieceGeneration) Nothing)
+                )
+                group.pieceIds
+            )
+        ]
+
+
+viewGroupUnassignedRow : Model -> List Piece -> Html Msg
+viewGroupUnassignedRow model unassignedPieces =
+    if List.isEmpty model.pieces then
+        text ""
+
+    else
+        div
+            [ classList
+                [ ( "wave-row", True )
+                , ( "drag-over", model.dragOverGroupId == Just Nothing )
+                ]
+            , preventDefaultOn "dragover" (D.succeed ( NoOp, True ))
+            , on "dragenter" (D.succeed (DragEnterGroup Nothing))
+            , on "drop" (D.succeed (DropOnGroup Nothing))
+            ]
+            [ div [ class "wave-row-header" ]
+                [ span [ class "wave-label unassigned-label" ] [ text "Unassigned" ]
+                , span [ class "wave-piece-count" ]
+                    [ text (String.fromInt (List.length unassignedPieces) ++ " pcs") ]
+                ]
+            , div [ class "wave-pieces" ]
+                (List.map
+                    (\p -> viewPieceThumb Nothing False model.hoveredPieceId p.id (p.imgUrl ++ "?v=" ++ String.fromInt model.pieceGeneration) Nothing)
+                    unassignedPieces
+                )
+            ]
+
+
+-- ── Waves tools pane ─────────────────────────────────────────────────────────
+
+
 viewWavesTools : Model -> Html Msg
 viewWavesTools model =
     let
@@ -2339,7 +2767,7 @@ viewMainSvg response model =
             model.generateState == Generated
 
         showPieceImages =
-            (model.appMode == ModePieces || model.appMode == ModeWaves) && isGenerated && not (List.isEmpty model.pieces)
+            (model.appMode == ModePieces || model.appMode == ModeGroups || model.appMode == ModeWaves) && isGenerated && not (List.isEmpty model.pieces)
 
         showComposite =
             not isGenerated && response.hasComposite
@@ -2493,7 +2921,7 @@ viewMainSvg response model =
 
         -- Piece outlines (post-gen, pieces/waves mode only, not in edit)
         outlineLayer =
-            if (not model.editMode) && isGenerated && model.showOutlines && (model.appMode == ModePieces || model.appMode == ModeWaves || model.appMode == ModeExport) then
+            if (not model.editMode) && isGenerated && model.showOutlines && (model.appMode == ModePieces || model.appMode == ModeGroups || model.appMode == ModeWaves || model.appMode == ModeExport) then
                 List.map (viewPieceOutline (waveColor model.outlineHue 1.0)) visiblePieces
 
             else
@@ -2512,7 +2940,7 @@ viewMainSvg response model =
 
         pieceOverlays =
             if (not model.editMode) && isGenerated then
-                List.map (viewPieceOverlay model.appMode effectiveHoverId model.selectedPieceId model.selectedWaveId model.waves isLassoing) visiblePieces
+                List.map (viewPieceOverlay model.appMode effectiveHoverId model.selectedPieceId model.selectedWaveId model.waves model.groups model.selectedGroupId isLassoing) visiblePieces
 
             else
                 []
@@ -2855,36 +3283,50 @@ waveColor hue opacity =
     "rgba(" ++ String.fromInt r ++ "," ++ String.fromInt g ++ "," ++ String.fromInt b ++ "," ++ String.fromFloat opacity ++ ")"
 
 
-viewPieceOverlay : AppMode -> Maybe Int -> Maybe Int -> Maybe Int -> List Wave -> Bool -> Piece -> Svg.Svg Msg
-viewPieceOverlay appMode hoveredId selectedId selectedWaveId waves isLassoing piece =
+viewPieceOverlay : AppMode -> Maybe Int -> Maybe Int -> Maybe Int -> List Wave -> List Group -> Maybe Int -> Bool -> Piece -> Svg.Svg Msg
+viewPieceOverlay appMode hoveredId selectedId selectedWaveId waves groups selectedGroupId isLassoing piece =
     let
-        inAssignMode =
+        inWaveAssign =
             selectedWaveId /= Nothing
+
+        inGroupAssign =
+            appMode == ModeGroups && selectedGroupId /= Nothing
 
         isHov =
             hoveredId == Just piece.id
 
         isSel =
-            not inAssignMode && selectedId == Just piece.id
+            not inWaveAssign && not inGroupAssign && selectedId == Just piece.id
 
         maybeWave =
             waves
                 |> List.filter (\w -> w.visible && List.member piece.id w.pieceIds)
                 |> List.head
 
-        fillStyle =
-            case maybeWave of
-                Just wv ->
-                    let
-                        eff =
-                            if isHov then Basics.min 1.0 (wv.opacity + 0.15) else wv.opacity
-                    in
-                    "fill: " ++ waveColor wv.hue eff ++ ";"
+        maybeGroup =
+            groups
+                |> List.filter (\g -> List.member piece.id g.pieceIds)
+                |> List.head
 
-                Nothing ->
-                    if isHov then "fill: rgba(64,120,255,0.2);"
-                    else if isSel then "fill: rgba(64,120,255,0.45);"
-                    else "fill: transparent;"
+        fillStyle =
+            if appMode == ModeGroups then
+                case maybeGroup of
+                    Just g ->
+                        let eff = if isHov then Basics.min 1.0 (0.35 + 0.15) else 0.35
+                        in "fill: " ++ waveColor g.hue eff ++ ";"
+                    Nothing ->
+                        if isHov then "fill: rgba(64,120,255,0.2);"
+                        else "fill: transparent;"
+
+            else
+                case maybeWave of
+                    Just wv ->
+                        let eff = if isHov then Basics.min 1.0 (wv.opacity + 0.15) else wv.opacity
+                        in "fill: " ++ waveColor wv.hue eff ++ ";"
+                    Nothing ->
+                        if isHov then "fill: rgba(64,120,255,0.2);"
+                        else if isSel then "fill: rgba(64,120,255,0.45);"
+                        else "fill: transparent;"
 
         clsStr =
             [ "piece-overlay"
@@ -2894,8 +3336,13 @@ viewPieceOverlay appMode hoveredId selectedId selectedWaveId waves isLassoing pi
                 |> String.join " "
 
         clickMsg =
-            if inAssignMode then
-                AssignPieceToWave piece.id
+            if inGroupAssign then
+                AssignPieceToGroup piece.id
+
+            else if inWaveAssign then
+                case ( maybeGroup, selectedWaveId ) of
+                    ( Just g, Just wid ) -> AssignGroupToWave g.id wid
+                    _ -> AssignPieceToWave piece.id
 
             else if appMode == ModePieces then
                 SelectAndEdit piece.id
@@ -3119,36 +3566,19 @@ viewWaveRow model allWaves wave =
                 ]
             ]
         , div [ class "wave-pieces" ]
-            (List.concatMap
-                (\( pos, pid ) ->
-                    let
-                        showMarker =
-                            not wave.locked && model.draggingPieceId /= Nothing && model.dragInsertBeforeId == Just pid
+            (toPieceDisplays model.groups wave.pieceIds
+                |> List.indexedMap (\i display -> ( i + 1, display ))
+                |> List.filterMap
+                    (\( pos, display ) ->
+                        case display of
+                            SinglePiece pid ->
+                                model.pieces |> List.filter (\p -> p.id == pid) |> List.head
+                                    |> Maybe.map (\piece -> viewPieceThumb (Just ( wave.id, pid )) wave.locked model.hoveredPieceId pid (piece.imgUrl ++ "?v=" ++ String.fromInt model.pieceGeneration) (Just pos))
 
-                        marker =
-                            if showMarker then
-                                [ div [ class "drag-insert-marker" ] [] ]
-
-                            else
-                                []
-
-                        thumb =
-                            model.pieces
-                                |> List.filter (\p -> p.id == pid)
-                                |> List.head
-                                |> Maybe.map (\piece -> viewPieceThumb (Just ( wave.id, pid )) wave.locked model.hoveredPieceId pid (piece.imgUrl ++ "?v=" ++ String.fromInt model.pieceGeneration) (Just pos))
-                                |> Maybe.map List.singleton
-                                |> Maybe.withDefault []
-                    in
-                    marker ++ thumb
-                )
-                (List.indexedMap (\i pid -> ( i + 1, pid )) wave.pieceIds)
-                ++ (if not wave.locked && model.draggingPieceId /= Nothing && model.dragInsertBeforeId == Nothing && model.dragOverWaveId == Just (Just wave.id) then
-                        [ div [ class "drag-insert-marker" ] [] ]
-
-                    else
-                        []
-                   )
+                            GroupedPiece repId allIds ->
+                                model.pieces |> List.filter (\p -> p.id == repId) |> List.head
+                                    |> Maybe.map (\piece -> viewGroupThumb (Just wave.id) model.hoveredPieceId (model.groups |> List.filter (\g -> List.member repId g.pieceIds) |> List.head) piece allIds model.pieceGeneration)
+                    )
             )
         ]
 
@@ -3174,11 +3604,18 @@ viewUnassignedRow model unassignedPieces =
                     [ text (String.fromInt (List.length unassignedPieces) ++ " pcs") ]
                 ]
             , div [ class "wave-pieces" ]
-                (List.map
-                    (\p ->
-                        viewPieceThumb Nothing False model.hoveredPieceId p.id (p.imgUrl ++ "?v=" ++ String.fromInt model.pieceGeneration) Nothing
-                    )
-                    unassignedPieces
+                (toPieceDisplays model.groups (List.map .id unassignedPieces)
+                    |> List.filterMap
+                        (\display ->
+                            case display of
+                                SinglePiece pid ->
+                                    model.pieces |> List.filter (\p -> p.id == pid) |> List.head
+                                        |> Maybe.map (\p -> viewPieceThumb Nothing False model.hoveredPieceId p.id (p.imgUrl ++ "?v=" ++ String.fromInt model.pieceGeneration) Nothing)
+
+                                GroupedPiece repId allIds ->
+                                    model.pieces |> List.filter (\p -> p.id == repId) |> List.head
+                                        |> Maybe.map (\p -> viewGroupThumb model.selectedWaveId model.hoveredPieceId (model.groups |> List.filter (\g -> List.member repId g.pieceIds) |> List.head) p allIds model.pieceGeneration)
+                        )
                 )
             ]
 
@@ -3237,6 +3674,43 @@ viewPieceThumb removeInfo isLocked hoveredId pieceId dataUrl maybePos =
                         []
                )
         )
+
+
+-- A thumbnail for a group of interchangeable pieces: shows one representative
+-- image with an "xN" badge. Clicking assigns/removes the whole group to/from
+-- the wave identified by maybeWaveId.
+viewGroupThumb : Maybe Int -> Maybe Int -> Maybe Group -> Piece -> List Int -> Int -> Html Msg
+viewGroupThumb maybeWaveId hoveredId maybeGroup piece allIds generation =
+    let
+        n =
+            List.length allIds
+
+        isHovered =
+            hoveredId == Just piece.id
+
+        clickMsg =
+            case ( maybeGroup, maybeWaveId ) of
+                ( Just g, Just wid ) -> AssignGroupToWave g.id wid
+                _ -> NoOp
+    in
+    div
+        [ classList [ ( "piece-thumb", True ), ( "hovered", isHovered ) ]
+        , onMouseEnter (SetHoveredPiece (Just piece.id))
+        , onMouseLeave (SetHoveredPiece Nothing)
+        , onClick clickMsg
+        ]
+        [ img
+            [ src (piece.imgUrl ++ "?v=" ++ String.fromInt generation)
+            , style "max-height" "48px"
+            , style "max-width" "80px"
+            , style "display" "block"
+            ]
+            []
+        , if n > 1 then
+            div [ class "group-xn-badge" ] [ text ("x" ++ String.fromInt n) ]
+          else
+            text ""
+        ]
 
 
 viewEditControls : Model -> List (Html Msg)

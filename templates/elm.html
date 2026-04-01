@@ -416,6 +416,29 @@ input.zoom-slider {
     margin: 2px 1px;
     flex-shrink: 0;
 }
+.group-xn-badge {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    background: rgba(0,0,0,0.6);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 4px;
+    border-radius: 3px;
+    pointer-events: none;
+    user-select: none;
+}
+.group-thumb {
+    flex-shrink: 0;
+    position: relative;
+    border: 2px solid transparent;
+    border-radius: 3px;
+    cursor: pointer;
+    overflow: hidden;
+}
+.group-thumb:hover { border-color: rgba(40,100,220,0.6); }
+.group-thumb img { width: 100%; height: 100%; display: block; }
 
 /* ── Tools column ───────────────────────────────────────────────────────────── */
 .tools-pane {
