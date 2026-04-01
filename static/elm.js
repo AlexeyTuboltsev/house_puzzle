@@ -11092,6 +11092,36 @@ var $author$project$Main$viewWavePieceInfoBox = function (model) {
 											$elm$core$String$fromInt(
 												$elm$core$List$length(piece.brickIds)))
 										]))
+								])),
+							A2(
+							$elm$html$Html$div,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('row')
+								]),
+							_List_fromArray(
+								[
+									A2(
+									$elm$html$Html$span,
+									_List_Nil,
+									_List_fromArray(
+										[
+											$elm$html$Html$text('Brick IDs')
+										])),
+									A2(
+									$elm$html$Html$span,
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$class('val')
+										]),
+									_List_fromArray(
+										[
+											$elm$html$Html$text(
+											A2(
+												$elm$core$String$join,
+												', ',
+												A2($elm$core$List$map, $elm$core$String$fromInt, piece.brickIds)))
+										]))
 								]))
 						]);
 				} else {

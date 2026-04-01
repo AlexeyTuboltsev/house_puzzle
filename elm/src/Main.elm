@@ -2123,6 +2123,10 @@ viewWavePieceInfoBox model =
                             [ span [] [ text "Bricks" ]
                             , span [ class "val" ] [ text (String.fromInt (List.length piece.brickIds)) ]
                             ]
+                        , div [ class "row" ]
+                            [ span [] [ text "Brick IDs" ]
+                            , span [ class "val" ] [ text (String.join ", " (List.map String.fromInt piece.brickIds)) ]
+                            ]
                         ]
 
                     Nothing ->
