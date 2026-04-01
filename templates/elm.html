@@ -625,6 +625,7 @@ input.zoom-slider {
     flex: 1;
     overflow-y: auto;
 }
+.waves-tools > .checkbox-group { padding: 4px 12px; }
 .wave-toolbar {
     padding: 6px 12px;
     border-bottom: 1px solid #e0e0e0;
@@ -675,6 +676,65 @@ input.zoom-slider {
     gap: 2px;
     align-items: center;
 }
+/* Color swatch button */
+.wave-swatch {
+    width: 26px;
+    height: 26px;
+    border-radius: 4px;
+    border: 1px solid rgba(0,0,0,0.22);
+    cursor: pointer;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background-clip: padding-box;
+}
+.wave-swatch:hover { border-color: rgba(0,0,0,0.6); }
+.wave-swatch-sm { width: 16px; height: 16px; border-radius: 2px; vertical-align: middle; }
+
+/* Color picker panel */
+.color-picker-panel {
+    position: fixed;
+    padding: 10px;
+    border-radius: 5px;
+    border: 1px solid rgba(0,0,0,0.3);
+    box-shadow: 0 2px 10px rgba(0,0,0,0.35);
+    cursor: crosshair;
+    z-index: 9999;
+    background: #e8e8e8;
+    user-select: none;
+}
+.color-picker-inner {
+    position: relative;
+    width: 240px;
+    height: 96px;
+    border-radius: 3px;
+    /* Checkerboard as the base — visible through transparent regions */
+    background: repeating-conic-gradient(#bbb 0% 25%, #fff 0% 50%) 0 0 / 10px 10px;
+}
+.color-picker-gradient {
+    position: absolute;
+    inset: 0;
+    border-radius: 3px;
+    background: linear-gradient(to right,
+        hsl(0,100%,50%), hsl(30,100%,50%), hsl(60,100%,50%), hsl(90,100%,50%),
+        hsl(120,100%,50%), hsl(150,100%,50%), hsl(180,100%,50%), hsl(210,100%,50%),
+        hsl(240,100%,50%), hsl(270,100%,50%), hsl(300,100%,50%), hsl(330,100%,50%),
+        hsl(360,100%,50%));
+    /* Fade rainbow from opaque (top = high opacity) to transparent (bottom = low opacity) */
+    -webkit-mask-image: linear-gradient(to bottom, black 0%, transparent 100%);
+    mask-image: linear-gradient(to bottom, black 0%, transparent 100%);
+}
+/* Hue-only variant: just a rainbow strip, no opacity axis */
+.color-picker-inner.hue-only {
+    height: 20px;
+    background: none;
+}
+.color-picker-inner.hue-only .color-picker-gradient {
+    -webkit-mask-image: none;
+    mask-image: none;
+}
+
 /* shared square button base for eye, lock, and action buttons in wave header */
 .wave-eye, .wave-lock, .wave-actions button {
     width: 26px;
