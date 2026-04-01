@@ -6334,7 +6334,7 @@ var $author$project$Main$fetchPdfList = $elm$http$Http$get(
 var $elm$browser$Browser$Dom$getViewport = _Browser_withWindow(_Browser_getViewport);
 var $author$project$Main$init = function (_v0) {
 	return _Utils_Tuple2(
-		{appMode: $author$project$Main$ModeInit, availableH: 900.0, bricksById: $elm$core$Dict$empty, colorPicking: $elm$core$Maybe$Nothing, dragInsertBeforeId: $elm$core$Maybe$Nothing, dragOverWaveId: $elm$core$Maybe$Nothing, draggingPieceId: $elm$core$Maybe$Nothing, editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, exportCanvasHeight: '900', exporting: false, generateState: $author$project$Main$NotGenerated, gridHue: 35.0, gridOpacity: 0.7, houseUnitsHigh: 15.5, hoveredPieceId: $elm$core$Maybe$Nothing, lasso: $elm$core$Maybe$Nothing, loadState: $author$project$Main$Idle, minBorder: 10, nextWaveId: 1, pdfFiles: _List_Nil, pieceGeneration: 0, pieces: _List_Nil, recomputing: false, seed: 42, selectedFileName: '', selectedPieceId: $elm$core$Maybe$Nothing, selectedWaveId: $elm$core$Maybe$Nothing, showGrid: false, showLights: false, showNumbers: true, showOutlines: true, svgScale: 1.0, targetCount: 60, waves: _List_Nil, zoomGridActive: false, zoomLevel: 1.0},
+		{appMode: $author$project$Main$ModeInit, availableH: 900.0, bricksById: $elm$core$Dict$empty, colorPicking: $elm$core$Maybe$Nothing, dragInsertBeforeId: $elm$core$Maybe$Nothing, dragOverWaveId: $elm$core$Maybe$Nothing, draggingPieceId: $elm$core$Maybe$Nothing, editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, exportCanvasHeight: '900', exporting: false, generateState: $author$project$Main$NotGenerated, gridHue: 35.0, houseUnitsHigh: 15.5, hoveredPieceId: $elm$core$Maybe$Nothing, lasso: $elm$core$Maybe$Nothing, loadState: $author$project$Main$Idle, minBorder: 10, nextWaveId: 1, outlineHue: 210.0, outlineOpacity: 0.7, pdfFiles: _List_Nil, pieceGeneration: 0, pieces: _List_Nil, recomputing: false, seed: 42, selectedFileName: '', selectedPieceId: $elm$core$Maybe$Nothing, selectedWaveId: $elm$core$Maybe$Nothing, showGrid: false, showLights: false, showNumbers: true, showOutlines: true, svgScale: 1.0, targetCount: 60, waves: _List_Nil, zoomGridActive: false, zoomLevel: 1.0},
 		$elm$core$Platform$Cmd$batch(
 			_List_fromArray(
 				[
@@ -6661,6 +6661,7 @@ var $author$project$Main$FileSelected = function (a) {
 	return {$: 'FileSelected', a: a};
 };
 var $author$project$Main$Generated = {$: 'Generated'};
+var $author$project$Main$GridColorTarget = {$: 'GridColorTarget'};
 var $author$project$Main$LoadError = function (a) {
 	return {$: 'LoadError', a: a};
 };
@@ -8496,38 +8497,43 @@ var $author$project$Main$update = F2(
 				var target = msg.a;
 				var px = msg.b;
 				var py = msg.c;
+				var hueOnly = _Utils_eq(target, $author$project$Main$GridColorTarget);
+				var innerH = hueOnly ? 20 : 96;
 				var _v26 = function () {
-					if (target.$ === 'WaveColorTarget') {
-						var waveId = target.a;
-						return A2(
-							$elm$core$Maybe$withDefault,
-							_Utils_Tuple2(0, 0.3),
-							A2(
-								$elm$core$Maybe$map,
-								function (w) {
-									return _Utils_Tuple2(w.hue, w.opacity);
-								},
-								$elm$core$List$head(
-									A2(
-										$elm$core$List$filter,
-										function (w) {
-											return _Utils_eq(w.id, waveId);
-										},
-										model.waves))));
-					} else {
-						return _Utils_Tuple2(model.gridHue, model.gridOpacity);
+					switch (target.$) {
+						case 'WaveColorTarget':
+							var waveId = target.a;
+							return A2(
+								$elm$core$Maybe$withDefault,
+								_Utils_Tuple2(0, 0.3),
+								A2(
+									$elm$core$Maybe$map,
+									function (w) {
+										return _Utils_Tuple2(w.hue, w.opacity);
+									},
+									$elm$core$List$head(
+										A2(
+											$elm$core$List$filter,
+											function (w) {
+												return _Utils_eq(w.id, waveId);
+											},
+											model.waves))));
+						case 'GridColorTarget':
+							return _Utils_Tuple2(model.gridHue, 1.0);
+						default:
+							return _Utils_Tuple2(model.outlineHue, model.outlineOpacity);
 					}
 				}();
 				var currentHue = _v26.a;
 				var currentOpacity = _v26.b;
 				var panelX = (px - 10) - ((currentHue / 360) * 240);
-				var panelY = (py - 10) - ((1 - currentOpacity) * 96);
+				var panelY = (py - 10) - ((1 - currentOpacity) * innerH);
 				return _Utils_Tuple2(
 					_Utils_update(
 						model,
 						{
 							colorPicking: $elm$core$Maybe$Just(
-								{panelX: panelX, panelY: panelY, target: target})
+								{hueOnly: hueOnly, panelX: panelX, panelY: panelY, target: target})
 						}),
 					$elm$core$Platform$Cmd$none);
 			case 'ColorPickMove':
@@ -8538,31 +8544,38 @@ var $author$project$Main$update = F2(
 					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 				} else {
 					var cp = _v28.a;
-					var newOpacity = A3($elm$core$Basics$clamp, 0.05, 1.0, 1.0 - (((my - cp.panelY) - 10) / 96));
+					var newOpacity = cp.hueOnly ? 1.0 : A3($elm$core$Basics$clamp, 0.05, 1.0, 1.0 - (((my - cp.panelY) - 10) / 96));
 					var newHue = A3($elm$core$Basics$clamp, 0, 360, (((mx - cp.panelX) - 10) / 240) * 360);
 					var _v29 = cp.target;
-					if (_v29.$ === 'WaveColorTarget') {
-						var waveId = _v29.a;
-						return _Utils_Tuple2(
-							_Utils_update(
-								model,
-								{
-									waves: A2(
-										$elm$core$List$map,
-										function (w) {
-											return _Utils_eq(w.id, waveId) ? _Utils_update(
-												w,
-												{hue: newHue, opacity: newOpacity}) : w;
-										},
-										model.waves)
-								}),
-							$elm$core$Platform$Cmd$none);
-					} else {
-						return _Utils_Tuple2(
-							_Utils_update(
-								model,
-								{gridHue: newHue, gridOpacity: newOpacity}),
-							$elm$core$Platform$Cmd$none);
+					switch (_v29.$) {
+						case 'WaveColorTarget':
+							var waveId = _v29.a;
+							return _Utils_Tuple2(
+								_Utils_update(
+									model,
+									{
+										waves: A2(
+											$elm$core$List$map,
+											function (w) {
+												return _Utils_eq(w.id, waveId) ? _Utils_update(
+													w,
+													{hue: newHue, opacity: newOpacity}) : w;
+											},
+											model.waves)
+									}),
+								$elm$core$Platform$Cmd$none);
+						case 'GridColorTarget':
+							return _Utils_Tuple2(
+								_Utils_update(
+									model,
+									{gridHue: newHue}),
+								$elm$core$Platform$Cmd$none);
+						default:
+							return _Utils_Tuple2(
+								_Utils_update(
+									model,
+									{outlineHue: newHue, outlineOpacity: newOpacity}),
+								$elm$core$Platform$Cmd$none);
 					}
 				}
 			case 'EndColorPick':
@@ -8985,36 +8998,37 @@ var $author$project$Main$viewPieceNumberLabel = F2(
 						]))
 				]));
 	});
-var $author$project$Main$viewPieceOutline = function (piece) {
-	if ($elm$core$List$isEmpty(piece.polygon)) {
-		return A2($elm$svg$Svg$g, _List_Nil, _List_Nil);
-	} else {
-		var pointsAttr = A2(
-			$elm$core$String$join,
-			' ',
-			A2(
-				$elm$core$List$map,
-				function (_v0) {
-					var x = _v0.a;
-					var y = _v0.b;
-					return $elm$core$String$fromFloat(x) + (',' + $elm$core$String$fromFloat(y));
-				},
-				piece.polygon));
-		return A2(
-			$elm$svg$Svg$polygon,
-			_List_fromArray(
-				[
-					$elm$svg$Svg$Attributes$points(pointsAttr),
-					$elm$svg$Svg$Attributes$fill('transparent'),
-					$elm$svg$Svg$Attributes$stroke('#555'),
-					$elm$svg$Svg$Attributes$strokeWidth('1'),
-					$elm$svg$Svg$Attributes$strokeLinejoin('round'),
-					A2($elm$html$Html$Attributes$attribute, 'vector-effect', 'non-scaling-stroke'),
-					$elm$svg$Svg$Attributes$class('piece-outline')
-				]),
-			_List_Nil);
-	}
-};
+var $author$project$Main$viewPieceOutline = F2(
+	function (color, piece) {
+		if ($elm$core$List$isEmpty(piece.polygon)) {
+			return A2($elm$svg$Svg$g, _List_Nil, _List_Nil);
+		} else {
+			var pointsAttr = A2(
+				$elm$core$String$join,
+				' ',
+				A2(
+					$elm$core$List$map,
+					function (_v0) {
+						var x = _v0.a;
+						var y = _v0.b;
+						return $elm$core$String$fromFloat(x) + (',' + $elm$core$String$fromFloat(y));
+					},
+					piece.polygon));
+			return A2(
+				$elm$svg$Svg$polygon,
+				_List_fromArray(
+					[
+						$elm$svg$Svg$Attributes$points(pointsAttr),
+						$elm$svg$Svg$Attributes$fill('transparent'),
+						$elm$svg$Svg$Attributes$stroke(color),
+						$elm$svg$Svg$Attributes$strokeWidth('1'),
+						$elm$svg$Svg$Attributes$strokeLinejoin('round'),
+						A2($elm$html$Html$Attributes$attribute, 'vector-effect', 'non-scaling-stroke'),
+						$elm$svg$Svg$Attributes$class('piece-outline')
+					]),
+				_List_Nil);
+		}
+	});
 var $author$project$Main$AssignPieceToWave = function (a) {
 	return {$: 'AssignPieceToWave', a: a};
 };
@@ -9244,7 +9258,11 @@ var $author$project$Main$viewMainSvg = F2(
 					A2($elm$core$Dict$get, piece.id, piecePositions));
 			},
 			visiblePieces) : _List_Nil;
-		var outlineLayer = ((!model.editMode) && (isGenerated && (model.showOutlines && (_Utils_eq(model.appMode, $author$project$Main$ModePieces) || _Utils_eq(model.appMode, $author$project$Main$ModeWaves))))) ? A2($elm$core$List$map, $author$project$Main$viewPieceOutline, visiblePieces) : _List_Nil;
+		var outlineLayer = ((!model.editMode) && (isGenerated && (model.showOutlines && (_Utils_eq(model.appMode, $author$project$Main$ModePieces) || _Utils_eq(model.appMode, $author$project$Main$ModeWaves))))) ? A2(
+			$elm$core$List$map,
+			$author$project$Main$viewPieceOutline(
+				A2($author$project$Main$waveColor, model.outlineHue, model.outlineOpacity)),
+			visiblePieces) : _List_Nil;
 		var effectiveScale = model.svgScale * model.zoomLevel;
 		var effectiveHoverId = (!_Utils_eq(model.draggingPieceId, $elm$core$Maybe$Nothing)) ? model.draggingPieceId : model.hoveredPieceId;
 		var pieceOverlays = ((!model.editMode) && isGenerated) ? A2(
@@ -9295,7 +9313,7 @@ var $author$project$Main$viewMainSvg = F2(
 			$author$project$Main$viewGrid,
 			cw,
 			ch,
-			A2($author$project$Main$waveColor, model.gridHue, model.gridOpacity),
+			A2($author$project$Main$waveColor, model.gridHue, 1.0),
 			model.houseUnitsHigh) : _List_Nil;
 		var h = $elm$core$String$fromFloat(ch);
 		var lightsLayer = function () {
@@ -10000,7 +10018,6 @@ var $elm$html$Html$Events$onCheck = function (tagger) {
 		'change',
 		A2($elm$json$Json$Decode$map, tagger, $elm$html$Html$Events$targetChecked));
 };
-var $author$project$Main$GridColorTarget = {$: 'GridColorTarget'};
 var $author$project$Main$StartColorPick = F3(
 	function (a, b, c) {
 		return {$: 'StartColorPick', a: a, b: b, c: c};
@@ -10015,7 +10032,7 @@ var $author$project$Main$viewGridColorSwatch = function (model) {
 				A2(
 				$elm$html$Html$Attributes$style,
 				'background-color',
-				A2($author$project$Main$waveColor, model.gridHue, model.gridOpacity)),
+				A2($author$project$Main$waveColor, model.gridHue, 1.0)),
 				A2(
 				$elm$html$Html$Events$stopPropagationOn,
 				'mousedown',
@@ -10661,6 +10678,7 @@ var $author$project$Main$viewPdfTools = F2(
 						]))
 				]));
 	});
+var $author$project$Main$OutlineColorTarget = {$: 'OutlineColorTarget'};
 var $author$project$Main$ToggleOutlines = function (a) {
 	return {$: 'ToggleOutlines', a: a};
 };
@@ -10782,7 +10800,32 @@ var $author$project$Main$viewPiecesTools = function (model) {
 						_List_fromArray(
 							[
 								$elm$html$Html$text('Show piece outlines')
-							]))
+							])),
+						A2(
+						$elm$html$Html$span,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('wave-swatch wave-swatch-sm'),
+								A2(
+								$elm$html$Html$Attributes$style,
+								'background-color',
+								A2($author$project$Main$waveColor, model.outlineHue, model.outlineOpacity)),
+								A2(
+								$elm$html$Html$Events$stopPropagationOn,
+								'mousedown',
+								A3(
+									$elm$json$Json$Decode$map2,
+									F2(
+										function (mx, my) {
+											return _Utils_Tuple2(
+												A3($author$project$Main$StartColorPick, $author$project$Main$OutlineColorTarget, mx, my),
+												true);
+										}),
+									A2($elm$json$Json$Decode$field, 'clientX', $elm$json$Json$Decode$float),
+									A2($elm$json$Json$Decode$field, 'clientY', $elm$json$Json$Decode$float))),
+								$elm$html$Html$Attributes$title('Pick outline color')
+							]),
+						_List_Nil)
 					])),
 				A2(
 				$elm$html$Html$div,
@@ -10811,7 +10854,8 @@ var $author$project$Main$viewPiecesTools = function (model) {
 						_List_fromArray(
 							[
 								$elm$html$Html$text('Show grid')
-							]))
+							])),
+						$author$project$Main$viewGridColorSwatch(model)
 					]))
 			]));
 };
@@ -11631,6 +11675,65 @@ var $author$project$Main$viewWavesTools = function (model) {
 				$elm$html$Html$div,
 				_List_fromArray(
 					[
+						$elm$html$Html$Attributes$class('checkbox-group')
+					]),
+				_List_fromArray(
+					[
+						A2(
+						$elm$html$Html$input,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$type_('checkbox'),
+								$elm$html$Html$Attributes$id('showGrid'),
+								$elm$html$Html$Attributes$checked(model.showGrid),
+								$elm$html$Html$Events$onCheck($author$project$Main$ToggleGrid)
+							]),
+						_List_Nil),
+						A2(
+						$elm$html$Html$label,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$for('showGrid')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text('Show grid')
+							])),
+						$author$project$Main$viewGridColorSwatch(model)
+					])),
+				A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('checkbox-group')
+					]),
+				_List_fromArray(
+					[
+						A2(
+						$elm$html$Html$input,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$type_('checkbox'),
+								$elm$html$Html$Attributes$id('showNumbers'),
+								$elm$html$Html$Attributes$checked(model.showNumbers),
+								$elm$html$Html$Events$onCheck($author$project$Main$ToggleNumbers)
+							]),
+						_List_Nil),
+						A2(
+						$elm$html$Html$label,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$for('showNumbers')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text('Show position numbers')
+							]))
+					])),
+				A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
 						$elm$html$Html$Attributes$class('wave-toolbar')
 					]),
 				_List_fromArray(
@@ -11644,64 +11747,6 @@ var $author$project$Main$viewWavesTools = function (model) {
 						_List_fromArray(
 							[
 								$elm$html$Html$text('New wave')
-							])),
-						A2(
-						$elm$html$Html$div,
-						_List_fromArray(
-							[
-								$elm$html$Html$Attributes$class('checkbox-group')
-							]),
-						_List_fromArray(
-							[
-								A2(
-								$elm$html$Html$input,
-								_List_fromArray(
-									[
-										$elm$html$Html$Attributes$type_('checkbox'),
-										$elm$html$Html$Attributes$id('showNumbers'),
-										$elm$html$Html$Attributes$checked(model.showNumbers),
-										$elm$html$Html$Events$onCheck($author$project$Main$ToggleNumbers)
-									]),
-								_List_Nil),
-								A2(
-								$elm$html$Html$label,
-								_List_fromArray(
-									[
-										$elm$html$Html$Attributes$for('showNumbers')
-									]),
-								_List_fromArray(
-									[
-										$elm$html$Html$text('Show position numbers')
-									]))
-							])),
-						A2(
-						$elm$html$Html$div,
-						_List_fromArray(
-							[
-								$elm$html$Html$Attributes$class('checkbox-group')
-							]),
-						_List_fromArray(
-							[
-								A2(
-								$elm$html$Html$input,
-								_List_fromArray(
-									[
-										$elm$html$Html$Attributes$type_('checkbox'),
-										$elm$html$Html$Attributes$id('showGrid'),
-										$elm$html$Html$Attributes$checked(model.showGrid),
-										$elm$html$Html$Events$onCheck($author$project$Main$ToggleGrid)
-									]),
-								_List_Nil),
-								A2(
-								$elm$html$Html$label,
-								_List_fromArray(
-									[
-										$elm$html$Html$Attributes$for('showGrid')
-									]),
-								_List_fromArray(
-									[
-										$elm$html$Html$text('Show grid')
-									]))
 							]))
 					])),
 				A2(
@@ -11874,7 +11919,8 @@ var $author$project$Main$viewColorPickerPanel = function (model) {
 					$elm$html$Html$div,
 					_List_fromArray(
 						[
-							$elm$html$Html$Attributes$class('color-picker-inner')
+							$elm$html$Html$Attributes$class(
+							cp.hueOnly ? 'color-picker-inner hue-only' : 'color-picker-inner')
 						]),
 					_List_fromArray(
 						[

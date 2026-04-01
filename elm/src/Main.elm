@@ -90,6 +90,7 @@ type alias MergeResponse =
 type ColorPickTarget
     = WaveColorTarget Int
     | GridColorTarget
+    | OutlineColorTarget
 
 
 type alias Wave =
@@ -160,9 +161,10 @@ type alias Model =
     , dragOverWaveId : Maybe (Maybe Int)
     , dragInsertBeforeId : Maybe Int
     , lasso : Maybe { x0 : Float, y0 : Float, x1 : Float, y1 : Float }
-    , colorPicking : Maybe { target : ColorPickTarget, panelX : Float, panelY : Float }
+    , colorPicking : Maybe { target : ColorPickTarget, panelX : Float, panelY : Float, hueOnly : Bool }
     , gridHue : Float
-    , gridOpacity : Float
+    , outlineHue : Float
+    , outlineOpacity : Float
     , svgScale : Float
     , availableH : Float
     , houseUnitsHigh : Float
@@ -205,7 +207,8 @@ init _ =
       , lasso = Nothing
       , colorPicking = Nothing
       , gridHue = 35.0
-      , gridOpacity = 0.7
+      , outlineHue = 210.0
+      , outlineOpacity = 0.7
       , svgScale = 1.0
       , availableH = 900.0
       , houseUnitsHigh = 15.5
@@ -1163,6 +1166,9 @@ update msg model =
 
         StartColorPick target px py ->
             let
+                hueOnly =
+                    target == GridColorTarget
+
                 ( currentHue, currentOpacity ) =
                     case target of
                         WaveColorTarget waveId ->
@@ -1173,15 +1179,21 @@ update msg model =
                                 |> Maybe.withDefault ( 0, 0.3 )
 
                         GridColorTarget ->
-                            ( model.gridHue, model.gridOpacity )
+                            ( model.gridHue, 1.0 )
+
+                        OutlineColorTarget ->
+                            ( model.outlineHue, model.outlineOpacity )
+
+                innerH =
+                    if hueOnly then 20 else 96
 
                 panelX =
                     px - 10 - (currentHue / 360) * 240
 
                 panelY =
-                    py - 10 - (1 - currentOpacity) * 96
+                    py - 10 - (1 - currentOpacity) * toFloat innerH
             in
-            ( { model | colorPicking = Just { target = target, panelX = panelX, panelY = panelY } }, Cmd.none )
+            ( { model | colorPicking = Just { target = target, panelX = panelX, panelY = panelY, hueOnly = hueOnly } }, Cmd.none )
 
         ColorPickMove mx my ->
             case model.colorPicking of
@@ -1194,7 +1206,11 @@ update msg model =
                             clamp 0 360 ((mx - cp.panelX - 10) / 240 * 360)
 
                         newOpacity =
-                            clamp 0.05 1.0 (1.0 - (my - cp.panelY - 10) / 96)
+                            if cp.hueOnly then
+                                1.0
+
+                            else
+                                clamp 0.05 1.0 (1.0 - (my - cp.panelY - 10) / 96)
 
                     in
                     case cp.target of
@@ -1215,7 +1231,10 @@ update msg model =
                             )
 
                         GridColorTarget ->
-                            ( { model | gridHue = newHue, gridOpacity = newOpacity }, Cmd.none )
+                            ( { model | gridHue = newHue }, Cmd.none )
+
+                        OutlineColorTarget ->
+                            ( { model | outlineHue = newHue, outlineOpacity = newOpacity }, Cmd.none )
 
         EndColorPick ->
             ( { model | colorPicking = Nothing }, Cmd.none )
@@ -1499,7 +1518,7 @@ viewColorPickerPanel model =
                 , style "left" (String.fromFloat cp.panelX ++ "px")
                 , style "top" (String.fromFloat cp.panelY ++ "px")
                 ]
-                [ div [ class "color-picker-inner" ]
+                [ div [ class (if cp.hueOnly then "color-picker-inner hue-only" else "color-picker-inner") ]
                     [ div [ class "color-picker-gradient" ] [] ]
                 ]
 
@@ -1981,10 +2000,22 @@ viewPiecesTools model =
             [ div [ class "checkbox-group" ]
                 [ input [ type_ "checkbox", id "showOutlines", checked model.showOutlines, onCheck ToggleOutlines ] []
                 , label [ for "showOutlines" ] [ text "Show piece outlines" ]
+                , span
+                    [ class "wave-swatch wave-swatch-sm"
+                    , style "background-color" (waveColor model.outlineHue model.outlineOpacity)
+                    , stopPropagationOn "mousedown"
+                        (D.map2 (\mx my -> ( StartColorPick OutlineColorTarget mx my, True ))
+                            (D.field "clientX" D.float)
+                            (D.field "clientY" D.float)
+                        )
+                    , title "Pick outline color"
+                    ]
+                    []
                 ]
             , div [ class "checkbox-group" ]
                 [ input [ type_ "checkbox", id "showGrid", checked model.showGrid, onCheck ToggleGrid ] []
                 , label [ for "showGrid" ] [ text "Show grid" ]
+                , viewGridColorSwatch model
                 ]
             ]
         )
@@ -2101,7 +2132,7 @@ viewGridColorSwatch : Model -> Html Msg
 viewGridColorSwatch model =
     span
         [ class "wave-swatch wave-swatch-sm"
-        , style "background-color" (waveColor model.gridHue model.gridOpacity)
+        , style "background-color" (waveColor model.gridHue 1.0)
         , stopPropagationOn "mousedown"
             (D.map2 (\mx my -> ( StartColorPick GridColorTarget mx my, True ))
                 (D.field "clientX" D.float)
@@ -2151,16 +2182,17 @@ viewWavesTools model =
                     )
                 ]
             ]
+        , div [ class "checkbox-group" ]
+            [ input [ type_ "checkbox", id "showGrid", checked model.showGrid, onCheck ToggleGrid ] []
+            , label [ for "showGrid" ] [ text "Show grid" ]
+            , viewGridColorSwatch model
+            ]
+        , div [ class "checkbox-group" ]
+            [ input [ type_ "checkbox", id "showNumbers", checked model.showNumbers, onCheck ToggleNumbers ] []
+            , label [ for "showNumbers" ] [ text "Show position numbers" ]
+            ]
         , div [ class "wave-toolbar" ]
             [ button [ onClick AddWave ] [ text "New wave" ]
-            , div [ class "checkbox-group" ]
-                [ input [ type_ "checkbox", id "showNumbers", checked model.showNumbers, onCheck ToggleNumbers ] []
-                , label [ for "showNumbers" ] [ text "Show position numbers" ]
-                ]
-            , div [ class "checkbox-group" ]
-                [ input [ type_ "checkbox", id "showGrid", checked model.showGrid, onCheck ToggleGrid ] []
-                , label [ for "showGrid" ] [ text "Show grid" ]
-                ]
             ]
         , div [ class "waves-body" ]
             (List.map (viewWaveRow model model.waves) model.waves
@@ -2424,7 +2456,7 @@ viewMainSvg response model =
         -- Grid lines
         gridLayer =
             if (not model.editMode) && (model.showGrid || model.zoomGridActive) then
-                viewGrid cw ch (waveColor model.gridHue model.gridOpacity) model.houseUnitsHigh
+                viewGrid cw ch (waveColor model.gridHue 1.0) model.houseUnitsHigh
 
             else
                 []
@@ -2432,7 +2464,7 @@ viewMainSvg response model =
         -- Piece outlines (post-gen, pieces/waves mode only, not in edit)
         outlineLayer =
             if (not model.editMode) && isGenerated && model.showOutlines && (model.appMode == ModePieces || model.appMode == ModeWaves) then
-                List.map viewPieceOutline visiblePieces
+                List.map (viewPieceOutline (waveColor model.outlineHue model.outlineOpacity)) visiblePieces
 
             else
                 []
@@ -2699,8 +2731,8 @@ viewPieceBlueprintPath piece =
             []
 
 
-viewPieceOutline : Piece -> Svg.Svg Msg
-viewPieceOutline piece =
+viewPieceOutline : String -> Piece -> Svg.Svg Msg
+viewPieceOutline color piece =
     if List.isEmpty piece.polygon then
         Svg.g [] []
 
@@ -2714,7 +2746,7 @@ viewPieceOutline piece =
         Svg.polygon
             [ SA.points pointsAttr
             , SA.fill "transparent"
-            , SA.stroke "#555"
+            , SA.stroke color
             , SA.strokeWidth "1"
             , SA.strokeLinejoin "round"
             , attribute "vector-effect" "non-scaling-stroke"

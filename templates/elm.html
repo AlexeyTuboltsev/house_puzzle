@@ -724,6 +724,15 @@ input.zoom-slider {
     -webkit-mask-image: linear-gradient(to bottom, black 0%, transparent 100%);
     mask-image: linear-gradient(to bottom, black 0%, transparent 100%);
 }
+/* Hue-only variant: just a rainbow strip, no opacity axis */
+.color-picker-inner.hue-only {
+    height: 20px;
+    background: none;
+}
+.color-picker-inner.hue-only .color-picker-gradient {
+    -webkit-mask-image: none;
+    mask-image: none;
+}
 
 /* shared square button base for eye, lock, and action buttons in wave header */
 .wave-eye, .wave-lock, .wave-actions button {
