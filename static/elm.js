@@ -7672,6 +7672,7 @@ var $author$project$Main$update = F2(
 							var newGroup = {
 								hue: $author$project$Main$defaultHue(model.nextGroupId - 1),
 								id: model.nextGroupId,
+								locked: false,
 								name: 'Group ' + $elm$core$String$fromInt(model.nextGroupId),
 								pieceIds: _List_Nil
 							};
@@ -8471,10 +8472,27 @@ var $author$project$Main$update = F2(
 								model.waves)
 						}),
 					$elm$core$Platform$Cmd$none);
+			case 'ToggleGroupLock':
+				var gid = msg.a;
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{
+							groups: A2(
+								$elm$core$List$map,
+								function (g) {
+									return _Utils_eq(g.id, gid) ? _Utils_update(
+										g,
+										{locked: !g.locked}) : g;
+								},
+								model.groups)
+						}),
+					$elm$core$Platform$Cmd$none);
 			case 'AddGroup':
 				var newGroup = {
 					hue: $author$project$Main$defaultHue(model.nextGroupId - 1),
 					id: model.nextGroupId,
+					locked: false,
 					name: 'Group ' + $elm$core$String$fromInt(model.nextGroupId),
 					pieceIds: _List_Nil
 				};
@@ -10037,6 +10055,76 @@ var $elm$html$Html$Events$preventDefaultOn = F2(
 			event,
 			$elm$virtual_dom$VirtualDom$MayPreventDefault(decoder));
 	});
+var $author$project$Main$GroupedPiece = F2(
+	function (a, b) {
+		return {$: 'GroupedPiece', a: a, b: b};
+	});
+var $author$project$Main$SinglePiece = function (a) {
+	return {$: 'SinglePiece', a: a};
+};
+var $author$project$Main$toPieceDisplays = F2(
+	function (groups, pieceIds) {
+		var go = F3(
+			function (remaining, seen, acc) {
+				go:
+				while (true) {
+					if (!remaining.b) {
+						return $elm$core$List$reverse(acc);
+					} else {
+						var pid = remaining.a;
+						var rest = remaining.b;
+						var _v1 = $elm$core$List$head(
+							A2(
+								$elm$core$List$filter,
+								function (g) {
+									return (!$elm$core$List$isEmpty(g.pieceIds)) && A2($elm$core$List$member, pid, g.pieceIds);
+								},
+								groups));
+						if (_v1.$ === 'Just') {
+							var g = _v1.a;
+							if (A2($elm$core$List$member, g.id, seen)) {
+								var $temp$remaining = rest,
+									$temp$seen = seen,
+									$temp$acc = acc;
+								remaining = $temp$remaining;
+								seen = $temp$seen;
+								acc = $temp$acc;
+								continue go;
+							} else {
+								var $temp$remaining = rest,
+									$temp$seen = A2($elm$core$List$cons, g.id, seen),
+									$temp$acc = A2(
+									$elm$core$List$cons,
+									A2(
+										$author$project$Main$GroupedPiece,
+										A2(
+											$elm$core$Maybe$withDefault,
+											pid,
+											$elm$core$List$head(g.pieceIds)),
+										g.pieceIds),
+									acc);
+								remaining = $temp$remaining;
+								seen = $temp$seen;
+								acc = $temp$acc;
+								continue go;
+							}
+						} else {
+							var $temp$remaining = rest,
+								$temp$seen = seen,
+								$temp$acc = A2(
+								$elm$core$List$cons,
+								$author$project$Main$SinglePiece(pid),
+								acc);
+							remaining = $temp$remaining;
+							seen = $temp$seen;
+							acc = $temp$acc;
+							continue go;
+						}
+					}
+				}
+			});
+		return A3(go, pieceIds, _List_Nil, _List_Nil);
+	});
 var $author$project$Main$DragEnterPiece = function (a) {
 	return {$: 'DragEnterPiece', a: a};
 };
@@ -10063,13 +10151,13 @@ var $elm$html$Html$Events$stopPropagationOn = F2(
 	});
 var $elm$virtual_dom$VirtualDom$style = _VirtualDom_style;
 var $elm$html$Html$Attributes$style = $elm$virtual_dom$VirtualDom$style;
-var $author$project$Main$viewWaveTrayThumb = F7(
-	function (piece, isLocked, scale, hoveredId, generation, showNum, pos) {
+var $author$project$Main$viewWaveTrayThumb = F8(
+	function (piece, isLocked, scale, hoveredId, generation, showNum, pos, maybeGroupN) {
 		var widthCss = $elm$core$String$fromFloat(piece.width * scale) + 'px';
 		var isHovered = _Utils_eq(
 			hoveredId,
 			$elm$core$Maybe$Just(piece.id));
-		var dragAttrs = isLocked ? _List_Nil : _List_fromArray(
+		var dragAttrs = (isLocked || (!_Utils_eq(maybeGroupN, $elm$core$Maybe$Nothing))) ? _List_Nil : _List_fromArray(
 			[
 				A2($elm$html$Html$Attributes$attribute, 'draggable', 'true'),
 				A2(
@@ -10122,6 +10210,24 @@ var $author$project$Main$viewWaveTrayThumb = F7(
 							piece.imgUrl + ('?v=' + $elm$core$String$fromInt(generation)))
 						]),
 					_List_Nil),
+					function () {
+					if (maybeGroupN.$ === 'Just') {
+						var n = maybeGroupN.a;
+						return A2(
+							$elm$html$Html$div,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('group-xn-badge')
+								]),
+							_List_fromArray(
+								[
+									$elm$html$Html$text(
+									'x' + $elm$core$String$fromInt(n))
+								]));
+					} else {
+						return $elm$html$Html$text('');
+					}
+				}(),
 					showNum ? A2(
 					$elm$html$Html$div,
 					_List_fromArray(
@@ -10225,33 +10331,70 @@ var $author$project$Main$viewWaveTray = F2(
 							$elm$html$Html$Attributes$class('wave-tray-scroll'),
 							$elm$html$Html$Attributes$id('wave-tray-scroll')
 						]),
-					_Utils_ap(
-						A2(
+					function () {
+						var endMarker = ((!isLocked) && ((!_Utils_eq(model.draggingPieceId, $elm$core$Maybe$Nothing)) && (_Utils_eq(model.dragInsertBeforeId, $elm$core$Maybe$Nothing) && _Utils_eq(
+							model.dragOverWaveId,
+							$elm$core$Maybe$Just(activeWaveId))))) ? _List_fromArray(
+							[
+								A2(
+								$elm$html$Html$div,
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$class('drag-insert-marker-v')
+									]),
+								_List_Nil)
+							]) : _List_Nil;
+						var displays = A2(
+							$elm$core$List$indexedMap,
+							F2(
+								function (i, display) {
+									return _Utils_Tuple2(i + 1, display);
+								}),
+							A2($author$project$Main$toPieceDisplays, model.groups, activeWavePieceIds));
+						var thumbs = A2(
 							$elm$core$List$concatMap,
 							function (_v1) {
 								var pos = _v1.a;
-								var pid = _v1.b;
+								var display = _v1.b;
+								var repId = function () {
+									if (display.$ === 'SinglePiece') {
+										var pid = display.a;
+										return pid;
+									} else {
+										var pid = display.a;
+										return pid;
+									}
+								}();
+								var showMarker = (!isLocked) && ((!_Utils_eq(model.draggingPieceId, $elm$core$Maybe$Nothing)) && _Utils_eq(
+									model.dragInsertBeforeId,
+									$elm$core$Maybe$Just(repId)));
 								var thumb = function () {
 									var _v2 = $elm$core$List$head(
 										A2(
 											$elm$core$List$filter,
 											function (p) {
-												return _Utils_eq(p.id, pid);
+												return _Utils_eq(p.id, repId);
 											},
 											model.pieces));
 									if (_v2.$ === 'Just') {
 										var piece = _v2.a;
+										var groupCount = function () {
+											if (display.$ === 'SinglePiece') {
+												return $elm$core$Maybe$Nothing;
+											} else {
+												var allIds = display.b;
+												return $elm$core$Maybe$Just(
+													$elm$core$List$length(allIds));
+											}
+										}();
 										return _List_fromArray(
 											[
-												A7($author$project$Main$viewWaveTrayThumb, piece, isLocked, model.svgScale, model.hoveredPieceId, model.pieceGeneration, model.showNumbers, pos)
+												A8($author$project$Main$viewWaveTrayThumb, piece, isLocked, model.svgScale, model.hoveredPieceId, model.pieceGeneration, model.showNumbers, pos, groupCount)
 											]);
 									} else {
 										return _List_Nil;
 									}
 								}();
-								var showMarker = (!isLocked) && ((!_Utils_eq(model.draggingPieceId, $elm$core$Maybe$Nothing)) && _Utils_eq(
-									model.dragInsertBeforeId,
-									$elm$core$Maybe$Just(pid)));
 								var marker = showMarker ? _List_fromArray(
 									[
 										A2(
@@ -10264,25 +10407,9 @@ var $author$project$Main$viewWaveTray = F2(
 									]) : _List_Nil;
 								return _Utils_ap(marker, thumb);
 							},
-							A2(
-								$elm$core$List$indexedMap,
-								F2(
-									function (i, pid) {
-										return _Utils_Tuple2(i + 1, pid);
-									}),
-								activeWavePieceIds)),
-						((!isLocked) && ((!_Utils_eq(model.draggingPieceId, $elm$core$Maybe$Nothing)) && (_Utils_eq(model.dragInsertBeforeId, $elm$core$Maybe$Nothing) && _Utils_eq(
-							model.dragOverWaveId,
-							$elm$core$Maybe$Just(activeWaveId))))) ? _List_fromArray(
-							[
-								A2(
-								$elm$html$Html$div,
-								_List_fromArray(
-									[
-										$elm$html$Html$Attributes$class('drag-insert-marker-v')
-									]),
-								_List_Nil)
-							]) : _List_Nil))
+							displays);
+						return _Utils_ap(thumbs, endMarker);
+					}())
 				]));
 	});
 var $author$project$Main$SetZoomGridActive = function (a) {
@@ -10741,16 +10868,55 @@ var $author$project$Main$DropOnGroup = function (a) {
 var $author$project$Main$GroupColorTarget = function (a) {
 	return {$: 'GroupColorTarget', a: a};
 };
-var $author$project$Main$MoveGroup = F2(
-	function (a, b) {
-		return {$: 'MoveGroup', a: a, b: b};
-	});
 var $author$project$Main$RemoveGroup = function (a) {
 	return {$: 'RemoveGroup', a: a};
 };
 var $author$project$Main$SelectGroup = function (a) {
 	return {$: 'SelectGroup', a: a};
 };
+var $author$project$Main$ToggleGroupLock = function (a) {
+	return {$: 'ToggleGroupLock', a: a};
+};
+var $elm$svg$Svg$Attributes$d = _VirtualDom_attribute('d');
+var $elm$svg$Svg$path = $elm$svg$Svg$trustedNode('path');
+var $author$project$Main$iconLockClosed = A2(
+	$elm$svg$Svg$svg,
+	_List_fromArray(
+		[
+			$elm$svg$Svg$Attributes$viewBox('0 0 24 24'),
+			$elm$svg$Svg$Attributes$width('14'),
+			$elm$svg$Svg$Attributes$height('14'),
+			$elm$svg$Svg$Attributes$fill('currentColor')
+		]),
+	_List_fromArray(
+		[
+			A2(
+			$elm$svg$Svg$path,
+			_List_fromArray(
+				[
+					$elm$svg$Svg$Attributes$d('M6 22q-.825 0-1.412-.587T4 20V10q0-.825.588-1.412T6 8h1V6q0-2.075 1.463-3.537T12 1t3.538 1.463T17 6v2h1q.825 0 1.413.588T20 10v10q0 .825-.587 1.413T18 22zm0-2h12V10H6zm7.413-3.588Q14 15.826 14 15t-.587-1.412T12 13t-1.412.588T10 15t.588 1.413T12 17t1.413-.587M9 8h6V6q0-1.25-.875-2.125T12 3t-2.125.875T9 6zM6 20V10z')
+				]),
+			_List_Nil)
+		]));
+var $author$project$Main$iconLockOpen = A2(
+	$elm$svg$Svg$svg,
+	_List_fromArray(
+		[
+			$elm$svg$Svg$Attributes$viewBox('0 0 24 24'),
+			$elm$svg$Svg$Attributes$width('14'),
+			$elm$svg$Svg$Attributes$height('14'),
+			$elm$svg$Svg$Attributes$fill('currentColor')
+		]),
+	_List_fromArray(
+		[
+			A2(
+			$elm$svg$Svg$path,
+			_List_fromArray(
+				[
+					$elm$svg$Svg$Attributes$d('M6 20h12V10H6zm7.413-3.588Q14 15.826 14 15t-.587-1.412T12 13t-1.412.588T10 15t.588 1.413T12 17t1.413-.587M6 20V10zm0 2q-.825 0-1.412-.587T4 20V10q0-.825.588-1.412T6 8h7V6q0-2.075 1.463-3.537T18 1t3.538 1.463T23 6h-2q0-1.25-.875-2.125T18 3t-2.125.875T15 6v2h3q.825 0 1.413.588T20 10v10q0 .825-.587 1.413T18 22z')
+				]),
+			_List_Nil)
+		]));
 var $author$project$Main$RemovePieceFromWave = F2(
 	function (a, b) {
 		return {$: 'RemovePieceFromWave', a: a, b: b};
@@ -10867,20 +11033,6 @@ var $author$project$Main$viewGroupRow = F3(
 		var isSelected = _Utils_eq(
 			model.selectedGroupId,
 			$elm$core$Maybe$Just(group.id));
-		var groupIdx = A2(
-			$elm$core$Maybe$withDefault,
-			0,
-			A2(
-				$elm$core$Maybe$map,
-				$elm$core$Tuple$first,
-				$elm$core$List$head(
-					A2(
-						$elm$core$List$filter,
-						function (_v0) {
-							var g = _v0.b;
-							return _Utils_eq(g.id, group.id);
-						},
-						A2($elm$core$List$indexedMap, $elm$core$Tuple$pair, allGroups)))));
 		var groupCount = $elm$core$List$length(allGroups);
 		return A2(
 			$elm$html$Html$div,
@@ -10997,41 +11149,28 @@ var $author$project$Main$viewGroupRow = F3(
 							_List_fromArray(
 								[
 									A2(
-									$elm$html$Html$button,
+									$elm$html$Html$span,
 									_List_fromArray(
 										[
+											$elm$html$Html$Attributes$classList(
+											_List_fromArray(
+												[
+													_Utils_Tuple2('wave-lock', true),
+													_Utils_Tuple2('locked', group.locked)
+												])),
 											A2(
 											$elm$html$Html$Events$stopPropagationOn,
 											'click',
 											$elm$json$Json$Decode$succeed(
 												_Utils_Tuple2(
-													A2($author$project$Main$MoveGroup, group.id, -1),
+													$author$project$Main$ToggleGroupLock(group.id),
 													true))),
-											$elm$html$Html$Attributes$disabled(!groupIdx),
-											$elm$html$Html$Attributes$title('Move up')
+											$elm$html$Html$Attributes$title(
+											group.locked ? 'Unlock group' : 'Lock group')
 										]),
 									_List_fromArray(
 										[
-											$elm$html$Html$text('\u25B2')
-										])),
-									A2(
-									$elm$html$Html$button,
-									_List_fromArray(
-										[
-											A2(
-											$elm$html$Html$Events$stopPropagationOn,
-											'click',
-											$elm$json$Json$Decode$succeed(
-												_Utils_Tuple2(
-													A2($author$project$Main$MoveGroup, group.id, 1),
-													true))),
-											$elm$html$Html$Attributes$disabled(
-											_Utils_cmp(groupIdx, groupCount - 1) > -1),
-											$elm$html$Html$Attributes$title('Move down')
-										]),
-									_List_fromArray(
-										[
-											$elm$html$Html$text('\u25BC')
+											group.locked ? $author$project$Main$iconLockClosed : $author$project$Main$iconLockOpen
 										])),
 									A2(
 									$elm$html$Html$button,
@@ -11986,87 +12125,17 @@ var $author$project$Main$AddWave = {$: 'AddWave'};
 var $author$project$Main$ToggleNumbers = function (a) {
 	return {$: 'ToggleNumbers', a: a};
 };
-var $author$project$Main$GroupedPiece = F2(
-	function (a, b) {
-		return {$: 'GroupedPiece', a: a, b: b};
-	});
-var $author$project$Main$SinglePiece = function (a) {
-	return {$: 'SinglePiece', a: a};
-};
-var $author$project$Main$toPieceDisplays = F2(
-	function (groups, pieceIds) {
-		var go = F3(
-			function (remaining, seen, acc) {
-				go:
-				while (true) {
-					if (!remaining.b) {
-						return $elm$core$List$reverse(acc);
-					} else {
-						var pid = remaining.a;
-						var rest = remaining.b;
-						var _v1 = $elm$core$List$head(
-							A2(
-								$elm$core$List$filter,
-								function (g) {
-									return (!$elm$core$List$isEmpty(g.pieceIds)) && A2($elm$core$List$member, pid, g.pieceIds);
-								},
-								groups));
-						if (_v1.$ === 'Just') {
-							var g = _v1.a;
-							if (A2($elm$core$List$member, g.id, seen)) {
-								var $temp$remaining = rest,
-									$temp$seen = seen,
-									$temp$acc = acc;
-								remaining = $temp$remaining;
-								seen = $temp$seen;
-								acc = $temp$acc;
-								continue go;
-							} else {
-								var $temp$remaining = rest,
-									$temp$seen = A2($elm$core$List$cons, g.id, seen),
-									$temp$acc = A2(
-									$elm$core$List$cons,
-									A2(
-										$author$project$Main$GroupedPiece,
-										A2(
-											$elm$core$Maybe$withDefault,
-											pid,
-											$elm$core$List$head(g.pieceIds)),
-										g.pieceIds),
-									acc);
-								remaining = $temp$remaining;
-								seen = $temp$seen;
-								acc = $temp$acc;
-								continue go;
-							}
-						} else {
-							var $temp$remaining = rest,
-								$temp$seen = seen,
-								$temp$acc = A2(
-								$elm$core$List$cons,
-								$author$project$Main$SinglePiece(pid),
-								acc);
-							remaining = $temp$remaining;
-							seen = $temp$seen;
-							acc = $temp$acc;
-							continue go;
-						}
-					}
-				}
-			});
-		return A3(go, pieceIds, _List_Nil, _List_Nil);
-	});
-var $author$project$Main$viewGroupThumb = F6(
-	function (maybeWaveId, hoveredId, maybeGroup, piece, allIds, generation) {
+var $author$project$Main$viewGroupThumb = F7(
+	function (maybeWaveId, hoveredId, maybeGroup, piece, allIds, generation, maybePos) {
 		var n = $elm$core$List$length(allIds);
 		var isHovered = _Utils_eq(
 			hoveredId,
 			$elm$core$Maybe$Just(piece.id));
 		var clickMsg = function () {
-			var _v0 = _Utils_Tuple2(maybeGroup, maybeWaveId);
-			if ((_v0.a.$ === 'Just') && (_v0.b.$ === 'Just')) {
-				var g = _v0.a.a;
-				var wid = _v0.b.a;
+			var _v1 = _Utils_Tuple2(maybeGroup, maybeWaveId);
+			if ((_v1.a.$ === 'Just') && (_v1.b.$ === 'Just')) {
+				var g = _v1.a.a;
+				var wid = _v1.b.a;
 				return A2($author$project$Main$AssignGroupToWave, g.id, wid);
 			} else {
 				return $author$project$Main$NoOp;
@@ -12112,7 +12181,25 @@ var $author$project$Main$viewGroupThumb = F6(
 						[
 							$elm$html$Html$text(
 							'x' + $elm$core$String$fromInt(n))
-						])) : $elm$html$Html$text('')
+						])) : $elm$html$Html$text(''),
+					function () {
+					if (maybePos.$ === 'Just') {
+						var pos = maybePos.a;
+						return A2(
+							$elm$html$Html$div,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('piece-thumb-pos')
+								]),
+							_List_fromArray(
+								[
+									$elm$html$Html$text(
+									$elm$core$String$fromInt(pos))
+								]));
+					} else {
+						return $elm$html$Html$text('');
+					}
+				}()
 				]));
 	});
 var $author$project$Main$viewUnassignedRow = F2(
@@ -12216,7 +12303,7 @@ var $author$project$Main$viewUnassignedRow = F2(
 								return A2(
 									$elm$core$Maybe$map,
 									function (p) {
-										return A6(
+										return A7(
 											$author$project$Main$viewGroupThumb,
 											model.selectedWaveId,
 											model.hoveredPieceId,
@@ -12229,7 +12316,8 @@ var $author$project$Main$viewUnassignedRow = F2(
 													model.groups)),
 											p,
 											allIds,
-											model.pieceGeneration);
+											model.pieceGeneration,
+											$elm$core$Maybe$Nothing);
 									},
 									$elm$core$List$head(
 										A2(
@@ -12531,10 +12619,6 @@ var $author$project$Main$viewWavePieceInfoBox = function (model) {
 				]));
 	}
 };
-var $author$project$Main$MoveWave = F2(
-	function (a, b) {
-		return {$: 'MoveWave', a: a, b: b};
-	});
 var $author$project$Main$RemoveWave = function (a) {
 	return {$: 'RemoveWave', a: a};
 };
@@ -12550,8 +12634,6 @@ var $author$project$Main$ToggleWaveVisibility = function (a) {
 var $author$project$Main$WaveColorTarget = function (a) {
 	return {$: 'WaveColorTarget', a: a};
 };
-var $elm$svg$Svg$Attributes$d = _VirtualDom_attribute('d');
-var $elm$svg$Svg$path = $elm$svg$Svg$trustedNode('path');
 var $author$project$Main$iconEye = A2(
 	$elm$svg$Svg$svg,
 	_List_fromArray(
@@ -12597,65 +12679,13 @@ var $author$project$Main$iconEyeCrossed = A2(
 				]),
 			_List_Nil)
 		]));
-var $author$project$Main$iconLockClosed = A2(
-	$elm$svg$Svg$svg,
-	_List_fromArray(
-		[
-			$elm$svg$Svg$Attributes$viewBox('0 0 24 24'),
-			$elm$svg$Svg$Attributes$width('14'),
-			$elm$svg$Svg$Attributes$height('14'),
-			$elm$svg$Svg$Attributes$fill('currentColor')
-		]),
-	_List_fromArray(
-		[
-			A2(
-			$elm$svg$Svg$path,
-			_List_fromArray(
-				[
-					$elm$svg$Svg$Attributes$d('M6 22q-.825 0-1.412-.587T4 20V10q0-.825.588-1.412T6 8h1V6q0-2.075 1.463-3.537T12 1t3.538 1.463T17 6v2h1q.825 0 1.413.588T20 10v10q0 .825-.587 1.413T18 22zm0-2h12V10H6zm7.413-3.588Q14 15.826 14 15t-.587-1.412T12 13t-1.412.588T10 15t.588 1.413T12 17t1.413-.587M9 8h6V6q0-1.25-.875-2.125T12 3t-2.125.875T9 6zM6 20V10z')
-				]),
-			_List_Nil)
-		]));
-var $author$project$Main$iconLockOpen = A2(
-	$elm$svg$Svg$svg,
-	_List_fromArray(
-		[
-			$elm$svg$Svg$Attributes$viewBox('0 0 24 24'),
-			$elm$svg$Svg$Attributes$width('14'),
-			$elm$svg$Svg$Attributes$height('14'),
-			$elm$svg$Svg$Attributes$fill('currentColor')
-		]),
-	_List_fromArray(
-		[
-			A2(
-			$elm$svg$Svg$path,
-			_List_fromArray(
-				[
-					$elm$svg$Svg$Attributes$d('M6 20h12V10H6zm7.413-3.588Q14 15.826 14 15t-.587-1.412T12 13t-1.412.588T10 15t.588 1.413T12 17t1.413-.587M6 20V10zm0 2q-.825 0-1.412-.587T4 20V10q0-.825.588-1.412T6 8h7V6q0-2.075 1.463-3.537T18 1t3.538 1.463T23 6h-2q0-1.25-.875-2.125T18 3t-2.125.875T15 6v2h3q.825 0 1.413.588T20 10v10q0 .825-.587 1.413T18 22z')
-				]),
-			_List_Nil)
-		]));
 var $author$project$Main$viewWaveRow = F3(
 	function (model, allWaves, wave) {
-		var waveIdx = A2(
-			$elm$core$Maybe$withDefault,
-			0,
-			A2(
-				$elm$core$Maybe$map,
-				$elm$core$Tuple$first,
-				$elm$core$List$head(
-					A2(
-						$elm$core$List$filter,
-						function (_v2) {
-							var wv = _v2.b;
-							return _Utils_eq(wv.id, wave.id);
-						},
-						A2($elm$core$List$indexedMap, $elm$core$Tuple$pair, allWaves)))));
 		var waveCount = $elm$core$List$length(allWaves);
+		var swatchColor = A2($author$project$Main$waveColor, wave.hue, 0.85);
 		var isSelected = _Utils_eq(
 			model.selectedWaveId,
 			$elm$core$Maybe$Just(wave.id));
-		var swatchColor = A2($author$project$Main$waveColor, wave.hue, 0.85);
 		var countColor = A2($author$project$Main$waveColor, wave.hue, 1.0);
 		return A2(
 			$elm$html$Html$div,
@@ -12826,43 +12856,6 @@ var $author$project$Main$viewWaveRow = F3(
 											'click',
 											$elm$json$Json$Decode$succeed(
 												_Utils_Tuple2(
-													A2($author$project$Main$MoveWave, wave.id, -1),
-													true))),
-											$elm$html$Html$Attributes$disabled(!waveIdx),
-											$elm$html$Html$Attributes$title('Move up')
-										]),
-									_List_fromArray(
-										[
-											$elm$html$Html$text('\u25B2')
-										])),
-									A2(
-									$elm$html$Html$button,
-									_List_fromArray(
-										[
-											A2(
-											$elm$html$Html$Events$stopPropagationOn,
-											'click',
-											$elm$json$Json$Decode$succeed(
-												_Utils_Tuple2(
-													A2($author$project$Main$MoveWave, wave.id, 1),
-													true))),
-											$elm$html$Html$Attributes$disabled(
-											_Utils_cmp(waveIdx, waveCount - 1) > -1),
-											$elm$html$Html$Attributes$title('Move down')
-										]),
-									_List_fromArray(
-										[
-											$elm$html$Html$text('\u25BC')
-										])),
-									A2(
-									$elm$html$Html$button,
-									_List_fromArray(
-										[
-											A2(
-											$elm$html$Html$Events$stopPropagationOn,
-											'click',
-											$elm$json$Json$Decode$succeed(
-												_Utils_Tuple2(
 													$author$project$Main$RemoveWave(wave.id),
 													true))),
 											$elm$html$Html$Attributes$disabled(wave.locked || (waveCount <= 1)),
@@ -12913,7 +12906,7 @@ var $author$project$Main$viewWaveRow = F3(
 								return A2(
 									$elm$core$Maybe$map,
 									function (piece) {
-										return A6(
+										return A7(
 											$author$project$Main$viewGroupThumb,
 											$elm$core$Maybe$Just(wave.id),
 											model.hoveredPieceId,
@@ -12926,7 +12919,8 @@ var $author$project$Main$viewWaveRow = F3(
 													model.groups)),
 											piece,
 											allIds,
-											model.pieceGeneration);
+											model.pieceGeneration,
+											$elm$core$Maybe$Just(pos));
 									},
 									$elm$core$List$head(
 										A2(

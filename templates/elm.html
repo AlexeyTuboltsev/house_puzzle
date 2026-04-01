@@ -828,6 +828,18 @@ input.zoom-slider {
 .piece-thumb:active { cursor: grabbing; }
 .piece-thumb:hover, .piece-thumb.hovered { border-color: rgba(40,100,220,0.5); }
 .piece-thumb-label { font-size: 9px; color: #aaa; text-align: center; margin-top: 1px; }
+.piece-thumb-pos {
+    position: absolute;
+    top: 2px;
+    left: 3px;
+    font-size: 10px;
+    font-weight: 700;
+    color: #fff;
+    line-height: 1;
+    text-shadow: 0 0 3px #000, 0 0 3px #000;
+    pointer-events: none;
+    user-select: none;
+}
 .piece-thumb-remove {
     display: none;
     position: absolute;
