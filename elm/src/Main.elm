@@ -522,9 +522,19 @@ update msg model =
                     , hue = defaultHue (model.nextWaveId - 1)
                     , opacity = 0.3
                     }
+
+                lockedWaves =
+                    List.map
+                        (\w ->
+                            if Just w.id == model.selectedWaveId then
+                                { w | locked = True }
+                            else
+                                w
+                        )
+                        model.waves
             in
             ( { model
-                | waves = model.waves ++ [ newWave ]
+                | waves = lockedWaves ++ [ newWave ]
                 , nextWaveId = model.nextWaveId + 1
                 , selectedWaveId = Just newWave.id
               }

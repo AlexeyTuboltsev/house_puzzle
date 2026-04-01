@@ -7572,6 +7572,16 @@ var $author$project$Main$update = F2(
 					pieceIds: _List_Nil,
 					visible: true
 				};
+				var lockedWaves = A2(
+					$elm$core$List$map,
+					function (w) {
+						return _Utils_eq(
+							$elm$core$Maybe$Just(w.id),
+							model.selectedWaveId) ? _Utils_update(
+							w,
+							{locked: true}) : w;
+					},
+					model.waves);
 				return _Utils_Tuple2(
 					_Utils_update(
 						model,
@@ -7579,7 +7589,7 @@ var $author$project$Main$update = F2(
 							nextWaveId: model.nextWaveId + 1,
 							selectedWaveId: $elm$core$Maybe$Just(newWave.id),
 							waves: _Utils_ap(
-								model.waves,
+								lockedWaves,
 								_List_fromArray(
 									[newWave]))
 						}),
