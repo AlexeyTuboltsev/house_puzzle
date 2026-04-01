@@ -6334,7 +6334,7 @@ var $author$project$Main$fetchPdfList = $elm$http$Http$get(
 var $elm$browser$Browser$Dom$getViewport = _Browser_withWindow(_Browser_getViewport);
 var $author$project$Main$init = function (_v0) {
 	return _Utils_Tuple2(
-		{appMode: $author$project$Main$ModeInit, availableH: 900.0, bricksById: $elm$core$Dict$empty, colorPicking: $elm$core$Maybe$Nothing, dragInsertBeforeId: $elm$core$Maybe$Nothing, dragOverWaveId: $elm$core$Maybe$Nothing, draggingPieceId: $elm$core$Maybe$Nothing, editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, exportCanvasHeight: '900', exporting: false, generateState: $author$project$Main$NotGenerated, gridHue: 35.0, houseUnitsHigh: 15.5, hoveredPieceId: $elm$core$Maybe$Nothing, lasso: $elm$core$Maybe$Nothing, loadState: $author$project$Main$Idle, minBorder: 10, nextWaveId: 1, outlineHue: 210.0, outlineOpacity: 0.7, pdfFiles: _List_Nil, pieceGeneration: 0, pieces: _List_Nil, recomputing: false, seed: 42, selectedFileName: '', selectedPieceId: $elm$core$Maybe$Nothing, selectedWaveId: $elm$core$Maybe$Nothing, showGrid: false, showLights: false, showNumbers: true, showOutlines: true, svgScale: 1.0, targetCount: 60, waves: _List_Nil, zoomGridActive: false, zoomLevel: 1.0},
+		{appMode: $author$project$Main$ModeInit, availableH: 900.0, bricksById: $elm$core$Dict$empty, colorPicking: $elm$core$Maybe$Nothing, dragInsertBeforeId: $elm$core$Maybe$Nothing, dragOverWaveId: $elm$core$Maybe$Nothing, draggingPieceId: $elm$core$Maybe$Nothing, editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, exportCanvasHeight: '900', exporting: false, generateState: $author$project$Main$NotGenerated, gridHue: 35.0, houseUnitsHigh: 15.5, hoveredPieceId: $elm$core$Maybe$Nothing, lasso: $elm$core$Maybe$Nothing, loadState: $author$project$Main$Idle, minBorder: 10, nextWaveId: 1, outlineHue: 210.0, pdfFiles: _List_Nil, pieceGeneration: 0, pieces: _List_Nil, recomputing: false, seed: 42, selectedFileName: '', selectedPieceId: $elm$core$Maybe$Nothing, selectedWaveId: $elm$core$Maybe$Nothing, showGrid: false, showLights: false, showNumbers: true, showOutlines: true, svgScale: 1.0, targetCount: 60, waves: _List_Nil, zoomGridActive: false, zoomLevel: 1.0},
 		$elm$core$Platform$Cmd$batch(
 			_List_fromArray(
 				[
@@ -6672,6 +6672,7 @@ var $author$project$Main$Loading = {$: 'Loading'};
 var $author$project$Main$ModePdf = {$: 'ModePdf'};
 var $author$project$Main$ModePieces = {$: 'ModePieces'};
 var $author$project$Main$ModeWaves = {$: 'ModeWaves'};
+var $author$project$Main$OutlineColorTarget = {$: 'OutlineColorTarget'};
 var $elm$core$Basics$negate = function (n) {
 	return -n;
 };
@@ -8497,7 +8498,7 @@ var $author$project$Main$update = F2(
 				var target = msg.a;
 				var px = msg.b;
 				var py = msg.c;
-				var hueOnly = _Utils_eq(target, $author$project$Main$GridColorTarget);
+				var hueOnly = _Utils_eq(target, $author$project$Main$GridColorTarget) || _Utils_eq(target, $author$project$Main$OutlineColorTarget);
 				var innerH = hueOnly ? 20 : 96;
 				var _v26 = function () {
 					switch (target.$) {
@@ -8521,7 +8522,7 @@ var $author$project$Main$update = F2(
 						case 'GridColorTarget':
 							return _Utils_Tuple2(model.gridHue, 1.0);
 						default:
-							return _Utils_Tuple2(model.outlineHue, model.outlineOpacity);
+							return _Utils_Tuple2(model.outlineHue, 1.0);
 					}
 				}();
 				var currentHue = _v26.a;
@@ -8574,7 +8575,7 @@ var $author$project$Main$update = F2(
 							return _Utils_Tuple2(
 								_Utils_update(
 									model,
-									{outlineHue: newHue, outlineOpacity: newOpacity}),
+									{outlineHue: newHue}),
 								$elm$core$Platform$Cmd$none);
 					}
 				}
@@ -9261,7 +9262,7 @@ var $author$project$Main$viewMainSvg = F2(
 		var outlineLayer = ((!model.editMode) && (isGenerated && (model.showOutlines && (_Utils_eq(model.appMode, $author$project$Main$ModePieces) || _Utils_eq(model.appMode, $author$project$Main$ModeWaves))))) ? A2(
 			$elm$core$List$map,
 			$author$project$Main$viewPieceOutline(
-				A2($author$project$Main$waveColor, model.outlineHue, model.outlineOpacity)),
+				A2($author$project$Main$waveColor, model.outlineHue, 1.0)),
 			visiblePieces) : _List_Nil;
 		var effectiveScale = model.svgScale * model.zoomLevel;
 		var effectiveHoverId = (!_Utils_eq(model.draggingPieceId, $elm$core$Maybe$Nothing)) ? model.draggingPieceId : model.hoveredPieceId;
@@ -10678,7 +10679,6 @@ var $author$project$Main$viewPdfTools = F2(
 						]))
 				]));
 	});
-var $author$project$Main$OutlineColorTarget = {$: 'OutlineColorTarget'};
 var $author$project$Main$ToggleOutlines = function (a) {
 	return {$: 'ToggleOutlines', a: a};
 };
@@ -10809,7 +10809,7 @@ var $author$project$Main$viewPiecesTools = function (model) {
 								A2(
 								$elm$html$Html$Attributes$style,
 								'background-color',
-								A2($author$project$Main$waveColor, model.outlineHue, model.outlineOpacity)),
+								A2($author$project$Main$waveColor, model.outlineHue, 1.0)),
 								A2(
 								$elm$html$Html$Events$stopPropagationOn,
 								'mousedown',
@@ -11110,9 +11110,9 @@ var $author$project$Main$viewWavePieceInfoBox = function (model) {
 				var _v3 = waveOfPiece(pid);
 				if (_v3.$ === 'Just') {
 					var waveNum = _v3.a;
-					return 'Wave ' + ($elm$core$String$fromInt(waveNum) + (', position ' + $elm$core$String$fromInt(pos)));
+					return 'Wave ' + ($elm$core$String$fromInt(waveNum) + (', pos ' + $elm$core$String$fromInt(pos)));
 				} else {
-					return 'Position ' + $elm$core$String$fromInt(pos);
+					return 'pos ' + $elm$core$String$fromInt(pos);
 				}
 			} else {
 				return 'Unassigned';
@@ -11129,7 +11129,7 @@ var $author$project$Main$viewWavePieceInfoBox = function (model) {
 			$elm$html$Html$div,
 			_List_fromArray(
 				[
-					$elm$html$Html$Attributes$class('piece-info')
+					$elm$html$Html$Attributes$class('stats')
 				]),
 			function () {
 				if (maybePiece.$ === 'Just') {
@@ -11140,34 +11140,82 @@ var $author$project$Main$viewWavePieceInfoBox = function (model) {
 							$elm$html$Html$div,
 							_List_fromArray(
 								[
-									$elm$html$Html$Attributes$class('piece-info-label')
+									$elm$html$Html$Attributes$class('row')
 								]),
 							_List_fromArray(
 								[
-									$elm$html$Html$text(posLabel)
+									A2(
+									$elm$html$Html$span,
+									_List_Nil,
+									_List_fromArray(
+										[
+											$elm$html$Html$text('Position')
+										])),
+									A2(
+									$elm$html$Html$span,
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$class('val')
+										]),
+									_List_fromArray(
+										[
+											$elm$html$Html$text(posLabel)
+										]))
 								])),
 							A2(
 							$elm$html$Html$div,
 							_List_fromArray(
 								[
-									$elm$html$Html$Attributes$class('piece-info-row')
+									$elm$html$Html$Attributes$class('row')
 								]),
 							_List_fromArray(
 								[
-									$elm$html$Html$text(
-									'Piece ID: ' + $elm$core$String$fromInt(pid))
+									A2(
+									$elm$html$Html$span,
+									_List_Nil,
+									_List_fromArray(
+										[
+											$elm$html$Html$text('Piece ID')
+										])),
+									A2(
+									$elm$html$Html$span,
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$class('val')
+										]),
+									_List_fromArray(
+										[
+											$elm$html$Html$text(
+											$elm$core$String$fromInt(pid))
+										]))
 								])),
 							A2(
 							$elm$html$Html$div,
 							_List_fromArray(
 								[
-									$elm$html$Html$Attributes$class('piece-info-row')
+									$elm$html$Html$Attributes$class('row')
 								]),
 							_List_fromArray(
 								[
-									$elm$html$Html$text(
-									'Bricks: ' + $elm$core$String$fromInt(
-										$elm$core$List$length(piece.brickIds)))
+									A2(
+									$elm$html$Html$span,
+									_List_Nil,
+									_List_fromArray(
+										[
+											$elm$html$Html$text('Bricks')
+										])),
+									A2(
+									$elm$html$Html$span,
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$class('val')
+										]),
+									_List_fromArray(
+										[
+											$elm$html$Html$text(
+											$elm$core$String$fromInt(
+												$elm$core$List$length(piece.brickIds)))
+										]))
 								]))
 						]);
 				} else {
@@ -11177,22 +11225,54 @@ var $author$project$Main$viewWavePieceInfoBox = function (model) {
 							$elm$html$Html$div,
 							_List_fromArray(
 								[
-									$elm$html$Html$Attributes$class('piece-info-label')
+									$elm$html$Html$Attributes$class('row')
 								]),
 							_List_fromArray(
 								[
-									$elm$html$Html$text(posLabel)
+									A2(
+									$elm$html$Html$span,
+									_List_Nil,
+									_List_fromArray(
+										[
+											$elm$html$Html$text('Position')
+										])),
+									A2(
+									$elm$html$Html$span,
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$class('val')
+										]),
+									_List_fromArray(
+										[
+											$elm$html$Html$text(posLabel)
+										]))
 								])),
 							A2(
 							$elm$html$Html$div,
 							_List_fromArray(
 								[
-									$elm$html$Html$Attributes$class('piece-info-row')
+									$elm$html$Html$Attributes$class('row')
 								]),
 							_List_fromArray(
 								[
-									$elm$html$Html$text(
-									'Piece ID: ' + $elm$core$String$fromInt(pid))
+									A2(
+									$elm$html$Html$span,
+									_List_Nil,
+									_List_fromArray(
+										[
+											$elm$html$Html$text('Piece ID')
+										])),
+									A2(
+									$elm$html$Html$span,
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$class('val')
+										]),
+									_List_fromArray(
+										[
+											$elm$html$Html$text(
+											$elm$core$String$fromInt(pid))
+										]))
 								]))
 						]);
 				}
@@ -11202,11 +11282,30 @@ var $author$project$Main$viewWavePieceInfoBox = function (model) {
 			$elm$html$Html$div,
 			_List_fromArray(
 				[
-					$elm$html$Html$Attributes$class('piece-info-empty')
+					$elm$html$Html$Attributes$class('stats')
 				]),
 			_List_fromArray(
 				[
-					$elm$html$Html$text('Hover a piece to inspect')
+					A2(
+					$elm$html$Html$div,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('row')
+						]),
+					_List_fromArray(
+						[
+							A2(
+							$elm$html$Html$span,
+							_List_fromArray(
+								[
+									A2($elm$html$Html$Attributes$style, 'color', '#aaa'),
+									A2($elm$html$Html$Attributes$style, 'font-style', 'italic')
+								]),
+							_List_fromArray(
+								[
+									$elm$html$Html$text('Hover a piece to inspect')
+								]))
+						]))
 				]));
 	}
 };

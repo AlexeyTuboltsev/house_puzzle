@@ -164,7 +164,6 @@ type alias Model =
     , colorPicking : Maybe { target : ColorPickTarget, panelX : Float, panelY : Float, hueOnly : Bool }
     , gridHue : Float
     , outlineHue : Float
-    , outlineOpacity : Float
     , svgScale : Float
     , availableH : Float
     , houseUnitsHigh : Float
@@ -208,7 +207,6 @@ init _ =
       , colorPicking = Nothing
       , gridHue = 35.0
       , outlineHue = 210.0
-      , outlineOpacity = 0.7
       , svgScale = 1.0
       , availableH = 900.0
       , houseUnitsHigh = 15.5
@@ -1167,7 +1165,7 @@ update msg model =
         StartColorPick target px py ->
             let
                 hueOnly =
-                    target == GridColorTarget
+                    target == GridColorTarget || target == OutlineColorTarget
 
                 ( currentHue, currentOpacity ) =
                     case target of
@@ -1182,7 +1180,7 @@ update msg model =
                             ( model.gridHue, 1.0 )
 
                         OutlineColorTarget ->
-                            ( model.outlineHue, model.outlineOpacity )
+                            ( model.outlineHue, 1.0 )
 
                 innerH =
                     if hueOnly then 20 else 96
@@ -1234,7 +1232,7 @@ update msg model =
                             ( { model | gridHue = newHue }, Cmd.none )
 
                         OutlineColorTarget ->
-                            ( { model | outlineHue = newHue, outlineOpacity = newOpacity }, Cmd.none )
+                            ( { model | outlineHue = newHue }, Cmd.none )
 
         EndColorPick ->
             ( { model | colorPicking = Nothing }, Cmd.none )
@@ -2002,7 +2000,7 @@ viewPiecesTools model =
                 , label [ for "showOutlines" ] [ text "Show piece outlines" ]
                 , span
                     [ class "wave-swatch wave-swatch-sm"
-                    , style "background-color" (waveColor model.outlineHue model.outlineOpacity)
+                    , style "background-color" (waveColor model.outlineHue 1.0)
                     , stopPropagationOn "mousedown"
                         (D.map2 (\mx my -> ( StartColorPick OutlineColorTarget mx my, True ))
                             (D.field "clientX" D.float)
@@ -2102,30 +2100,48 @@ viewWavePieceInfoBox model =
                         Just pos ->
                             case waveOfPiece pid of
                                 Just waveNum ->
-                                    "Wave " ++ String.fromInt waveNum ++ ", position " ++ String.fromInt pos
+                                    "Wave " ++ String.fromInt waveNum ++ ", pos " ++ String.fromInt pos
 
                                 Nothing ->
-                                    "Position " ++ String.fromInt pos
+                                    "pos " ++ String.fromInt pos
 
                         Nothing ->
                             "Unassigned"
             in
-            div [ class "piece-info" ]
+            div [ class "stats" ]
                 (case maybePiece of
                     Just piece ->
-                        [ div [ class "piece-info-label" ] [ text posLabel ]
-                        , div [ class "piece-info-row" ] [ text ("Piece ID: " ++ String.fromInt pid) ]
-                        , div [ class "piece-info-row" ] [ text ("Bricks: " ++ String.fromInt (List.length piece.brickIds)) ]
+                        [ div [ class "row" ]
+                            [ span [] [ text "Position" ]
+                            , span [ class "val" ] [ text posLabel ]
+                            ]
+                        , div [ class "row" ]
+                            [ span [] [ text "Piece ID" ]
+                            , span [ class "val" ] [ text (String.fromInt pid) ]
+                            ]
+                        , div [ class "row" ]
+                            [ span [] [ text "Bricks" ]
+                            , span [ class "val" ] [ text (String.fromInt (List.length piece.brickIds)) ]
+                            ]
                         ]
 
                     Nothing ->
-                        [ div [ class "piece-info-label" ] [ text posLabel ]
-                        , div [ class "piece-info-row" ] [ text ("Piece ID: " ++ String.fromInt pid) ]
+                        [ div [ class "row" ]
+                            [ span [] [ text "Position" ]
+                            , span [ class "val" ] [ text posLabel ]
+                            ]
+                        , div [ class "row" ]
+                            [ span [] [ text "Piece ID" ]
+                            , span [ class "val" ] [ text (String.fromInt pid) ]
+                            ]
                         ]
                 )
 
         Nothing ->
-            div [ class "piece-info-empty" ] [ text "Hover a piece to inspect" ]
+            div [ class "stats" ]
+                [ div [ class "row" ]
+                    [ span [ style "color" "#aaa", style "font-style" "italic" ] [ text "Hover a piece to inspect" ] ]
+                ]
 
 
 viewGridColorSwatch : Model -> Html Msg
@@ -2464,7 +2480,7 @@ viewMainSvg response model =
         -- Piece outlines (post-gen, pieces/waves mode only, not in edit)
         outlineLayer =
             if (not model.editMode) && isGenerated && model.showOutlines && (model.appMode == ModePieces || model.appMode == ModeWaves) then
-                List.map (viewPieceOutline (waveColor model.outlineHue model.outlineOpacity)) visiblePieces
+                List.map (viewPieceOutline (waveColor model.outlineHue 1.0)) visiblePieces
 
             else
                 []
