@@ -347,14 +347,19 @@ input.zoom-slider {
     position: absolute;
     inset: 0;
     background: #808080;
-    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 40%);
-    mask-image: linear-gradient(to bottom, transparent 0%, black 40%);
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 15%);
+    mask-image: linear-gradient(to bottom, transparent 0%, black 15%);
     pointer-events: none;
     z-index: 0;
 }
 .wave-tray.drag-over::before {
     background: color-mix(in srgb, #808080, rgba(60,120,255,0.35));
     outline: 1px dashed rgba(60,120,255,0.6);
+}
+.wave-tray-bg {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
 }
 .wave-tray-scroll {
     position: absolute;
@@ -368,7 +373,7 @@ input.zoom-slider {
     align-items: flex-end;
     gap: 4px;
     padding: 0 50% 8px;
-    z-index: 1;
+    z-index: 2;
     pointer-events: none;
 }
 .wave-tray-scroll::-webkit-scrollbar { height: 4px; }
@@ -411,6 +416,33 @@ input.zoom-slider {
     margin: 2px 1px;
     flex-shrink: 0;
 }
+.group-xn-badge {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    background: rgba(0,0,0,0.6);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 4px;
+    border-radius: 3px;
+    pointer-events: none;
+    user-select: none;
+}
+.group-xn-badge-bottom {
+    top: auto;
+    bottom: 2px;
+}
+.group-thumb {
+    flex-shrink: 0;
+    position: relative;
+    border: 2px solid transparent;
+    border-radius: 3px;
+    cursor: pointer;
+    overflow: hidden;
+}
+.group-thumb:hover { border-color: rgba(40,100,220,0.6); }
+.group-thumb img { width: 100%; height: 100%; display: block; }
 
 /* ── Tools column ───────────────────────────────────────────────────────────── */
 .tools-pane {
@@ -638,7 +670,7 @@ input.zoom-slider {
 
 /* ── Wave rows ─────────────────────────────────────────────────────────────── */
 .wave-row { border-bottom: 1px solid rgba(0,0,0,0.1); padding: 4px 0; }
-.wave-row.selected .wave-row-header { background: rgba(0,0,0,0.06); }
+.wave-row.selected .wave-row-header { background: linear-gradient(135deg, #e8f0fb 0%, #f4f7fd 100%); outline: 1px solid #b8cfe8; }
 .wave-row.drag-over { outline: 1px dashed rgba(60,120,255,0.6); background: rgba(60,120,255,0.07); }
 /* Wave-colored piece count labels */
 .wave-row.wc-0 .wave-piece-count-label { color: rgb(180,40,40); }
@@ -772,7 +804,7 @@ input.zoom-slider {
     color: rgba(0,0,0,0.4);
 }
 .wave-label.unassigned-label { color: rgba(0,0,0,0.35); font-weight: 400; }
-.wave-row.selected .wave-row-header { background: rgba(0,0,0,0.06); }
+.wave-row.selected .wave-row-header { background: linear-gradient(135deg, #e8f0fb 0%, #f4f7fd 100%); outline: 1px solid #b8cfe8; }
 
 /* ── Wave piece thumbnails (in waves list) ─────────────────────────────────── */
 .wave-pieces {
@@ -800,6 +832,18 @@ input.zoom-slider {
 .piece-thumb:active { cursor: grabbing; }
 .piece-thumb:hover, .piece-thumb.hovered { border-color: rgba(40,100,220,0.5); }
 .piece-thumb-label { font-size: 9px; color: #aaa; text-align: center; margin-top: 1px; }
+.piece-thumb-pos {
+    position: absolute;
+    top: 2px;
+    left: 3px;
+    font-size: 10px;
+    font-weight: 700;
+    color: #fff;
+    line-height: 1;
+    text-shadow: 0 0 3px #000, 0 0 3px #000;
+    pointer-events: none;
+    user-select: none;
+}
 .piece-thumb-remove {
     display: none;
     position: absolute;

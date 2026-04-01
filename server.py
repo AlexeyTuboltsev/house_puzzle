@@ -201,7 +201,19 @@ def api_load_pdf():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-    # Convert to engine Brick objects
+    # Convert to engine Brick objects, deduplicating bricks with identical bbox
+    # (the AI file can contain two layers at the exact same position — keep the
+    # first occurrence and drop subsequent ones so the puzzle engine never sees
+    # phantom "ghost" bricks that inflate piece brick-counts)
+    seen_bbox: set[tuple] = set()
+    deduped_layers: list = []
+    for bl in house.bricks:
+        key = (bl.x, bl.y, bl.width, bl.height)
+        if key not in seen_bbox:
+            seen_bbox.add(key)
+            deduped_layers.append(bl)
+    house.bricks = deduped_layers
+
     bricks = [
         Brick(id=bl.index, x=bl.x, y=bl.y,
               width=bl.width, height=bl.height, brick_type=bl.layer_type)
