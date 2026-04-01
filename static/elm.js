@@ -8496,24 +8496,41 @@ var $author$project$Main$update = F2(
 				var waveId = msg.a;
 				var px = msg.b;
 				var py = msg.c;
+				var _v26 = function () {
+					var _v27 = $elm$core$List$head(
+						A2(
+							$elm$core$List$filter,
+							function (w) {
+								return _Utils_eq(w.id, waveId);
+							},
+							model.waves));
+					if (_v27.$ === 'Just') {
+						var wv = _v27.a;
+						return _Utils_Tuple2((px - 8) - ((wv.hue / 360) * 200), (py - 8) - ((1 - wv.opacity) * 80));
+					} else {
+						return _Utils_Tuple2(px - 8, py - 96);
+					}
+				}();
+				var panelX = _v26.a;
+				var panelY = _v26.b;
 				return _Utils_Tuple2(
 					_Utils_update(
 						model,
 						{
 							colorPicking: $elm$core$Maybe$Just(
-								{panelX: px, panelY: py, waveId: waveId})
+								{panelX: panelX, panelY: panelY, waveId: waveId})
 						}),
 					$elm$core$Platform$Cmd$none);
 			case 'ColorPickMove':
 				var mx = msg.a;
 				var my = msg.b;
-				var _v26 = model.colorPicking;
-				if (_v26.$ === 'Nothing') {
+				var _v28 = model.colorPicking;
+				if (_v28.$ === 'Nothing') {
 					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 				} else {
-					var cp = _v26.a;
-					var newOpacity = A3($elm$core$Basics$clamp, 0.05, 1.0, 1.0 - ((my - cp.panelY) / 80));
-					var newHue = A3($elm$core$Basics$clamp, 0, 360, ((mx - cp.panelX) / 200) * 360);
+					var cp = _v28.a;
+					var newOpacity = A3($elm$core$Basics$clamp, 0.05, 1.0, 1.0 - (((my - cp.panelY) - 8) / 80));
+					var newHue = A3($elm$core$Basics$clamp, 0, 360, (((mx - cp.panelX) - 8) / 200) * 360);
 					var updatedWaves = A2(
 						$elm$core$List$map,
 						function (w) {
@@ -11793,11 +11810,18 @@ var $author$project$Main$viewColorPickerPanel = function (model) {
 					A2(
 					$elm$html$Html$Attributes$style,
 					'top',
-					$elm$core$String$fromFloat(cp.panelY - 80) + 'px'),
-					A2($elm$html$Html$Attributes$style, 'width', '200px'),
-					A2($elm$html$Html$Attributes$style, 'height', '80px')
+					$elm$core$String$fromFloat(cp.panelY) + 'px')
 				]),
-			_List_Nil);
+			_List_fromArray(
+				[
+					A2(
+					$elm$html$Html$div,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('color-picker-inner')
+						]),
+					_List_Nil)
+				]));
 	}
 };
 var $author$project$Main$ModeExport = {$: 'ModeExport'};

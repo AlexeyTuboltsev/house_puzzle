@@ -1153,7 +1153,19 @@ update msg model =
                     ( model, Cmd.none )
 
         StartColorPick waveId px py ->
-            ( { model | colorPicking = Just { waveId = waveId, panelX = px, panelY = py } }, Cmd.none )
+            let
+                ( panelX, panelY ) =
+                    case List.filter (\w -> w.id == waveId) model.waves |> List.head of
+                        Just wv ->
+                            -- Position panel so cursor falls on the current hue/opacity point
+                            ( px - 8 - (wv.hue / 360) * 200
+                            , py - 8 - (1 - wv.opacity) * 80
+                            )
+
+                        Nothing ->
+                            ( px - 8, py - 96 )
+            in
+            ( { model | colorPicking = Just { waveId = waveId, panelX = panelX, panelY = panelY } }, Cmd.none )
 
         ColorPickMove mx my ->
             case model.colorPicking of
@@ -1163,10 +1175,10 @@ update msg model =
                 Just cp ->
                     let
                         newHue =
-                            clamp 0 360 ((mx - cp.panelX) / 200 * 360)
+                            clamp 0 360 ((mx - cp.panelX - 8) / 200 * 360)
 
                         newOpacity =
-                            clamp 0.05 1.0 (1.0 - (my - cp.panelY) / 80)
+                            clamp 0.05 1.0 (1.0 - (my - cp.panelY - 8) / 80)
 
                         updatedWaves =
                             List.map
@@ -1461,11 +1473,9 @@ viewColorPickerPanel model =
             div
                 [ class "color-picker-panel"
                 , style "left" (String.fromFloat cp.panelX ++ "px")
-                , style "top" (String.fromFloat (cp.panelY - 80) ++ "px")
-                , style "width" "200px"
-                , style "height" "80px"
+                , style "top" (String.fromFloat cp.panelY ++ "px")
                 ]
-                []
+                [ div [ class "color-picker-inner" ] [] ]
 
 
 viewBody : Model -> Html Msg
