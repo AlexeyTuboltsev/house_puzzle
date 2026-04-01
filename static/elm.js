@@ -8506,9 +8506,9 @@ var $author$project$Main$update = F2(
 							model.waves));
 					if (_v27.$ === 'Just') {
 						var wv = _v27.a;
-						return _Utils_Tuple2((px - 8) - ((wv.hue / 360) * 200), (py - 8) - ((1 - wv.opacity) * 80));
+						return _Utils_Tuple2((px - 10) - ((wv.hue / 360) * 240), (py - 10) - ((1 - wv.opacity) * 96));
 					} else {
-						return _Utils_Tuple2(px - 8, py - 96);
+						return _Utils_Tuple2(px - 10, py - 116);
 					}
 				}();
 				var panelX = _v26.a;
@@ -8529,8 +8529,8 @@ var $author$project$Main$update = F2(
 					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 				} else {
 					var cp = _v28.a;
-					var newOpacity = A3($elm$core$Basics$clamp, 0.05, 1.0, 1.0 - (((my - cp.panelY) - 8) / 80));
-					var newHue = A3($elm$core$Basics$clamp, 0, 360, (((mx - cp.panelX) - 8) / 200) * 360);
+					var newOpacity = A3($elm$core$Basics$clamp, 0.05, 1.0, 1.0 - (((my - cp.panelY) - 10) / 96));
+					var newHue = A3($elm$core$Basics$clamp, 0, 360, (((mx - cp.panelX) - 10) / 240) * 360);
 					var updatedWaves = A2(
 						$elm$core$List$map,
 						function (w) {
@@ -11820,7 +11820,16 @@ var $author$project$Main$viewColorPickerPanel = function (model) {
 						[
 							$elm$html$Html$Attributes$class('color-picker-inner')
 						]),
-					_List_Nil)
+					_List_fromArray(
+						[
+							A2(
+							$elm$html$Html$div,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('color-picker-gradient')
+								]),
+							_List_Nil)
+						]))
 				]));
 	}
 };

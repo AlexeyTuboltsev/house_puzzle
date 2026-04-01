@@ -1158,12 +1158,12 @@ update msg model =
                     case List.filter (\w -> w.id == waveId) model.waves |> List.head of
                         Just wv ->
                             -- Position panel so cursor falls on the current hue/opacity point
-                            ( px - 8 - (wv.hue / 360) * 200
-                            , py - 8 - (1 - wv.opacity) * 80
+                            ( px - 10 - (wv.hue / 360) * 240
+                            , py - 10 - (1 - wv.opacity) * 96
                             )
 
                         Nothing ->
-                            ( px - 8, py - 96 )
+                            ( px - 10, py - 116 )
             in
             ( { model | colorPicking = Just { waveId = waveId, panelX = panelX, panelY = panelY } }, Cmd.none )
 
@@ -1175,10 +1175,10 @@ update msg model =
                 Just cp ->
                     let
                         newHue =
-                            clamp 0 360 ((mx - cp.panelX - 8) / 200 * 360)
+                            clamp 0 360 ((mx - cp.panelX - 10) / 240 * 360)
 
                         newOpacity =
-                            clamp 0.05 1.0 (1.0 - (my - cp.panelY - 8) / 80)
+                            clamp 0.05 1.0 (1.0 - (my - cp.panelY - 10) / 96)
 
                         updatedWaves =
                             List.map
@@ -1475,7 +1475,9 @@ viewColorPickerPanel model =
                 , style "left" (String.fromFloat cp.panelX ++ "px")
                 , style "top" (String.fromFloat cp.panelY ++ "px")
                 ]
-                [ div [ class "color-picker-inner" ] [] ]
+                [ div [ class "color-picker-inner" ]
+                    [ div [ class "color-picker-gradient" ] [] ]
+                ]
 
 
 viewBody : Model -> Html Msg
