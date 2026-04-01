@@ -703,10 +703,14 @@ def api_export():
     export_canvas_w = round(house.canvas_width * export_scale)
 
     # Resize sprites to target PPU=50 to match existing houses.
+    # Use screen-frame height to pin house height in Unity units (15.5 units = screen frame).
     TARGET_PPU = 50
-    TARGET_WORLD_WIDTH = 11.4
-    target_canvas_w = TARGET_PPU * TARGET_WORLD_WIDTH  # 570
-    scale = target_canvas_w / export_canvas_w
+    if house.screen_frame_height_px > 0:
+        scale = TARGET_PPU * 15.5 / (house.screen_frame_height_px * export_scale)
+    else:
+        TARGET_WORLD_WIDTH = 11.4
+        target_canvas_w = TARGET_PPU * TARGET_WORLD_WIDTH  # 570
+        scale = target_canvas_w / export_canvas_w
 
     from ai_parser import extract_ai_layers_batch, compose_ai_bricks_png
     export_dir = Path(tempfile.mkdtemp())
