@@ -677,13 +677,16 @@ input.zoom-slider {
 }
 /* Color swatch button */
 .wave-swatch {
-    width: 18px;
-    height: 18px;
-    border-radius: 3px;
-    border: 1px solid rgba(0,0,0,0.3);
+    width: 26px;
+    height: 26px;
+    border-radius: 4px;
+    border: 1px solid rgba(0,0,0,0.22);
     cursor: pointer;
     flex-shrink: 0;
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background-clip: padding-box;
 }
 .wave-swatch:hover { border-color: rgba(0,0,0,0.6); }
 
