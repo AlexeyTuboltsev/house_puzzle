@@ -403,6 +403,7 @@ def build_house_data(
     spacing: float = 12.0,  # gap before this house in scrollable list (Unity units)
     piece_images: dict | None = None,  # {piece_id: PIL Image} for collider gen
     dp_epsilon: float = 0.5,  # Douglas-Peucker simplification tolerance (pixels)
+    groups: list | None = None,  # [{"pieceIds": [0, 3]}, ...] — pieces that move together
 ) -> dict:
     """Build the complete house_data.json dict for Unity import.
 
@@ -528,6 +529,20 @@ def build_house_data(
     else:
         scaling_factor = 2.0
 
+    # SameBlocksSettings: each entry is the list of block indices in the same group.
+    # Pieces in the same editor group get identical lists; ungrouped pieces get [i].
+    # piece.id == index in blocks array.
+    piece_to_group: dict[int, list[int]] = {}
+    if groups:
+        for g in groups:
+            ids = g.get("pieceIds", [])
+            for pid in ids:
+                piece_to_group[pid] = ids
+    same_blocks_settings = []
+    for piece in pieces:
+        group_ids = piece_to_group.get(piece.id)
+        same_blocks_settings.append(group_ids if group_ids is not None else [piece.id])
+
     # Spacing is passed as a parameter (default 12.0 Unity units).
     # Caller can override for first-in-location (0) or custom gaps.
 
@@ -546,6 +561,7 @@ def build_house_data(
         "blocks": blocks,
         "steps": steps,
         "spriteFolder": "pieces/",
+        "sameBlocksSettings": same_blocks_settings,
     }
     if colliders:
         result["colliders"] = colliders

@@ -958,10 +958,20 @@ update msg model =
                 exportHeight =
                     Maybe.withDefault 900 (String.toInt model.exportCanvasHeight)
 
+                groupsJson =
+                    E.list
+                        (\g ->
+                            E.object
+                                [ ( "pieceIds", E.list E.int g.pieceIds )
+                                ]
+                        )
+                        model.groups
+
                 payload =
                     E.object
                         [ ( "waves", wavesJson )
                         , ( "outlines", outlinesJson )
+                        , ( "groups", groupsJson )
                         , ( "export_canvas_height", E.int exportHeight )
                         , ( "placement"
                           , E.object

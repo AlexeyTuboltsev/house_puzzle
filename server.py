@@ -786,6 +786,12 @@ def api_export():
             bg_src = Image.open(str(bg_src_path)).convert("RGBA")
             _write_scaled(zf, "background.png", bg_src)
 
+        # lights.png — AI lights layer overlay
+        lights_src_path = _state["extracted_dir"] / "lights.png"
+        if lights_src_path.exists():
+            lights_src = Image.open(str(lights_src_path)).convert("RGBA")
+            _write_scaled(zf, "lights.png", lights_src)
+
         # scheme.png — rasterize the vetted SVG outline paths from the frontend.
         # These are the exact paths the user sees and approves in the blueprint view.
         frontend_outlines = data.get("outlines", [])
@@ -821,8 +827,9 @@ def api_export():
         blue.putalpha(mask_closed)
         _write_scaled(zf, "blue.png", blue)
 
-        # Unity house_data.json (blocks, steps, colliders)
+        # Unity house_data.json (blocks, steps, colliders, sameBlocksSettings)
         placement = data.get("placement", {})
+        groups_data = data.get("groups", [])
         from unity_export import build_house_data
         house_data = build_house_data(
             pieces=pieces,
@@ -837,6 +844,7 @@ def api_export():
             house_name=placement.get("houseName", "NewHouse"),
             spacing=float(placement.get("spacing", 12.0)),
             piece_images=piece_images,
+            groups=groups_data,
         )
         zf.writestr("house_data.json", json.dumps(house_data, indent=2))
 

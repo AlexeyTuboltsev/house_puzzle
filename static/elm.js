@@ -8274,6 +8274,18 @@ var $author$project$Main$update = F2(
 								]));
 					},
 					model.pieces);
+				var groupsJson = A2(
+					$elm$json$Json$Encode$list,
+					function (g) {
+						return $elm$json$Json$Encode$object(
+							_List_fromArray(
+								[
+									_Utils_Tuple2(
+									'pieceIds',
+									A2($elm$json$Json$Encode$list, $elm$json$Json$Encode$int, g.pieceIds))
+								]));
+					},
+					model.groups);
 				var exportHeight = A2(
 					$elm$core$Maybe$withDefault,
 					900,
@@ -8283,6 +8295,7 @@ var $author$project$Main$update = F2(
 						[
 							_Utils_Tuple2('waves', wavesJson),
 							_Utils_Tuple2('outlines', outlinesJson),
+							_Utils_Tuple2('groups', groupsJson),
 							_Utils_Tuple2(
 							'export_canvas_height',
 							$elm$json$Json$Encode$int(exportHeight)),
