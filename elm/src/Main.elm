@@ -271,7 +271,6 @@ type Msg
     | ToggleWaveVisibility Int
     | SetHoveredPiece (Maybe Int)
     | SelectPiece Int
-    | SelectAndEdit Int
     | SelectWave (Maybe Int)
     | AssignPieceToWave Int
     | RemovePieceFromWave Int Int
@@ -620,21 +619,6 @@ update msg model =
               }
             , Cmd.none
             )
-
-        SelectAndEdit pid ->
-            case List.filter (\p -> p.id == pid) model.pieces |> List.head of
-                Nothing ->
-                    ( model, Cmd.none )
-
-                Just piece ->
-                    ( { model
-                        | selectedPieceId = Just pid
-                        , editMode = True
-                        , editBrickIds = piece.brickIds
-                        , editOriginalBrickIds = piece.brickIds
-                      }
-                    , Cmd.none
-                    )
 
         SelectWave mwid ->
             ( { model | selectedWaveId = mwid }, Cmd.none )
@@ -2261,6 +2245,11 @@ viewPiecesTools model =
             viewEditControls model
 
          else
+            let
+                selectedPiece =
+                    model.selectedPieceId
+                        |> Maybe.andThen (\pid -> model.pieces |> List.filter (\p -> p.id == pid) |> List.head)
+            in
             [ div [ class "checkbox-group" ]
                 [ input [ type_ "checkbox", id "showOutlines", checked model.showOutlines, onCheck ToggleOutlines ] []
                 , label [ for "showOutlines" ] [ text "Show piece outlines" ]
@@ -2281,31 +2270,10 @@ viewPiecesTools model =
                 , label [ for "showGrid" ] [ text "Show grid" ]
                 , viewGridColorSwatch model
                 ]
-            ]
-        )
-
-
-viewPieceInfoBox : Model -> Html Msg
-viewPieceInfoBox model =
-    let
-        focusId =
-            case model.hoveredPieceId of
-                Just pid ->
-                    Just pid
-
-                Nothing ->
-                    model.selectedPieceId
-    in
-    case focusId of
-        Just pid ->
-            let
-                maybePiece =
-                    model.pieces |> List.filter (\p -> p.id == pid) |> List.head
-            in
-            div [ class "piece-info" ]
-                (case maybePiece of
-                    Just piece ->
-                        [ div [ class "piece-info-row" ] [ text ("Piece ID: " ++ String.fromInt pid) ]
+            , case selectedPiece of
+                Just piece ->
+                    div [ class "piece-info" ]
+                        [ div [ class "piece-info-row" ] [ text ("Piece ID: " ++ String.fromInt piece.id) ]
                         , div [ class "piece-info-row" ] [ text ("Bricks: " ++ String.fromInt (List.length piece.brickIds)) ]
                         , div [ class "piece-info-row" ]
                             [ text ("Brick IDs: " ++ String.join ", " (List.map String.fromInt piece.brickIds)) ]
@@ -2317,19 +2285,10 @@ viewPieceInfoBox model =
                             [ text "Edit Piece" ]
                         ]
 
-                    Nothing ->
-                        [ div [ class "piece-info-label" ] [ text ("Piece #" ++ String.fromInt pid) ]
-                        , button
-                            [ class "primary"
-                            , onClick StartEdit
-                            , disabled model.recomputing
-                            ]
-                            [ text "Edit Piece" ]
-                        ]
-                )
-
-        Nothing ->
-            div [ class "piece-info-empty" ] [ text "Hover a piece to inspect" ]
+                Nothing ->
+                    div [ class "piece-info-empty" ] [ text "Click a piece to select" ]
+            ]
+        )
 
 
 viewWavePieceInfoBox : Model -> Html Msg
@@ -3343,9 +3302,6 @@ viewPieceOverlay appMode hoveredId selectedId selectedWaveId waves groups select
                 case ( maybeGroup, selectedWaveId ) of
                     ( Just g, Just wid ) -> AssignGroupToWave g.id wid
                     _ -> AssignPieceToWave piece.id
-
-            else if appMode == ModePieces then
-                SelectAndEdit piece.id
 
             else
                 SelectPiece piece.id

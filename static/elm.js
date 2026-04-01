@@ -7793,30 +7793,6 @@ var $author$project$Main$update = F2(
 								$elm$core$Maybe$Just(pid)) ? $elm$core$Maybe$Nothing : $elm$core$Maybe$Just(pid)
 						}),
 					$elm$core$Platform$Cmd$none);
-			case 'SelectAndEdit':
-				var pid = msg.a;
-				var _v7 = $elm$core$List$head(
-					A2(
-						$elm$core$List$filter,
-						function (p) {
-							return _Utils_eq(p.id, pid);
-						},
-						model.pieces));
-				if (_v7.$ === 'Nothing') {
-					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
-				} else {
-					var piece = _v7.a;
-					return _Utils_Tuple2(
-						_Utils_update(
-							model,
-							{
-								editBrickIds: piece.brickIds,
-								editMode: true,
-								editOriginalBrickIds: piece.brickIds,
-								selectedPieceId: $elm$core$Maybe$Just(pid)
-							}),
-						$elm$core$Platform$Cmd$none);
-				}
 			case 'SelectWave':
 				var mwid = msg.a;
 				return _Utils_Tuple2(
@@ -7826,11 +7802,11 @@ var $author$project$Main$update = F2(
 					$elm$core$Platform$Cmd$none);
 			case 'AssignPieceToWave':
 				var pid = msg.a;
-				var _v8 = model.selectedWaveId;
-				if (_v8.$ === 'Nothing') {
+				var _v7 = model.selectedWaveId;
+				if (_v7.$ === 'Nothing') {
 					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 				} else {
-					var wid = _v8.a;
+					var wid = _v7.a;
 					var targetWave = $elm$core$List$head(
 						A2(
 							$elm$core$List$filter,
@@ -7940,8 +7916,8 @@ var $author$project$Main$update = F2(
 					$elm$core$List$head(
 						A2(
 							$elm$core$List$filter,
-							function (_v10) {
-								var w = _v10.b;
+							function (_v9) {
+								var w = _v9.b;
 								return _Utils_eq(w.id, wid);
 							},
 							indexed)));
@@ -8013,22 +7989,22 @@ var $author$project$Main$update = F2(
 						{selectedWaveId: newSelectedWaveId, waves: renumbered}),
 					$elm$core$Platform$Cmd$none);
 			case 'StartEdit':
-				var _v11 = model.selectedPieceId;
-				if (_v11.$ === 'Nothing') {
+				var _v10 = model.selectedPieceId;
+				if (_v10.$ === 'Nothing') {
 					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 				} else {
-					var pid = _v11.a;
-					var _v12 = $elm$core$List$head(
+					var pid = _v10.a;
+					var _v11 = $elm$core$List$head(
 						A2(
 							$elm$core$List$filter,
 							function (p) {
 								return _Utils_eq(p.id, pid);
 							},
 							model.pieces));
-					if (_v12.$ === 'Nothing') {
+					if (_v11.$ === 'Nothing') {
 						return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 					} else {
-						var piece = _v12.a;
+						var piece = _v11.a;
 						return _Utils_Tuple2(
 							_Utils_update(
 								model,
@@ -8053,15 +8029,15 @@ var $author$project$Main$update = F2(
 						{editBrickIds: newList}),
 					$elm$core$Platform$Cmd$none);
 			case 'SaveEdit':
-				var _v13 = model.selectedPieceId;
-				if (_v13.$ === 'Nothing') {
+				var _v12 = model.selectedPieceId;
+				if (_v12.$ === 'Nothing') {
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
 							{editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil}),
 						$elm$core$Platform$Cmd$none);
 				} else {
-					var editedPieceId = _v13.a;
+					var editedPieceId = _v12.a;
 					var newBrickIds = model.editBrickIds;
 					var removedBrickIds = A2(
 						$elm$core$Maybe$withDefault,
@@ -8115,9 +8091,9 @@ var $author$project$Main$update = F2(
 						F2(
 							function (i, bid) {
 								var newId = (maxId + i) + 1;
-								var _v14 = A2($elm$core$Dict$get, bid, model.bricksById);
-								if (_v14.$ === 'Just') {
-									var brick = _v14.a;
+								var _v13 = A2($elm$core$Dict$get, bid, model.bricksById);
+								if (_v13.$ === 'Just') {
+									var brick = _v13.a;
 									return {
 										brickIds: _List_fromArray(
 											[bid]),
@@ -8209,9 +8185,9 @@ var $author$project$Main$update = F2(
 					var updatedPieces = A2(
 						$elm$core$List$map,
 						function (p) {
-							var _v15 = A2($elm$core$Dict$get, p.id, polyDict);
-							if (_v15.$ === 'Just') {
-								var poly = _v15.a;
+							var _v14 = A2($elm$core$Dict$get, p.id, polyDict);
+							if (_v14.$ === 'Just') {
+								var poly = _v14.a;
 								return _Utils_update(
 									p,
 									{polygon: poly});
@@ -8242,9 +8218,9 @@ var $author$project$Main$update = F2(
 			case 'RequestExport':
 				var wavesJson = A2(
 					$elm$json$Json$Encode$list,
-					function (_v17) {
-						var idx = _v17.a;
-						var wv = _v17.b;
+					function (_v16) {
+						var idx = _v16.a;
+						var wv = _v16.b;
 						return $elm$json$Json$Encode$object(
 							_List_fromArray(
 								[
@@ -8267,9 +8243,9 @@ var $author$project$Main$update = F2(
 									'points',
 									A2(
 										$elm$json$Json$Encode$list,
-										function (_v16) {
-											var x = _v16.a;
-											var y = _v16.b;
+										function (_v15) {
+											var x = _v15.a;
+											var y = _v15.b;
 											return A2(
 												$elm$json$Json$Encode$list,
 												$elm$json$Json$Encode$float,
@@ -8395,15 +8371,15 @@ var $author$project$Main$update = F2(
 					$elm$core$Platform$Cmd$none);
 			case 'DropOnWave':
 				var targetWaveId = msg.a;
-				var _v18 = model.draggingPieceId;
-				if (_v18.$ === 'Nothing') {
+				var _v17 = model.draggingPieceId;
+				if (_v17.$ === 'Nothing') {
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
 							{dragInsertBeforeId: $elm$core$Maybe$Nothing, dragOverWaveId: $elm$core$Maybe$Nothing}),
 						$elm$core$Platform$Cmd$none);
 				} else {
-					var pid = _v18.a;
+					var pid = _v17.a;
 					var targetIsLocked = function () {
 						if (targetWaveId.$ === 'Just') {
 							var wid = targetWaveId.a;
@@ -8556,8 +8532,8 @@ var $author$project$Main$update = F2(
 							$elm$core$List$head(
 								A2(
 									$elm$core$List$filter,
-									function (_v23) {
-										var g = _v23.b;
+									function (_v22) {
+										var g = _v22.b;
 										return _Utils_eq(g.id, gid);
 									},
 									indexed))));
@@ -8594,11 +8570,11 @@ var $author$project$Main$update = F2(
 					$elm$core$Platform$Cmd$none);
 			case 'AssignPieceToGroup':
 				var pid = msg.a;
-				var _v24 = model.selectedGroupId;
-				if (_v24.$ === 'Nothing') {
+				var _v23 = model.selectedGroupId;
+				if (_v23.$ === 'Nothing') {
 					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 				} else {
-					var gid = _v24.a;
+					var gid = _v23.a;
 					var alreadyIn = A2(
 						$elm$core$List$any,
 						function (g) {
@@ -8653,15 +8629,15 @@ var $author$project$Main$update = F2(
 					$elm$core$Platform$Cmd$none);
 			case 'DropOnGroup':
 				var mgid = msg.a;
-				var _v25 = model.draggingPieceId;
-				if (_v25.$ === 'Nothing') {
+				var _v24 = model.draggingPieceId;
+				if (_v24.$ === 'Nothing') {
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
 							{dragOverGroupId: $elm$core$Maybe$Nothing}),
 						$elm$core$Platform$Cmd$none);
 				} else {
-					var pid = _v25.a;
+					var pid = _v24.a;
 					var updatedGroups = function () {
 						if (mgid.$ === 'Nothing') {
 							return A2(
@@ -8710,17 +8686,17 @@ var $author$project$Main$update = F2(
 			case 'AssignGroupToWave':
 				var gid = msg.a;
 				var wid = msg.b;
-				var _v27 = $elm$core$List$head(
+				var _v26 = $elm$core$List$head(
 					A2(
 						$elm$core$List$filter,
 						function (g) {
 							return _Utils_eq(g.id, gid);
 						},
 						model.groups));
-				if (_v27.$ === 'Nothing') {
+				if (_v26.$ === 'Nothing') {
 					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 				} else {
-					var group = _v27.a;
+					var group = _v26.a;
 					var targetLocked = A2(
 						$elm$core$List$any,
 						function (w) {
@@ -8790,9 +8766,9 @@ var $author$project$Main$update = F2(
 				var waveTrayHeight = (vh - waveTrayOffset) * 0.12;
 				var bottomPadding = 16;
 				var availableH = _Utils_eq(model.appMode, $author$project$Main$ModeWaves) ? ((vh - waveTrayHeight) - bottomPadding) : (vh - bottomPadding);
-				var _v28 = model.loadState;
-				if (_v28.$ === 'Loaded') {
-					var response = _v28.a;
+				var _v27 = model.loadState;
+				if (_v27.$ === 'Loaded') {
+					var response = _v27.a;
 					var svgH = response.canvas.height + 20;
 					var scale = (availableH * model.houseUnitsHigh) / (svgH * 15.5);
 					return _Utils_Tuple2(
@@ -8821,11 +8797,11 @@ var $author$project$Main$update = F2(
 			case 'LassoMove':
 				var x = msg.a;
 				var y = msg.b;
-				var _v29 = model.lasso;
-				if (_v29.$ === 'Nothing') {
+				var _v28 = model.lasso;
+				if (_v28.$ === 'Nothing') {
 					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 				} else {
-					var ls = _v29.a;
+					var ls = _v28.a;
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
@@ -8838,11 +8814,11 @@ var $author$project$Main$update = F2(
 						$elm$core$Platform$Cmd$none);
 				}
 			case 'LassoEnd':
-				var _v30 = model.lasso;
-				if (_v30.$ === 'Nothing') {
+				var _v29 = model.lasso;
+				if (_v29.$ === 'Nothing') {
 					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 				} else {
-					var ls = _v30.a;
+					var ls = _v29.a;
 					var isDrag = ($elm$core$Basics$abs(ls.x1 - ls.x0) > 5) || ($elm$core$Basics$abs(ls.y1 - ls.y0) > 5);
 					var cleared = _Utils_update(
 						model,
@@ -8850,11 +8826,11 @@ var $author$project$Main$update = F2(
 					if (!isDrag) {
 						return _Utils_Tuple2(cleared, $elm$core$Platform$Cmd$none);
 					} else {
-						var _v31 = model.selectedWaveId;
-						if (_v31.$ === 'Nothing') {
+						var _v30 = model.selectedWaveId;
+						if (_v30.$ === 'Nothing') {
 							return _Utils_Tuple2(cleared, $elm$core$Platform$Cmd$none);
 						} else {
-							var wid = _v31.a;
+							var wid = _v30.a;
 							var ly1 = A2($elm$core$Basics$max, ls.y0, ls.y1);
 							var ly0 = A2($elm$core$Basics$min, ls.y0, ls.y1);
 							var lx1 = A2($elm$core$Basics$max, ls.x0, ls.x1);
@@ -8959,9 +8935,9 @@ var $author$project$Main$update = F2(
 					$elm$core$Platform$Cmd$none);
 			case 'SetHouseUnitsHigh':
 				var s = msg.a;
-				var _v32 = $elm$core$String$toFloat(s);
-				if (_v32.$ === 'Just') {
-					var h = _v32.a;
+				var _v31 = $elm$core$String$toFloat(s);
+				if (_v31.$ === 'Just') {
+					var h = _v31.a;
 					return (h > 0) ? _Utils_Tuple2(
 						_Utils_update(
 							model,
@@ -8976,7 +8952,7 @@ var $author$project$Main$update = F2(
 				var py = msg.c;
 				var hueOnly = _Utils_eq(target, $author$project$Main$GridColorTarget) || _Utils_eq(target, $author$project$Main$OutlineColorTarget);
 				var innerH = hueOnly ? 20 : 96;
-				var _v33 = function () {
+				var _v32 = function () {
 					switch (target.$) {
 						case 'WaveColorTarget':
 							var waveId = target.a;
@@ -9018,8 +8994,8 @@ var $author$project$Main$update = F2(
 							return _Utils_Tuple2(model.outlineHue, 1.0);
 					}
 				}();
-				var currentHue = _v33.a;
-				var currentOpacity = _v33.b;
+				var currentHue = _v32.a;
+				var currentOpacity = _v32.b;
 				var panelX = (px - 10) - ((currentHue / 360) * 240);
 				var panelY = (py - 10) - ((1 - currentOpacity) * innerH);
 				return _Utils_Tuple2(
@@ -9033,17 +9009,17 @@ var $author$project$Main$update = F2(
 			case 'ColorPickMove':
 				var mx = msg.a;
 				var my = msg.b;
-				var _v35 = model.colorPicking;
-				if (_v35.$ === 'Nothing') {
+				var _v34 = model.colorPicking;
+				if (_v34.$ === 'Nothing') {
 					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 				} else {
-					var cp = _v35.a;
+					var cp = _v34.a;
 					var newOpacity = cp.hueOnly ? 1.0 : A3($elm$core$Basics$clamp, 0.05, 1.0, 1.0 - (((my - cp.panelY) - 10) / 96));
 					var newHue = A3($elm$core$Basics$clamp, 0, 360, (((mx - cp.panelX) - 10) / 240) * 360);
-					var _v36 = cp.target;
-					switch (_v36.$) {
+					var _v35 = cp.target;
+					switch (_v35.$) {
 						case 'WaveColorTarget':
-							var waveId = _v36.a;
+							var waveId = _v35.a;
 							return _Utils_Tuple2(
 								_Utils_update(
 									model,
@@ -9059,7 +9035,7 @@ var $author$project$Main$update = F2(
 									}),
 								$elm$core$Platform$Cmd$none);
 						case 'GroupColorTarget':
-							var groupId = _v36.a;
+							var groupId = _v35.a;
 							return _Utils_Tuple2(
 								_Utils_update(
 									model,
@@ -9100,7 +9076,7 @@ var $author$project$Main$update = F2(
 					model,
 					A2(
 						$elm$core$Task$attempt,
-						function (_v37) {
+						function (_v36) {
 							return $author$project$Main$NoOp;
 						},
 						A2(
@@ -9565,9 +9541,6 @@ var $author$project$Main$AssignPieceToGroup = function (a) {
 var $author$project$Main$AssignPieceToWave = function (a) {
 	return {$: 'AssignPieceToWave', a: a};
 };
-var $author$project$Main$SelectAndEdit = function (a) {
-	return {$: 'SelectAndEdit', a: a};
-};
 var $author$project$Main$SelectPiece = function (a) {
 	return {$: 'SelectPiece', a: a};
 };
@@ -9684,11 +9657,7 @@ var $author$project$Main$viewPieceOverlay = F9(
 						return $author$project$Main$AssignPieceToWave(piece.id);
 					}
 				} else {
-					if (_Utils_eq(appMode, $author$project$Main$ModePieces)) {
-						return $author$project$Main$SelectAndEdit(piece.id);
-					} else {
-						return $author$project$Main$SelectPiece(piece.id);
-					}
+					return $author$project$Main$SelectPiece(piece.id);
 				}
 			}
 		}();
@@ -11734,6 +11703,16 @@ var $author$project$Main$viewPdfTools = F2(
 						]))
 				]));
 	});
+var $author$project$Main$StartEdit = {$: 'StartEdit'};
+var $elm$core$Maybe$andThen = F2(
+	function (callback, maybeValue) {
+		if (maybeValue.$ === 'Just') {
+			var value = maybeValue.a;
+			return callback(value);
+		} else {
+			return $elm$core$Maybe$Nothing;
+		}
+	});
 var $author$project$Main$CancelEdit = {$: 'CancelEdit'};
 var $author$project$Main$SaveEdit = {$: 'SaveEdit'};
 var $elm$html$Html$br = _VirtualDom_node('br');
@@ -11823,93 +11802,185 @@ var $author$project$Main$viewPiecesTools = function (model) {
 			[
 				$elm$html$Html$Attributes$class('tools-pane')
 			]),
-		model.editMode ? $author$project$Main$viewEditControls(model) : _List_fromArray(
-			[
-				A2(
-				$elm$html$Html$div,
-				_List_fromArray(
-					[
-						$elm$html$Html$Attributes$class('checkbox-group')
-					]),
-				_List_fromArray(
+		function () {
+			if (model.editMode) {
+				return $author$project$Main$viewEditControls(model);
+			} else {
+				var selectedPiece = A2(
+					$elm$core$Maybe$andThen,
+					function (pid) {
+						return $elm$core$List$head(
+							A2(
+								$elm$core$List$filter,
+								function (p) {
+									return _Utils_eq(p.id, pid);
+								},
+								model.pieces));
+					},
+					model.selectedPieceId);
+				return _List_fromArray(
 					[
 						A2(
-						$elm$html$Html$input,
+						$elm$html$Html$div,
 						_List_fromArray(
 							[
-								$elm$html$Html$Attributes$type_('checkbox'),
-								$elm$html$Html$Attributes$id('showOutlines'),
-								$elm$html$Html$Attributes$checked(model.showOutlines),
-								$elm$html$Html$Events$onCheck($author$project$Main$ToggleOutlines)
-							]),
-						_List_Nil),
-						A2(
-						$elm$html$Html$label,
-						_List_fromArray(
-							[
-								$elm$html$Html$Attributes$for('showOutlines')
+								$elm$html$Html$Attributes$class('checkbox-group')
 							]),
 						_List_fromArray(
 							[
-								$elm$html$Html$text('Show piece outlines')
+								A2(
+								$elm$html$Html$input,
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$type_('checkbox'),
+										$elm$html$Html$Attributes$id('showOutlines'),
+										$elm$html$Html$Attributes$checked(model.showOutlines),
+										$elm$html$Html$Events$onCheck($author$project$Main$ToggleOutlines)
+									]),
+								_List_Nil),
+								A2(
+								$elm$html$Html$label,
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$for('showOutlines')
+									]),
+								_List_fromArray(
+									[
+										$elm$html$Html$text('Show piece outlines')
+									])),
+								A2(
+								$elm$html$Html$span,
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$class('wave-swatch wave-swatch-sm'),
+										A2(
+										$elm$html$Html$Attributes$style,
+										'background-color',
+										A2($author$project$Main$waveColor, model.outlineHue, 1.0)),
+										A2(
+										$elm$html$Html$Events$stopPropagationOn,
+										'mousedown',
+										A3(
+											$elm$json$Json$Decode$map2,
+											F2(
+												function (mx, my) {
+													return _Utils_Tuple2(
+														A3($author$project$Main$StartColorPick, $author$project$Main$OutlineColorTarget, mx, my),
+														true);
+												}),
+											A2($elm$json$Json$Decode$field, 'clientX', $elm$json$Json$Decode$float),
+											A2($elm$json$Json$Decode$field, 'clientY', $elm$json$Json$Decode$float))),
+										$elm$html$Html$Attributes$title('Pick outline color')
+									]),
+								_List_Nil)
 							])),
 						A2(
-						$elm$html$Html$span,
+						$elm$html$Html$div,
 						_List_fromArray(
 							[
-								$elm$html$Html$Attributes$class('wave-swatch wave-swatch-sm'),
+								$elm$html$Html$Attributes$class('checkbox-group')
+							]),
+						_List_fromArray(
+							[
 								A2(
-								$elm$html$Html$Attributes$style,
-								'background-color',
-								A2($author$project$Main$waveColor, model.outlineHue, 1.0)),
+								$elm$html$Html$input,
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$type_('checkbox'),
+										$elm$html$Html$Attributes$id('showGrid'),
+										$elm$html$Html$Attributes$checked(model.showGrid),
+										$elm$html$Html$Events$onCheck($author$project$Main$ToggleGrid)
+									]),
+								_List_Nil),
 								A2(
-								$elm$html$Html$Events$stopPropagationOn,
-								'mousedown',
-								A3(
-									$elm$json$Json$Decode$map2,
-									F2(
-										function (mx, my) {
-											return _Utils_Tuple2(
-												A3($author$project$Main$StartColorPick, $author$project$Main$OutlineColorTarget, mx, my),
-												true);
-										}),
-									A2($elm$json$Json$Decode$field, 'clientX', $elm$json$Json$Decode$float),
-									A2($elm$json$Json$Decode$field, 'clientY', $elm$json$Json$Decode$float))),
-								$elm$html$Html$Attributes$title('Pick outline color')
-							]),
-						_List_Nil)
-					])),
-				A2(
-				$elm$html$Html$div,
-				_List_fromArray(
-					[
-						$elm$html$Html$Attributes$class('checkbox-group')
-					]),
-				_List_fromArray(
-					[
-						A2(
-						$elm$html$Html$input,
-						_List_fromArray(
-							[
-								$elm$html$Html$Attributes$type_('checkbox'),
-								$elm$html$Html$Attributes$id('showGrid'),
-								$elm$html$Html$Attributes$checked(model.showGrid),
-								$elm$html$Html$Events$onCheck($author$project$Main$ToggleGrid)
-							]),
-						_List_Nil),
-						A2(
-						$elm$html$Html$label,
-						_List_fromArray(
-							[
-								$elm$html$Html$Attributes$for('showGrid')
-							]),
-						_List_fromArray(
-							[
-								$elm$html$Html$text('Show grid')
+								$elm$html$Html$label,
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$for('showGrid')
+									]),
+								_List_fromArray(
+									[
+										$elm$html$Html$text('Show grid')
+									])),
+								$author$project$Main$viewGridColorSwatch(model)
 							])),
-						$author$project$Main$viewGridColorSwatch(model)
-					]))
-			]));
+						function () {
+						if (selectedPiece.$ === 'Just') {
+							var piece = selectedPiece.a;
+							return A2(
+								$elm$html$Html$div,
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$class('piece-info')
+									]),
+								_List_fromArray(
+									[
+										A2(
+										$elm$html$Html$div,
+										_List_fromArray(
+											[
+												$elm$html$Html$Attributes$class('piece-info-row')
+											]),
+										_List_fromArray(
+											[
+												$elm$html$Html$text(
+												'Piece ID: ' + $elm$core$String$fromInt(piece.id))
+											])),
+										A2(
+										$elm$html$Html$div,
+										_List_fromArray(
+											[
+												$elm$html$Html$Attributes$class('piece-info-row')
+											]),
+										_List_fromArray(
+											[
+												$elm$html$Html$text(
+												'Bricks: ' + $elm$core$String$fromInt(
+													$elm$core$List$length(piece.brickIds)))
+											])),
+										A2(
+										$elm$html$Html$div,
+										_List_fromArray(
+											[
+												$elm$html$Html$Attributes$class('piece-info-row')
+											]),
+										_List_fromArray(
+											[
+												$elm$html$Html$text(
+												'Brick IDs: ' + A2(
+													$elm$core$String$join,
+													', ',
+													A2($elm$core$List$map, $elm$core$String$fromInt, piece.brickIds)))
+											])),
+										A2(
+										$elm$html$Html$button,
+										_List_fromArray(
+											[
+												$elm$html$Html$Attributes$class('primary'),
+												$elm$html$Html$Events$onClick($author$project$Main$StartEdit),
+												$elm$html$Html$Attributes$disabled(model.recomputing)
+											]),
+										_List_fromArray(
+											[
+												$elm$html$Html$text('Edit Piece')
+											]))
+									]));
+						} else {
+							return A2(
+								$elm$html$Html$div,
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$class('piece-info-empty')
+									]),
+								_List_fromArray(
+									[
+										$elm$html$Html$text('Click a piece to select')
+									]));
+						}
+					}()
+					]);
+			}
+		}());
 };
 var $author$project$Main$AddWave = {$: 'AddWave'};
 var $author$project$Main$ToggleNumbers = function (a) {
