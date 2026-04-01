@@ -22,11 +22,14 @@ jobs:
       - name: Build with PyInstaller
         run: pyinstaller house_puzzle.spec --noconfirm
 
+      - name: Pack dist (preserves permissions)
+        run: tar -czf dist-intel.tar.gz -C dist/house_puzzle .
+
       - name: Upload dist
         uses: actions/upload-artifact@v4
         with:
           name: dist-macos-intel
-          path: dist/house_puzzle/
+          path: dist-intel.tar.gz
 
   build-macos-arm:
     runs-on: macos-latest
@@ -43,11 +46,14 @@ jobs:
       - name: Build with PyInstaller
         run: pyinstaller house_puzzle.spec --noconfirm
 
+      - name: Pack dist (preserves permissions)
+        run: tar -czf dist-arm.tar.gz -C dist/house_puzzle .
+
       - name: Upload dist
         uses: actions/upload-artifact@v4
         with:
           name: dist-macos-arm
-          path: dist/house_puzzle/
+          path: dist-arm.tar.gz
 
   combine-macos-universal:
     needs: [build-macos-intel, build-macos-arm]
@@ -63,13 +69,19 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: dist-macos-intel
-          path: dist-intel/
+          path: downloads/
 
       - name: Download ARM dist
         uses: actions/download-artifact@v4
         with:
           name: dist-macos-arm
-          path: dist-arm/
+          path: downloads/
+
+      - name: Extract dists (restores permissions)
+        run: |
+          mkdir -p dist-intel dist-arm
+          tar -xzf downloads/dist-intel.tar.gz -C dist-intel
+          tar -xzf downloads/dist-arm.tar.gz -C dist-arm
 
       - name: Combine into universal binary
         run: |
