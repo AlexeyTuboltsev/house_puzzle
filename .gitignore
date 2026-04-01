@@ -22,6 +22,9 @@ dist/
 build/
 builds/
 *.egg-info/
+elm/elm-stuff/
+elm/package.json
+elm/package-lock.json
 
 # Firecrawl
 .firecrawl/
