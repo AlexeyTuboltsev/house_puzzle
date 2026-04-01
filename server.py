@@ -71,19 +71,9 @@ APP_VERSION = _version_file.read_text().strip() if _version_file.exists() else "
 
 @app.route("/")
 def index():
-    return render_template("index.html", version=APP_VERSION)
-
-
-@app.route("/elm")
-def elm_editor():
     elm_js = _base_dir / "static" / "elm.js"
     elm_version = int(elm_js.stat().st_mtime) if elm_js.exists() else 0
     return render_template("elm.html", elm_version=elm_version)
-
-
-@app.route("/manage")
-def manage():
-    return render_template("manage.html")
 
 
 # --- Preset API ---
