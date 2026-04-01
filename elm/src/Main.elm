@@ -1011,28 +1011,39 @@ update msg model =
 
                 Just pid ->
                     let
+                        -- If the dragged piece is part of a group, move the whole group
+                        maybeGroup =
+                            model.groups |> List.filter (\g -> List.member pid g.pieceIds) |> List.head
+
+                        pidsToMove =
+                            case maybeGroup of
+                                Just g -> g.pieceIds
+                                Nothing -> [ pid ]
+
                         insertBefore =
                             model.dragInsertBeforeId
 
-                        insertInto pids =
+                        insertInto wvPids =
                             let
                                 filtered =
-                                    List.filter ((/=) pid) pids
+                                    List.filter (\p -> not (List.member p pidsToMove)) wvPids
                             in
                             case insertBefore of
                                 Just beforeId ->
-                                    List.concatMap
-                                        (\p ->
-                                            if p == beforeId then
-                                                [ pid, p ]
-
-                                            else
-                                                [ p ]
-                                        )
-                                        filtered
+                                    if List.member beforeId pidsToMove then
+                                        filtered ++ pidsToMove
+                                    else
+                                        List.concatMap
+                                            (\p ->
+                                                if p == beforeId then
+                                                    pidsToMove ++ [ p ]
+                                                else
+                                                    [ p ]
+                                            )
+                                            filtered
 
                                 Nothing ->
-                                    filtered ++ [ pid ]
+                                    filtered ++ pidsToMove
 
                         targetIsLocked =
                             case targetWaveId of
@@ -1043,7 +1054,7 @@ update msg model =
                                     False
 
                         sourceIsLocked =
-                            model.waves |> List.any (\wv -> List.member pid wv.pieceIds && wv.locked)
+                            model.waves |> List.any (\wv -> List.any (\p -> List.member p pidsToMove) wv.pieceIds && wv.locked)
 
                         newWaves =
                             if targetIsLocked || sourceIsLocked then
@@ -1051,7 +1062,7 @@ update msg model =
 
                             else
                                 model.waves
-                                    |> List.map (\wv -> { wv | pieceIds = List.filter ((/=) pid) wv.pieceIds })
+                                    |> List.map (\wv -> { wv | pieceIds = List.filter (\p -> not (List.member p pidsToMove)) wv.pieceIds })
                                     |> List.map
                                         (\wv ->
                                             case targetWaveId of
@@ -2148,7 +2159,7 @@ viewWaveTrayThumb piece isLocked scale hoveredId generation showNum pos maybeGro
             String.fromFloat (piece.width * scale) ++ "px"
 
         dragAttrs =
-            if isLocked || maybeGroupN /= Nothing then
+            if isLocked then
                 []
 
             else
@@ -2168,16 +2179,15 @@ viewWaveTrayThumb piece isLocked scale hoveredId generation showNum pos maybeGro
             ++ dragAttrs
         )
         [ img [ src (piece.imgUrl ++ "?v=" ++ String.fromInt generation) ] []
-        , case maybeGroupN of
-            Just n ->
-                div [ class "group-xn-badge" ] [ text ("x" ++ String.fromInt n) ]
-            Nothing ->
-                text ""
         , if showNum then
             div [ class "tray-thumb-num" ] [ text (String.fromInt pos) ]
-
           else
             text ""
+        , case maybeGroupN of
+            Just n ->
+                div [ class "group-xn-badge group-xn-badge-bottom" ] [ text ("x" ++ String.fromInt n) ]
+            Nothing ->
+                text ""
         ]
 
 
@@ -3546,7 +3556,7 @@ viewWaveRow model allWaves wave =
 
                             GroupedPiece repId allIds ->
                                 model.pieces |> List.filter (\p -> p.id == repId) |> List.head
-                                    |> Maybe.map (\piece -> viewGroupThumb (Just wave.id) model.hoveredPieceId (model.groups |> List.filter (\g -> List.member repId g.pieceIds) |> List.head) piece allIds model.pieceGeneration (Just pos))
+                                    |> Maybe.map (\piece -> viewGroupThumb (Just wave.id) model.hoveredPieceId (model.groups |> List.filter (\g -> List.member repId g.pieceIds) |> List.head) piece allIds model.pieceGeneration (Just pos) wave.locked)
                     )
             )
         ]
@@ -3583,7 +3593,7 @@ viewUnassignedRow model unassignedPieces =
 
                                 GroupedPiece repId allIds ->
                                     model.pieces |> List.filter (\p -> p.id == repId) |> List.head
-                                        |> Maybe.map (\p -> viewGroupThumb model.selectedWaveId model.hoveredPieceId (model.groups |> List.filter (\g -> List.member repId g.pieceIds) |> List.head) p allIds model.pieceGeneration Nothing)
+                                        |> Maybe.map (\p -> viewGroupThumb model.selectedWaveId model.hoveredPieceId (model.groups |> List.filter (\g -> List.member repId g.pieceIds) |> List.head) p allIds model.pieceGeneration Nothing False)
                         )
                 )
             ]
@@ -3646,10 +3656,10 @@ viewPieceThumb removeInfo isLocked hoveredId pieceId dataUrl maybePos =
 
 
 -- A thumbnail for a group of interchangeable pieces: shows one representative
--- image with an "xN" badge. Clicking assigns/removes the whole group to/from
--- the wave identified by maybeWaveId.
-viewGroupThumb : Maybe Int -> Maybe Int -> Maybe Group -> Piece -> List Int -> Int -> Maybe Int -> Html Msg
-viewGroupThumb maybeWaveId hoveredId maybeGroup piece allIds generation maybePos =
+-- image with an "xN" badge at the bottom. Clicking assigns/removes the whole group to/from
+-- the wave identified by maybeWaveId. Draggable when not locked.
+viewGroupThumb : Maybe Int -> Maybe Int -> Maybe Group -> Piece -> List Int -> Int -> Maybe Int -> Bool -> Html Msg
+viewGroupThumb maybeWaveId hoveredId maybeGroup piece allIds generation maybePos isLocked =
     let
         n =
             List.length allIds
@@ -3661,13 +3671,24 @@ viewGroupThumb maybeWaveId hoveredId maybeGroup piece allIds generation maybePos
             case ( maybeGroup, maybeWaveId ) of
                 ( Just g, Just wid ) -> AssignGroupToWave g.id wid
                 _ -> NoOp
+
+        dragAttrs =
+            if isLocked then
+                []
+            else
+                [ attribute "draggable" "true"
+                , on "dragstart" (D.succeed (DragPieceStart piece.id))
+                , on "dragend" (D.succeed DragPieceEnd)
+                , stopPropagationOn "dragenter" (D.succeed ( DragEnterPiece piece.id, True ))
+                ]
     in
     div
-        [ classList [ ( "piece-thumb", True ), ( "hovered", isHovered ) ]
-        , onMouseEnter (SetHoveredPiece (Just piece.id))
-        , onMouseLeave (SetHoveredPiece Nothing)
-        , onClick clickMsg
-        ]
+        ([ classList [ ( "piece-thumb", True ), ( "hovered", isHovered ) ]
+         , onMouseEnter (SetHoveredPiece (Just piece.id))
+         , onMouseLeave (SetHoveredPiece Nothing)
+         , onClick clickMsg
+         ] ++ dragAttrs
+        )
         [ img
             [ src (piece.imgUrl ++ "?v=" ++ String.fromInt generation)
             , style "max-height" "48px"
@@ -3675,15 +3696,15 @@ viewGroupThumb maybeWaveId hoveredId maybeGroup piece allIds generation maybePos
             , style "display" "block"
             ]
             []
-        , if n > 1 then
-            div [ class "group-xn-badge" ] [ text ("x" ++ String.fromInt n) ]
-          else
-            text ""
         , case maybePos of
             Just pos ->
                 div [ class "piece-thumb-pos" ] [ text (String.fromInt pos) ]
             Nothing ->
                 text ""
+        , if n > 1 then
+            div [ class "group-xn-badge group-xn-badge-bottom" ] [ text ("x" ++ String.fromInt n) ]
+          else
+            text ""
         ]
 
 

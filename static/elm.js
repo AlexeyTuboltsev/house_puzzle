@@ -8394,33 +8394,55 @@ var $author$project$Main$update = F2(
 							return false;
 						}
 					}();
+					var maybeGroup = $elm$core$List$head(
+						A2(
+							$elm$core$List$filter,
+							function (g) {
+								return A2($elm$core$List$member, pid, g.pieceIds);
+							},
+							model.groups));
+					var pidsToMove = function () {
+						if (maybeGroup.$ === 'Just') {
+							var g = maybeGroup.a;
+							return g.pieceIds;
+						} else {
+							return _List_fromArray(
+								[pid]);
+						}
+					}();
 					var sourceIsLocked = A2(
 						$elm$core$List$any,
 						function (wv) {
-							return A2($elm$core$List$member, pid, wv.pieceIds) && wv.locked;
+							return A2(
+								$elm$core$List$any,
+								function (p) {
+									return A2($elm$core$List$member, p, pidsToMove);
+								},
+								wv.pieceIds) && wv.locked;
 						},
 						model.waves);
 					var insertBefore = model.dragInsertBeforeId;
-					var insertInto = function (pids) {
+					var insertInto = function (wvPids) {
 						var filtered = A2(
 							$elm$core$List$filter,
-							$elm$core$Basics$neq(pid),
-							pids);
+							function (p) {
+								return !A2($elm$core$List$member, p, pidsToMove);
+							},
+							wvPids);
 						if (insertBefore.$ === 'Just') {
 							var beforeId = insertBefore.a;
-							return A2(
+							return A2($elm$core$List$member, beforeId, pidsToMove) ? _Utils_ap(filtered, pidsToMove) : A2(
 								$elm$core$List$concatMap,
 								function (p) {
-									return _Utils_eq(p, beforeId) ? _List_fromArray(
-										[pid, p]) : _List_fromArray(
+									return _Utils_eq(p, beforeId) ? _Utils_ap(
+										pidsToMove,
+										_List_fromArray(
+											[p])) : _List_fromArray(
 										[p]);
 								},
 								filtered);
 						} else {
-							return _Utils_ap(
-								filtered,
-								_List_fromArray(
-									[pid]));
+							return _Utils_ap(filtered, pidsToMove);
 						}
 					};
 					var newWaves = (targetIsLocked || sourceIsLocked) ? model.waves : A2(
@@ -8445,7 +8467,9 @@ var $author$project$Main$update = F2(
 									{
 										pieceIds: A2(
 											$elm$core$List$filter,
-											$elm$core$Basics$neq(pid),
+											function (p) {
+												return !A2($elm$core$List$member, p, pidsToMove);
+											},
 											wv.pieceIds)
 									});
 							},
@@ -8550,8 +8574,8 @@ var $author$project$Main$update = F2(
 							$elm$core$List$head(
 								A2(
 									$elm$core$List$filter,
-									function (_v22) {
-										var g = _v22.b;
+									function (_v23) {
+										var g = _v23.b;
 										return _Utils_eq(g.id, gid);
 									},
 									indexed))));
@@ -8588,11 +8612,11 @@ var $author$project$Main$update = F2(
 					$elm$core$Platform$Cmd$none);
 			case 'AssignPieceToGroup':
 				var pid = msg.a;
-				var _v23 = model.selectedGroupId;
-				if (_v23.$ === 'Nothing') {
+				var _v24 = model.selectedGroupId;
+				if (_v24.$ === 'Nothing') {
 					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 				} else {
-					var gid = _v23.a;
+					var gid = _v24.a;
 					var alreadyIn = A2(
 						$elm$core$List$any,
 						function (g) {
@@ -8647,15 +8671,15 @@ var $author$project$Main$update = F2(
 					$elm$core$Platform$Cmd$none);
 			case 'DropOnGroup':
 				var mgid = msg.a;
-				var _v24 = model.draggingPieceId;
-				if (_v24.$ === 'Nothing') {
+				var _v25 = model.draggingPieceId;
+				if (_v25.$ === 'Nothing') {
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
 							{dragOverGroupId: $elm$core$Maybe$Nothing}),
 						$elm$core$Platform$Cmd$none);
 				} else {
-					var pid = _v24.a;
+					var pid = _v25.a;
 					var updatedGroups = function () {
 						if (mgid.$ === 'Nothing') {
 							return A2(
@@ -8704,17 +8728,17 @@ var $author$project$Main$update = F2(
 			case 'AssignGroupToWave':
 				var gid = msg.a;
 				var wid = msg.b;
-				var _v26 = $elm$core$List$head(
+				var _v27 = $elm$core$List$head(
 					A2(
 						$elm$core$List$filter,
 						function (g) {
 							return _Utils_eq(g.id, gid);
 						},
 						model.groups));
-				if (_v26.$ === 'Nothing') {
+				if (_v27.$ === 'Nothing') {
 					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 				} else {
-					var group = _v26.a;
+					var group = _v27.a;
 					var targetLocked = A2(
 						$elm$core$List$any,
 						function (w) {
@@ -8784,9 +8808,9 @@ var $author$project$Main$update = F2(
 				var waveTrayHeight = (vh - waveTrayOffset) * 0.12;
 				var bottomPadding = 16;
 				var availableH = _Utils_eq(model.appMode, $author$project$Main$ModeWaves) ? ((vh - waveTrayHeight) - bottomPadding) : (vh - bottomPadding);
-				var _v27 = model.loadState;
-				if (_v27.$ === 'Loaded') {
-					var response = _v27.a;
+				var _v28 = model.loadState;
+				if (_v28.$ === 'Loaded') {
+					var response = _v28.a;
 					var svgH = response.canvas.height + 20;
 					var scale = (availableH * model.houseUnitsHigh) / (svgH * 15.5);
 					return _Utils_Tuple2(
@@ -8815,11 +8839,11 @@ var $author$project$Main$update = F2(
 			case 'LassoMove':
 				var x = msg.a;
 				var y = msg.b;
-				var _v28 = model.lasso;
-				if (_v28.$ === 'Nothing') {
+				var _v29 = model.lasso;
+				if (_v29.$ === 'Nothing') {
 					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 				} else {
-					var ls = _v28.a;
+					var ls = _v29.a;
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
@@ -8832,11 +8856,11 @@ var $author$project$Main$update = F2(
 						$elm$core$Platform$Cmd$none);
 				}
 			case 'LassoEnd':
-				var _v29 = model.lasso;
-				if (_v29.$ === 'Nothing') {
+				var _v30 = model.lasso;
+				if (_v30.$ === 'Nothing') {
 					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 				} else {
-					var ls = _v29.a;
+					var ls = _v30.a;
 					var isDrag = ($elm$core$Basics$abs(ls.x1 - ls.x0) > 5) || ($elm$core$Basics$abs(ls.y1 - ls.y0) > 5);
 					var cleared = _Utils_update(
 						model,
@@ -8844,11 +8868,11 @@ var $author$project$Main$update = F2(
 					if (!isDrag) {
 						return _Utils_Tuple2(cleared, $elm$core$Platform$Cmd$none);
 					} else {
-						var _v30 = model.selectedWaveId;
-						if (_v30.$ === 'Nothing') {
+						var _v31 = model.selectedWaveId;
+						if (_v31.$ === 'Nothing') {
 							return _Utils_Tuple2(cleared, $elm$core$Platform$Cmd$none);
 						} else {
-							var wid = _v30.a;
+							var wid = _v31.a;
 							var ly1 = A2($elm$core$Basics$max, ls.y0, ls.y1);
 							var ly0 = A2($elm$core$Basics$min, ls.y0, ls.y1);
 							var lx1 = A2($elm$core$Basics$max, ls.x0, ls.x1);
@@ -8953,9 +8977,9 @@ var $author$project$Main$update = F2(
 					$elm$core$Platform$Cmd$none);
 			case 'SetHouseUnitsHigh':
 				var s = msg.a;
-				var _v31 = $elm$core$String$toFloat(s);
-				if (_v31.$ === 'Just') {
-					var h = _v31.a;
+				var _v32 = $elm$core$String$toFloat(s);
+				if (_v32.$ === 'Just') {
+					var h = _v32.a;
 					return (h > 0) ? _Utils_Tuple2(
 						_Utils_update(
 							model,
@@ -8970,7 +8994,7 @@ var $author$project$Main$update = F2(
 				var py = msg.c;
 				var hueOnly = _Utils_eq(target, $author$project$Main$GridColorTarget) || _Utils_eq(target, $author$project$Main$OutlineColorTarget);
 				var innerH = hueOnly ? 20 : 96;
-				var _v32 = function () {
+				var _v33 = function () {
 					switch (target.$) {
 						case 'WaveColorTarget':
 							var waveId = target.a;
@@ -9012,8 +9036,8 @@ var $author$project$Main$update = F2(
 							return _Utils_Tuple2(model.outlineHue, 1.0);
 					}
 				}();
-				var currentHue = _v32.a;
-				var currentOpacity = _v32.b;
+				var currentHue = _v33.a;
+				var currentOpacity = _v33.b;
 				var panelX = (px - 10) - ((currentHue / 360) * 240);
 				var panelY = (py - 10) - ((1 - currentOpacity) * innerH);
 				return _Utils_Tuple2(
@@ -9027,17 +9051,17 @@ var $author$project$Main$update = F2(
 			case 'ColorPickMove':
 				var mx = msg.a;
 				var my = msg.b;
-				var _v34 = model.colorPicking;
-				if (_v34.$ === 'Nothing') {
+				var _v35 = model.colorPicking;
+				if (_v35.$ === 'Nothing') {
 					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 				} else {
-					var cp = _v34.a;
+					var cp = _v35.a;
 					var newOpacity = cp.hueOnly ? 1.0 : A3($elm$core$Basics$clamp, 0.05, 1.0, 1.0 - (((my - cp.panelY) - 10) / 96));
 					var newHue = A3($elm$core$Basics$clamp, 0, 360, (((mx - cp.panelX) - 10) / 240) * 360);
-					var _v35 = cp.target;
-					switch (_v35.$) {
+					var _v36 = cp.target;
+					switch (_v36.$) {
 						case 'WaveColorTarget':
-							var waveId = _v35.a;
+							var waveId = _v36.a;
 							return _Utils_Tuple2(
 								_Utils_update(
 									model,
@@ -9053,7 +9077,7 @@ var $author$project$Main$update = F2(
 									}),
 								$elm$core$Platform$Cmd$none);
 						case 'GroupColorTarget':
-							var groupId = _v35.a;
+							var groupId = _v36.a;
 							return _Utils_Tuple2(
 								_Utils_update(
 									model,
@@ -9094,7 +9118,7 @@ var $author$project$Main$update = F2(
 					model,
 					A2(
 						$elm$core$Task$attempt,
-						function (_v36) {
+						function (_v37) {
 							return $author$project$Main$NoOp;
 						},
 						A2(
@@ -10172,7 +10196,7 @@ var $author$project$Main$viewWaveTrayThumb = F8(
 		var isHovered = _Utils_eq(
 			hoveredId,
 			$elm$core$Maybe$Just(piece.id));
-		var dragAttrs = (isLocked || (!_Utils_eq(maybeGroupN, $elm$core$Maybe$Nothing))) ? _List_Nil : _List_fromArray(
+		var dragAttrs = isLocked ? _List_Nil : _List_fromArray(
 			[
 				A2($elm$html$Html$Attributes$attribute, 'draggable', 'true'),
 				A2(
@@ -10225,24 +10249,6 @@ var $author$project$Main$viewWaveTrayThumb = F8(
 							piece.imgUrl + ('?v=' + $elm$core$String$fromInt(generation)))
 						]),
 					_List_Nil),
-					function () {
-					if (maybeGroupN.$ === 'Just') {
-						var n = maybeGroupN.a;
-						return A2(
-							$elm$html$Html$div,
-							_List_fromArray(
-								[
-									$elm$html$Html$Attributes$class('group-xn-badge')
-								]),
-							_List_fromArray(
-								[
-									$elm$html$Html$text(
-									'x' + $elm$core$String$fromInt(n))
-								]));
-					} else {
-						return $elm$html$Html$text('');
-					}
-				}(),
 					showNum ? A2(
 					$elm$html$Html$div,
 					_List_fromArray(
@@ -10253,7 +10259,25 @@ var $author$project$Main$viewWaveTrayThumb = F8(
 						[
 							$elm$html$Html$text(
 							$elm$core$String$fromInt(pos))
-						])) : $elm$html$Html$text('')
+						])) : $elm$html$Html$text(''),
+					function () {
+					if (maybeGroupN.$ === 'Just') {
+						var n = maybeGroupN.a;
+						return A2(
+							$elm$html$Html$div,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('group-xn-badge group-xn-badge-bottom')
+								]),
+							_List_fromArray(
+								[
+									$elm$html$Html$text(
+									'x' + $elm$core$String$fromInt(n))
+								]));
+					} else {
+						return $elm$html$Html$text('');
+					}
+				}()
 				]));
 	});
 var $author$project$Main$viewWaveTray = F2(
@@ -12140,12 +12164,32 @@ var $author$project$Main$AddWave = {$: 'AddWave'};
 var $author$project$Main$ToggleNumbers = function (a) {
 	return {$: 'ToggleNumbers', a: a};
 };
-var $author$project$Main$viewGroupThumb = F7(
-	function (maybeWaveId, hoveredId, maybeGroup, piece, allIds, generation, maybePos) {
+var $author$project$Main$viewGroupThumb = F8(
+	function (maybeWaveId, hoveredId, maybeGroup, piece, allIds, generation, maybePos, isLocked) {
 		var n = $elm$core$List$length(allIds);
 		var isHovered = _Utils_eq(
 			hoveredId,
 			$elm$core$Maybe$Just(piece.id));
+		var dragAttrs = isLocked ? _List_Nil : _List_fromArray(
+			[
+				A2($elm$html$Html$Attributes$attribute, 'draggable', 'true'),
+				A2(
+				$elm$html$Html$Events$on,
+				'dragstart',
+				$elm$json$Json$Decode$succeed(
+					$author$project$Main$DragPieceStart(piece.id))),
+				A2(
+				$elm$html$Html$Events$on,
+				'dragend',
+				$elm$json$Json$Decode$succeed($author$project$Main$DragPieceEnd)),
+				A2(
+				$elm$html$Html$Events$stopPropagationOn,
+				'dragenter',
+				$elm$json$Json$Decode$succeed(
+					_Utils_Tuple2(
+						$author$project$Main$DragEnterPiece(piece.id),
+						true)))
+			]);
 		var clickMsg = function () {
 			var _v1 = _Utils_Tuple2(maybeGroup, maybeWaveId);
 			if ((_v1.a.$ === 'Just') && (_v1.b.$ === 'Just')) {
@@ -12158,21 +12202,23 @@ var $author$project$Main$viewGroupThumb = F7(
 		}();
 		return A2(
 			$elm$html$Html$div,
-			_List_fromArray(
-				[
-					$elm$html$Html$Attributes$classList(
-					_List_fromArray(
-						[
-							_Utils_Tuple2('piece-thumb', true),
-							_Utils_Tuple2('hovered', isHovered)
-						])),
-					$elm$html$Html$Events$onMouseEnter(
-					$author$project$Main$SetHoveredPiece(
-						$elm$core$Maybe$Just(piece.id))),
-					$elm$html$Html$Events$onMouseLeave(
-					$author$project$Main$SetHoveredPiece($elm$core$Maybe$Nothing)),
-					$elm$html$Html$Events$onClick(clickMsg)
-				]),
+			_Utils_ap(
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$classList(
+						_List_fromArray(
+							[
+								_Utils_Tuple2('piece-thumb', true),
+								_Utils_Tuple2('hovered', isHovered)
+							])),
+						$elm$html$Html$Events$onMouseEnter(
+						$author$project$Main$SetHoveredPiece(
+							$elm$core$Maybe$Just(piece.id))),
+						$elm$html$Html$Events$onMouseLeave(
+						$author$project$Main$SetHoveredPiece($elm$core$Maybe$Nothing)),
+						$elm$html$Html$Events$onClick(clickMsg)
+					]),
+				dragAttrs),
 			_List_fromArray(
 				[
 					A2(
@@ -12186,17 +12232,6 @@ var $author$project$Main$viewGroupThumb = F7(
 							A2($elm$html$Html$Attributes$style, 'display', 'block')
 						]),
 					_List_Nil),
-					(n > 1) ? A2(
-					$elm$html$Html$div,
-					_List_fromArray(
-						[
-							$elm$html$Html$Attributes$class('group-xn-badge')
-						]),
-					_List_fromArray(
-						[
-							$elm$html$Html$text(
-							'x' + $elm$core$String$fromInt(n))
-						])) : $elm$html$Html$text(''),
 					function () {
 					if (maybePos.$ === 'Just') {
 						var pos = maybePos.a;
@@ -12214,7 +12249,18 @@ var $author$project$Main$viewGroupThumb = F7(
 					} else {
 						return $elm$html$Html$text('');
 					}
-				}()
+				}(),
+					(n > 1) ? A2(
+					$elm$html$Html$div,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('group-xn-badge group-xn-badge-bottom')
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text(
+							'x' + $elm$core$String$fromInt(n))
+						])) : $elm$html$Html$text('')
 				]));
 	});
 var $author$project$Main$viewUnassignedRow = F2(
@@ -12318,7 +12364,7 @@ var $author$project$Main$viewUnassignedRow = F2(
 								return A2(
 									$elm$core$Maybe$map,
 									function (p) {
-										return A7(
+										return A8(
 											$author$project$Main$viewGroupThumb,
 											model.selectedWaveId,
 											model.hoveredPieceId,
@@ -12332,7 +12378,8 @@ var $author$project$Main$viewUnassignedRow = F2(
 											p,
 											allIds,
 											model.pieceGeneration,
-											$elm$core$Maybe$Nothing);
+											$elm$core$Maybe$Nothing,
+											false);
 									},
 									$elm$core$List$head(
 										A2(
@@ -12921,7 +12968,7 @@ var $author$project$Main$viewWaveRow = F3(
 								return A2(
 									$elm$core$Maybe$map,
 									function (piece) {
-										return A7(
+										return A8(
 											$author$project$Main$viewGroupThumb,
 											$elm$core$Maybe$Just(wave.id),
 											model.hoveredPieceId,
@@ -12935,7 +12982,8 @@ var $author$project$Main$viewWaveRow = F3(
 											piece,
 											allIds,
 											model.pieceGeneration,
-											$elm$core$Maybe$Just(pos));
+											$elm$core$Maybe$Just(pos),
+											wave.locked);
 									},
 									$elm$core$List$head(
 										A2(
