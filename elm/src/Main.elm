@@ -2242,83 +2242,40 @@ viewExportTools model =
 
         hasUnassigned =
             List.any (\p -> not (List.member p.id assignedIds)) model.pieces
-
-        renderDpiInfo =
-            case model.loadState of
-                Loaded resp ->
-                    if resp.renderDpi > 0 then
-                        [ div [ class "field-row" ]
-                            [ label [] [ text "Display DPI" ]
-                            , span [ class "dpi-info" ] [ text (String.fromFloat resp.renderDpi) ]
-                            ]
-                        ]
-
-                    else
-                        []
-
-                _ ->
-                    []
-
-        warningItems =
-            case model.loadState of
-                Loaded resp ->
-                    List.map (\w -> div [ class "warning-item" ] [ text w ]) resp.warnings
-
-                _ ->
-                    []
     in
     div [ class "tools-pane" ]
-        (renderDpiInfo
-            ++ warningItems
-            ++ [ div [ class "checkbox-group" ]
-                    [ input [ type_ "checkbox", id "showGrid", checked model.showGrid, onCheck ToggleGrid ] []
-                    , label [ for "showGrid" ] [ text "Show grid" ]
-                    ]
-               , div [ class "field-row" ]
-                    [ label [] [ text "Export height (px)" ]
-                    , input
-                        [ type_ "number"
-                        , value model.exportCanvasHeight
-                        , onInput SetExportCanvasHeight
-                        , Html.Attributes.min "100"
-                        , Html.Attributes.max "10000"
-                        , Html.Attributes.step "100"
-                        ]
-                        []
-                    ]
-               , div [ class "field-row" ]
-                    [ label [] [ text "House height (units)" ]
-                    , input
-                        [ type_ "number"
-                        , value (String.fromFloat model.houseUnitsHigh)
-                        , onInput SetHouseUnitsHigh
-                        , Html.Attributes.min "0.1"
-                        , Html.Attributes.step "0.5"
-                        ]
-                        []
-                    ]
-               , button
-                    [ class "primary"
-                    , onClick RequestExport
-                    , disabled (hasUnassigned || model.exporting)
-                    , title
-                        (if hasUnassigned then
-                            "All pieces must be assigned to waves before exporting"
+        [ div [ class "field-row" ]
+            [ label [] [ text "House height (units)" ]
+            , input
+                [ type_ "number"
+                , value (String.fromFloat model.houseUnitsHigh)
+                , onInput SetHouseUnitsHigh
+                , Html.Attributes.min "0.1"
+                , Html.Attributes.step "0.5"
+                ]
+                []
+            ]
+        , button
+            [ class "primary"
+            , onClick RequestExport
+            , disabled (hasUnassigned || model.exporting)
+            , title
+                (if hasUnassigned then
+                    "All pieces must be assigned to waves before exporting"
 
-                         else
-                            ""
-                        )
-                    ]
-                    [ text
-                        (if model.exporting then
-                            "Exporting\u{2026}"
+                 else
+                    ""
+                )
+            ]
+            [ text
+                (if model.exporting then
+                    "Exporting\u{2026}"
 
-                         else
-                            "Export ZIP"
-                        )
-                    ]
-               ]
-        )
+                 else
+                    "Export ZIP"
+                )
+            ]
+        ]
 
 
 viewMainSvg : LoadResponse -> Model -> Html Msg
@@ -2494,7 +2451,7 @@ viewMainSvg response model =
 
         -- Piece outlines (post-gen, pieces/waves mode only, not in edit)
         outlineLayer =
-            if (not model.editMode) && isGenerated && model.showOutlines && (model.appMode == ModePieces || model.appMode == ModeWaves) then
+            if (not model.editMode) && isGenerated && model.showOutlines && (model.appMode == ModePieces || model.appMode == ModeWaves || model.appMode == ModeExport) then
                 List.map (viewPieceOutline (waveColor model.outlineHue 1.0)) visiblePieces
 
             else
@@ -2525,7 +2482,7 @@ viewMainSvg response model =
                 |> Dict.fromList
 
         numberLabels =
-            if (not model.editMode) && isGenerated && model.showNumbers && (model.appMode == ModePieces || model.appMode == ModeWaves) then
+            if (not model.editMode) && isGenerated && model.showNumbers && (model.appMode == ModePieces || model.appMode == ModeWaves || model.appMode == ModeExport) then
                 List.filterMap
                     (\piece ->
                         Dict.get piece.id piecePositions

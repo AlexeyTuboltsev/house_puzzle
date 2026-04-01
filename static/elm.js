@@ -8645,6 +8645,7 @@ var $author$project$Main$LassoStart = F2(
 		return {$: 'LassoStart', a: a, b: b};
 	});
 var $author$project$Main$ModeBlueprint = {$: 'ModeBlueprint'};
+var $author$project$Main$ModeExport = {$: 'ModeExport'};
 var $elm$virtual_dom$VirtualDom$attribute = F2(
 	function (key, value) {
 		return A2(
@@ -9250,7 +9251,7 @@ var $author$project$Main$viewMainSvg = F2(
 				return filtered;
 			}
 		}();
-		var numberLabels = ((!model.editMode) && (isGenerated && (model.showNumbers && (_Utils_eq(model.appMode, $author$project$Main$ModePieces) || _Utils_eq(model.appMode, $author$project$Main$ModeWaves))))) ? A2(
+		var numberLabels = ((!model.editMode) && (isGenerated && (model.showNumbers && (_Utils_eq(model.appMode, $author$project$Main$ModePieces) || (_Utils_eq(model.appMode, $author$project$Main$ModeWaves) || _Utils_eq(model.appMode, $author$project$Main$ModeExport)))))) ? A2(
 			$elm$core$List$filterMap,
 			function (piece) {
 				return A2(
@@ -9259,7 +9260,7 @@ var $author$project$Main$viewMainSvg = F2(
 					A2($elm$core$Dict$get, piece.id, piecePositions));
 			},
 			visiblePieces) : _List_Nil;
-		var outlineLayer = ((!model.editMode) && (isGenerated && (model.showOutlines && (_Utils_eq(model.appMode, $author$project$Main$ModePieces) || _Utils_eq(model.appMode, $author$project$Main$ModeWaves))))) ? A2(
+		var outlineLayer = ((!model.editMode) && (isGenerated && (model.showOutlines && (_Utils_eq(model.appMode, $author$project$Main$ModePieces) || (_Utils_eq(model.appMode, $author$project$Main$ModeWaves) || _Utils_eq(model.appMode, $author$project$Main$ModeExport)))))) ? A2(
 			$elm$core$List$map,
 			$author$project$Main$viewPieceOutline(
 				A2($author$project$Main$waveColor, model.outlineHue, 1.0)),
@@ -10093,74 +10094,10 @@ var $author$project$Main$viewBlueprintTools = function (model) {
 			]));
 };
 var $author$project$Main$RequestExport = {$: 'RequestExport'};
-var $author$project$Main$SetExportCanvasHeight = function (a) {
-	return {$: 'SetExportCanvasHeight', a: a};
-};
 var $author$project$Main$SetHouseUnitsHigh = function (a) {
 	return {$: 'SetHouseUnitsHigh', a: a};
 };
 var $author$project$Main$viewExportTools = function (model) {
-	var warningItems = function () {
-		var _v1 = model.loadState;
-		if (_v1.$ === 'Loaded') {
-			var resp = _v1.a;
-			return A2(
-				$elm$core$List$map,
-				function (w) {
-					return A2(
-						$elm$html$Html$div,
-						_List_fromArray(
-							[
-								$elm$html$Html$Attributes$class('warning-item')
-							]),
-						_List_fromArray(
-							[
-								$elm$html$Html$text(w)
-							]));
-				},
-				resp.warnings);
-		} else {
-			return _List_Nil;
-		}
-	}();
-	var renderDpiInfo = function () {
-		var _v0 = model.loadState;
-		if (_v0.$ === 'Loaded') {
-			var resp = _v0.a;
-			return (resp.renderDpi > 0) ? _List_fromArray(
-				[
-					A2(
-					$elm$html$Html$div,
-					_List_fromArray(
-						[
-							$elm$html$Html$Attributes$class('field-row')
-						]),
-					_List_fromArray(
-						[
-							A2(
-							$elm$html$Html$label,
-							_List_Nil,
-							_List_fromArray(
-								[
-									$elm$html$Html$text('Display DPI')
-								])),
-							A2(
-							$elm$html$Html$span,
-							_List_fromArray(
-								[
-									$elm$html$Html$Attributes$class('dpi-info')
-								]),
-							_List_fromArray(
-								[
-									$elm$html$Html$text(
-									$elm$core$String$fromFloat(resp.renderDpi))
-								]))
-						]))
-				]) : _List_Nil;
-		} else {
-			return _List_Nil;
-		}
-	}();
 	var assignedIds = A2(
 		$elm$core$List$concatMap,
 		function ($) {
@@ -10179,113 +10116,52 @@ var $author$project$Main$viewExportTools = function (model) {
 			[
 				$elm$html$Html$Attributes$class('tools-pane')
 			]),
-		_Utils_ap(
-			renderDpiInfo,
-			_Utils_ap(
-				warningItems,
+		_List_fromArray(
+			[
+				A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('field-row')
+					]),
 				_List_fromArray(
 					[
 						A2(
-						$elm$html$Html$div,
+						$elm$html$Html$label,
+						_List_Nil,
 						_List_fromArray(
 							[
-								$elm$html$Html$Attributes$class('checkbox-group')
-							]),
-						_List_fromArray(
-							[
-								A2(
-								$elm$html$Html$input,
-								_List_fromArray(
-									[
-										$elm$html$Html$Attributes$type_('checkbox'),
-										$elm$html$Html$Attributes$id('showGrid'),
-										$elm$html$Html$Attributes$checked(model.showGrid),
-										$elm$html$Html$Events$onCheck($author$project$Main$ToggleGrid)
-									]),
-								_List_Nil),
-								A2(
-								$elm$html$Html$label,
-								_List_fromArray(
-									[
-										$elm$html$Html$Attributes$for('showGrid')
-									]),
-								_List_fromArray(
-									[
-										$elm$html$Html$text('Show grid')
-									]))
+								$elm$html$Html$text('House height (units)')
 							])),
 						A2(
-						$elm$html$Html$div,
+						$elm$html$Html$input,
 						_List_fromArray(
 							[
-								$elm$html$Html$Attributes$class('field-row')
+								$elm$html$Html$Attributes$type_('number'),
+								$elm$html$Html$Attributes$value(
+								$elm$core$String$fromFloat(model.houseUnitsHigh)),
+								$elm$html$Html$Events$onInput($author$project$Main$SetHouseUnitsHigh),
+								$elm$html$Html$Attributes$min('0.1'),
+								$elm$html$Html$Attributes$step('0.5')
 							]),
-						_List_fromArray(
-							[
-								A2(
-								$elm$html$Html$label,
-								_List_Nil,
-								_List_fromArray(
-									[
-										$elm$html$Html$text('Export height (px)')
-									])),
-								A2(
-								$elm$html$Html$input,
-								_List_fromArray(
-									[
-										$elm$html$Html$Attributes$type_('number'),
-										$elm$html$Html$Attributes$value(model.exportCanvasHeight),
-										$elm$html$Html$Events$onInput($author$project$Main$SetExportCanvasHeight),
-										$elm$html$Html$Attributes$min('100'),
-										$elm$html$Html$Attributes$max('10000'),
-										$elm$html$Html$Attributes$step('100')
-									]),
-								_List_Nil)
-							])),
-						A2(
-						$elm$html$Html$div,
-						_List_fromArray(
-							[
-								$elm$html$Html$Attributes$class('field-row')
-							]),
-						_List_fromArray(
-							[
-								A2(
-								$elm$html$Html$label,
-								_List_Nil,
-								_List_fromArray(
-									[
-										$elm$html$Html$text('House height (units)')
-									])),
-								A2(
-								$elm$html$Html$input,
-								_List_fromArray(
-									[
-										$elm$html$Html$Attributes$type_('number'),
-										$elm$html$Html$Attributes$value(
-										$elm$core$String$fromFloat(model.houseUnitsHigh)),
-										$elm$html$Html$Events$onInput($author$project$Main$SetHouseUnitsHigh),
-										$elm$html$Html$Attributes$min('0.1'),
-										$elm$html$Html$Attributes$step('0.5')
-									]),
-								_List_Nil)
-							])),
-						A2(
-						$elm$html$Html$button,
-						_List_fromArray(
-							[
-								$elm$html$Html$Attributes$class('primary'),
-								$elm$html$Html$Events$onClick($author$project$Main$RequestExport),
-								$elm$html$Html$Attributes$disabled(hasUnassigned || model.exporting),
-								$elm$html$Html$Attributes$title(
-								hasUnassigned ? 'All pieces must be assigned to waves before exporting' : '')
-							]),
-						_List_fromArray(
-							[
-								$elm$html$Html$text(
-								model.exporting ? 'Exporting\u2026' : 'Export ZIP')
-							]))
-					]))));
+						_List_Nil)
+					])),
+				A2(
+				$elm$html$Html$button,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('primary'),
+						$elm$html$Html$Events$onClick($author$project$Main$RequestExport),
+						$elm$html$Html$Attributes$disabled(hasUnassigned || model.exporting),
+						$elm$html$Html$Attributes$title(
+						hasUnassigned ? 'All pieces must be assigned to waves before exporting' : '')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text(
+						model.exporting ? 'Exporting\u2026' : 'Export ZIP')
+					]))
+			]));
 };
 var $author$project$Main$RequestGenerate = {$: 'RequestGenerate'};
 var $author$project$Main$SetMinBorder = function (a) {
@@ -12088,7 +11964,6 @@ var $author$project$Main$viewColorPickerPanel = function (model) {
 				]));
 	}
 };
-var $author$project$Main$ModeExport = {$: 'ModeExport'};
 var $author$project$Main$Reset = {$: 'Reset'};
 var $author$project$Main$SetAppMode = function (a) {
 	return {$: 'SetAppMode', a: a};
