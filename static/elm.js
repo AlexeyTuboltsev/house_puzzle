@@ -6334,7 +6334,7 @@ var $author$project$Main$fetchPdfList = $elm$http$Http$get(
 var $elm$browser$Browser$Dom$getViewport = _Browser_withWindow(_Browser_getViewport);
 var $author$project$Main$init = function (_v0) {
 	return _Utils_Tuple2(
-		{appMode: $author$project$Main$ModeInit, availableH: 900.0, bricksById: $elm$core$Dict$empty, dragInsertBeforeId: $elm$core$Maybe$Nothing, dragOverWaveId: $elm$core$Maybe$Nothing, draggingPieceId: $elm$core$Maybe$Nothing, editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, exportCanvasHeight: '900', exporting: false, generateState: $author$project$Main$NotGenerated, houseUnitsHigh: 15.5, hoveredPieceId: $elm$core$Maybe$Nothing, lasso: $elm$core$Maybe$Nothing, loadState: $author$project$Main$Idle, minBorder: 10, nextWaveId: 1, pdfFiles: _List_Nil, pieceGeneration: 0, pieces: _List_Nil, recomputing: false, seed: 42, selectedFileName: '', selectedPieceId: $elm$core$Maybe$Nothing, selectedWaveId: $elm$core$Maybe$Nothing, showGrid: false, showLights: false, showNumbers: true, showOutlines: true, svgScale: 1.0, targetCount: 60, waves: _List_Nil, zoomGridActive: false, zoomLevel: 1.0},
+		{appMode: $author$project$Main$ModeInit, availableH: 900.0, bricksById: $elm$core$Dict$empty, colorPicking: $elm$core$Maybe$Nothing, dragInsertBeforeId: $elm$core$Maybe$Nothing, dragOverWaveId: $elm$core$Maybe$Nothing, draggingPieceId: $elm$core$Maybe$Nothing, editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, exportCanvasHeight: '900', exporting: false, generateState: $author$project$Main$NotGenerated, houseUnitsHigh: 15.5, hoveredPieceId: $elm$core$Maybe$Nothing, lasso: $elm$core$Maybe$Nothing, loadState: $author$project$Main$Idle, minBorder: 10, nextWaveId: 1, pdfFiles: _List_Nil, pieceGeneration: 0, pieces: _List_Nil, recomputing: false, seed: 42, selectedFileName: '', selectedPieceId: $elm$core$Maybe$Nothing, selectedWaveId: $elm$core$Maybe$Nothing, showGrid: false, showLights: false, showNumbers: true, showOutlines: true, svgScale: 1.0, targetCount: 60, waves: _List_Nil, zoomGridActive: false, zoomLevel: 1.0},
 		$elm$core$Platform$Cmd$batch(
 			_List_fromArray(
 				[
@@ -6342,19 +6342,315 @@ var $author$project$Main$init = function (_v0) {
 					A2($elm$core$Task$perform, $author$project$Main$GotViewport, $elm$browser$Browser$Dom$getViewport)
 				])));
 };
+var $author$project$Main$ColorPickMove = F2(
+	function (a, b) {
+		return {$: 'ColorPickMove', a: a, b: b};
+	});
+var $author$project$Main$EndColorPick = {$: 'EndColorPick'};
 var $author$project$Main$ExportDone = {$: 'ExportDone'};
 var $elm$core$Platform$Sub$batch = _Platform_batch;
+var $elm$json$Json$Decode$float = _Json_decodeFloat;
 var $elm$json$Json$Decode$bool = _Json_decodeBool;
 var $author$project$Main$gotExportDone = _Platform_incomingPort('gotExportDone', $elm$json$Json$Decode$bool);
-var $author$project$Main$subscriptions = function (_v0) {
-	return $elm$core$Platform$Sub$batch(
-		_List_fromArray(
-			[
-				$author$project$Main$gotExportDone(
+var $elm$browser$Browser$Events$Document = {$: 'Document'};
+var $elm$browser$Browser$Events$MySub = F3(
+	function (a, b, c) {
+		return {$: 'MySub', a: a, b: b, c: c};
+	});
+var $elm$browser$Browser$Events$State = F2(
+	function (subs, pids) {
+		return {pids: pids, subs: subs};
+	});
+var $elm$browser$Browser$Events$init = $elm$core$Task$succeed(
+	A2($elm$browser$Browser$Events$State, _List_Nil, $elm$core$Dict$empty));
+var $elm$browser$Browser$Events$nodeToKey = function (node) {
+	if (node.$ === 'Document') {
+		return 'd_';
+	} else {
+		return 'w_';
+	}
+};
+var $elm$browser$Browser$Events$addKey = function (sub) {
+	var node = sub.a;
+	var name = sub.b;
+	return _Utils_Tuple2(
+		_Utils_ap(
+			$elm$browser$Browser$Events$nodeToKey(node),
+			name),
+		sub);
+};
+var $elm$core$Dict$fromList = function (assocs) {
+	return A3(
+		$elm$core$List$foldl,
+		F2(
+			function (_v0, dict) {
+				var key = _v0.a;
+				var value = _v0.b;
+				return A3($elm$core$Dict$insert, key, value, dict);
+			}),
+		$elm$core$Dict$empty,
+		assocs);
+};
+var $elm$core$Dict$foldl = F3(
+	function (func, acc, dict) {
+		foldl:
+		while (true) {
+			if (dict.$ === 'RBEmpty_elm_builtin') {
+				return acc;
+			} else {
+				var key = dict.b;
+				var value = dict.c;
+				var left = dict.d;
+				var right = dict.e;
+				var $temp$func = func,
+					$temp$acc = A3(
+					func,
+					key,
+					value,
+					A3($elm$core$Dict$foldl, func, acc, left)),
+					$temp$dict = right;
+				func = $temp$func;
+				acc = $temp$acc;
+				dict = $temp$dict;
+				continue foldl;
+			}
+		}
+	});
+var $elm$core$Dict$merge = F6(
+	function (leftStep, bothStep, rightStep, leftDict, rightDict, initialResult) {
+		var stepState = F3(
+			function (rKey, rValue, _v0) {
+				stepState:
+				while (true) {
+					var list = _v0.a;
+					var result = _v0.b;
+					if (!list.b) {
+						return _Utils_Tuple2(
+							list,
+							A3(rightStep, rKey, rValue, result));
+					} else {
+						var _v2 = list.a;
+						var lKey = _v2.a;
+						var lValue = _v2.b;
+						var rest = list.b;
+						if (_Utils_cmp(lKey, rKey) < 0) {
+							var $temp$rKey = rKey,
+								$temp$rValue = rValue,
+								$temp$_v0 = _Utils_Tuple2(
+								rest,
+								A3(leftStep, lKey, lValue, result));
+							rKey = $temp$rKey;
+							rValue = $temp$rValue;
+							_v0 = $temp$_v0;
+							continue stepState;
+						} else {
+							if (_Utils_cmp(lKey, rKey) > 0) {
+								return _Utils_Tuple2(
+									list,
+									A3(rightStep, rKey, rValue, result));
+							} else {
+								return _Utils_Tuple2(
+									rest,
+									A4(bothStep, lKey, lValue, rValue, result));
+							}
+						}
+					}
+				}
+			});
+		var _v3 = A3(
+			$elm$core$Dict$foldl,
+			stepState,
+			_Utils_Tuple2(
+				$elm$core$Dict$toList(leftDict),
+				initialResult),
+			rightDict);
+		var leftovers = _v3.a;
+		var intermediateResult = _v3.b;
+		return A3(
+			$elm$core$List$foldl,
+			F2(
+				function (_v4, result) {
+					var k = _v4.a;
+					var v = _v4.b;
+					return A3(leftStep, k, v, result);
+				}),
+			intermediateResult,
+			leftovers);
+	});
+var $elm$browser$Browser$Events$Event = F2(
+	function (key, event) {
+		return {event: event, key: key};
+	});
+var $elm$browser$Browser$Events$spawn = F3(
+	function (router, key, _v0) {
+		var node = _v0.a;
+		var name = _v0.b;
+		var actualNode = function () {
+			if (node.$ === 'Document') {
+				return _Browser_doc;
+			} else {
+				return _Browser_window;
+			}
+		}();
+		return A2(
+			$elm$core$Task$map,
+			function (value) {
+				return _Utils_Tuple2(key, value);
+			},
+			A3(
+				_Browser_on,
+				actualNode,
+				name,
+				function (event) {
+					return A2(
+						$elm$core$Platform$sendToSelf,
+						router,
+						A2($elm$browser$Browser$Events$Event, key, event));
+				}));
+	});
+var $elm$core$Dict$union = F2(
+	function (t1, t2) {
+		return A3($elm$core$Dict$foldl, $elm$core$Dict$insert, t2, t1);
+	});
+var $elm$browser$Browser$Events$onEffects = F3(
+	function (router, subs, state) {
+		var stepRight = F3(
+			function (key, sub, _v6) {
+				var deads = _v6.a;
+				var lives = _v6.b;
+				var news = _v6.c;
+				return _Utils_Tuple3(
+					deads,
+					lives,
+					A2(
+						$elm$core$List$cons,
+						A3($elm$browser$Browser$Events$spawn, router, key, sub),
+						news));
+			});
+		var stepLeft = F3(
+			function (_v4, pid, _v5) {
+				var deads = _v5.a;
+				var lives = _v5.b;
+				var news = _v5.c;
+				return _Utils_Tuple3(
+					A2($elm$core$List$cons, pid, deads),
+					lives,
+					news);
+			});
+		var stepBoth = F4(
+			function (key, pid, _v2, _v3) {
+				var deads = _v3.a;
+				var lives = _v3.b;
+				var news = _v3.c;
+				return _Utils_Tuple3(
+					deads,
+					A3($elm$core$Dict$insert, key, pid, lives),
+					news);
+			});
+		var newSubs = A2($elm$core$List$map, $elm$browser$Browser$Events$addKey, subs);
+		var _v0 = A6(
+			$elm$core$Dict$merge,
+			stepLeft,
+			stepBoth,
+			stepRight,
+			state.pids,
+			$elm$core$Dict$fromList(newSubs),
+			_Utils_Tuple3(_List_Nil, $elm$core$Dict$empty, _List_Nil));
+		var deadPids = _v0.a;
+		var livePids = _v0.b;
+		var makeNewPids = _v0.c;
+		return A2(
+			$elm$core$Task$andThen,
+			function (pids) {
+				return $elm$core$Task$succeed(
+					A2(
+						$elm$browser$Browser$Events$State,
+						newSubs,
+						A2(
+							$elm$core$Dict$union,
+							livePids,
+							$elm$core$Dict$fromList(pids))));
+			},
+			A2(
+				$elm$core$Task$andThen,
 				function (_v1) {
-					return $author$project$Main$ExportDone;
-				})
-			]));
+					return $elm$core$Task$sequence(makeNewPids);
+				},
+				$elm$core$Task$sequence(
+					A2($elm$core$List$map, $elm$core$Process$kill, deadPids))));
+	});
+var $elm$browser$Browser$Events$onSelfMsg = F3(
+	function (router, _v0, state) {
+		var key = _v0.key;
+		var event = _v0.event;
+		var toMessage = function (_v2) {
+			var subKey = _v2.a;
+			var _v3 = _v2.b;
+			var node = _v3.a;
+			var name = _v3.b;
+			var decoder = _v3.c;
+			return _Utils_eq(subKey, key) ? A2(_Browser_decodeEvent, decoder, event) : $elm$core$Maybe$Nothing;
+		};
+		var messages = A2($elm$core$List$filterMap, toMessage, state.subs);
+		return A2(
+			$elm$core$Task$andThen,
+			function (_v1) {
+				return $elm$core$Task$succeed(state);
+			},
+			$elm$core$Task$sequence(
+				A2(
+					$elm$core$List$map,
+					$elm$core$Platform$sendToApp(router),
+					messages)));
+	});
+var $elm$browser$Browser$Events$subMap = F2(
+	function (func, _v0) {
+		var node = _v0.a;
+		var name = _v0.b;
+		var decoder = _v0.c;
+		return A3(
+			$elm$browser$Browser$Events$MySub,
+			node,
+			name,
+			A2($elm$json$Json$Decode$map, func, decoder));
+	});
+_Platform_effectManagers['Browser.Events'] = _Platform_createManager($elm$browser$Browser$Events$init, $elm$browser$Browser$Events$onEffects, $elm$browser$Browser$Events$onSelfMsg, 0, $elm$browser$Browser$Events$subMap);
+var $elm$browser$Browser$Events$subscription = _Platform_leaf('Browser.Events');
+var $elm$browser$Browser$Events$on = F3(
+	function (node, name, decoder) {
+		return $elm$browser$Browser$Events$subscription(
+			A3($elm$browser$Browser$Events$MySub, node, name, decoder));
+	});
+var $elm$browser$Browser$Events$onMouseMove = A2($elm$browser$Browser$Events$on, $elm$browser$Browser$Events$Document, 'mousemove');
+var $elm$browser$Browser$Events$onMouseUp = A2($elm$browser$Browser$Events$on, $elm$browser$Browser$Events$Document, 'mouseup');
+var $author$project$Main$subscriptions = function (model) {
+	return $elm$core$Platform$Sub$batch(
+		_Utils_ap(
+			_List_fromArray(
+				[
+					$author$project$Main$gotExportDone(
+					function (_v0) {
+						return $author$project$Main$ExportDone;
+					})
+				]),
+			function () {
+				var _v1 = model.colorPicking;
+				if (_v1.$ === 'Just') {
+					return _List_fromArray(
+						[
+							$elm$browser$Browser$Events$onMouseMove(
+							A3(
+								$elm$json$Json$Decode$map2,
+								$author$project$Main$ColorPickMove,
+								A2($elm$json$Json$Decode$field, 'clientX', $elm$json$Json$Decode$float),
+								A2($elm$json$Json$Decode$field, 'clientY', $elm$json$Json$Decode$float))),
+							$elm$browser$Browser$Events$onMouseUp(
+							$elm$json$Json$Decode$succeed($author$project$Main$EndColorPick))
+						]);
+				} else {
+					return _List_Nil;
+				}
+			}()));
 };
 var $author$project$Main$BrickRef = F5(
 	function (id, x, y, width, height) {
@@ -6402,6 +6698,10 @@ var $elm$core$List$any = F2(
 			}
 		}
 	});
+var $elm$core$Basics$clamp = F3(
+	function (low, high, number) {
+		return (_Utils_cmp(number, low) < 0) ? low : ((_Utils_cmp(number, high) > 0) ? high : number);
+	});
 var $elm$core$List$append = F2(
 	function (xs, ys) {
 		if (!ys.b) {
@@ -6418,6 +6718,26 @@ var $elm$core$List$concatMap = F2(
 		return $elm$core$List$concat(
 			A2($elm$core$List$map, f, list));
 	});
+var $elm$core$Basics$modBy = _Basics_modBy;
+var $author$project$Main$defaultHue = function (idx) {
+	var _v0 = A2($elm$core$Basics$modBy, 7, idx);
+	switch (_v0) {
+		case 0:
+			return 0;
+		case 1:
+			return 120;
+		case 2:
+			return 40;
+		case 3:
+			return 270;
+		case 4:
+			return 20;
+		case 5:
+			return 180;
+		default:
+			return 310;
+	}
+};
 var $elm$core$List$drop = F2(
 	function (n, list) {
 		drop:
@@ -6463,18 +6783,6 @@ var $elm$core$List$filter = F2(
 			list);
 	});
 var $elm$json$Json$Encode$float = _Json_wrap;
-var $elm$core$Dict$fromList = function (assocs) {
-	return A3(
-		$elm$core$List$foldl,
-		F2(
-			function (_v0, dict) {
-				var key = _v0.a;
-				var value = _v0.b;
-				return A3($elm$core$Dict$insert, key, value, dict);
-			}),
-		$elm$core$Dict$empty,
-		assocs);
-};
 var $elm$core$Basics$ge = _Utils_ge;
 var $elm$core$List$head = function (list) {
 	if (list.b) {
@@ -6548,7 +6856,6 @@ var $author$project$Main$Brick = F8(
 	function (id, x, y, width, height, brickType, neighbors, polygon) {
 		return {brickType: brickType, height: height, id: id, neighbors: neighbors, polygon: polygon, width: width, x: x, y: y};
 	});
-var $elm$json$Json$Decode$float = _Json_decodeFloat;
 var $elm$json$Json$Decode$index = _Json_decodeIndex;
 var $elm$core$Tuple$pair = F2(
 	function (a, b) {
@@ -7182,9 +7489,11 @@ var $author$project$Main$update = F2(
 					var _v5 = model.waves;
 					if (!_v5.b) {
 						var newWave = {
+							hue: $author$project$Main$defaultHue(model.nextWaveId - 1),
 							id: model.nextWaveId,
 							locked: false,
 							name: 'Wave ' + $elm$core$String$fromInt(model.nextWaveId),
+							opacity: 0.3,
 							pieceIds: _List_Nil,
 							visible: true
 						};
@@ -7241,9 +7550,11 @@ var $author$project$Main$update = F2(
 					$elm$core$Platform$Cmd$none);
 			case 'AddWave':
 				var newWave = {
+					hue: $author$project$Main$defaultHue(model.nextWaveId - 1),
 					id: model.nextWaveId,
 					locked: false,
 					name: 'Wave ' + $elm$core$String$fromInt(model.nextWaveId),
+					opacity: 0.3,
 					pieceIds: _List_Nil,
 					visible: true
 				};
@@ -8181,6 +8492,48 @@ var $author$project$Main$update = F2(
 				} else {
 					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 				}
+			case 'StartColorPick':
+				var waveId = msg.a;
+				var px = msg.b;
+				var py = msg.c;
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{
+							colorPicking: $elm$core$Maybe$Just(
+								{panelX: px, panelY: py, waveId: waveId})
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'ColorPickMove':
+				var mx = msg.a;
+				var my = msg.b;
+				var _v26 = model.colorPicking;
+				if (_v26.$ === 'Nothing') {
+					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
+				} else {
+					var cp = _v26.a;
+					var newOpacity = A3($elm$core$Basics$clamp, 0.05, 1.0, 1.0 - ((my - cp.panelY) / 80));
+					var newHue = A3($elm$core$Basics$clamp, 0, 360, ((mx - cp.panelX) / 200) * 360);
+					var updatedWaves = A2(
+						$elm$core$List$map,
+						function (w) {
+							return _Utils_eq(w.id, cp.waveId) ? _Utils_update(
+								w,
+								{hue: newHue, opacity: newOpacity}) : w;
+						},
+						model.waves);
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{waves: updatedWaves}),
+						$elm$core$Platform$Cmd$none);
+				}
+			case 'EndColorPick':
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{colorPicking: $elm$core$Maybe$Nothing}),
+					$elm$core$Platform$Cmd$none);
 			default:
 				return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 		}
@@ -8650,27 +9003,45 @@ var $elm$html$Html$Events$onMouseLeave = function (msg) {
 		'mouseleave',
 		$elm$json$Json$Decode$succeed(msg));
 };
-var $elm$core$Basics$modBy = _Basics_modBy;
-var $author$project$Main$waveColorClass = function (idx) {
-	return 'wc-' + $elm$core$String$fromInt(
-		A2($elm$core$Basics$modBy, 7, idx));
+var $author$project$Main$hslToRgb = function (hue) {
+	var h = hue / 60;
+	var i = $elm$core$Basics$floor(h);
+	var f = h - i;
+	var p = $elm$core$Basics$round(255 * f);
+	var q = $elm$core$Basics$round(255 * (1 - f));
+	var _v0 = A2($elm$core$Basics$modBy, 6, i);
+	switch (_v0) {
+		case 0:
+			return _Utils_Tuple3(255, p, 0);
+		case 1:
+			return _Utils_Tuple3(q, 255, 0);
+		case 2:
+			return _Utils_Tuple3(0, 255, p);
+		case 3:
+			return _Utils_Tuple3(0, q, 255);
+		case 4:
+			return _Utils_Tuple3(p, 0, 255);
+		default:
+			return _Utils_Tuple3(255, 0, q);
+	}
 };
+var $author$project$Main$waveColor = F2(
+	function (hue, opacity) {
+		var _v0 = $author$project$Main$hslToRgb(hue);
+		var r = _v0.a;
+		var g = _v0.b;
+		var b = _v0.c;
+		return 'rgba(' + ($elm$core$String$fromInt(r) + (',' + ($elm$core$String$fromInt(g) + (',' + ($elm$core$String$fromInt(b) + (',' + ($elm$core$String$fromFloat(opacity) + ')')))))));
+	});
 var $author$project$Main$viewPieceOverlay = F7(
 	function (appMode, hoveredId, selectedId, selectedWaveId, waves, isLassoing, piece) {
-		var maybePieceWaveClass = A2(
-			$elm$core$Maybe$map,
-			function (_v2) {
-				var idx = _v2.a;
-				return $author$project$Main$waveColorClass(idx);
-			},
-			$elm$core$List$head(
-				A2(
-					$elm$core$List$filter,
-					function (_v1) {
-						var w = _v1.b;
-						return w.visible && A2($elm$core$List$member, piece.id, w.pieceIds);
-					},
-					A2($elm$core$List$indexedMap, $elm$core$Tuple$pair, waves))));
+		var maybeWave = $elm$core$List$head(
+			A2(
+				$elm$core$List$filter,
+				function (w) {
+					return w.visible && A2($elm$core$List$member, piece.id, w.pieceIds);
+				},
+				waves));
 		var isHov = _Utils_eq(
 			hoveredId,
 			$elm$core$Maybe$Just(piece.id));
@@ -8678,6 +9049,15 @@ var $author$project$Main$viewPieceOverlay = F7(
 		var isSel = (!inAssignMode) && _Utils_eq(
 			selectedId,
 			$elm$core$Maybe$Just(piece.id));
+		var fillStyle = function () {
+			if (maybeWave.$ === 'Just') {
+				var wv = maybeWave.a;
+				var eff = isHov ? A2($elm$core$Basics$min, 1.0, wv.opacity + 0.15) : wv.opacity;
+				return 'fill: ' + (A2($author$project$Main$waveColor, wv.hue, eff) + ';');
+			} else {
+				return isHov ? 'fill: rgba(64,120,255,0.2);' : (isSel ? 'fill: rgba(64,120,255,0.45);' : 'fill: transparent;');
+			}
+		}();
 		var clsStr = A2(
 			$elm$core$String$join,
 			' ',
@@ -8687,9 +9067,7 @@ var $author$project$Main$viewPieceOverlay = F7(
 				_List_fromArray(
 					[
 						'piece-overlay',
-						A2($elm$core$Maybe$withDefault, '', maybePieceWaveClass),
-						isHov ? 'hovered' : '',
-						isSel ? 'selected' : ''
+						(isSel && _Utils_eq(maybeWave, $elm$core$Maybe$Nothing)) ? 'selected' : ''
 					])));
 		var clickMsg = inAssignMode ? $author$project$Main$AssignPieceToWave(piece.id) : (_Utils_eq(appMode, $author$project$Main$ModePieces) ? $author$project$Main$SelectAndEdit(piece.id) : $author$project$Main$SelectPiece(piece.id));
 		if ($elm$core$List$isEmpty(piece.polygon)) {
@@ -8706,6 +9084,7 @@ var $author$project$Main$viewPieceOverlay = F7(
 						return $elm$core$String$fromFloat(x) + (',' + $elm$core$String$fromFloat(y));
 					},
 					piece.polygon));
+			var pointerStyle = isLassoing ? 'pointer-events: none; ' : '';
 			return A2(
 				$elm$svg$Svg$polygon,
 				_Utils_ap(
@@ -8714,7 +9093,7 @@ var $author$project$Main$viewPieceOverlay = F7(
 							$elm$svg$Svg$Attributes$points(pointsAttr),
 							$elm$svg$Svg$Attributes$class(clsStr),
 							$elm$svg$Svg$Attributes$style(
-							isLassoing ? 'pointer-events: none;' : '')
+							_Utils_ap(pointerStyle, fillStyle))
 						]),
 					isLassoing ? _List_Nil : _List_fromArray(
 						[
@@ -10727,6 +11106,10 @@ var $author$project$Main$RemoveWave = function (a) {
 var $author$project$Main$SelectWave = function (a) {
 	return {$: 'SelectWave', a: a};
 };
+var $author$project$Main$StartColorPick = F3(
+	function (a, b, c) {
+		return {$: 'StartColorPick', a: a, b: b, c: c};
+	});
 var $author$project$Main$ToggleWaveLock = function (a) {
 	return {$: 'ToggleWaveLock', a: a};
 };
@@ -10833,6 +11216,8 @@ var $author$project$Main$viewWaveRow = F3(
 		var isSelected = _Utils_eq(
 			model.selectedWaveId,
 			$elm$core$Maybe$Just(wave.id));
+		var swatchColor = A2($author$project$Main$waveColor, wave.hue, 0.85);
+		var countColor = A2($author$project$Main$waveColor, wave.hue, 1.0);
 		return A2(
 			$elm$html$Html$div,
 			_List_fromArray(
@@ -10841,9 +11226,6 @@ var $author$project$Main$viewWaveRow = F3(
 					_List_fromArray(
 						[
 							_Utils_Tuple2('wave-row', true),
-							_Utils_Tuple2(
-							$author$project$Main$waveColorClass(waveIdx),
-							true),
 							_Utils_Tuple2('selected', isSelected),
 							_Utils_Tuple2('locked', wave.locked),
 							_Utils_Tuple2(
@@ -10934,7 +11316,30 @@ var $author$project$Main$viewWaveRow = F3(
 							$elm$html$Html$span,
 							_List_fromArray(
 								[
-									$elm$html$Html$Attributes$class('wave-piece-count-label')
+									$elm$html$Html$Attributes$class('wave-swatch'),
+									A2($elm$html$Html$Attributes$style, 'background-color', swatchColor),
+									A2(
+									$elm$html$Html$Events$stopPropagationOn,
+									'mousedown',
+									A3(
+										$elm$json$Json$Decode$map2,
+										F2(
+											function (mx, my) {
+												return _Utils_Tuple2(
+													A3($author$project$Main$StartColorPick, wave.id, mx, my),
+													true);
+											}),
+										A2($elm$json$Json$Decode$field, 'clientX', $elm$json$Json$Decode$float),
+										A2($elm$json$Json$Decode$field, 'clientY', $elm$json$Json$Decode$float))),
+									$elm$html$Html$Attributes$title('Pick color')
+								]),
+							_List_Nil),
+							A2(
+							$elm$html$Html$span,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('wave-piece-count-label'),
+									A2($elm$html$Html$Attributes$style, 'color', countColor)
 								]),
 							_List_fromArray(
 								[
@@ -11370,6 +11775,31 @@ var $author$project$Main$viewBody = function (model) {
 		}
 	}
 };
+var $author$project$Main$viewColorPickerPanel = function (model) {
+	var _v0 = model.colorPicking;
+	if (_v0.$ === 'Nothing') {
+		return $elm$html$Html$text('');
+	} else {
+		var cp = _v0.a;
+		return A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('color-picker-panel'),
+					A2(
+					$elm$html$Html$Attributes$style,
+					'left',
+					$elm$core$String$fromFloat(cp.panelX) + 'px'),
+					A2(
+					$elm$html$Html$Attributes$style,
+					'top',
+					$elm$core$String$fromFloat(cp.panelY - 80) + 'px'),
+					A2($elm$html$Html$Attributes$style, 'width', '200px'),
+					A2($elm$html$Html$Attributes$style, 'height', '80px')
+				]),
+			_List_Nil);
+	}
+};
 var $author$project$Main$ModeExport = {$: 'ModeExport'};
 var $author$project$Main$Reset = {$: 'Reset'};
 var $author$project$Main$SetAppMode = function (a) {
@@ -11631,7 +12061,8 @@ var $author$project$Main$view = function (model) {
 		_List_fromArray(
 			[
 				$author$project$Main$viewTitleBar(model),
-				$author$project$Main$viewBody(model)
+				$author$project$Main$viewBody(model),
+				$author$project$Main$viewColorPickerPanel(model)
 			]));
 };
 var $author$project$Main$main = $elm$browser$Browser$element(

@@ -13,6 +13,7 @@ import Json.Decode as D
 import Json.Encode as E
 import Svg
 import Svg.Attributes as SA
+import Browser.Events
 import Process
 import Task
 
@@ -92,6 +93,8 @@ type alias Wave =
     , visible : Bool
     , locked : Bool
     , pieceIds : List Int
+    , hue : Float
+    , opacity : Float
     }
 
 
@@ -152,6 +155,7 @@ type alias Model =
     , dragOverWaveId : Maybe (Maybe Int)
     , dragInsertBeforeId : Maybe Int
     , lasso : Maybe { x0 : Float, y0 : Float, x1 : Float, y1 : Float }
+    , colorPicking : Maybe { waveId : Int, panelX : Float, panelY : Float }
     , svgScale : Float
     , availableH : Float
     , houseUnitsHigh : Float
@@ -192,6 +196,7 @@ init _ =
       , dragOverWaveId = Nothing
       , dragInsertBeforeId = Nothing
       , lasso = Nothing
+      , colorPicking = Nothing
       , svgScale = 1.0
       , availableH = 900.0
       , houseUnitsHigh = 15.5
@@ -260,6 +265,9 @@ type Msg
     | SetZoomLevel Float
     | SetZoomGridActive Bool
     | SetHouseUnitsHigh String
+    | StartColorPick Int Float Float
+    | ColorPickMove Float Float
+    | EndColorPick
     | NoOp
 
 
@@ -458,6 +466,8 @@ update msg model =
                                 , visible = True
                                 , locked = False
                                 , pieceIds = []
+                                , hue = defaultHue (model.nextWaveId - 1)
+                                , opacity = 0.3
                                 }
                         in
                         ( { baseModel | waves = [ newWave ], nextWaveId = model.nextWaveId + 1, selectedWaveId = Just newWave.id }, recomputeViewport )
@@ -490,6 +500,8 @@ update msg model =
                     , visible = True
                     , locked = False
                     , pieceIds = []
+                    , hue = defaultHue (model.nextWaveId - 1)
+                    , opacity = 0.3
                     }
             in
             ( { model
@@ -1140,6 +1152,38 @@ update msg model =
                 Nothing ->
                     ( model, Cmd.none )
 
+        StartColorPick waveId px py ->
+            ( { model | colorPicking = Just { waveId = waveId, panelX = px, panelY = py } }, Cmd.none )
+
+        ColorPickMove mx my ->
+            case model.colorPicking of
+                Nothing ->
+                    ( model, Cmd.none )
+
+                Just cp ->
+                    let
+                        newHue =
+                            clamp 0 360 ((mx - cp.panelX) / 200 * 360)
+
+                        newOpacity =
+                            clamp 0.05 1.0 (1.0 - (my - cp.panelY) / 80)
+
+                        updatedWaves =
+                            List.map
+                                (\w ->
+                                    if w.id == cp.waveId then
+                                        { w | hue = newHue, opacity = newOpacity }
+
+                                    else
+                                        w
+                                )
+                                model.waves
+                    in
+                    ( { model | waves = updatedWaves }, Cmd.none )
+
+        EndColorPick ->
+            ( { model | colorPicking = Nothing }, Cmd.none )
+
         NoOp ->
             ( model, Cmd.none )
 
@@ -1403,7 +1447,25 @@ view model =
     div [ class "app" ]
         [ viewTitleBar model
         , viewBody model
+        , viewColorPickerPanel model
         ]
+
+
+viewColorPickerPanel : Model -> Html Msg
+viewColorPickerPanel model =
+    case model.colorPicking of
+        Nothing ->
+            text ""
+
+        Just cp ->
+            div
+                [ class "color-picker-panel"
+                , style "left" (String.fromFloat cp.panelX ++ "px")
+                , style "top" (String.fromFloat (cp.panelY - 80) ++ "px")
+                , style "width" "200px"
+                , style "height" "80px"
+                ]
+                []
 
 
 viewBody : Model -> Html Msg
@@ -2640,9 +2702,42 @@ viewPieceNumberLabel piece pos =
         ]
 
 
-waveColorClass : Int -> String
-waveColorClass idx =
-    "wc-" ++ String.fromInt (modBy 7 idx)
+defaultHue : Int -> Float
+defaultHue idx =
+    case modBy 7 idx of
+        0 -> 0
+        1 -> 120
+        2 -> 40
+        3 -> 270
+        4 -> 20
+        5 -> 180
+        _ -> 310
+
+
+hslToRgb : Float -> ( Int, Int, Int )
+hslToRgb hue =
+    let
+        h = hue / 60
+        i = floor h
+        f = h - toFloat i
+        q = round (255 * (1 - f))
+        p = round (255 * f)
+    in
+    case modBy 6 i of
+        0 -> ( 255, p, 0 )
+        1 -> ( q, 255, 0 )
+        2 -> ( 0, 255, p )
+        3 -> ( 0, q, 255 )
+        4 -> ( p, 0, 255 )
+        _ -> ( 255, 0, q )
+
+
+waveColor : Float -> Float -> String
+waveColor hue opacity =
+    let
+        ( r, g, b ) = hslToRgb hue
+    in
+    "rgba(" ++ String.fromInt r ++ "," ++ String.fromInt g ++ "," ++ String.fromInt b ++ "," ++ String.fromFloat opacity ++ ")"
 
 
 viewPieceOverlay : AppMode -> Maybe Int -> Maybe Int -> Maybe Int -> List Wave -> Bool -> Piece -> Svg.Svg Msg
@@ -2657,18 +2752,28 @@ viewPieceOverlay appMode hoveredId selectedId selectedWaveId waves isLassoing pi
         isSel =
             not inAssignMode && selectedId == Just piece.id
 
-        maybePieceWaveClass =
+        maybeWave =
             waves
-                |> List.indexedMap Tuple.pair
-                |> List.filter (\( _, w ) -> w.visible && List.member piece.id w.pieceIds)
+                |> List.filter (\w -> w.visible && List.member piece.id w.pieceIds)
                 |> List.head
-                |> Maybe.map (\( idx, _ ) -> waveColorClass idx)
+
+        fillStyle =
+            case maybeWave of
+                Just wv ->
+                    let
+                        eff =
+                            if isHov then Basics.min 1.0 (wv.opacity + 0.15) else wv.opacity
+                    in
+                    "fill: " ++ waveColor wv.hue eff ++ ";"
+
+                Nothing ->
+                    if isHov then "fill: rgba(64,120,255,0.2);"
+                    else if isSel then "fill: rgba(64,120,255,0.45);"
+                    else "fill: transparent;"
 
         clsStr =
             [ "piece-overlay"
-            , Maybe.withDefault "" maybePieceWaveClass
-            , if isHov then "hovered" else ""
-            , if isSel then "selected" else ""
+            , if isSel && maybeWave == Nothing then "selected" else ""
             ]
                 |> List.filter ((/=) "")
                 |> String.join " "
@@ -2692,11 +2797,14 @@ viewPieceOverlay appMode hoveredId selectedId selectedWaveId waves isLassoing pi
                 piece.polygon
                     |> List.map (\( x, y ) -> String.fromFloat x ++ "," ++ String.fromFloat y)
                     |> String.join " "
+
+            pointerStyle =
+                if isLassoing then "pointer-events: none; " else ""
         in
         Svg.polygon
             ([ SA.points pointsAttr
              , SA.class clsStr
-             , SA.style (if isLassoing then "pointer-events: none;" else "")
+             , SA.style (pointerStyle ++ fillStyle)
              ]
                 ++ (if isLassoing then
                         []
@@ -2813,10 +2921,16 @@ viewWaveRow model allWaves wave =
         waveCount =
             List.length allWaves
     in
+    let
+        swatchColor =
+            waveColor wave.hue 0.85
+
+        countColor =
+            waveColor wave.hue 1.0
+    in
     div
         [ classList
             [ ( "wave-row", True )
-            , ( waveColorClass waveIdx, True )
             , ( "selected", isSelected )
             , ( "locked", wave.locked )
             , ( "drag-over", not wave.locked && model.dragOverWaveId == Just (Just wave.id) )
@@ -2853,7 +2967,18 @@ viewWaveRow model allWaves wave =
                     )
                 ]
                 [ iconLock ]
-            , span [ class "wave-piece-count-label" ]
+            , span
+                [ class "wave-swatch"
+                , style "background-color" swatchColor
+                , stopPropagationOn "mousedown"
+                    (D.map2 (\mx my -> ( StartColorPick wave.id mx my, True ))
+                        (D.field "clientX" D.float)
+                        (D.field "clientY" D.float)
+                    )
+                , title "Pick color"
+                ]
+                []
+            , span [ class "wave-piece-count-label", style "color" countColor ]
                 [ text (String.fromInt (List.length wave.pieceIds) ++ " pcs") ]
             , span [ class "wave-name-label" ]
                 [ text wave.name ]
@@ -3105,10 +3230,23 @@ viewStats model =
 
 
 subscriptions : Model -> Sub Msg
-subscriptions _ =
+subscriptions model =
     Sub.batch
-        [ gotExportDone (\_ -> ExportDone)
-        ]
+        ([ gotExportDone (\_ -> ExportDone) ]
+            ++ (case model.colorPicking of
+                    Just _ ->
+                        [ Browser.Events.onMouseMove
+                            (D.map2 ColorPickMove
+                                (D.field "clientX" D.float)
+                                (D.field "clientY" D.float)
+                            )
+                        , Browser.Events.onMouseUp (D.succeed EndColorPick)
+                        ]
+
+                    Nothing ->
+                        []
+               )
+        )
 
 
 
