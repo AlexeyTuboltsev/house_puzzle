@@ -503,31 +503,13 @@ def build_house_data(
                 paths.append({"points": points})
             colliders.append({"paths": paths})
 
-    # Compute ground offset: how far the lowest collider point is above Y=0.
-    # The importer shifts the house down by this amount so bottom blocks touch ground.
+    # groundOffset = 0: the clip rect bottom = bricks bottom = y=0 in Unity.
+    # No shift needed — blocks naturally sit on the ground.
     ground_offset = 0.0
-    if blocks and colliders:
-        min_world_bottom = float("inf")
-        for b, c in zip(blocks, colliders):
-            if not c.get("paths"):
-                continue
-            col_min_y = min(
-                p["y"] for path in c["paths"] for p in path["points"]
-            )
-            world_bottom = b["position"]["y"] + col_min_y
-            if world_bottom < min_world_bottom:
-                min_world_bottom = world_bottom
-        if min_world_bottom < float("inf"):
-            ground_offset = min_world_bottom
 
-    # ScalingFactor controls UI tray piece sizing (multiplied by sprite pixel size).
-    # Compute from average sprite width to target ~220px in the tray.
-    # Existing houses: SF=1 with ~200px sprites, SF=2 with ~110px sprites.
-    if piece_images:
-        avg_w = sum(img.width for img in piece_images.values()) / len(piece_images)
-        scaling_factor = max(1.0, round(220.0 / avg_w))
-    else:
-        scaling_factor = 2.0
+    # ScalingFactor = 2 so tray pieces are 1:1 with their placed size.
+    # The game renders placed pieces at 2× the base sprite pixel size.
+    scaling_factor = 2.0
 
     # SameBlocksSettings: each entry is the list of block indices in the same group.
     # Pieces in the same editor group get identical lists; ungrouped pieces get [i].

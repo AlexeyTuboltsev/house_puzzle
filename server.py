@@ -250,8 +250,11 @@ def api_load_pdf():
     compose_ai_bricks_png(file_path, house.bricks, str(extract_dir / "composite.png"), **_ai_kw)
     extract_ai_layers_batch(file_path, house.bricks, str(extract_dir), **_ai_kw, prefix="brick")
     render_ai_outlines_png(file_path, str(extract_dir / "outlines.png"), **_ai_kw, stroke_width=3.2)
-    render_ai_lights_png(file_path, str(extract_dir / "lights.png"), **_ai_kw)
-    render_ai_background_png(file_path, str(extract_dir / "background.png"), **_ai_kw)
+    _layer_kw = dict(**_ai_kw,
+                      pdf_offset_px=house.pdf_offset_px,
+                      canvas_size=(house.canvas_width, house.canvas_height))
+    render_ai_lights_png(file_path, str(extract_dir / "lights.png"), **_layer_kw)
+    render_ai_background_png(file_path, str(extract_dir / "background.png"), **_layer_kw)
 
     vec_polys = extract_ai_vector_polygons(file_path, house.bricks, **_ai_kw)
     if vec_polys:
@@ -262,6 +265,22 @@ def api_load_pdf():
     bp, ba = compute_borders_and_areas(bricks, str(extract_dir))
     _state["border_pixels"] = bp
     _state["brick_areas"] = ba
+
+    # Filter out bricks that are covered by another brick (pixel overlap check).
+    # Decoration elements sometimes appear as separate layers on top of wall bricks.
+    covered_ids = _find_covered_bricks(bricks, str(extract_dir))
+    if covered_ids:
+        print(f"[load] Removing {len(covered_ids)} covered bricks: {sorted(covered_ids)}", flush=True)
+        bricks = [b for b in bricks if b.id not in covered_ids]
+        house.bricks = [bl for bl in house.bricks if bl.index not in covered_ids]
+        bricks_by_id = {b.id: b for b in bricks}
+        _state["house"] = house
+        _state["bricks"] = bricks
+        _state["bricks_by_id"] = bricks_by_id
+        # Recompute borders without covered bricks
+        bp, ba = compute_borders_and_areas(bricks, str(extract_dir))
+        _state["border_pixels"] = bp
+        _state["brick_areas"] = ba
 
     # Vectorize outlines — reads cache pre-populated from PDF vector layer
     polygons = _vectorize_bricks(bricks, extract_dir)
@@ -780,54 +799,7 @@ def api_export():
             img.save(buf, format="PNG")
             zf.writestr(name, buf.getvalue())
 
-        # background.png — AI background layer (house silhouette, used as blueprint bg)
-        bg_src_path = _state["extracted_dir"] / "background.png"
-        if bg_src_path.exists():
-            bg_src = Image.open(str(bg_src_path)).convert("RGBA")
-            _write_scaled(zf, "background.png", bg_src)
-
-        # lights.png — AI lights layer overlay
-        lights_src_path = _state["extracted_dir"] / "lights.png"
-        if lights_src_path.exists():
-            lights_src = Image.open(str(lights_src_path)).convert("RGBA")
-            _write_scaled(zf, "lights.png", lights_src)
-
-        # scheme.png — rasterize the vetted SVG outline paths from the frontend.
-        # These are the exact paths the user sees and approves in the blueprint view.
-        frontend_outlines = data.get("outlines", [])
-        scheme = _rasterize_outlines(
-            frontend_outlines, house.canvas_width, house.canvas_height
-        )
-        _write_scaled(zf, "scheme.png", scheme)
-
-        # light.png — outer house outline from SVG paths (same source as scheme)
-        light = _rasterize_outline_boundary(
-            frontend_outlines, house.canvas_width, house.canvas_height
-        )
-        _write_scaled(zf, "light.png", light)
-
-        # flat.png — composite clipped to house shape (FullHouse sprite)
-        # blue.png — same silhouette filled with blue (Background sprite)
-        if comp_src:
-            flat = _generate_flat(pieces, piece_images_orig, comp_src)
-            _write_scaled(zf, "flat.png", flat)
-
-        # blue.png — house silhouette filled with blue (same mask as flat)
-        import numpy as np
-        from PIL import ImageFilter
-        mask_raw = _build_house_mask(
-            piece_images_orig, pieces,
-            house.canvas_width, house.canvas_height,
-        )
-        mask_bin = Image.fromarray((mask_raw > 30).astype(np.uint8) * 255)
-        mask_closed = mask_bin.filter(ImageFilter.MaxFilter(5))
-        mask_closed = mask_closed.filter(ImageFilter.MinFilter(5))
-        blue = Image.new("RGBA", (house.canvas_width, house.canvas_height),
-                         (51, 85, 204, 255))
-        blue.putalpha(mask_closed)
-        _write_scaled(zf, "blue.png", blue)
-
-        # Unity house_data.json (blocks, steps, colliders, sameBlocksSettings)
+        # Build house_data.json first — we need groundOffset for overlay alignment
         placement = data.get("placement", {})
         groups_data = data.get("groups", [])
         from unity_export import build_house_data
@@ -846,6 +818,41 @@ def api_export():
             piece_images=piece_images,
             groups=groups_data,
         )
+
+        # blue.png — AI background layer exported as "blue"
+        bg_src_path = _state["extracted_dir"] / "background.png"
+        if bg_src_path.exists():
+            bg_src = Image.open(str(bg_src_path)).convert("RGBA")
+            _write_scaled(zf, "blue.png", bg_src)
+
+        # lights.png — AI lights layer overlay
+        lights_src_path = _state["extracted_dir"] / "lights.png"
+        if lights_src_path.exists():
+            lights_src = Image.open(str(lights_src_path)).convert("RGBA")
+            _write_scaled(zf, "lights.png", lights_src)
+
+        # scheme.png — rasterize the vetted SVG outline paths from the frontend.
+        frontend_outlines = data.get("outlines", [])
+        scheme = _rasterize_outlines(
+            frontend_outlines, house.canvas_width, house.canvas_height
+        )
+        _write_scaled(zf, "scheme.png", scheme)
+
+        # light.png — outer house outline from background vector polygon
+        from ai_parser import extract_ai_background_polygon
+        bg_polygon = extract_ai_background_polygon(
+            _state["tif_path"], dpi=house.render_dpi, clip_rect=house.clip_rect
+        )
+        light = _rasterize_outline_boundary(
+            bg_polygon, house.canvas_width, house.canvas_height
+        )
+        _write_scaled(zf, "light.png", light)
+
+        # flat.png — composite clipped to house shape (FullHouse sprite)
+        if comp_src:
+            flat = _generate_flat(pieces, piece_images_orig, comp_src)
+            _write_scaled(zf, "flat.png", flat)
+
         zf.writestr("house_data.json", json.dumps(house_data, indent=2))
 
     # Clean up temp export dir for PDFs
@@ -853,45 +860,35 @@ def api_export():
         import shutil
         shutil.rmtree(str(export_dir), ignore_errors=True)
 
-    zip_buffer.seek(0)
-    return send_file(
-        zip_buffer,
-        mimetype="application/zip",
-        as_attachment=True,
-        download_name="house_puzzle_export.zip",
-    )
+    # Save ZIP to in/ directory
+    placement = data.get("placement", {})
+    house_name = placement.get("houseName", "NewHouse")
+    out_path = _app_dir / "in" / f"{house_name}_export.zip"
+    with open(out_path, "wb") as f:
+        f.write(zip_buffer.getvalue())
+
+    # Also save to /tmp for Unity import shortcut
+    import shutil
+    shutil.copy2(str(out_path), "/tmp/house_puzzle_export.zip")
+
+    return jsonify({"ok": True, "path": str(out_path)})
 
 
-def _rasterize_outline_boundary(outlines, canvas_w, canvas_h):
-    """Rasterize only the outer boundary of the house from SVG outline paths.
+def _rasterize_outline_boundary(bg_polygon, canvas_w, canvas_h):
+    """Generate house outline from the background vector polygon.
 
-    Draws all piece outlines as filled polygons to get the house silhouette,
-    then extracts the outer edge as a white stroke.
+    Draws the background polygon as a 4px white stroke on transparent canvas.
     """
-    import numpy as np
-    from PIL import ImageFilter
-
-    # Fill all piece outlines to get house silhouette
-    silhouette = Image.new("L", (canvas_w, canvas_h), 0)
-    draw = ImageDraw.Draw(silhouette)
-    for outline in outlines:
-        pts = outline.get("points", [])
-        if len(pts) < 3:
-            continue
-        coords = [(p[0], p[1]) for p in pts]
-        draw.polygon(coords, fill=255)
-
-    # Morphological close to fill gaps
-    silhouette = silhouette.filter(ImageFilter.MaxFilter(5))
-    silhouette = silhouette.filter(ImageFilter.MinFilter(5))
-
-    # Extract outer edge: dilate - original
-    dilated = silhouette.filter(ImageFilter.MaxFilter(15))
-    edge = np.array(dilated).astype(np.int16) - np.array(silhouette).astype(np.int16)
-    edge = np.clip(edge, 0, 255).astype(np.uint8)
-
-    img = Image.new("RGBA", (canvas_w, canvas_h), (255, 255, 255, 255))
-    img.putalpha(Image.fromarray(edge))
+    img = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
+    if not bg_polygon or len(bg_polygon) < 3:
+        return img
+    draw = ImageDraw.Draw(img)
+    coords = [(p[0], p[1]) for p in bg_polygon]
+    # Close the polygon
+    if coords[0] != coords[-1]:
+        coords.append(coords[0])
+    for i in range(len(coords) - 1):
+        draw.line([coords[i], coords[i + 1]], fill=(255, 255, 255, 255), width=4)
     return img
 
 
@@ -967,6 +964,68 @@ def _trace_piece_outlines(piece_images):
                 simplified.append(s)
         result.append((pid, simplified))
     return result
+
+
+def _find_covered_bricks(bricks, extract_dir):
+    """Find bricks whose opaque pixels are mostly covered by another brick.
+
+    For each pair of bricks with overlapping bboxes, load their PNGs and check
+    pixel-level alpha overlap.  If >=80% of the smaller brick's opaque pixels
+    are also opaque in the larger brick, the smaller one is "covered" and should
+    be removed.
+    """
+    import numpy as np
+    covered = set()
+    # Precompute bbox tuples for quick overlap test
+    brick_bboxes = {}
+    for b in bricks:
+        brick_bboxes[b.id] = (b.x, b.y, b.x + b.width, b.y + b.height)
+
+    # Cache alpha arrays (only the brick region, not full canvas)
+    alpha_cache = {}
+
+    def get_alpha(bid):
+        if bid not in alpha_cache:
+            p = Path(extract_dir) / f"brick_{bid:03d}.png"
+            if p.exists():
+                img = Image.open(str(p)).convert("RGBA")
+                alpha_cache[bid] = np.array(img.split()[3])
+            else:
+                alpha_cache[bid] = None
+        return alpha_cache[bid]
+
+    brick_list = list(bricks)
+    for i, a in enumerate(brick_list):
+        if a.id in covered:
+            continue
+        ax0, ay0, ax1, ay1 = brick_bboxes[a.id]
+        for j, b in enumerate(brick_list):
+            if j <= i or b.id in covered:
+                continue
+            bx0, by0, bx1, by1 = brick_bboxes[b.id]
+            # Quick bbox overlap check
+            if ax0 >= bx1 or bx0 >= ax1 or ay0 >= by1 or by0 >= ay1:
+                continue
+            # Determine which is smaller
+            area_a = a.width * a.height
+            area_b = b.width * b.height
+            if area_a <= area_b:
+                small, big = a, b
+            else:
+                small, big = b, a
+            # Load alphas (full canvas PNGs)
+            alpha_s = get_alpha(small.id)
+            alpha_b = get_alpha(big.id)
+            if alpha_s is None or alpha_b is None:
+                continue
+            # Both are canvas-sized, compare directly
+            opaque_s = alpha_s > 30
+            opaque_b = alpha_b > 30
+            overlap_pixels = int(np.sum(opaque_s & opaque_b))
+            total_s = int(np.sum(opaque_s))
+            if total_s > 0 and overlap_pixels / total_s >= 0.8:
+                covered.add(small.id)
+    return covered
 
 
 def _build_house_mask(piece_images, pieces, canvas_w, canvas_h):
@@ -1325,7 +1384,8 @@ if __name__ == "__main__":
         if not args.no_browser:
             threading.Timer(1.0, lambda: webbrowser.open(url)).start()
 
-        app.run(host=args.host, port=args.port, debug=not is_frozen)
+        app.run(host=args.host, port=args.port, debug=False,
+                threaded=True)
     except Exception as e:
         print(f"\nERROR: {e}")
         import traceback

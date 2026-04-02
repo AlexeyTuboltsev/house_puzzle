@@ -6347,11 +6347,8 @@ var $author$project$Main$ColorPickMove = F2(
 		return {$: 'ColorPickMove', a: a, b: b};
 	});
 var $author$project$Main$EndColorPick = {$: 'EndColorPick'};
-var $author$project$Main$ExportDone = {$: 'ExportDone'};
 var $elm$core$Platform$Sub$batch = _Platform_batch;
 var $elm$json$Json$Decode$float = _Json_decodeFloat;
-var $elm$json$Json$Decode$bool = _Json_decodeBool;
-var $author$project$Main$gotExportDone = _Platform_incomingPort('gotExportDone', $elm$json$Json$Decode$bool);
 var $elm$browser$Browser$Events$Document = {$: 'Document'};
 var $elm$browser$Browser$Events$MySub = F3(
 	function (a, b, c) {
@@ -6626,16 +6623,10 @@ var $elm$browser$Browser$Events$onMouseUp = A2($elm$browser$Browser$Events$on, $
 var $author$project$Main$subscriptions = function (model) {
 	return $elm$core$Platform$Sub$batch(
 		_Utils_ap(
-			_List_fromArray(
-				[
-					$author$project$Main$gotExportDone(
-					function (_v0) {
-						return $author$project$Main$ExportDone;
-					})
-				]),
+			_List_Nil,
 			function () {
-				var _v1 = model.colorPicking;
-				if (_v1.$ === 'Just') {
+				var _v0 = model.colorPicking;
+				if (_v0.$ === 'Just') {
 					return _List_fromArray(
 						[
 							$elm$browser$Browser$Events$onMouseMove(
@@ -6661,6 +6652,9 @@ var $author$project$Main$FileSelected = function (a) {
 	return {$: 'FileSelected', a: a};
 };
 var $author$project$Main$Generated = {$: 'Generated'};
+var $author$project$Main$GotExportResponse = function (a) {
+	return {$: 'GotExportResponse', a: a};
+};
 var $author$project$Main$GridColorTarget = {$: 'GridColorTarget'};
 var $author$project$Main$LoadError = function (a) {
 	return {$: 'LoadError', a: a};
@@ -6795,7 +6789,23 @@ var $elm$core$List$drop = F2(
 			}
 		}
 	});
-var $author$project$Main$exportZip = _Platform_outgoingPort('exportZip', $elm$core$Basics$identity);
+var $elm$http$Http$expectBytesResponse = F2(
+	function (toMsg, toResult) {
+		return A3(
+			_Http_expect,
+			'arraybuffer',
+			_Http_toDataView,
+			A2($elm$core$Basics$composeR, toResult, toMsg));
+	});
+var $elm$http$Http$expectWhatever = function (toMsg) {
+	return A2(
+		$elm$http$Http$expectBytesResponse,
+		toMsg,
+		$elm$http$Http$resolve(
+			function (_v0) {
+				return $elm$core$Result$Ok(_Utils_Tuple0);
+			}));
+};
 var $elm$time$Time$Posix = function (a) {
 	return {$: 'Posix', a: a};
 };
@@ -6855,6 +6865,12 @@ var $elm$core$List$isEmpty = function (xs) {
 		return false;
 	}
 };
+var $elm$http$Http$jsonBody = function (value) {
+	return A2(
+		_Http_pair,
+		'application/json',
+		A2($elm$json$Json$Encode$encode, 0, value));
+};
 var $elm$json$Json$Encode$list = F2(
 	function (func, entries) {
 		return _Json_wrap(
@@ -6891,6 +6907,7 @@ var $author$project$Main$LoadResponse = function (canvas) {
 	};
 };
 var $elm$json$Json$Decode$andThen = _Json_andThen;
+var $elm$json$Json$Decode$bool = _Json_decodeBool;
 var $author$project$Main$Brick = F8(
 	function (id, x, y, width, height, brickType, neighbors, polygon) {
 		return {brickType: brickType, height: height, id: id, neighbors: neighbors, polygon: polygon, width: width, x: x, y: y};
@@ -7014,12 +7031,6 @@ var $author$project$Main$decodeLoadResponse = A2(
 					$elm$core$Maybe$withDefault('/api/composite.png'),
 					$elm$json$Json$Decode$maybe(
 						A2($elm$json$Json$Decode$field, 'composite_url', $elm$json$Json$Decode$string)))))));
-var $elm$http$Http$jsonBody = function (value) {
-	return A2(
-		_Http_pair,
-		'application/json',
-		A2($elm$json$Json$Encode$encode, 0, value));
-};
 var $elm$json$Json$Encode$object = function (pairs) {
 	return _Json_wrap(
 		A3(
@@ -7033,15 +7044,16 @@ var $elm$json$Json$Encode$object = function (pairs) {
 			_Json_emptyObject(_Utils_Tuple0),
 			pairs));
 };
-var $elm$http$Http$post = function (r) {
-	return $elm$http$Http$request(
-		{body: r.body, expect: r.expect, headers: _List_Nil, method: 'POST', timeout: $elm$core$Maybe$Nothing, tracker: $elm$core$Maybe$Nothing, url: r.url});
+var $elm$http$Http$riskyRequest = function (r) {
+	return $elm$http$Http$command(
+		$elm$http$Http$Request(
+			{allowCookiesFromOtherDomains: true, body: r.body, expect: r.expect, headers: r.headers, method: r.method, timeout: r.timeout, tracker: r.tracker, url: r.url}));
 };
 var $elm$core$Basics$round = _Basics_round;
 var $elm$json$Json$Encode$string = _Json_wrap;
 var $author$project$Main$loadPdf = F2(
 	function (path, canvasHeight) {
-		return $elm$http$Http$post(
+		return $elm$http$Http$riskyRequest(
 			{
 				body: $elm$http$Http$jsonBody(
 					$elm$json$Json$Encode$object(
@@ -7056,6 +7068,10 @@ var $author$project$Main$loadPdf = F2(
 									$elm$core$Basics$round(canvasHeight)))
 							]))),
 				expect: A2($elm$http$Http$expectJson, $author$project$Main$GotLoadResponse, $author$project$Main$decodeLoadResponse),
+				headers: _List_Nil,
+				method: 'POST',
+				timeout: $elm$core$Maybe$Just((5 * 60) * 1000),
+				tracker: $elm$core$Maybe$Nothing,
 				url: '/api/load_pdf'
 			});
 	});
@@ -7135,6 +7151,10 @@ var $author$project$Main$decodeMergeResponse = A2(
 		$elm$json$Json$Decode$field,
 		'pieces',
 		$elm$json$Json$Decode$list($author$project$Main$decodePiece)));
+var $elm$http$Http$post = function (r) {
+	return $elm$http$Http$request(
+		{body: r.body, expect: r.expect, headers: _List_Nil, method: 'POST', timeout: $elm$core$Maybe$Nothing, tracker: $elm$core$Maybe$Nothing, url: r.url});
+};
 var $author$project$Main$mergeBricks = F3(
 	function (targetCount, minBorder, seed) {
 		return $elm$http$Http$post(
@@ -7297,6 +7317,13 @@ var $author$project$Main$recomputePiecePolygons = function (pieces) {
 			url: '/api/merge'
 		});
 };
+var $elm$core$String$replace = F3(
+	function (before, after, string) {
+		return A2(
+			$elm$core$String$join,
+			after,
+			A2($elm$core$String$split, before, string));
+	});
 var $elm$browser$Browser$Dom$setViewportOf = _Browser_setViewportOf;
 var $elm$core$Process$sleep = _Process_sleep;
 var $author$project$Main$scrollToBottom = A2(
@@ -7538,10 +7565,25 @@ var $author$project$Main$update = F2(
 					$author$project$Main$fetchPdfList);
 			case 'LoadFile':
 				var path = msg.a;
+				var baseName = A3(
+					$elm$core$String$replace,
+					'.pdf',
+					'',
+					A3(
+						$elm$core$String$replace,
+						'.ai',
+						'',
+						A2(
+							$elm$core$Maybe$withDefault,
+							path,
+							$elm$core$List$head(
+								$elm$core$List$reverse(
+									A2($elm$core$String$split, '/', path))))));
+				var houseName = A2($elm$core$String$startsWith, '_', baseName) ? A2($elm$core$String$dropLeft, 1, baseName) : baseName;
 				return _Utils_Tuple2(
 					_Utils_update(
 						model,
-						{appMode: $author$project$Main$ModeInit, editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, generateState: $author$project$Main$NotGenerated, loadState: $author$project$Main$Loading, nextWaveId: 1, pieceGeneration: 0, pieces: _List_Nil, recomputing: false, selectedFileName: path, selectedPieceId: $elm$core$Maybe$Nothing, selectedWaveId: $elm$core$Maybe$Nothing, waves: _List_Nil}),
+						{appMode: $author$project$Main$ModeInit, editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, exportHouseName: houseName, generateState: $author$project$Main$NotGenerated, loadState: $author$project$Main$Loading, nextWaveId: 1, pieceGeneration: 0, pieces: _List_Nil, recomputing: false, selectedFileName: path, selectedPieceId: $elm$core$Maybe$Nothing, selectedWaveId: $elm$core$Maybe$Nothing, waves: _List_Nil}),
 					A2($author$project$Main$loadPdf, path, model.availableH));
 			case 'GotLoadResponse':
 				if (msg.a.$ === 'Ok') {
@@ -8358,8 +8400,17 @@ var $author$project$Main$update = F2(
 					_Utils_update(
 						model,
 						{exporting: true}),
-					$author$project$Main$exportZip(payload));
-			case 'ExportDone':
+					$elm$http$Http$riskyRequest(
+						{
+							body: $elm$http$Http$jsonBody(payload),
+							expect: $elm$http$Http$expectWhatever($author$project$Main$GotExportResponse),
+							headers: _List_Nil,
+							method: 'POST',
+							timeout: $elm$core$Maybe$Just((10 * 60) * 1000),
+							tracker: $elm$core$Maybe$Nothing,
+							url: '/api/export'
+						}));
+			case 'GotExportResponse':
 				return _Utils_Tuple2(
 					_Utils_update(
 						model,
