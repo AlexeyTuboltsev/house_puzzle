@@ -6334,7 +6334,7 @@ var $author$project$Main$fetchPdfList = $elm$http$Http$get(
 var $elm$browser$Browser$Dom$getViewport = _Browser_withWindow(_Browser_getViewport);
 var $author$project$Main$init = function (_v0) {
 	return _Utils_Tuple2(
-		{appMode: $author$project$Main$ModeInit, availableH: 900.0, bricksById: $elm$core$Dict$empty, colorPicking: $elm$core$Maybe$Nothing, dragInsertBeforeId: $elm$core$Maybe$Nothing, dragOverGroupId: $elm$core$Maybe$Nothing, dragOverWaveId: $elm$core$Maybe$Nothing, draggingPieceId: $elm$core$Maybe$Nothing, editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, exportCanvasHeight: '900', exporting: false, generateState: $author$project$Main$NotGenerated, gridHue: 35.0, groups: _List_Nil, houseUnitsHigh: 15.5, hoveredPieceId: $elm$core$Maybe$Nothing, lasso: $elm$core$Maybe$Nothing, loadState: $author$project$Main$Idle, minBorder: 10, nextGroupId: 1, nextWaveId: 1, outlineHue: 210.0, pdfFiles: _List_Nil, pieceGeneration: 0, pieces: _List_Nil, recomputing: false, seed: 42, selectedFileName: '', selectedGroupId: $elm$core$Maybe$Nothing, selectedPieceId: $elm$core$Maybe$Nothing, selectedWaveId: $elm$core$Maybe$Nothing, showGrid: false, showLights: false, showNumbers: true, showOutlines: true, svgScale: 1.0, targetCount: 60, waves: _List_Nil, zoomGridActive: false, zoomLevel: 1.0},
+		{appMode: $author$project$Main$ModeInit, availableH: 900.0, bricksById: $elm$core$Dict$empty, colorPicking: $elm$core$Maybe$Nothing, dragInsertBeforeId: $elm$core$Maybe$Nothing, dragOverGroupId: $elm$core$Maybe$Nothing, dragOverWaveId: $elm$core$Maybe$Nothing, draggingPieceId: $elm$core$Maybe$Nothing, editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, exportCanvasHeight: '900', exportHouseName: 'NewHouse', exportLocation: 'Rome', exportPosition: '0', exportSpacing: '12.0', exporting: false, generateState: $author$project$Main$NotGenerated, gridHue: 35.0, groups: _List_Nil, houseUnitsHigh: 15.5, hoveredPieceId: $elm$core$Maybe$Nothing, lasso: $elm$core$Maybe$Nothing, loadState: $author$project$Main$Idle, minBorder: 10, nextGroupId: 1, nextWaveId: 1, outlineHue: 210.0, pdfFiles: _List_Nil, pieceGeneration: 0, pieces: _List_Nil, recomputing: false, seed: 42, selectedFileName: '', selectedGroupId: $elm$core$Maybe$Nothing, selectedPieceId: $elm$core$Maybe$Nothing, selectedWaveId: $elm$core$Maybe$Nothing, showGrid: false, showLights: false, showNumbers: true, showOutlines: true, svgScale: 1.0, targetCount: 60, waves: _List_Nil, zoomGridActive: false, zoomLevel: 1.0},
 		$elm$core$Platform$Cmd$batch(
 			_List_fromArray(
 				[
@@ -6877,7 +6877,9 @@ var $author$project$Main$LoadResponse = function (canvas) {
 							return function (compositeUrl) {
 								return function (blueprintBgUrl) {
 									return function (lightsUrl) {
-										return {blueprintBgUrl: blueprintBgUrl, bricks: bricks, canvas: canvas, compositeUrl: compositeUrl, hasBase: hasBase, hasComposite: hasComposite, lightsUrl: lightsUrl, outlinesUrl: outlinesUrl, renderDpi: renderDpi, warnings: warnings};
+										return function (houseUnitsHigh) {
+											return {blueprintBgUrl: blueprintBgUrl, bricks: bricks, canvas: canvas, compositeUrl: compositeUrl, hasBase: hasBase, hasComposite: hasComposite, houseUnitsHigh: houseUnitsHigh, lightsUrl: lightsUrl, outlinesUrl: outlinesUrl, renderDpi: renderDpi, warnings: warnings};
+										};
 									};
 								};
 							};
@@ -6955,8 +6957,11 @@ var $author$project$Main$decodeLoadResponse = A2(
 		return A2(
 			$elm$json$Json$Decode$map,
 			f,
-			$elm$json$Json$Decode$maybe(
-				A2($elm$json$Json$Decode$field, 'lights_url', $elm$json$Json$Decode$string)));
+			A2(
+				$elm$json$Json$Decode$map,
+				$elm$core$Maybe$withDefault(15.5),
+				$elm$json$Json$Decode$maybe(
+					A2($elm$json$Json$Decode$field, 'houseUnitsHigh', $elm$json$Json$Decode$float))));
 	},
 	A2(
 		$elm$json$Json$Decode$andThen,
@@ -6965,39 +6970,50 @@ var $author$project$Main$decodeLoadResponse = A2(
 				$elm$json$Json$Decode$map,
 				f,
 				$elm$json$Json$Decode$maybe(
-					A2($elm$json$Json$Decode$field, 'blueprint_bg_url', $elm$json$Json$Decode$string)));
+					A2($elm$json$Json$Decode$field, 'lights_url', $elm$json$Json$Decode$string)));
 		},
-		A9(
-			$elm$json$Json$Decode$map8,
-			F8(
-				function (canvas, bricks, hasComposite, hasBase, renderDpi, warnings, outlinesUrl, compositeUrl) {
-					return F2(
-						function (blueprintBgUrl, lightsUrl) {
-							return $author$project$Main$LoadResponse(canvas)(bricks)(hasComposite)(hasBase)(renderDpi)(warnings)(outlinesUrl)(compositeUrl)(blueprintBgUrl)(lightsUrl);
-						});
-				}),
-			A2($elm$json$Json$Decode$field, 'canvas', $author$project$Main$decodeCanvas),
-			A2(
-				$elm$json$Json$Decode$field,
-				'bricks',
-				$elm$json$Json$Decode$list($author$project$Main$decodeBrick)),
-			A2($elm$json$Json$Decode$field, 'has_composite', $elm$json$Json$Decode$bool),
-			A2($elm$json$Json$Decode$field, 'has_base', $elm$json$Json$Decode$bool),
-			A2($elm$json$Json$Decode$field, 'render_dpi', $elm$json$Json$Decode$float),
-			A2(
-				$elm$json$Json$Decode$field,
-				'warnings',
-				$elm$json$Json$Decode$list($elm$json$Json$Decode$string)),
-			A2(
-				$elm$json$Json$Decode$map,
-				$elm$core$Maybe$withDefault('/api/outlines.png'),
-				$elm$json$Json$Decode$maybe(
-					A2($elm$json$Json$Decode$field, 'outlines_url', $elm$json$Json$Decode$string))),
-			A2(
-				$elm$json$Json$Decode$map,
-				$elm$core$Maybe$withDefault('/api/composite.png'),
-				$elm$json$Json$Decode$maybe(
-					A2($elm$json$Json$Decode$field, 'composite_url', $elm$json$Json$Decode$string))))));
+		A2(
+			$elm$json$Json$Decode$andThen,
+			function (f) {
+				return A2(
+					$elm$json$Json$Decode$map,
+					f,
+					$elm$json$Json$Decode$maybe(
+						A2($elm$json$Json$Decode$field, 'blueprint_bg_url', $elm$json$Json$Decode$string)));
+			},
+			A9(
+				$elm$json$Json$Decode$map8,
+				F8(
+					function (canvas, bricks, hasComposite, hasBase, renderDpi, warnings, outlinesUrl, compositeUrl) {
+						return F2(
+							function (blueprintBgUrl, lightsUrl) {
+								return function (houseUnitsHigh) {
+									return $author$project$Main$LoadResponse(canvas)(bricks)(hasComposite)(hasBase)(renderDpi)(warnings)(outlinesUrl)(compositeUrl)(blueprintBgUrl)(lightsUrl)(houseUnitsHigh);
+								};
+							});
+					}),
+				A2($elm$json$Json$Decode$field, 'canvas', $author$project$Main$decodeCanvas),
+				A2(
+					$elm$json$Json$Decode$field,
+					'bricks',
+					$elm$json$Json$Decode$list($author$project$Main$decodeBrick)),
+				A2($elm$json$Json$Decode$field, 'has_composite', $elm$json$Json$Decode$bool),
+				A2($elm$json$Json$Decode$field, 'has_base', $elm$json$Json$Decode$bool),
+				A2($elm$json$Json$Decode$field, 'render_dpi', $elm$json$Json$Decode$float),
+				A2(
+					$elm$json$Json$Decode$field,
+					'warnings',
+					$elm$json$Json$Decode$list($elm$json$Json$Decode$string)),
+				A2(
+					$elm$json$Json$Decode$map,
+					$elm$core$Maybe$withDefault('/api/outlines.png'),
+					$elm$json$Json$Decode$maybe(
+						A2($elm$json$Json$Decode$field, 'outlines_url', $elm$json$Json$Decode$string))),
+				A2(
+					$elm$json$Json$Decode$map,
+					$elm$core$Maybe$withDefault('/api/composite.png'),
+					$elm$json$Json$Decode$maybe(
+						A2($elm$json$Json$Decode$field, 'composite_url', $elm$json$Json$Decode$string)))))));
 var $elm$http$Http$jsonBody = function (value) {
 	return A2(
 		_Http_pair,
@@ -7542,6 +7558,7 @@ var $author$project$Main$update = F2(
 											return _Utils_Tuple2(b.id, b);
 										},
 										response.bricks)),
+								houseUnitsHigh: response.houseUnitsHigh,
 								loadState: $author$project$Main$Loaded(response)
 							}),
 						$elm$core$Platform$Cmd$none);
@@ -8216,6 +8233,34 @@ var $author$project$Main$update = F2(
 						model,
 						{exportCanvasHeight: s}),
 					$elm$core$Platform$Cmd$none);
+			case 'SetExportLocation':
+				var s = msg.a;
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{exportLocation: s}),
+					$elm$core$Platform$Cmd$none);
+			case 'SetExportHouseName':
+				var s = msg.a;
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{exportHouseName: s}),
+					$elm$core$Platform$Cmd$none);
+			case 'SetExportPosition':
+				var s = msg.a;
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{exportPosition: s}),
+					$elm$core$Platform$Cmd$none);
+			case 'SetExportSpacing':
+				var s = msg.a;
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{exportSpacing: s}),
+					$elm$core$Platform$Cmd$none);
 			case 'RequestExport':
 				var wavesJson = A2(
 					$elm$json$Json$Encode$list,
@@ -8257,6 +8302,18 @@ var $author$project$Main$update = F2(
 								]));
 					},
 					model.pieces);
+				var groupsJson = A2(
+					$elm$json$Json$Encode$list,
+					function (g) {
+						return $elm$json$Json$Encode$object(
+							_List_fromArray(
+								[
+									_Utils_Tuple2(
+									'pieceIds',
+									A2($elm$json$Json$Encode$list, $elm$json$Json$Encode$int, g.pieceIds))
+								]));
+					},
+					model.groups);
 				var exportHeight = A2(
 					$elm$core$Maybe$withDefault,
 					900,
@@ -8266,6 +8323,7 @@ var $author$project$Main$update = F2(
 						[
 							_Utils_Tuple2('waves', wavesJson),
 							_Utils_Tuple2('outlines', outlinesJson),
+							_Utils_Tuple2('groups', groupsJson),
 							_Utils_Tuple2(
 							'export_canvas_height',
 							$elm$json$Json$Encode$int(exportHeight)),
@@ -8276,16 +8334,24 @@ var $author$project$Main$update = F2(
 									[
 										_Utils_Tuple2(
 										'location',
-										$elm$json$Json$Encode$string('Rome')),
+										$elm$json$Json$Encode$string(model.exportLocation)),
 										_Utils_Tuple2(
 										'position',
-										$elm$json$Json$Encode$int(0)),
+										$elm$json$Json$Encode$int(
+											A2(
+												$elm$core$Maybe$withDefault,
+												0,
+												$elm$core$String$toInt(model.exportPosition)))),
 										_Utils_Tuple2(
 										'houseName',
-										$elm$json$Json$Encode$string('NewHouse')),
+										$elm$json$Json$Encode$string(model.exportHouseName)),
 										_Utils_Tuple2(
 										'spacing',
-										$elm$json$Json$Encode$float(12.0))
+										$elm$json$Json$Encode$float(
+											A2(
+												$elm$core$Maybe$withDefault,
+												12.0,
+												$elm$core$String$toFloat(model.exportSpacing))))
 									])))
 						]));
 				return _Utils_Tuple2(
@@ -10824,9 +10890,22 @@ var $author$project$Main$viewBlueprintTools = function (model) {
 			]));
 };
 var $author$project$Main$RequestExport = {$: 'RequestExport'};
-var $author$project$Main$SetHouseUnitsHigh = function (a) {
-	return {$: 'SetHouseUnitsHigh', a: a};
+var $author$project$Main$SetExportHouseName = function (a) {
+	return {$: 'SetExportHouseName', a: a};
 };
+var $author$project$Main$SetExportLocation = function (a) {
+	return {$: 'SetExportLocation', a: a};
+};
+var $author$project$Main$SetExportPosition = function (a) {
+	return {$: 'SetExportPosition', a: a};
+};
+var $author$project$Main$SetExportSpacing = function (a) {
+	return {$: 'SetExportSpacing', a: a};
+};
+var $author$project$Main$locations = _List_fromArray(
+	['Tutorial', 'Rome', 'Athens', 'Amsterdam', 'Paris', 'Palermo', 'Venice', 'Frankfurt', 'New York', 'Prague']);
+var $elm$html$Html$select = _VirtualDom_node('select');
+var $elm$html$Html$Attributes$selected = $elm$html$Html$Attributes$boolProperty('selected');
 var $author$project$Main$viewExportTools = function (model) {
 	var assignedIds = A2(
 		$elm$core$List$concatMap,
@@ -10861,17 +10940,107 @@ var $author$project$Main$viewExportTools = function (model) {
 						_List_Nil,
 						_List_fromArray(
 							[
-								$elm$html$Html$text('House height (units)')
+								$elm$html$Html$text('Location')
+							])),
+						A2(
+						$elm$html$Html$select,
+						_List_fromArray(
+							[
+								$elm$html$Html$Events$onInput($author$project$Main$SetExportLocation)
+							]),
+						A2(
+							$elm$core$List$map,
+							function (loc) {
+								return A2(
+									$elm$html$Html$option,
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$value(loc),
+											$elm$html$Html$Attributes$selected(
+											_Utils_eq(loc, model.exportLocation))
+										]),
+									_List_fromArray(
+										[
+											$elm$html$Html$text(loc)
+										]));
+							},
+							$author$project$Main$locations))
+					])),
+				A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('field-row')
+					]),
+				_List_fromArray(
+					[
+						A2(
+						$elm$html$Html$label,
+						_List_Nil,
+						_List_fromArray(
+							[
+								$elm$html$Html$text('House name')
+							])),
+						A2(
+						$elm$html$Html$input,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$type_('text'),
+								$elm$html$Html$Attributes$value(model.exportHouseName),
+								$elm$html$Html$Events$onInput($author$project$Main$SetExportHouseName)
+							]),
+						_List_Nil)
+					])),
+				A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('field-row')
+					]),
+				_List_fromArray(
+					[
+						A2(
+						$elm$html$Html$label,
+						_List_Nil,
+						_List_fromArray(
+							[
+								$elm$html$Html$text('Position in location')
 							])),
 						A2(
 						$elm$html$Html$input,
 						_List_fromArray(
 							[
 								$elm$html$Html$Attributes$type_('number'),
-								$elm$html$Html$Attributes$value(
-								$elm$core$String$fromFloat(model.houseUnitsHigh)),
-								$elm$html$Html$Events$onInput($author$project$Main$SetHouseUnitsHigh),
-								$elm$html$Html$Attributes$min('0.1'),
+								$elm$html$Html$Attributes$value(model.exportPosition),
+								$elm$html$Html$Events$onInput($author$project$Main$SetExportPosition),
+								$elm$html$Html$Attributes$min('0'),
+								$elm$html$Html$Attributes$step('1')
+							]),
+						_List_Nil)
+					])),
+				A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('field-row')
+					]),
+				_List_fromArray(
+					[
+						A2(
+						$elm$html$Html$label,
+						_List_Nil,
+						_List_fromArray(
+							[
+								$elm$html$Html$text('Spacing (units)')
+							])),
+						A2(
+						$elm$html$Html$input,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$type_('number'),
+								$elm$html$Html$Attributes$value(model.exportSpacing),
+								$elm$html$Html$Events$onInput($author$project$Main$SetExportSpacing),
+								$elm$html$Html$Attributes$min('0'),
 								$elm$html$Html$Attributes$step('0.5')
 							]),
 						_List_Nil)

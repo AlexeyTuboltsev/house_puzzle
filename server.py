@@ -298,6 +298,7 @@ def api_load_pdf():
         "has_base": house.base is not None,
         "render_dpi": round(house.render_dpi, 2),
         "warnings": house.warnings,
+        "houseUnitsHigh": round(house.canvas_height / house.screen_frame_height_px * 15.5, 4) if house.screen_frame_height_px > 0 else 15.5,
         "composite_url": "/api/composite.png?f=" + Path(file_path).stem,
         "outlines_url": "/api/outlines.png?f=" + Path(file_path).stem,
         "lights_url": "/api/lights.png?f=" + Path(file_path).stem if (extract_dir / "lights.png").exists() else None,
@@ -702,10 +703,14 @@ def api_export():
     export_canvas_w = round(house.canvas_width * export_scale)
 
     # Resize sprites to target PPU=50 to match existing houses.
+    # Use screen-frame height to pin house height in Unity units (15.5 units = screen frame).
     TARGET_PPU = 50
-    TARGET_WORLD_WIDTH = 11.4
-    target_canvas_w = TARGET_PPU * TARGET_WORLD_WIDTH  # 570
-    scale = target_canvas_w / export_canvas_w
+    if house.screen_frame_height_px > 0:
+        scale = TARGET_PPU * 15.5 / (house.screen_frame_height_px * export_scale)
+    else:
+        TARGET_WORLD_WIDTH = 11.4
+        target_canvas_w = TARGET_PPU * TARGET_WORLD_WIDTH  # 570
+        scale = target_canvas_w / export_canvas_w
 
     from ai_parser import extract_ai_layers_batch, compose_ai_bricks_png
     export_dir = Path(tempfile.mkdtemp())
@@ -781,6 +786,12 @@ def api_export():
             bg_src = Image.open(str(bg_src_path)).convert("RGBA")
             _write_scaled(zf, "background.png", bg_src)
 
+        # lights.png — AI lights layer overlay
+        lights_src_path = _state["extracted_dir"] / "lights.png"
+        if lights_src_path.exists():
+            lights_src = Image.open(str(lights_src_path)).convert("RGBA")
+            _write_scaled(zf, "lights.png", lights_src)
+
         # scheme.png — rasterize the vetted SVG outline paths from the frontend.
         # These are the exact paths the user sees and approves in the blueprint view.
         frontend_outlines = data.get("outlines", [])
@@ -816,8 +827,9 @@ def api_export():
         blue.putalpha(mask_closed)
         _write_scaled(zf, "blue.png", blue)
 
-        # Unity house_data.json (blocks, steps, colliders)
+        # Unity house_data.json (blocks, steps, colliders, sameBlocksSettings)
         placement = data.get("placement", {})
+        groups_data = data.get("groups", [])
         from unity_export import build_house_data
         house_data = build_house_data(
             pieces=pieces,
@@ -832,6 +844,7 @@ def api_export():
             house_name=placement.get("houseName", "NewHouse"),
             spacing=float(placement.get("spacing", 12.0)),
             piece_images=piece_images,
+            groups=groups_data,
         )
         zf.writestr("house_data.json", json.dumps(house_data, indent=2))
 

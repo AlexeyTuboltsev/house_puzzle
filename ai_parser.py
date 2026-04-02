@@ -769,12 +769,22 @@ def parse_ai(
     canvas_w_px = round(clip_w_pts * scale)
     canvas_h_px = round(clip_h_pts * scale)
 
+    # Extract 'screen' frame height → pixels (frame height = 15.5 game units)
+    screen_frame_height_px: float = 0.0
+    screen_node = next((r for r in roots if r.name.lower() == "screen"), None)
+    if screen_node is not None:
+        screen_bbox = _extract_plain_path_bbox(screen_node, text)
+        if screen_bbox is not None:
+            screen_h_ai = screen_bbox[3] - screen_bbox[1]  # height in AI pts = PDF pts (translation-only transform)
+            screen_frame_height_px = screen_h_ai * scale
+
     house = HouseData(
         source_path=ai_path,
         canvas_width=canvas_w_px,
         canvas_height=canvas_h_px,
         render_dpi=round(dpi, 4),
         clip_rect=(clip_x0, clip_y0, clip_x1, clip_y1),
+        screen_frame_height_px=screen_frame_height_px,
     )
 
     # Composite = background layer (full canvas)

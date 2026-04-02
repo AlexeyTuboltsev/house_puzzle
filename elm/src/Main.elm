@@ -79,6 +79,7 @@ type alias LoadResponse =
     , compositeUrl : String
     , blueprintBgUrl : Maybe String
     , lightsUrl : Maybe String
+    , houseUnitsHigh : Float
     }
 
 
@@ -177,6 +178,10 @@ type alias Model =
     , recomputing : Bool
     , exporting : Bool
     , exportCanvasHeight : String
+    , exportLocation : String
+    , exportHouseName : String
+    , exportPosition : String
+    , exportSpacing : String
     , draggingPieceId : Maybe Int
     , dragOverWaveId : Maybe (Maybe Int)
     , dragInsertBeforeId : Maybe Int
@@ -224,6 +229,10 @@ init _ =
       , recomputing = False
       , exporting = False
       , exportCanvasHeight = "900"
+      , exportLocation = "Rome"
+      , exportHouseName = "NewHouse"
+      , exportPosition = "0"
+      , exportSpacing = "12.0"
       , draggingPieceId = Nothing
       , dragOverWaveId = Nothing
       , dragInsertBeforeId = Nothing
@@ -283,6 +292,10 @@ type Msg
     | CancelEdit
     | GotPiecePolygons (Result Http.Error (List ( Int, List Point )))
     | SetExportCanvasHeight String
+    | SetExportLocation String
+    | SetExportHouseName String
+    | SetExportPosition String
+    | SetExportSpacing String
     | RequestExport
     | ExportDone
     | LogBrickClick Int
@@ -433,6 +446,7 @@ update msg model =
                         |> List.map (\b -> ( b.id, b ))
                         |> Dict.fromList
                 , appMode = ModePdf
+                , houseUnitsHigh = response.houseUnitsHigh
               }
             , Cmd.none
             )
@@ -926,6 +940,18 @@ update msg model =
         SetExportCanvasHeight s ->
             ( { model | exportCanvasHeight = s }, Cmd.none )
 
+        SetExportLocation s ->
+            ( { model | exportLocation = s }, Cmd.none )
+
+        SetExportHouseName s ->
+            ( { model | exportHouseName = s }, Cmd.none )
+
+        SetExportPosition s ->
+            ( { model | exportPosition = s }, Cmd.none )
+
+        SetExportSpacing s ->
+            ( { model | exportSpacing = s }, Cmd.none )
+
         RequestExport ->
             let
                 wavesJson =
@@ -956,17 +982,27 @@ update msg model =
                 exportHeight =
                     Maybe.withDefault 900 (String.toInt model.exportCanvasHeight)
 
+                groupsJson =
+                    E.list
+                        (\g ->
+                            E.object
+                                [ ( "pieceIds", E.list E.int g.pieceIds )
+                                ]
+                        )
+                        model.groups
+
                 payload =
                     E.object
                         [ ( "waves", wavesJson )
                         , ( "outlines", outlinesJson )
+                        , ( "groups", groupsJson )
                         , ( "export_canvas_height", E.int exportHeight )
                         , ( "placement"
                           , E.object
-                                [ ( "location", E.string "Rome" )
-                                , ( "position", E.int 0 )
-                                , ( "houseName", E.string "NewHouse" )
-                                , ( "spacing", E.float 12.0 )
+                                [ ( "location", E.string model.exportLocation )
+                                , ( "position", E.int (Maybe.withDefault 0 (String.toInt model.exportPosition)) )
+                                , ( "houseName", E.string model.exportHouseName )
+                                , ( "spacing", E.float (Maybe.withDefault 12.0 (String.toFloat model.exportSpacing)) )
                                 ]
                           )
                         ]
@@ -1634,7 +1670,8 @@ decodeLoadResponse =
     D.map8
         (\canvas bricks hasComposite hasBase renderDpi warnings outlinesUrl compositeUrl ->
             \blueprintBgUrl lightsUrl ->
-                LoadResponse canvas bricks hasComposite hasBase renderDpi warnings outlinesUrl compositeUrl blueprintBgUrl lightsUrl
+                \houseUnitsHigh ->
+                    LoadResponse canvas bricks hasComposite hasBase renderDpi warnings outlinesUrl compositeUrl blueprintBgUrl lightsUrl houseUnitsHigh
         )
         (D.field "canvas" decodeCanvas)
         (D.field "bricks" (D.list decodeBrick))
@@ -1646,6 +1683,7 @@ decodeLoadResponse =
         (D.field "composite_url" D.string |> D.maybe |> D.map (Maybe.withDefault "/api/composite.png"))
         |> D.andThen (\f -> D.map f (D.field "blueprint_bg_url" D.string |> D.maybe))
         |> D.andThen (\f -> D.map f (D.field "lights_url" D.string |> D.maybe))
+        |> D.andThen (\f -> D.map f (D.field "houseUnitsHigh" D.float |> D.maybe |> D.map (Maybe.withDefault 15.5)))
 
 
 decodeCanvas : D.Decoder Canvas
@@ -2693,6 +2731,11 @@ viewWavesTools model =
         ]
 
 
+locations : List String
+locations =
+    [ "Tutorial", "Rome", "Athens", "Amsterdam", "Paris", "Palermo", "Venice", "Frankfurt", "New York", "Prague" ]
+
+
 viewExportTools : Model -> Html Msg
 viewExportTools model =
     let
@@ -2704,12 +2747,47 @@ viewExportTools model =
     in
     div [ class "tools-pane" ]
         [ div [ class "field-row" ]
-            [ label [] [ text "House height (units)" ]
+            [ label [] [ text "Location" ]
+            , Html.select
+                [ onInput SetExportLocation ]
+                (List.map
+                    (\loc ->
+                        Html.option
+                            [ value loc
+                            , Html.Attributes.selected (loc == model.exportLocation)
+                            ]
+                            [ text loc ]
+                    )
+                    locations
+                )
+            ]
+        , div [ class "field-row" ]
+            [ label [] [ text "House name" ]
+            , input
+                [ type_ "text"
+                , value model.exportHouseName
+                , onInput SetExportHouseName
+                ]
+                []
+            ]
+        , div [ class "field-row" ]
+            [ label [] [ text "Position in location" ]
             , input
                 [ type_ "number"
-                , value (String.fromFloat model.houseUnitsHigh)
-                , onInput SetHouseUnitsHigh
-                , Html.Attributes.min "0.1"
+                , value model.exportPosition
+                , onInput SetExportPosition
+                , Html.Attributes.min "0"
+                , Html.Attributes.step "1"
+                ]
+                []
+            ]
+        , div [ class "field-row" ]
+            [ label [] [ text "Spacing (units)" ]
+            , input
+                [ type_ "number"
+                , value model.exportSpacing
+                , onInput SetExportSpacing
+                , Html.Attributes.min "0"
                 , Html.Attributes.step "0.5"
                 ]
                 []
