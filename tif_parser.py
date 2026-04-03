@@ -39,6 +39,7 @@ class HouseData:
     warnings: list[str] = field(default_factory=list)
     clip_rect: tuple[float, float, float, float] | None = None  # PDF page clip (x0,y0,x1,y1) in pts
     screen_frame_height_px: float = 0.0  # height of the 'screen' frame in pixels (= 15.5 game units)
+    pdf_offset_px: tuple[int, int] = (0, 0)  # (dx, dy) to shift PyMuPDF renders to align with AI brick coords
 
 
 # ---------------------------------------------------------------------------

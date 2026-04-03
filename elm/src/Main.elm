@@ -297,7 +297,7 @@ type Msg
     | SetExportPosition String
     | SetExportSpacing String
     | RequestExport
-    | ExportDone
+    | GotExportResponse (Result Http.Error ())
     | LogBrickClick Int
     | DragPieceStart Int
     | DragPieceEnd
@@ -329,12 +329,6 @@ type Msg
 
 
 -- ── Ports ───────────────────────────────────────────────────────────────────
-
-
-port exportZip : E.Value -> Cmd msg
-
-
-port gotExportDone : (Bool -> msg) -> Sub msg
 
 
 port logBrick : E.Value -> Cmd msg
@@ -419,6 +413,24 @@ update msg model =
             )
 
         LoadFile path ->
+            let
+                -- Extract house name from path: "in/_NY2.ai" → "NY2"
+                baseName =
+                    path
+                        |> String.split "/"
+                        |> List.reverse
+                        |> List.head
+                        |> Maybe.withDefault path
+                        |> String.replace ".ai" ""
+                        |> String.replace ".pdf" ""
+
+                houseName =
+                    if String.startsWith "_" baseName then
+                        String.dropLeft 1 baseName
+
+                    else
+                        baseName
+            in
             ( { model
                 | selectedFileName = path
                 , loadState = Loading
@@ -434,6 +446,7 @@ update msg model =
                 , editOriginalBrickIds = []
                 , recomputing = False
                 , appMode = ModeInit
+                , exportHouseName = houseName
               }
             , loadPdf path model.availableH
             )
@@ -1007,9 +1020,19 @@ update msg model =
                           )
                         ]
             in
-            ( { model | exporting = True }, exportZip payload )
+            ( { model | exporting = True }
+            , Http.riskyRequest
+                { method = "POST"
+                , headers = []
+                , url = "/api/export"
+                , body = Http.jsonBody payload
+                , expect = Http.expectWhatever GotExportResponse
+                , timeout = Just (10 * 60 * 1000)
+                , tracker = Nothing
+                }
+            )
 
-        ExportDone ->
+        GotExportResponse _ ->
             ( { model | exporting = False }, Cmd.none )
 
         LogBrickClick brickId ->
@@ -1598,8 +1621,10 @@ uploadFile file =
 
 loadPdf : String -> Float -> Cmd Msg
 loadPdf path canvasHeight =
-    Http.post
-        { url = "/api/load_pdf"
+    Http.riskyRequest
+        { method = "POST"
+        , headers = []
+        , url = "/api/load_pdf"
         , body =
             Http.jsonBody
                 (E.object
@@ -1608,6 +1633,8 @@ loadPdf path canvasHeight =
                     ]
                 )
         , expect = Http.expectJson GotLoadResponse decodeLoadResponse
+        , timeout = Just (5 * 60 * 1000)
+        , tracker = Nothing
         }
 
 
@@ -3893,7 +3920,7 @@ viewStats model =
 subscriptions : Model -> Sub Msg
 subscriptions model =
     Sub.batch
-        ([ gotExportDone (\_ -> ExportDone) ]
+        ([]
             ++ (case model.colorPicking of
                     Just _ ->
                         [ Browser.Events.onMouseMove

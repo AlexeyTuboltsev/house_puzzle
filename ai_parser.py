@@ -493,9 +493,17 @@ def _extract_vector_path(block: _LayerBlock, text: str,
 # ---------------------------------------------------------------------------
 
 def _render_layer_png(ai_path: str, layer_name: str, out_path: str,
-                      dpi: float, clip_rect: tuple[float, float, float, float]
+                      dpi: float, clip_rect: tuple[float, float, float, float],
+                      pdf_offset_px: tuple[int, int] = (0, 0),
+                      canvas_size: tuple[int, int] | None = None,
                       ) -> None:
-    """Render a single named top-level layer to a PNG."""
+    """Render a single named top-level layer to a PNG.
+
+    pdf_offset_px: (dx, dy) pixel shift to apply to the PyMuPDF render
+        to align it with AI-private-data brick coordinates.
+        Positive dx means "shift render left" (PDF content is too far right).
+    canvas_size: (w, h) if given, output is exactly this size.
+    """
     doc = fitz.open(ai_path)
     page = doc[0]
     layers = doc.layer_ui_configs()
@@ -507,11 +515,40 @@ def _render_layer_png(ai_path: str, layer_name: str, out_path: str,
     if target:
         doc.set_layer_ui_config(target["number"], action=0)
 
-    mat = fitz.Matrix(dpi / 72.0, dpi / 72.0)
-    clip = fitz.Rect(*clip_rect)
+    scale = dpi / 72.0
+    mat = fitz.Matrix(scale, scale)
+    dx, dy = pdf_offset_px
+
+    if dx != 0 or dy != 0:
+        # Expand clip rect to capture content that would be clipped after shifting.
+        # dx<0 means "shift left" → PDF content extends further right → expand right.
+        # dx>0 means "shift right" → PDF content extends further left → expand left.
+        x0, y0, x1, y1 = clip_rect
+        if dx < 0:
+            x1 -= dx / scale  # dx is negative, so this adds to x1
+        else:
+            x0 -= dx / scale  # dx is positive, so this subtracts from x0
+        if dy < 0:
+            y1 -= dy / scale
+        else:
+            y0 -= dy / scale
+        clip = fitz.Rect(max(0, x0), max(0, y0),
+                         min(page.rect.width, x1), min(page.rect.height, y1))
+    else:
+        clip = fitz.Rect(*clip_rect)
+
     pix = page.get_pixmap(matrix=mat, alpha=True, colorspace=fitz.csRGB, clip=clip)
     doc.close()
-    pix.save(out_path)
+
+    cw, ch = canvas_size if canvas_size else (pix.width, pix.height)
+
+    if dx != 0 or dy != 0 or pix.width != cw or pix.height != ch:
+        src = Image.frombytes("RGBA", (pix.width, pix.height), pix.samples)
+        out = Image.new("RGBA", (cw, ch), (0, 0, 0, 0))
+        out.paste(src, (dx, dy))
+        out.save(out_path, "PNG")
+    else:
+        pix.save(out_path)
 
 
 def _render_all_layers_png(ai_path: str, out_path: str,
@@ -573,19 +610,12 @@ def render_ai_lights_png(
     out_path: str,
     dpi: float,
     clip_rect: tuple[float, float, float, float],
+    pdf_offset_px: tuple[int, int] = (0, 0),
+    canvas_size: tuple[int, int] | None = None,
 ) -> None:
-    """
-    Render only the 'lights' OCG layer to a PNG.
-
-    The lights layer contains the yellow window/door glow shapes used for the
-    night-lights game effect.  All other OCGs (bricks, background) are turned
-    off so only the light shapes appear on a transparent background.
-
-    The resulting PNG is intended as a toggle overlay in the editor so artists
-    can preview where lights appear without them being baked into the brick
-    sprites.
-    """
-    _render_layer_png(ai_path, "lights", out_path, dpi, clip_rect)
+    """Render only the 'lights' OCG layer to a PNG."""
+    _render_layer_png(ai_path, "lights", out_path, dpi, clip_rect,
+                      pdf_offset_px=pdf_offset_px, canvas_size=canvas_size)
 
 
 def render_ai_background_png(
@@ -593,15 +623,12 @@ def render_ai_background_png(
     out_path: str,
     dpi: float,
     clip_rect: tuple[float, float, float, float],
+    pdf_offset_px: tuple[int, int] = (0, 0),
+    canvas_size: tuple[int, int] | None = None,
 ) -> None:
-    """
-    Render only the 'background' OCG layer to a PNG.
-
-    The background layer contains the house silhouette used as the blueprint
-    background in the editor and exported assets.  All other OCGs are turned
-    off so only the background shape appears.
-    """
-    _render_layer_png(ai_path, "background", out_path, dpi, clip_rect)
+    """Render only the 'background' OCG layer to a PNG."""
+    _render_layer_png(ai_path, "background", out_path, dpi, clip_rect,
+                      pdf_offset_px=pdf_offset_px, canvas_size=canvas_size)
 
 
 def render_ai_outlines_png(
@@ -746,19 +773,47 @@ def parse_ai(
     if not placements:
         raise ValueError("No brick rasters found in 'bricks' layer")
 
-    # Compute clip rect in PyMuPDF y-down coords
+    # Compute clip rect in PyMuPDF y-down coords.
+    # Bricks bottom = ground level = y=0 in Unity. No padding.
     all_x0 = [p[1][0] for p in placements]
     all_y0 = [p[1][1] for p in placements]
     all_x1 = [p[1][2] for p in placements]
     all_y1 = [p[1][3] for p in placements]
 
     page_rect = page.rect
-    pad_x = (max(all_x1) - min(all_x0)) * 0.01
-    pad_y = (max(all_y1) - min(all_y0)) * 0.01
-    clip_x0 = max(0.0,              min(all_x0) - pad_x)
-    clip_y0 = max(0.0,              min(all_y0) - pad_y)   # topmost (smallest y)
-    clip_x1 = min(page_rect.width,  max(all_x1) + pad_x)
-    clip_y1 = min(page_rect.height, max(all_y1) + pad_y)   # bottommost (largest y)
+    bricks_bottom = max(all_y1)  # pymu y-down: largest y = bottom
+
+    # Extract screen frame bbox (AI coords → PyMuPDF coords)
+    screen_node = next((r for r in roots if r.name.lower() == "screen"), None)
+    screen_bbox_pymu = None
+    if screen_node is not None:
+        targets = screen_node.children if screen_node.children else [screen_node]
+        for t in targets:
+            sb = _extract_plain_path_bbox(t, text)
+            if sb is not None:
+                # sb is (ai_xmin, ai_ymin, ai_xmax, ai_ymax) in AI y-up
+                sb_x0 = sb[0] + offset_x
+                sb_x1 = sb[2] + offset_x
+                sb_y_top = y_base - sb[3]   # ai_ymax → pymu top
+                sb_y_bottom = y_base - sb[1]  # ai_ymin → pymu bottom
+                screen_bbox_pymu = (sb_x0, sb_y_top, sb_x1, sb_y_bottom)
+                break
+
+    # Clip rect: use screen frame width if available, bricks extent otherwise.
+    # Bottom always = bricks bottom (ground level).
+    if screen_bbox_pymu is not None:
+        clip_x0 = max(0.0, screen_bbox_pymu[0])
+        clip_x1 = min(page_rect.width, screen_bbox_pymu[2])
+        # Screen frame bottom should match bricks bottom; if not, use bricks.
+        clip_y1 = bricks_bottom
+        # Screen frame top for visible height
+        clip_y0 = max(0.0, screen_bbox_pymu[1])
+    else:
+        clip_x0 = max(0.0, min(all_x0))
+        clip_y0 = max(0.0, min(all_y0))
+        clip_x1 = min(page_rect.width, max(all_x1))
+        clip_y1 = bricks_bottom
+
     clip_h_pts = clip_y1 - clip_y0
     clip_w_pts = clip_x1 - clip_x0
 
@@ -769,14 +824,46 @@ def parse_ai(
     canvas_w_px = round(clip_w_pts * scale)
     canvas_h_px = round(clip_h_pts * scale)
 
-    # Extract 'screen' frame height → pixels (frame height = 15.5 game units)
+    # Screen frame height in pixels (= 15.5 game units)
     screen_frame_height_px: float = 0.0
-    screen_node = next((r for r in roots if r.name.lower() == "screen"), None)
-    if screen_node is not None:
-        screen_bbox = _extract_plain_path_bbox(screen_node, text)
-        if screen_bbox is not None:
-            screen_h_ai = screen_bbox[3] - screen_bbox[1]  # height in AI pts = PDF pts (translation-only transform)
-            screen_frame_height_px = screen_h_ai * scale
+    if screen_bbox_pymu is not None:
+        screen_h_pts = screen_bbox_pymu[3] - screen_bbox_pymu[1]
+        screen_frame_height_px = screen_h_pts * scale
+
+    # Compute pixel offset between AI-private-data coords and PyMuPDF PDF render.
+    # The AI data places bricks at positions derived from the Xh raster matrix +
+    # artbox transform, but the PDF content stream may render them at a different
+    # position.  Measure the offset so overlay layers (lights, background) rendered
+    # via PyMuPDF can be shifted to align with the brick canvas.
+    pdf_offset_px = (0, 0)
+    try:
+        import numpy as np
+        mat_probe = fitz.Matrix(scale, scale)
+        clip_probe = fitz.Rect(clip_x0, clip_y0, clip_x1, clip_y1)
+        layers_probe = doc.layer_ui_configs()
+        for lp in layers_probe:
+            doc.set_layer_ui_config(lp["number"], action=2)
+        bl_probe = next((lp for lp in layers_probe if lp["text"] == "bricks"), None)
+        if bl_probe:
+            doc.set_layer_ui_config(bl_probe["number"], action=0)
+        pix_probe = page.get_pixmap(matrix=mat_probe, alpha=True,
+                                    colorspace=fitz.csRGB, clip=clip_probe)
+        alpha_probe = np.frombuffer(pix_probe.samples, dtype=np.uint8).reshape(
+            pix_probe.height, pix_probe.width, 4)[:, :, 3]
+        cols_probe = np.any(alpha_probe > 30, axis=0)
+        rows_probe = np.any(alpha_probe > 30, axis=1)
+        if cols_probe.any() and rows_probe.any():
+            pymupdf_x0 = int(np.argmax(cols_probe))
+            pymupdf_y0 = int(np.argmax(rows_probe))
+            # Expected position from AI brick data
+            expected_x0 = round((min(all_x0) - clip_x0) * scale)
+            expected_y0 = round((min(all_y0) - clip_y0) * scale)
+            dx = expected_x0 - pymupdf_x0
+            dy = expected_y0 - pymupdf_y0
+            if abs(dx) > 1 or abs(dy) > 1:
+                pdf_offset_px = (dx, dy)
+    except Exception:
+        pass
 
     house = HouseData(
         source_path=ai_path,
@@ -785,6 +872,7 @@ def parse_ai(
         render_dpi=round(dpi, 4),
         clip_rect=(clip_x0, clip_y0, clip_x1, clip_y1),
         screen_frame_height_px=screen_frame_height_px,
+        pdf_offset_px=pdf_offset_px,
     )
 
     # Composite = background layer (full canvas)
@@ -1551,6 +1639,33 @@ def extract_ai_composite_png(
 ) -> None:
     """Render the 'background' layer (alias for extract_ai_blueprint_bg_png)."""
     extract_ai_blueprint_bg_png(ai_path, out_path, dpi, clip_rect)
+
+
+def extract_ai_background_polygon(
+    ai_path: str,
+    dpi: float,
+    clip_rect: tuple[float, float, float, float],
+) -> list[list[float]]:
+    """Extract the background layer's vector outline in canvas pixel coords."""
+    raw_bytes, text = _decompress_ai_data(ai_path)
+    roots = _parse_layer_tree(text)
+
+    doc = fitz.open(ai_path)
+    page = doc[0]
+    bg_node = next((r for r in roots if r.name == "background"), None)
+    if bg_node is None:
+        doc.close()
+        return []
+    offset_x, y_base = _compute_ai_transform(bg_node, text, page)
+    doc.close()
+
+    poly = _extract_vector_path(bg_node, text, offset_x, y_base)
+    if len(poly) < 3:
+        return []
+
+    scale = dpi / 72.0
+    clip_x0, clip_y0 = clip_rect[0], clip_rect[1]
+    return [[(p[0] - clip_x0) * scale, (p[1] - clip_y0) * scale] for p in poly]
 
 
 def extract_ai_vector_polygons(
