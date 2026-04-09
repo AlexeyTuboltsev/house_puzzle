@@ -13880,7 +13880,7 @@ var $author$project$Main$viewTitleBar = function (model) {
 					]),
 				_List_fromArray(
 					[
-						$elm$html$Html$text('v0.1')
+						$elm$html$Html$text('v0.2')
 					]))
 			]));
 };

@@ -2070,7 +2070,7 @@ viewTitleBar model =
                 ]
                 [ text "Export" ]
             ]
-        , span [ class "version-tag" ] [ text "v0.1" ]
+        , span [ class "version-tag" ] [ text "v0.2" ]
         ]
 
 
