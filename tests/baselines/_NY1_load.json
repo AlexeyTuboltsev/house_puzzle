@@ -1,0 +1,2886 @@
+{
+  "bricks": [
+    {
+      "height": 45,
+      "id": 0,
+      "neighbors": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "type": "brick",
+      "width": 135,
+      "x": 157,
+      "y": 854
+    },
+    {
+      "height": 45,
+      "id": 1,
+      "neighbors": [
+        0
+      ],
+      "type": "brick",
+      "width": 146,
+      "x": 33,
+      "y": 854
+    },
+    {
+      "height": 46,
+      "id": 2,
+      "neighbors": [
+        0,
+        4,
+        5,
+        12,
+        13
+      ],
+      "type": "brick",
+      "width": 113,
+      "x": 224,
+      "y": 809
+    },
+    {
+      "height": 23,
+      "id": 3,
+      "neighbors": [
+        0,
+        4,
+        6,
+        7
+      ],
+      "type": "brick",
+      "width": 113,
+      "x": 269,
+      "y": 877
+    },
+    {
+      "height": 23,
+      "id": 4,
+      "neighbors": [
+        0,
+        2,
+        3,
+        5,
+        6
+      ],
+      "type": "brick",
+      "width": 68,
+      "x": 292,
+      "y": 855
+    },
+    {
+      "height": 23,
+      "id": 5,
+      "neighbors": [
+        2,
+        4,
+        6,
+        9
+      ],
+      "type": "brick",
+      "width": 113,
+      "x": 314,
+      "y": 832
+    },
+    {
+      "height": 23,
+      "id": 6,
+      "neighbors": [
+        3,
+        4,
+        5,
+        7,
+        8,
+        9
+      ],
+      "type": "brick",
+      "width": 90,
+      "x": 359,
+      "y": 855
+    },
+    {
+      "height": 23,
+      "id": 7,
+      "neighbors": [
+        3,
+        6,
+        8
+      ],
+      "type": "brick",
+      "width": 90,
+      "x": 382,
+      "y": 877
+    },
+    {
+      "height": 90,
+      "id": 8,
+      "neighbors": [
+        6,
+        7,
+        9,
+        10
+      ],
+      "type": "brick",
+      "width": 45,
+      "x": 449,
+      "y": 810
+    },
+    {
+      "height": 45,
+      "id": 9,
+      "neighbors": [
+        5,
+        6,
+        8,
+        10,
+        11
+      ],
+      "type": "brick",
+      "width": 68,
+      "x": 404,
+      "y": 810
+    },
+    {
+      "height": 45,
+      "id": 10,
+      "neighbors": [
+        8,
+        9,
+        11,
+        20
+      ],
+      "type": "brick",
+      "width": 45,
+      "x": 449,
+      "y": 765
+    },
+    {
+      "height": 45,
+      "id": 11,
+      "neighbors": [
+        9,
+        10,
+        19,
+        20
+      ],
+      "type": "brick",
+      "width": 68,
+      "x": 404,
+      "y": 765
+    },
+    {
+      "height": 45,
+      "id": 12,
+      "neighbors": [
+        2,
+        13,
+        14,
+        18
+      ],
+      "type": "brick",
+      "width": 68,
+      "x": 269,
+      "y": 765
+    },
+    {
+      "height": 45,
+      "id": 13,
+      "neighbors": [
+        2,
+        12,
+        14,
+        15
+      ],
+      "type": "brick",
+      "width": 68,
+      "x": 224,
+      "y": 765
+    },
+    {
+      "height": 45,
+      "id": 14,
+      "neighbors": [
+        12,
+        13,
+        15,
+        16,
+        17,
+        18
+      ],
+      "type": "brick",
+      "width": 68,
+      "x": 247,
+      "y": 720
+    },
+    {
+      "height": 45,
+      "id": 15,
+      "neighbors": [
+        13,
+        14,
+        16
+      ],
+      "type": "brick",
+      "width": 23,
+      "x": 224,
+      "y": 720
+    },
+    {
+      "height": 45,
+      "id": 16,
+      "neighbors": [
+        14,
+        15,
+        17,
+        28
+      ],
+      "type": "brick",
+      "width": 45,
+      "x": 224,
+      "y": 675
+    },
+    {
+      "height": 45,
+      "id": 17,
+      "neighbors": [
+        14,
+        16,
+        18,
+        26,
+        27,
+        28
+      ],
+      "type": "brick",
+      "width": 90,
+      "x": 247,
+      "y": 675
+    },
+    {
+      "height": 45,
+      "id": 18,
+      "neighbors": [
+        12,
+        14,
+        17
+      ],
+      "type": "brick",
+      "width": 23,
+      "x": 314,
+      "y": 720
+    },
+    {
+      "height": 45,
+      "id": 19,
+      "neighbors": [
+        11,
+        20,
+        21
+      ],
+      "type": "brick",
+      "width": 45,
+      "x": 404,
+      "y": 720
+    },
+    {
+      "height": 45,
+      "id": 20,
+      "neighbors": [
+        10,
+        11,
+        19,
+        21,
+        22
+      ],
+      "type": "brick",
+      "width": 45,
+      "x": 449,
+      "y": 720
+    },
+    {
+      "height": 45,
+      "id": 21,
+      "neighbors": [
+        19,
+        20,
+        22,
+        23,
+        24
+      ],
+      "type": "brick",
+      "width": 68,
+      "x": 404,
+      "y": 675
+    },
+    {
+      "height": 45,
+      "id": 22,
+      "neighbors": [
+        20,
+        21,
+        23
+      ],
+      "type": "brick",
+      "width": 45,
+      "x": 449,
+      "y": 675
+    },
+    {
+      "height": 45,
+      "id": 23,
+      "neighbors": [
+        21,
+        22,
+        24,
+        25,
+        31,
+        32
+      ],
+      "type": "brick",
+      "width": 68,
+      "x": 427,
+      "y": 630
+    },
+    {
+      "height": 23,
+      "id": 24,
+      "neighbors": [
+        21,
+        23,
+        25
+      ],
+      "type": "brick",
+      "width": 23,
+      "x": 404,
+      "y": 652
+    },
+    {
+      "height": 23,
+      "id": 25,
+      "neighbors": [
+        23,
+        24,
+        26,
+        27,
+        30,
+        31
+      ],
+      "type": "brick",
+      "width": 113,
+      "x": 314,
+      "y": 630
+    },
+    {
+      "height": 23,
+      "id": 26,
+      "neighbors": [
+        17,
+        25,
+        27
+      ],
+      "type": "brick",
+      "width": 23,
+      "x": 314,
+      "y": 652
+    },
+    {
+      "height": 45,
+      "id": 27,
+      "neighbors": [
+        17,
+        25,
+        26,
+        28,
+        29
+      ],
+      "type": "brick",
+      "width": 45,
+      "x": 269,
+      "y": 630
+    },
+    {
+      "height": 45,
+      "id": 28,
+      "neighbors": [
+        16,
+        17,
+        27,
+        29,
+        33
+      ],
+      "type": "brick",
+      "width": 68,
+      "x": 224,
+      "y": 630
+    },
+    {
+      "height": 23,
+      "id": 29,
+      "neighbors": [
+        27,
+        28,
+        30,
+        33,
+        36,
+        37,
+        145
+      ],
+      "type": "brick",
+      "width": 90,
+      "x": 224,
+      "y": 607
+    },
+    {
+      "height": 23,
+      "id": 30,
+      "neighbors": [
+        25,
+        29,
+        31,
+        35
+      ],
+      "type": "brick",
+      "width": 68,
+      "x": 314,
+      "y": 607
+    },
+    {
+      "height": 23,
+      "id": 31,
+      "neighbors": [
+        23,
+        25,
+        30,
+        32,
+        34,
+        35
+      ],
+      "type": "brick",
+      "width": 68,
+      "x": 382,
+      "y": 607
+    },
+    {
+      "height": 23,
+      "id": 32,
+      "neighbors": [
+        23,
+        31,
+        34
+      ],
+      "type": "brick",
+      "width": 45,
+      "x": 449,
+      "y": 607
+    },
+    {
+      "height": 67,
+      "id": 33,
+      "neighbors": [
+        28,
+        29,
+        145
+      ],
+      "type": "vector_brick",
+      "width": 45,
+      "x": 180,
+      "y": 608
+    },
+    {
+      "height": 23,
+      "id": 34,
+      "neighbors": [
+        31,
+        32,
+        35,
+        44,
+        45,
+        46
+      ],
+      "type": "brick",
+      "width": 90,
+      "x": 404,
+      "y": 585
+    },
+    {
+      "height": 23,
+      "id": 35,
+      "neighbors": [
+        30,
+        31,
+        34,
+        36,
+        43,
+        44
+      ],
+      "type": "brick",
+      "width": 90,
+      "x": 314,
+      "y": 585
+    },
+    {
+      "height": 23,
+      "id": 36,
+      "neighbors": [
+        29,
+        35,
+        37,
+        42,
+        43
+      ],
+      "type": "brick",
+      "width": 90,
+      "x": 224,
+      "y": 585
+    },
+    {
+      "height": 23,
+      "id": 37,
+      "neighbors": [
+        29,
+        36,
+        38,
+        40,
+        41,
+        42,
+        145
+      ],
+      "type": "brick",
+      "width": 113,
+      "x": 112,
+      "y": 585
+    },
+    {
+      "height": 23,
+      "id": 38,
+      "neighbors": [
+        37,
+        39,
+        40,
+        145
+      ],
+      "type": "brick",
+      "width": 79,
+      "x": 33,
+      "y": 585
+    },
+    {
+      "height": 23,
+      "id": 39,
+      "neighbors": [
+        38,
+        40,
+        55
+      ],
+      "type": "brick",
+      "width": 23,
+      "x": 45,
+      "y": 563
+    },
+    {
+      "height": 23,
+      "id": 40,
+      "neighbors": [
+        37,
+        38,
+        39,
+        41,
+        54,
+        55
+      ],
+      "type": "brick",
+      "width": 68,
+      "x": 67,
+      "y": 563
+    },
+    {
+      "height": 23,
+      "id": 41,
+      "neighbors": [
+        37,
+        40,
+        42,
+        53,
+        54
+      ],
+      "type": "brick",
+      "width": 68,
+      "x": 135,
+      "y": 563
+    },
+    {
+      "height": 23,
+      "id": 42,
+      "neighbors": [
+        36,
+        37,
+        41,
+        43,
+        52,
+        53
+      ],
+      "type": "brick",
+      "width": 68,
+      "x": 202,
+      "y": 563
+    },
+    {
+      "height": 23,
+      "id": 43,
+      "neighbors": [
+        35,
+        36,
+        42,
+        44,
+        50,
+        51,
+        52
+      ],
+      "type": "brick",
+      "width": 68,
+      "x": 269,
+      "y": 563
+    },
+    {
+      "height": 23,
+      "id": 44,
+      "neighbors": [
+        34,
+        35,
+        43,
+        45,
+        48,
+        49,
+        50
+      ],
+      "type": "brick",
+      "width": 68,
+      "x": 337,
+      "y": 563
+    },
+    {
+      "height": 23,
+      "id": 45,
+      "neighbors": [
+        34,
+        44,
+        46,
+        47,
+        48
+      ],
+      "type": "brick",
+      "width": 68,
+      "x": 404,
+      "y": 563
+    },
+    {
+      "height": 23,
+      "id": 46,
+      "neighbors": [
+        34,
+        45,
+        47
+      ],
+      "type": "brick",
+      "width": 23,
+      "x": 471,
+      "y": 563
+    },
+    {
+      "height": 23,
+      "id": 47,
+      "neighbors": [
+        45,
+        46,
+        48,
+        66,
+        67
+      ],
+      "type": "brick",
+      "width": 45,
+      "x": 449,
+      "y": 540
+    },
+    {
+      "height": 23,
+      "id": 48,
+      "neighbors": [
+        44,
+        45,
+        47,
+        49,
+        65,
+        66
+      ],
+      "type": "brick",
+      "width": 57,
+      "x": 393,
+      "y": 540
+    },
+    {
+      "height": 23,
+      "id": 49,
+      "neighbors": [
+        44,
+        48,
+        50,
+        64
+      ],
+      "type": "brick",
+      "width": 23,
+      "x": 370,
+      "y": 540
+    },
+    {
+      "height": 23,
+      "id": 50,
+      "neighbors": [
+        43,
+        44,
+        49,
+        51,
+        64
+      ],
+      "type": "brick",
+      "width": 45,
+      "x": 325,
+      "y": 540
+    },
+    {
+      "height": 23,
+      "id": 51,
+      "neighbors": [
+        43,
+        50,
+        52,
+        64
+      ],
+      "type": "brick",
+      "width": 23,
+      "x": 303,
+      "y": 540
+    },
+    {
+      "height": 23,
+      "id": 52,
+      "neighbors": [
+        42,
+        43,
+        51,
+        53,
+        62,
+        63,
+        64
+      ],
+      "type": "brick",
+      "width": 57,
+      "x": 247,
+      "y": 540
+    },
+    {
+      "height": 23,
+      "id": 53,
+      "neighbors": [
+        41,
+        42,
+        52,
+        54,
+        60,
+        61,
+        62
+      ],
+      "type": "brick",
+      "width": 68,
+      "x": 179,
+      "y": 540
+    },
+    {
+      "height": 23,
+      "id": 54,
+      "neighbors": [
+        40,
+        41,
+        53,
+        55,
+        57,
+        58,
+        60
+      ],
+      "type": "brick",
+      "width": 68,
+      "x": 112,
+      "y": 540
+    },
+    {
+      "height": 23,
+      "id": 55,
+      "neighbors": [
+        39,
+        40,
+        54,
+        56,
+        57
+      ],
+      "type": "brick",
+      "width": 68,
+      "x": 45,
+      "y": 540
+    },
+    {
+      "height": 45,
+      "id": 56,
+      "neighbors": [
+        55,
+        57,
+        73
+      ],
+      "type": "brick",
+      "width": 45,
+      "x": 45,
+      "y": 495
+    },
+    {
+      "height": 45,
+      "id": 57,
+      "neighbors": [
+        54,
+        55,
+        56,
+        58,
+        59,
+        72,
+        73
+      ],
+      "type": "brick",
+      "width": 57,
+      "x": 67,
+      "y": 495
+    },
+    {
+      "height": 23,
+      "id": 58,
+      "neighbors": [
+        54,
+        57,
+        59,
+        60
+      ],
+      "type": "brick",
+      "width": 23,
+      "x": 123,
+      "y": 518
+    },
+    {
+      "height": 23,
+      "id": 59,
+      "neighbors": [
+        57,
+        58,
+        60,
+        61,
+        62,
+        71,
+        72
+      ],
+      "type": "brick",
+      "width": 90,
+      "x": 123,
+      "y": 495
+    },
+    {
+      "height": 23,
+      "id": 60,
+      "neighbors": [
+        53,
+        54,
+        58,
+        59,
+        61
+      ],
+      "type": "brick",
+      "width": 45,
+      "x": 146,
+      "y": 518
+    },
+    {
+      "height": 23,
+      "id": 61,
+      "neighbors": [
+        53,
+        59,
+        60,
+        62
+      ],
+      "type": "brick",
+      "width": 23,
+      "x": 191,
+      "y": 518
+    },
+    {
+      "height": 45,
+      "id": 62,
+      "neighbors": [
+        52,
+        53,
+        59,
+        61,
+        63,
+        70,
+        71
+      ],
+      "type": "brick",
+      "width": 57,
+      "x": 213,
+      "y": 495
+    },
+    {
+      "height": 45,
+      "id": 63,
+      "neighbors": [
+        52,
+        62,
+        64,
+        70
+      ],
+      "type": "brick",
+      "width": 45,
+      "x": 269,
+      "y": 495
+    },
+    {
+      "height": 23,
+      "id": 64,
+      "neighbors": [
+        49,
+        50,
+        51,
+        52,
+        63,
+        65
+      ],
+      "type": "brick",
+      "width": 90,
+      "x": 303,
+      "y": 518
+    },
+    {
+      "height": 45,
+      "id": 65,
+      "neighbors": [
+        48,
+        64,
+        66,
+        69
+      ],
+      "type": "brick",
+      "width": 45,
+      "x": 382,
+      "y": 495
+    },
+    {
+      "height": 45,
+      "id": 66,
+      "neighbors": [
+        47,
+        48,
+        65,
+        67,
+        69
+      ],
+      "type": "brick",
+      "width": 68,
+      "x": 404,
+      "y": 495
+    },
+    {
+      "height": 45,
+      "id": 67,
+      "neighbors": [
+        47,
+        66,
+        68,
+        69
+      ],
+      "type": "brick",
+      "width": 45,
+      "x": 449,
+      "y": 495
+    },
+    {
+      "height": 45,
+      "id": 68,
+      "neighbors": [
+        67,
+        69,
+        94
+      ],
+      "type": "brick",
+      "width": 23,
+      "x": 471,
+      "y": 450
+    },
+    {
+      "height": 45,
+      "id": 69,
+      "neighbors": [
+        65,
+        66,
+        67,
+        68,
+        92,
+        93,
+        94
+      ],
+      "type": "brick",
+      "width": 90,
+      "x": 382,
+      "y": 450
+    },
+    {
+      "height": 45,
+      "id": 70,
+      "neighbors": [
+        62,
+        63,
+        71,
+        102,
+        103
+      ],
+      "type": "brick",
+      "width": 90,
+      "x": 224,
+      "y": 450
+    },
+    {
+      "height": 45,
+      "id": 71,
+      "neighbors": [
+        59,
+        62,
+        70,
+        103
+      ],
+      "type": "brick",
+      "width": 45,
+      "x": 202,
+      "y": 450
+    },
+    {
+      "height": 45,
+      "id": 72,
+      "neighbors": [
+        57,
+        59,
+        73,
+        75
+      ],
+      "type": "brick",
+      "width": 45,
+      "x": 90,
+      "y": 450
+    },
+    {
+      "height": 45,
+      "id": 73,
+      "neighbors": [
+        56,
+        57,
+        72,
+        74,
+        75
+      ],
+      "type": "brick",
+      "width": 68,
+      "x": 45,
+      "y": 450
+    },
+    {
+      "height": 45,
+      "id": 74,
+      "neighbors": [
+        73,
+        75,
+        76
+      ],
+      "type": "brick",
+      "width": 45,
+      "x": 45,
+      "y": 405
+    },
+    {
+      "height": 45,
+      "id": 75,
+      "neighbors": [
+        72,
+        73,
+        74,
+        76,
+        77
+      ],
+      "type": "brick",
+      "width": 68,
+      "x": 67,
+      "y": 405
+    },
+    {
+      "height": 45,
+      "id": 76,
+      "neighbors": [
+        74,
+        75,
+        77,
+        187
+      ],
+      "type": "brick",
+      "width": 45,
+      "x": 45,
+      "y": 360
+    },
+    {
+      "height": 45,
+      "id": 77,
+      "neighbors": [
+        75,
+        76,
+        80,
+        187
+      ],
+      "type": "brick",
+      "width": 45,
+      "x": 90,
+      "y": 360
+    },
+    {
+      "height": 23,
+      "id": 78,
+      "neighbors": [
+        79,
+        114,
+        187
+      ],
+      "type": "brick",
+      "width": 23,
+      "x": 45,
+      "y": 293
+    },
+    {
+      "height": 23,
+      "id": 79,
+      "neighbors": [
+        78,
+        80,
+        82,
+        113,
+        114,
+        187
+      ],
+      "type": "brick",
+      "width": 68,
+      "x": 67,
+      "y": 293
+    },
+    {
+      "height": 57,
+      "id": 80,
+      "neighbors": [
+        77,
+        79,
+        82,
+        83,
+        97,
+        98,
+        187
+      ],
+      "type": "brick",
+      "width": 121,
+      "x": 108,
+      "y": 304
+    },
+    {
+      "height": 57,
+      "id": 81,
+      "neighbors": [
+        88,
+        90,
+        95,
+        96,
+        99,
+        100,
+        101
+      ],
+      "type": "brick",
+      "width": 121,
+      "x": 288,
+      "y": 326
+    },
+    {
+      "height": 18,
+      "id": 82,
+      "neighbors": [
+        79,
+        80,
+        83,
+        112,
+        113
+      ],
+      "type": "brick",
+      "width": 68,
+      "x": 135,
+      "y": 293
+    },
+    {
+      "height": 23,
+      "id": 83,
+      "neighbors": [
+        80,
+        82,
+        84,
+        96,
+        97,
+        111,
+        112
+      ],
+      "type": "brick",
+      "width": 68,
+      "x": 202,
+      "y": 293
+    },
+    {
+      "height": 23,
+      "id": 84,
+      "neighbors": [
+        83,
+        85,
+        95,
+        96,
+        110,
+        111
+      ],
+      "type": "brick",
+      "width": 68,
+      "x": 269,
+      "y": 293
+    },
+    {
+      "height": 23,
+      "id": 85,
+      "neighbors": [
+        84,
+        86,
+        88,
+        95,
+        109,
+        110
+      ],
+      "type": "brick",
+      "width": 68,
+      "x": 337,
+      "y": 293
+    },
+    {
+      "height": 23,
+      "id": 86,
+      "neighbors": [
+        85,
+        87,
+        88,
+        89,
+        108,
+        109
+      ],
+      "type": "brick",
+      "width": 68,
+      "x": 404,
+      "y": 293
+    },
+    {
+      "height": 23,
+      "id": 87,
+      "neighbors": [
+        86,
+        89,
+        108
+      ],
+      "type": "brick",
+      "width": 23,
+      "x": 471,
+      "y": 293
+    },
+    {
+      "height": 45,
+      "id": 88,
+      "neighbors": [
+        81,
+        85,
+        86,
+        89,
+        90,
+        91,
+        95
+      ],
+      "type": "brick",
+      "width": 90,
+      "x": 382,
+      "y": 315
+    },
+    {
+      "height": 45,
+      "id": 89,
+      "neighbors": [
+        86,
+        87,
+        88,
+        91
+      ],
+      "type": "brick",
+      "width": 45,
+      "x": 449,
+      "y": 316
+    },
+    {
+      "height": 45,
+      "id": 90,
+      "neighbors": [
+        81,
+        88,
+        91,
+        92,
+        93,
+        101
+      ],
+      "type": "brick",
+      "width": 53,
+      "x": 397,
+      "y": 360
+    },
+    {
+      "height": 45,
+      "id": 91,
+      "neighbors": [
+        88,
+        89,
+        90,
+        93,
+        94
+      ],
+      "type": "brick",
+      "width": 45,
+      "x": 449,
+      "y": 360
+    },
+    {
+      "height": 45,
+      "id": 92,
+      "neighbors": [
+        69,
+        90,
+        93,
+        101
+      ],
+      "type": "brick",
+      "width": 45,
+      "x": 382,
+      "y": 405
+    },
+    {
+      "height": 45,
+      "id": 93,
+      "neighbors": [
+        69,
+        90,
+        91,
+        92,
+        94
+      ],
+      "type": "brick",
+      "width": 45,
+      "x": 427,
+      "y": 405
+    },
+    {
+      "height": 45,
+      "id": 94,
+      "neighbors": [
+        68,
+        69,
+        91,
+        93
+      ],
+      "type": "brick",
+      "width": 45,
+      "x": 449,
+      "y": 405
+    },
+    {
+      "height": 18,
+      "id": 95,
+      "neighbors": [
+        81,
+        84,
+        85,
+        88,
+        96
+      ],
+      "type": "brick",
+      "width": 68,
+      "x": 314,
+      "y": 316
+    },
+    {
+      "height": 45,
+      "id": 96,
+      "neighbors": [
+        81,
+        83,
+        84,
+        95,
+        97,
+        99
+      ],
+      "type": "brick",
+      "width": 68,
+      "x": 247,
+      "y": 315
+    },
+    {
+      "height": 45,
+      "id": 97,
+      "neighbors": [
+        80,
+        83,
+        96,
+        98,
+        99
+      ],
+      "type": "brick",
+      "width": 34,
+      "x": 213,
+      "y": 316
+    },
+    {
+      "height": 45,
+      "id": 98,
+      "neighbors": [
+        80,
+        97,
+        99,
+        103
+      ],
+      "type": "brick",
+      "width": 45,
+      "x": 202,
+      "y": 360
+    },
+    {
+      "height": 45,
+      "id": 99,
+      "neighbors": [
+        81,
+        96,
+        97,
+        98,
+        100,
+        102,
+        103
+      ],
+      "type": "brick",
+      "width": 75,
+      "x": 225,
+      "y": 360
+    },
+    {
+      "height": 23,
+      "id": 100,
+      "neighbors": [
+        81,
+        99,
+        102
+      ],
+      "type": "brick",
+      "width": 15,
+      "x": 299,
+      "y": 383
+    },
+    {
+      "height": 23,
+      "id": 101,
+      "neighbors": [
+        81,
+        90,
+        92
+      ],
+      "type": "brick",
+      "width": 15,
+      "x": 382,
+      "y": 383
+    },
+    {
+      "height": 45,
+      "id": 102,
+      "neighbors": [
+        70,
+        99,
+        100,
+        103
+      ],
+      "type": "brick",
+      "width": 45,
+      "x": 269,
+      "y": 405
+    },
+    {
+      "height": 45,
+      "id": 103,
+      "neighbors": [
+        70,
+        71,
+        98,
+        99,
+        102
+      ],
+      "type": "brick",
+      "width": 68,
+      "x": 202,
+      "y": 405
+    },
+    {
+      "height": 23,
+      "id": 108,
+      "neighbors": [
+        86,
+        87,
+        109,
+        125,
+        126
+      ],
+      "type": "brick",
+      "width": 68,
+      "x": 427,
+      "y": 271
+    },
+    {
+      "height": 23,
+      "id": 109,
+      "neighbors": [
+        85,
+        86,
+        108,
+        110,
+        122,
+        123,
+        125
+      ],
+      "type": "brick",
+      "width": 68,
+      "x": 359,
+      "y": 271
+    },
+    {
+      "height": 23,
+      "id": 110,
+      "neighbors": [
+        84,
+        85,
+        109,
+        111,
+        120,
+        121,
+        122
+      ],
+      "type": "brick",
+      "width": 68,
+      "x": 292,
+      "y": 271
+    },
+    {
+      "height": 23,
+      "id": 111,
+      "neighbors": [
+        83,
+        84,
+        110,
+        112,
+        118,
+        119,
+        120
+      ],
+      "type": "brick",
+      "width": 68,
+      "x": 224,
+      "y": 271
+    },
+    {
+      "height": 23,
+      "id": 112,
+      "neighbors": [
+        82,
+        83,
+        111,
+        113,
+        118
+      ],
+      "type": "brick",
+      "width": 68,
+      "x": 157,
+      "y": 271
+    },
+    {
+      "height": 23,
+      "id": 113,
+      "neighbors": [
+        79,
+        82,
+        112,
+        114,
+        116,
+        117,
+        118
+      ],
+      "type": "brick",
+      "width": 68,
+      "x": 90,
+      "y": 271
+    },
+    {
+      "height": 23,
+      "id": 114,
+      "neighbors": [
+        78,
+        79,
+        113,
+        115,
+        116
+      ],
+      "type": "brick",
+      "width": 45,
+      "x": 45,
+      "y": 271
+    },
+    {
+      "height": 45,
+      "id": 115,
+      "neighbors": [
+        114,
+        116,
+        132
+      ],
+      "type": "brick",
+      "width": 45,
+      "x": 45,
+      "y": 226
+    },
+    {
+      "height": 45,
+      "id": 116,
+      "neighbors": [
+        113,
+        114,
+        115,
+        117,
+        131
+      ],
+      "type": "brick",
+      "width": 68,
+      "x": 67,
+      "y": 226
+    },
+    {
+      "height": 45,
+      "id": 117,
+      "neighbors": [
+        113,
+        116,
+        118,
+        131
+      ],
+      "type": "brick",
+      "width": 23,
+      "x": 135,
+      "y": 226
+    },
+    {
+      "height": 23,
+      "id": 118,
+      "neighbors": [
+        111,
+        112,
+        113,
+        117,
+        119
+      ],
+      "type": "brick",
+      "width": 90,
+      "x": 146,
+      "y": 248
+    },
+    {
+      "height": 45,
+      "id": 119,
+      "neighbors": [
+        111,
+        118,
+        120,
+        130
+      ],
+      "type": "brick",
+      "width": 45,
+      "x": 224,
+      "y": 226
+    },
+    {
+      "height": 45,
+      "id": 120,
+      "neighbors": [
+        110,
+        111,
+        119,
+        121,
+        124,
+        129,
+        130
+      ],
+      "type": "brick",
+      "width": 57,
+      "x": 269,
+      "y": 226
+    },
+    {
+      "height": 23,
+      "id": 121,
+      "neighbors": [
+        110,
+        120,
+        122,
+        124
+      ],
+      "type": "brick",
+      "width": 23,
+      "x": 325,
+      "y": 248
+    },
+    {
+      "height": 23,
+      "id": 122,
+      "neighbors": [
+        109,
+        110,
+        121,
+        123,
+        124
+      ],
+      "type": "brick",
+      "width": 45,
+      "x": 348,
+      "y": 248
+    },
+    {
+      "height": 23,
+      "id": 123,
+      "neighbors": [
+        109,
+        122,
+        124,
+        125
+      ],
+      "type": "brick",
+      "width": 23,
+      "x": 393,
+      "y": 248
+    },
+    {
+      "height": 23,
+      "id": 124,
+      "neighbors": [
+        120,
+        121,
+        122,
+        123,
+        125,
+        128,
+        129
+      ],
+      "type": "brick",
+      "width": 90,
+      "x": 325,
+      "y": 226
+    },
+    {
+      "height": 45,
+      "id": 125,
+      "neighbors": [
+        108,
+        109,
+        123,
+        124,
+        126,
+        127,
+        128
+      ],
+      "type": "brick",
+      "width": 57,
+      "x": 415,
+      "y": 226
+    },
+    {
+      "height": 45,
+      "id": 126,
+      "neighbors": [
+        108,
+        125,
+        127
+      ],
+      "type": "brick",
+      "width": 45,
+      "x": 449,
+      "y": 226
+    },
+    {
+      "height": 45,
+      "id": 127,
+      "neighbors": [
+        125,
+        126,
+        128,
+        138,
+        139
+      ],
+      "type": "brick",
+      "width": 68,
+      "x": 427,
+      "y": 181
+    },
+    {
+      "height": 45,
+      "id": 128,
+      "neighbors": [
+        124,
+        125,
+        127,
+        138
+      ],
+      "type": "brick",
+      "width": 23,
+      "x": 404,
+      "y": 181
+    },
+    {
+      "height": 45,
+      "id": 129,
+      "neighbors": [
+        120,
+        124,
+        130,
+        137
+      ],
+      "type": "brick",
+      "width": 45,
+      "x": 292,
+      "y": 181
+    },
+    {
+      "height": 45,
+      "id": 130,
+      "neighbors": [
+        119,
+        120,
+        129,
+        136,
+        137
+      ],
+      "type": "brick",
+      "width": 90,
+      "x": 224,
+      "y": 181
+    },
+    {
+      "height": 45,
+      "id": 131,
+      "neighbors": [
+        116,
+        117,
+        132,
+        134,
+        135
+      ],
+      "type": "brick",
+      "width": 68,
+      "x": 90,
+      "y": 181
+    },
+    {
+      "height": 45,
+      "id": 132,
+      "neighbors": [
+        115,
+        131,
+        133,
+        134
+      ],
+      "type": "brick",
+      "width": 45,
+      "x": 45,
+      "y": 181
+    },
+    {
+      "height": 45,
+      "id": 133,
+      "neighbors": [
+        132,
+        134,
+        147
+      ],
+      "type": "brick",
+      "width": 45,
+      "x": 45,
+      "y": 136
+    },
+    {
+      "height": 45,
+      "id": 134,
+      "neighbors": [
+        131,
+        132,
+        133,
+        135,
+        146,
+        147
+      ],
+      "type": "brick",
+      "width": 68,
+      "x": 67,
+      "y": 136
+    },
+    {
+      "height": 45,
+      "id": 135,
+      "neighbors": [
+        131,
+        134,
+        146
+      ],
+      "type": "brick",
+      "width": 23,
+      "x": 135,
+      "y": 136
+    },
+    {
+      "height": 45,
+      "id": 136,
+      "neighbors": [
+        130,
+        137,
+        143,
+        144
+      ],
+      "type": "brick",
+      "width": 45,
+      "x": 224,
+      "y": 136
+    },
+    {
+      "height": 45,
+      "id": 137,
+      "neighbors": [
+        129,
+        130,
+        136,
+        142,
+        143
+      ],
+      "type": "brick",
+      "width": 68,
+      "x": 269,
+      "y": 136
+    },
+    {
+      "height": 45,
+      "id": 138,
+      "neighbors": [
+        127,
+        128,
+        139,
+        140,
+        141
+      ],
+      "type": "brick",
+      "width": 68,
+      "x": 404,
+      "y": 136
+    },
+    {
+      "height": 45,
+      "id": 139,
+      "neighbors": [
+        127,
+        138,
+        140
+      ],
+      "type": "brick",
+      "width": 45,
+      "x": 449,
+      "y": 136
+    },
+    {
+      "height": 45,
+      "id": 140,
+      "neighbors": [
+        138,
+        139,
+        141,
+        155
+      ],
+      "type": "brick",
+      "width": 45,
+      "x": 449,
+      "y": 91
+    },
+    {
+      "height": 45,
+      "id": 141,
+      "neighbors": [
+        138,
+        140,
+        154,
+        155
+      ],
+      "type": "brick",
+      "width": 45,
+      "x": 404,
+      "y": 91
+    },
+    {
+      "height": 45,
+      "id": 142,
+      "neighbors": [
+        137,
+        143,
+        153,
+        154
+      ],
+      "type": "brick",
+      "width": 45,
+      "x": 292,
+      "y": 91
+    },
+    {
+      "height": 45,
+      "id": 143,
+      "neighbors": [
+        136,
+        137,
+        142,
+        144,
+        150,
+        152,
+        153
+      ],
+      "type": "brick",
+      "width": 75,
+      "x": 239,
+      "y": 91
+    },
+    {
+      "height": 23,
+      "id": 144,
+      "neighbors": [
+        136,
+        143,
+        150
+      ],
+      "type": "brick",
+      "width": 15,
+      "x": 224,
+      "y": 113
+    },
+    {
+      "height": 67,
+      "id": 145,
+      "neighbors": [
+        29,
+        33,
+        37,
+        38
+      ],
+      "type": "vector_brick",
+      "width": 225,
+      "x": 0,
+      "y": 608
+    },
+    {
+      "height": 45,
+      "id": 146,
+      "neighbors": [
+        134,
+        135,
+        147,
+        149,
+        150
+      ],
+      "type": "brick",
+      "width": 30,
+      "x": 112,
+      "y": 91
+    },
+    {
+      "height": 45,
+      "id": 147,
+      "neighbors": [
+        133,
+        134,
+        146,
+        148,
+        149
+      ],
+      "type": "brick",
+      "width": 68,
+      "x": 45,
+      "y": 91
+    },
+    {
+      "height": 35,
+      "id": 148,
+      "neighbors": [
+        147,
+        149,
+        171,
+        172
+      ],
+      "type": "brick",
+      "width": 45,
+      "x": 45,
+      "y": 56
+    },
+    {
+      "height": 35,
+      "id": 149,
+      "neighbors": [
+        146,
+        147,
+        148,
+        150,
+        151,
+        167,
+        169,
+        171
+      ],
+      "type": "brick",
+      "width": 68,
+      "x": 90,
+      "y": 56
+    },
+    {
+      "height": 35,
+      "id": 150,
+      "neighbors": [
+        143,
+        144,
+        146,
+        149,
+        151,
+        152
+      ],
+      "type": "brick",
+      "width": 121,
+      "x": 130,
+      "y": 79
+    },
+    {
+      "height": 23,
+      "id": 151,
+      "neighbors": [
+        149,
+        150,
+        152,
+        165,
+        167
+      ],
+      "type": "brick",
+      "width": 68,
+      "x": 157,
+      "y": 56
+    },
+    {
+      "height": 35,
+      "id": 152,
+      "neighbors": [
+        143,
+        150,
+        151,
+        153,
+        164,
+        165
+      ],
+      "type": "brick",
+      "width": 68,
+      "x": 224,
+      "y": 56
+    },
+    {
+      "height": 35,
+      "id": 153,
+      "neighbors": [
+        142,
+        143,
+        152,
+        154,
+        162
+      ],
+      "type": "brick",
+      "width": 30,
+      "x": 292,
+      "y": 56
+    },
+    {
+      "height": 35,
+      "id": 154,
+      "neighbors": [
+        141,
+        142,
+        153,
+        155,
+        158,
+        160,
+        161,
+        162
+      ],
+      "type": "brick",
+      "width": 121,
+      "x": 310,
+      "y": 56
+    },
+    {
+      "height": 35,
+      "id": 155,
+      "neighbors": [
+        140,
+        141,
+        154,
+        156,
+        160
+      ],
+      "type": "brick",
+      "width": 75,
+      "x": 419,
+      "y": 56
+    },
+    {
+      "height": 13,
+      "id": 156,
+      "neighbors": [
+        155,
+        157,
+        160
+      ],
+      "type": "brick",
+      "width": 23,
+      "x": 471,
+      "y": 44
+    },
+    {
+      "height": 33,
+      "id": 157,
+      "neighbors": [
+        156,
+        158,
+        159,
+        160,
+        179,
+        180
+      ],
+      "type": "brick",
+      "width": 90,
+      "x": 404,
+      "y": 11
+    },
+    {
+      "height": 13,
+      "id": 158,
+      "neighbors": [
+        154,
+        157,
+        159,
+        160,
+        161
+      ],
+      "type": "brick",
+      "width": 45,
+      "x": 382,
+      "y": 44
+    },
+    {
+      "height": 33,
+      "id": 159,
+      "neighbors": [
+        157,
+        158,
+        161,
+        162,
+        163,
+        178,
+        179
+      ],
+      "type": "brick",
+      "width": 90,
+      "x": 314,
+      "y": 11
+    },
+    {
+      "height": 35,
+      "id": 160,
+      "neighbors": [
+        154,
+        155,
+        156,
+        157,
+        158
+      ],
+      "type": "brick",
+      "width": 45,
+      "x": 427,
+      "y": 22
+    },
+    {
+      "height": 35,
+      "id": 161,
+      "neighbors": [
+        154,
+        158,
+        159,
+        162
+      ],
+      "type": "brick",
+      "width": 45,
+      "x": 337,
+      "y": 22
+    },
+    {
+      "height": 13,
+      "id": 162,
+      "neighbors": [
+        153,
+        154,
+        159,
+        161,
+        163,
+        164
+      ],
+      "type": "brick",
+      "width": 45,
+      "x": 292,
+      "y": 44
+    },
+    {
+      "height": 33,
+      "id": 163,
+      "neighbors": [
+        159,
+        162,
+        164,
+        165,
+        166,
+        177,
+        178
+      ],
+      "type": "brick",
+      "width": 90,
+      "x": 224,
+      "y": 11
+    },
+    {
+      "height": 35,
+      "id": 164,
+      "neighbors": [
+        152,
+        162,
+        163,
+        165
+      ],
+      "type": "brick",
+      "width": 45,
+      "x": 247,
+      "y": 22
+    },
+    {
+      "height": 13,
+      "id": 165,
+      "neighbors": [
+        151,
+        152,
+        163,
+        164,
+        166,
+        167
+      ],
+      "type": "brick",
+      "width": 45,
+      "x": 202,
+      "y": 44
+    },
+    {
+      "height": 33,
+      "id": 166,
+      "neighbors": [
+        163,
+        165,
+        167,
+        169,
+        170,
+        176,
+        177
+      ],
+      "type": "brick",
+      "width": 90,
+      "x": 135,
+      "y": 11
+    },
+    {
+      "height": 35,
+      "id": 167,
+      "neighbors": [
+        149,
+        151,
+        165,
+        166,
+        169
+      ],
+      "type": "brick",
+      "width": 45,
+      "x": 157,
+      "y": 22
+    },
+    {
+      "height": 13,
+      "id": 169,
+      "neighbors": [
+        149,
+        166,
+        167,
+        170,
+        171
+      ],
+      "type": "brick",
+      "width": 45,
+      "x": 112,
+      "y": 44
+    },
+    {
+      "height": 33,
+      "id": 170,
+      "neighbors": [
+        166,
+        169,
+        171,
+        172,
+        174,
+        175,
+        176
+      ],
+      "type": "brick",
+      "width": 90,
+      "x": 45,
+      "y": 11
+    },
+    {
+      "height": 35,
+      "id": 171,
+      "neighbors": [
+        148,
+        149,
+        169,
+        170,
+        172
+      ],
+      "type": "brick",
+      "width": 45,
+      "x": 67,
+      "y": 22
+    },
+    {
+      "height": 13,
+      "id": 172,
+      "neighbors": [
+        148,
+        170,
+        171,
+        173
+      ],
+      "type": "brick",
+      "width": 23,
+      "x": 45,
+      "y": 44
+    },
+    {
+      "height": 13,
+      "id": 173,
+      "neighbors": [
+        172,
+        174
+      ],
+      "type": "brick",
+      "width": 12,
+      "x": 33,
+      "y": 44
+    },
+    {
+      "height": 33,
+      "id": 174,
+      "neighbors": [
+        170,
+        173,
+        175
+      ],
+      "type": "brick",
+      "width": 23,
+      "x": 22,
+      "y": 11
+    },
+    {
+      "height": 12,
+      "id": 175,
+      "neighbors": [
+        170,
+        174,
+        176
+      ],
+      "type": "brick",
+      "width": 79,
+      "x": 11,
+      "y": 0
+    },
+    {
+      "height": 12,
+      "id": 176,
+      "neighbors": [
+        166,
+        170,
+        175,
+        177
+      ],
+      "type": "brick",
+      "width": 90,
+      "x": 90,
+      "y": 0
+    },
+    {
+      "height": 12,
+      "id": 177,
+      "neighbors": [
+        163,
+        166,
+        176,
+        178
+      ],
+      "type": "brick",
+      "width": 90,
+      "x": 180,
+      "y": 0
+    },
+    {
+      "height": 12,
+      "id": 178,
+      "neighbors": [
+        159,
+        163,
+        177,
+        179
+      ],
+      "type": "brick",
+      "width": 90,
+      "x": 270,
+      "y": 0
+    },
+    {
+      "height": 12,
+      "id": 179,
+      "neighbors": [
+        157,
+        159,
+        178,
+        180
+      ],
+      "type": "brick",
+      "width": 90,
+      "x": 359,
+      "y": 0
+    },
+    {
+      "height": 12,
+      "id": 180,
+      "neighbors": [
+        157,
+        179
+      ],
+      "type": "brick",
+      "width": 45,
+      "x": 449,
+      "y": 0
+    },
+    {
+      "height": 131,
+      "id": 181,
+      "neighbors": [],
+      "type": "vector_brick",
+      "width": 57,
+      "x": 342,
+      "y": 664
+    },
+    {
+      "height": 125,
+      "id": 182,
+      "neighbors": [],
+      "type": "vector_brick",
+      "width": 56,
+      "x": 140,
+      "y": 366
+    },
+    {
+      "height": 125,
+      "id": 183,
+      "neighbors": [],
+      "type": "vector_brick",
+      "width": 56,
+      "x": 319,
+      "y": 387
+    },
+    {
+      "height": 132,
+      "id": 184,
+      "neighbors": [],
+      "type": "vector_brick",
+      "width": 56,
+      "x": 161,
+      "y": 114
+    },
+    {
+      "height": 125,
+      "id": 185,
+      "neighbors": [],
+      "type": "vector_brick",
+      "width": 56,
+      "x": 343,
+      "y": 95
+    },
+    {
+      "height": 163,
+      "id": 186,
+      "neighbors": [],
+      "type": "vector_brick",
+      "width": 166,
+      "x": 49,
+      "y": 683
+    },
+    {
+      "height": 45,
+      "id": 187,
+      "neighbors": [
+        76,
+        77,
+        78,
+        79,
+        80
+      ],
+      "type": "brick",
+      "width": 79,
+      "x": 45,
+      "y": 315
+    }
+  ],
+  "canvas": {
+    "height": 900,
+    "width": 494
+  },
+  "has_base": false,
+  "houseUnitsHigh": 14.1164,
+  "num_bricks": 183,
+  "png_hashes": {
+    "background": "c51cc7562654378a53f03e4db4b4591e2e08dcaf0a459818607df929859e642c",
+    "brick_000": "a76f9f317558bb31873e4dcaa3e5516d1d65f2d94ff431ddf55eae4ffd5750af",
+    "brick_001": "d9c6757851466543a2350b4a335e1e0f92673efc65f3fc9892be64b94fe9f8eb",
+    "brick_002": "a1e31924f8708b43d6e3dfe140c33a271367af2dc5b79f7762243565b82c92e4",
+    "brick_003": "06603322c66280cc718bb4d3c8dcc5958f9633ad08d6f4f79a8940d05fd5e4f8",
+    "brick_004": "2b52b141c7d333187bfe4568456dd89378961beed8a63b77fa46b081a2899c1c",
+    "brick_005": "ff5c2a0b2b8a87629ae757b377efeb2ac92c845f95430e6cd6c65d233640e134",
+    "brick_006": "5395acbd6cfa3728350d078d37c0f92fa27b29a52810dec60a0add10a477ba8d",
+    "brick_007": "0500666116799cd711d28223fc8aba7adcb57cdef177674f9af1513161621ffd",
+    "brick_008": "cf133e063d173df0322153af38ad0679df2ee3c449bfc752e343f4555f387d10",
+    "brick_009": "b310a9304011ccff585f26fa005009a7fbe825bda62318e2740fea8dabdbf2f8",
+    "brick_010": "a2f24165a9005aa7bf1ac86885339fb7413a80c3584daca340feb95221040e46",
+    "brick_011": "a111c10cc957b965fb81f76ff27b259e12825feb6a61ab7fa0b867a2ae70b1b4",
+    "brick_012": "88b36541595333a59791efc1d794a120237761fc8235fd71e357a94220f25c18",
+    "brick_013": "2ae8e046b5b9ad4dd0b15a80d0e601eb16460162cae1e157476184ea6bbd0cc7",
+    "brick_014": "2532aef6d319bf28f5fcdf3562e25544286eb2a23a87c2dc14fe89e9aa3173a8",
+    "brick_015": "f6c347c58e73aa9a241bdaf431740cb88c863062b3b616d49633eaa903546c35",
+    "brick_016": "389b7cd8a81f8f82db920e983b65fb737897efc5f9f378df43703a073de44add",
+    "brick_017": "ee2538cf67ef79ed3f47e00ca1fbf4cdbdda0ff156c0d0747959784d62910b82",
+    "brick_018": "c7029582d79b18d1dcef93ce242094caa27e9fc749a77f2603a6346e51037c0f",
+    "brick_019": "eb841c97546dba4ce23440b50715c4887cb32aebde144ef456b7234f0e9d3cde",
+    "brick_020": "972b214217b0847738aeb88c270d2adc98bf6b6b17a6c0edce8c8368a2472b5d",
+    "brick_021": "420d8054c939f157fbcbea319f112b6880e43611a867a091041a4a43b1e83913",
+    "brick_022": "4577e4d77a93acbbee4fed9f88a4ac0073f119e20932f2e602722c51d6301988",
+    "brick_023": "2781c3aeb9221e1d8a0efb26ac6d93aebfb36dccf46c4fe71712f113403bc5f6",
+    "brick_024": "242a259389ccc89bae164d0e30528d1e28d4990e4910636f18c140e60f15fe97",
+    "brick_025": "f08ebeb8763cc6e870ea418b1d005f49e2c3caf77079fdece629cee64b01acbc",
+    "brick_026": "826e59de960f8067749f525198c8e1ac6f07e47c9e033a5a7c1ef8a5533cb53d",
+    "brick_027": "418ed5e1b94f3d409d31556adaf1ed10fcfd677a0ca273bd336fa6e3aeb27112",
+    "brick_028": "61bb4e58634b93651a0033f792a2bad4737c69ad421696b914140ae8ff7bd3f5",
+    "brick_029": "6d4bd8e9b9bdff3af0c97dca34c72722200275179e1773ccf99b8d43af05810d",
+    "brick_030": "fc932dc469ffc6c3ea0c8c790787eefaf58295ad931c67bd87845469d75e3e4f",
+    "brick_031": "c4328c571a0e86193fbe870363f79653b3295c6ec2e9a875238660cd606cb6ec",
+    "brick_032": "454d2f989ec1dbd5a562d66acbdd3698052540987467782b35dad73be4340ad4",
+    "brick_033": "01096d007e7e5781471682424305571dc7d516cf494ea8c42fe5e3b6b7d0b930",
+    "brick_034": "05f9b6b846c119be0d095f2daaaea5a43151c8d68bfcbed3321ef6ba2ca6028f",
+    "brick_035": "2ae0736c3c0f4d19b6b0bcff06f5d368fe535ca119d32317f63dc110590841e4",
+    "brick_036": "0326d304b0f1ffd57b2faf6177c724c38de6b898b252caeb8e98a5ebe1a51160",
+    "brick_037": "ac282f568fd19e71d7fde12eeb72020a3707aed9d7fce4ee08bf50e62cde93f0",
+    "brick_038": "336060b55bccdaa7a966ee4f834f92a4bcff56b98d06b3d8463ed101838f09b4",
+    "brick_039": "4ea27c6dfa0adc36343f7bf44ab62bd216b974e557c4e3d8f411f4b64f410016",
+    "brick_040": "4dce56b01475d77f98bd392915c00b26ee5c07fbd431a3a2abd00ba4f574cebc",
+    "brick_041": "0d3e1d1aaa39527bf1162a2273d8aab325908d4e06324934267fe47f30d07825",
+    "brick_042": "7e0464c96123eb57ed5f6a04e4f8b5a2efc91287a89ad87f2adaa9933e053000",
+    "brick_043": "05b5bb3a859747cc2486b3259c6267e658fa7cec899348a46816e67405610ec1",
+    "brick_044": "1efb03c96fb138d6579ad9d1bfd6bee3b1b37ab562f504dc2e3e18b4a42c52e7",
+    "brick_045": "c02f0e5341810f6567c120bb4c6499acf75192d9449120b5ec7b54ea91aa7c1e",
+    "brick_046": "f7c371e8a80483ca8aa1cee073b8e011579e628d47afa33bb2992b4afcfdd06b",
+    "brick_047": "21d586f4a521368dfa5a355bbfebcccf84d29b9c0102b510902ca9f2a678f2bb",
+    "brick_048": "71c6c2905e29029d4abde2c6271e0cc68f79d9fb82c48bde3c3eb5c210a0d79d",
+    "brick_049": "e237fd86776b51b50a294aa70290ddbdeb28aae58f7d3f292d6e22f9cf6c632d",
+    "brick_050": "b7797c2711a4410b6818b3e97aed451e95fc885ea31cbac7eacbc9ddad3255c6",
+    "brick_051": "33961a5120d061c59dcefebb0e85d0675172039a4d62f321a3af25023cbb4fbd",
+    "brick_052": "4bd309ea5d467da29704bf250a54694ca8d094a2f4e03bde060032fe97fc636d",
+    "brick_053": "20acac4dbd67aecffdfa5a848ac54650eb9bd910a36e760ecf3d9f06c5c57216",
+    "brick_054": "f1eab273409662b74274d782168888d6715212c0e2b7574deef15cc90f28acd8",
+    "brick_055": "e0a6e13ee9419274252eeb7657651f5b0f2de2cf9af183e385175d7e1cf3bd72",
+    "brick_056": "71bb51200a5dda88ec293ed83b729e2a6de8ec1c19528d138b7a75a844935f43",
+    "brick_057": "9998ff29d301aa68ece03683db55487a2be53839f4aad7bac5c6e0a2b30a4cf9",
+    "brick_058": "bf5e8623c9a56844624a7863bf22b9a015d2b7761e6209a0e596ffd28594f619",
+    "brick_059": "99934a60e3be8c2acb106dd2f939f26308d5f9cb3badbcde06e881cd27b558fc",
+    "brick_060": "7e1be43a76fdc41c38755cdae75fdee29932ffb72b6054c8c7407e74b129cdd5",
+    "brick_061": "42818d2096a8f379667e628b007786b30af5601a4b1a84198e7cd0f1d8fd11b8",
+    "brick_062": "0ed382002744231c1fee146661e1d97df32c74bb2fda62e4834486e39b40c7b4",
+    "brick_063": "2aebe4adc7a33d197f7afeed252a996efed5c3af08e1bf9df19a6535cb12ef94",
+    "brick_064": "94fe852cd23360550c283d8ec5fdb714b6443a7d6de2398c5a0a20ec0fa58714",
+    "brick_065": "cb1d553bf69d7574c37f996b5170a4e29c3f9e1e0486d862a396cd1c27d84a2b",
+    "brick_066": "ca522bc1338c416412fd95d0bbb1a906ad5da676450edf0e68b33205cb70ff9c",
+    "brick_067": "d97d99e800fe02b98619762b902ad53bcf1459400f93165c18d65859018bbfd9",
+    "brick_068": "4d2bfc09b2dee5fe473ab8f781a7abd557aaf463067d62a1887f29ed64062ca4",
+    "brick_069": "41d9144848fb9971b3e34a40e01c2a7420549bb54cd5b44e0ac1bb3bfe0c4975",
+    "brick_070": "e7077d991c974e8d7d10fb6a5f4bc6d667c956585bf48a75ccbeeeb4d06693f2",
+    "brick_071": "1478d38b4a4f1e970da0acb75c6089f57217d78cd804811c80f3416c376dfad0",
+    "brick_072": "e7f672070e71addb54d0fcd3b1641617e3be83809938af33f23d5b165b09f4c2",
+    "brick_073": "fc0fae987c57ac89961431d7ad875ce27227bd0160702ea63674b691173c330a",
+    "brick_074": "65ff4d649b3bea115bd468c050da986ba14ac6700addc25472313ec0894f6a01",
+    "brick_075": "c62fcb806d6c627e4338570b77de105d8b0ad9f6783c8f052b89c2f1ad0e72eb",
+    "brick_076": "3c84aafba9c2062d4cc5e950d9be735a434d54253c46cbcd7d0bc707208e2c5e",
+    "brick_077": "62fb77572c9ce3944391ce19894212080d3544b3b5b237f9550d24532b217ef1",
+    "brick_078": "2e5aca8567680ba376e914002409f472cf552af08ac724b8dadcdcc31b50d31d",
+    "brick_079": "eff82340c69ec01005d38733371ca7902dda742cbca62b4f35f593c83ee81f42",
+    "brick_080": "644dd48b426ae46d6da98735f24d3540297fc4ca72e08fb6701a13cdb4a7014f",
+    "brick_081": "5e20c03cb4c38f5bcff6fb5d40472ce35e47c61b931a3f148c31d98f7443b7cc",
+    "brick_082": "169ba4123c8238db2ee7590282038535300fb1d00e5422514cacd1c68545f880",
+    "brick_083": "1a4262e289112602442be968edace52fa4a852526b046031d708b2fdd7b7f87b",
+    "brick_084": "e84e5fc72f68448147fd081ea52de02c1a323cdfd99e17c3e2246f0d81b053a5",
+    "brick_085": "6b2ae591c2f1f537d453cbf1a9d85a95c6b0fd20c4a9c5dd9bbe6e75f59f2195",
+    "brick_086": "935871ca135c24003de7cd25a4d36130fdcf9f208508b878fcab94671400e05e",
+    "brick_087": "f2844371ef476b78e546d1ecf619559774c95caf2b6adec790c9f1cf5f5f3374",
+    "brick_088": "8a375885c3d2b723dd2ac35f6fe00859135f9ba5e07a6e1049c4db3cb1d97a82",
+    "brick_089": "ff0b8e26fbe47bbeae39029ba3a1d9288fd5d85e7d539aef1acd21170abceeb4",
+    "brick_090": "6492f19db9a28c8fdea6d75333bab059310469b6e69d237a29632d6540e3e005",
+    "brick_091": "650106164a5b906845fee20365103625979e9b5f434cbb39c8a86e21a4301698",
+    "brick_092": "14121e5f8e32250de5c0bb02e407ff37ff57291b5f36934d4c45fc98801bbbe4",
+    "brick_093": "38f266bc2eb263dbfed38e4098702706f7c293785b6fd4316ae4abc135f02c0e",
+    "brick_094": "114d7d133a46c12f8c0e787bd27166b3ec23e38cc4b0c0d05e57db68e0608fd4",
+    "brick_095": "d24104accbf0e1468f15a4677fa302dd9c0a3b98dc7bd3c541779f0717f162e1",
+    "brick_096": "446a996714021b63b2da0ab07dfd6ae83e16e84e6ec9d0855b612f08ed349c78",
+    "brick_097": "77119eb619f201269f3f867ff071bd47aa8fa2d6656fad868bc649b7f15c2432",
+    "brick_098": "2252b3be0a8f8608709b95b7a8da345ac6c70bc09209cfa50e73d071c36f2c8b",
+    "brick_099": "86e7ba2828cd156df92d2628ec6f2c5dacea15378b69e104a48e405d24d303f0",
+    "brick_100": "a66d449f1dd84f071c3d0ac8fa957ad024aae09e5d93a8f365e68901d667c8b7",
+    "brick_101": "a603fb8a7fcf992043011cf529ed8aeff8b1aceec43a8f5c513a512ee37a1c9f",
+    "brick_102": "b4ae6b0694a156912498b4bafe77b4a9085808363a175a0f10ad5894e3b8438f",
+    "brick_103": "6ebfda9d321d4e7c5766ddb7d33adf68d82dd70af36ed1cf3e95762583247ac5",
+    "brick_108": "951f44fe23088d969567865deb27b5b357627c0afdb99abb691dbbd2d171970b",
+    "brick_109": "cba476bedcc02cea45a545b4678d9cb071f3ae8806e20a5c45f0989e0b4fcc00",
+    "brick_110": "ea00c0be273e6d014ab18bbff750f848b9705ead4fa1d76f127326be931559d5",
+    "brick_111": "a34a996dd5e85644ec1349e374561ada27ac6281a57ecb7e5d3de2bbd3f9a302",
+    "brick_112": "87ce17eb790a6bd671460208fbd72f5a508487c898bd8931a9a9abad876418ab",
+    "brick_113": "48f971ac26cee0e7524f03408f4898d8d231ea91f4541f929e7d0c5c82fa8868",
+    "brick_114": "ce4a9da2a1b1b6ada876081f685eec2771d2f8683e2300ebe307ac3f9f5e0819",
+    "brick_115": "203a70b5b27e894f6f37b0a1f500fcbb08bcf429a0c0173f680b1c97f976a6a3",
+    "brick_116": "c05df97d94014e0395fbf8ae3d4f182092bb848ca0e3cefbfebbf88dbc722909",
+    "brick_117": "41c379dfae9a8f70484845ad6fb60940aca22c2f9a1dd995dfc8a8f92cd0d4db",
+    "brick_118": "eab2dc09b8f76b1cfd5282e1b830275796ec54989ccd7ec66ef340a594fe15de",
+    "brick_119": "8f2d5e5c08938e5d9b591cf16c825f4f80c57ca82afbf493cefe582038031fb3",
+    "brick_120": "86d054fdb111a3e66f32f6115af146c360190827eb499b784786e19734283b00",
+    "brick_121": "0227993a88464edc3587db30fffe9cd0c03c7861a344a51b401df0fea40fa2a7",
+    "brick_122": "2a7347a35d71be87180fdd126f9efa0c1cb6bf66194fc0e6209220346e9945ce",
+    "brick_123": "a1f69277757e1f8d9f00a76131f79b76bb06d2ddb5b77d6d31b71fd41c406a32",
+    "brick_124": "290b5b2af40a8c27cfced859761ca0ffced04f9e6e5d5bec6f47410c3deece00",
+    "brick_125": "708be9c28d96c0a450fa9e574390042b1a8f2f44f8b66e5b4d72208a3a838d19",
+    "brick_126": "9fc807289ca9ff8a376ba33a1f6e1b797e393c4efca610f4a1eac9daac2346ff",
+    "brick_127": "c57b6f05c1ada079a11ea3bfae8c0a4df5f83be20bc972bbb7406b7ea202ac8f",
+    "brick_128": "81d3844609e8f7cacba5cb74e7fa2f0dd986b9135925da6e180f42f98403bce6",
+    "brick_129": "0aa988969a3bf1c1b5648be76957154f9768dc4a9c180bac830c1744441e0acd",
+    "brick_130": "338a26d2649a5ab0d202f72b83491641c2f09cccfafb7ddf51ea362742040972",
+    "brick_131": "5bcfc1827c0a83a7163db4fe80ba7883f55fc882a1c6f36e06d8399f5e2e8546",
+    "brick_132": "7419f68f087b1521ba42606a226b475a1f38967d090c5a7501b517b89a871d22",
+    "brick_133": "8a0ceb5aa763f398366f26136e0c43d0a03203fbeeb94ceb41ea0512edc86f89",
+    "brick_134": "9b069391ab7ac654050621b2c33888d79406efdd3d70cebf43295b824429a4e0",
+    "brick_135": "bf48a0cbd893f04796e43ff8967b3a8f33e6ef43a71783be86aa95d88219cce1",
+    "brick_136": "e953f59cf33f3844aeb6c71da4716a40b16331bded811b2da10aff891db5faba",
+    "brick_137": "7c13b361481c5c1474798c22411c6eb18516b87cfd2f8240053003988e749e00",
+    "brick_138": "5c941a3c68978c6e4fd356973f511eb3db7a105671fefe613662745d81fadf3d",
+    "brick_139": "f5ee064aa98ff12a423efc2e55a3d846d8c24451d81014c0ee80ea05061e3cf3",
+    "brick_140": "43f63b0e0d078900dc4a0d93c2078b148cf2d12b4f1e3121c1ffd4ca938ef4e8",
+    "brick_141": "0e5c72cd0c81b2a07ac947ed06548a73bab8d0b5ba71f2f88c16ec8a5e6aa26e",
+    "brick_142": "fd2856ef0adc7f22f23a85b627f84ba601ac959afcd3f5e84906b960377196fd",
+    "brick_143": "e9fe8d403e5d9929aa8434623038febbdd14a7845ce837e7ad580237ef243219",
+    "brick_144": "1a78a11e8b01adeb35caa85abaeb4a5204c30a6a6fec0c146db18f61c579ed59",
+    "brick_145": "77414d5e6e9387d769b0b6529324dfdec908e6e9e2a40f276f45961602621d8b",
+    "brick_146": "8625d8b75a9bb7a95178f77bf957fd261757e983cb6d6df295cf7e4ed2231dfe",
+    "brick_147": "a2b8622f338e4f1bf1fc725cf13a03dd7d10f1efeaf711bf7d32c6b5b1d1a21f",
+    "brick_148": "ea1e10d8518fd4a281be9681e80b7e77104a9dc8a895f9aad6d6d5df74724e9b",
+    "brick_149": "df993c4dc130492170ac9be20bc58ae0537cbf08d39a52b705c8206913c98385",
+    "brick_150": "979ce9ce5a91ad00eb56b0f4341d5e196a413d0ab7e2a5af1abed020daaf7a1f",
+    "brick_151": "cbb840e0cade219bab77ae048d572b6f0627919921f5dd2455833ad2089bf447",
+    "brick_152": "fb727182f216105b92c05b3e112f43b20c1235938318441c6d50d2d018b51dd3",
+    "brick_153": "45668b10ffd489753aaf7f4268664e734632983eb0fcfb6d2832a654e17c0b0b",
+    "brick_154": "43f68cfe126734e832accd6eece97dba4319c3ed5047a1f2bdc78f9bf3a1fea0",
+    "brick_155": "95394d81d79aadd5fe856be669a19983b73184c1e0d6f080e4b96729c780e23c",
+    "brick_156": "46360212d9fa3ba30738fbe00d046de5523ed78e4acfe9f8cb9b6d031147e59e",
+    "brick_157": "762fc3a7d7b7d489d423c72098f94d9b34f6864dc169ca403e94a825859cbe62",
+    "brick_158": "99bccf28c05d3a2638c8c8f0bee827e6bc72659de8e3bfd03d25a85191f75018",
+    "brick_159": "58fb2109f33ee3f5c1b75b67fd27c6ac9f1079d694ab398c0b4017e93f7b84e6",
+    "brick_160": "581fcb2246484d47662ba884dcf2863c23ac8cd86b9f45537be6c7fb039c980f",
+    "brick_161": "6625400586356796e3a38e08bf18d86b8836642e9e80aca21c8edd5497320452",
+    "brick_162": "408891b35b0fb052581f5fedb972e18c52580ddd1e63d8a12da466ce0bf86e53",
+    "brick_163": "8577537b9f3def6907c4d5f16fdee99a73b09a46eea10b0cf44e485d6b759afb",
+    "brick_164": "5fc01b6cc5163dc59a8e8ee17200d0c8ffc61833e9b9563bcb456eefad73e3a0",
+    "brick_165": "e5dcea0b2fc333fda31d33a8293260c993491014088606229901586baca9fcb9",
+    "brick_166": "ad5b86ecd8f6912bf547c4bf63f344223457a210061c39a438435374ff0fbfd4",
+    "brick_167": "fd43155626b212a4fb61f65125708e35297a43934496829da3fa6646386799e7",
+    "brick_169": "0bd14539f83466f6ba777052b4c1ae19108e7b9957fdd663aad8f22200c53498",
+    "brick_170": "9a22eb7c8667599dcfa65be52790350957566763573b4b4004cbbc3e69f5daf9",
+    "brick_171": "6c0546cd758ef3f03f7fb13aedcfa706e7fadb562600c095bee4d88c1ecc288f",
+    "brick_172": "4be375a97f1d99bda079d97421e207bca955c0175b0ef2d7b10ca220636af1da",
+    "brick_173": "3c686b7d1d1421312c5a53fc47611a998699642ad5d2c32136f5ae108beb9150",
+    "brick_174": "36b9260050cc1e3d8bd5520dafda3b2e51d421de405b4aed96e33b4514a8f366",
+    "brick_175": "64edaa7772203d7232ce5dd3a88f2dc0def09de5f41b406b751b97d761e1e2d7",
+    "brick_176": "acfd332fa81f4aad9d3512b363ea837751d39e4326370dc30a8148f807f9d178",
+    "brick_177": "8d9e797f7c83e190e27f9f2367c9448539bd5adb480cb3dd566d96f36f15584b",
+    "brick_178": "4f2b6fed8f48d8f8df8eb062ee180bc1d49ca7db22a3e6f9722448fe74c46591",
+    "brick_179": "af0de581e3c782db67cfefa7ba6332276a109d90cf30ac729cb42bf1714ef752",
+    "brick_180": "867e5eb2ef556799b4f0ff89683d452e02dd60628b2fc355eb4200e010d0fa10",
+    "brick_181": "78149ca1330949dd65bd533e042497720e07f7860cc7fa38c49b794459d4e993",
+    "brick_182": "7c9d51530919ac71ed8dc6c125e4492913119b288df29cead0deac6e0394cbc3",
+    "brick_183": "d1c3f5f2f66c0f939bfdc430634d0a3eaaee00ec5d3e81072934e98af73b89f3",
+    "brick_184": "da182337f54db1bfa3b77b104153878c23463c6b4b5158cfa026230b6f4c4881",
+    "brick_185": "fe25976fd4c52802259b19407997044189f0a9b23482c10d39b26489f929c035",
+    "brick_186": "000a9857304d7c1019d67dfb467dccd45d45c35f6798ff64b26b257fcebe6616",
+    "brick_187": "28223713ae4745b6d578cd6457bdea68d853e3db219f614cb72afd9f928a3765",
+    "composite": "e0e5111f1110eb7573994971154913fade5f9257583630ff38e2872cd33c396b",
+    "lights": "7c8fccd369744a523bfbc0808f30346405a654ba276ce177249aec324ce57141",
+    "outlines": "881725c346395402f3810f19b99d84998dbbea0eb4a60ec5a641a05147b8dc37"
+  },
+  "render_dpi": 32.34,
+  "total_layers": 0
+}
