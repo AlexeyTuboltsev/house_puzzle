@@ -460,6 +460,16 @@ update msg model =
                         |> Dict.fromList
                 , appMode = ModePdf
                 , houseUnitsHigh = response.houseUnitsHigh
+                , generateState = NotGenerated
+                , pieces = []
+                , pieceGeneration = 0
+                , waves = []
+                , nextWaveId = 1
+                , groups = []
+                , nextGroupId = 1
+                , selectedPieceId = Nothing
+                , selectedWaveId = Nothing
+                , selectedGroupId = Nothing
               }
             , Cmd.none
             )
