@@ -799,15 +799,15 @@ def parse_ai(
                 screen_bbox_pymu = (sb_x0, sb_y_top, sb_x1, sb_y_bottom)
                 break
 
-    # Clip rect: use screen frame width if available, bricks extent otherwise.
-    # Bottom always = bricks bottom (ground level).
+    # Clip rect: use screen frame width, but bricks extent for top/bottom.
+    # Houses can be taller than the screen frame (scrolling in-game).
+    # Bottom = bricks bottom (ground level = y=0 in Unity).
+    # Top = topmost brick (not screen frame — don't clip tall houses).
     if screen_bbox_pymu is not None:
         clip_x0 = max(0.0, screen_bbox_pymu[0])
         clip_x1 = min(page_rect.width, screen_bbox_pymu[2])
-        # Screen frame bottom should match bricks bottom; if not, use bricks.
+        clip_y0 = max(0.0, min(all_y0))  # topmost brick
         clip_y1 = bricks_bottom
-        # Screen frame top for visible height
-        clip_y0 = max(0.0, screen_bbox_pymu[1])
     else:
         clip_x0 = max(0.0, min(all_x0))
         clip_y0 = max(0.0, min(all_y0))
