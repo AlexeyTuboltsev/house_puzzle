@@ -7600,8 +7600,18 @@ var $author$project$Main$update = F2(
 											return _Utils_Tuple2(b.id, b);
 										},
 										response.bricks)),
+								generateState: $author$project$Main$NotGenerated,
+								groups: _List_Nil,
 								houseUnitsHigh: response.houseUnitsHigh,
-								loadState: $author$project$Main$Loaded(response)
+								loadState: $author$project$Main$Loaded(response),
+								nextGroupId: 1,
+								nextWaveId: 1,
+								pieceGeneration: 0,
+								pieces: _List_Nil,
+								selectedGroupId: $elm$core$Maybe$Nothing,
+								selectedPieceId: $elm$core$Maybe$Nothing,
+								selectedWaveId: $elm$core$Maybe$Nothing,
+								waves: _List_Nil
 							}),
 						$elm$core$Platform$Cmd$none);
 				} else {
