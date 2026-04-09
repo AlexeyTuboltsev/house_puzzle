@@ -727,7 +727,15 @@ def parse_ai(
     placements: list[tuple[_LayerBlock, tuple[float, float, float, float], str]] = []
     for child in bricks_node.children:
         block_text = text[child.begin: child.end]
-        has_gradient = bool(re.search(r"\([^)]+\)[^\r\n]*Bg", block_text))
+        # Check for gradient fill: a line containing "Bg" preceded by a parenthesized name.
+        # Use simple string search — regex causes catastrophic backtracking on large blocks.
+        has_gradient = False
+        if "Bg" in block_text:
+            for line in block_text.split("\r"):
+                stripped = line.strip()
+                if stripped.endswith("Bg") and "(" in stripped:
+                    has_gradient = True
+                    break
         _, mat_ai = _extract_raster(child, raw_bytes, text)
         if mat_ai is not None and not has_gradient:
             # Plain raster brick (and optionally a vector outline for masking).
@@ -976,11 +984,9 @@ def extract_ai_layers_batch(
     # Compute coordinate transform once (needed for polygon masking)
     offset_x, y_base = _get_ai_transform(ai_path, text, roots)
 
-    # Render bricks-layer-only once if needed for mixed bricks.
-    # Deliberately use _render_bricks_ocg_png (not _render_all_layers_png) so
-    # the lights OCG stays OFF and yellow window-glow never bleeds into bricks.
+    # Render bricks-layer-only once via PyMuPDF for vector/mixed bricks.
     bricks_only_img: Image.Image | None = None
-    if any(bl.layer_type == "mixed_brick" for bl in brick_layers):
+    if any(bl.layer_type in ("mixed_brick", "vector_brick") for bl in brick_layers):
         bricks_only_img = _render_bricks_ocg_png(ai_path, dpi, clip_rect)
 
     for bl in brick_layers:
@@ -988,11 +994,7 @@ def extract_ai_layers_batch(
         canvas = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
         child = child_by_name.get(bl.name)
 
-        if bl.layer_type == "vector_brick":
-            if child is not None:
-                img = _render_vector_brick_pil(child, text, offset_x, y_base, scale, clip_rect, bl, raw_bytes)
-                canvas.paste(img, (bl.x, bl.y), img)
-        elif bl.layer_type == "mixed_brick":
+        if bl.layer_type in ("vector_brick", "mixed_brick"):
             if bricks_only_img is not None:
                 crop = bricks_only_img.crop((bl.x, bl.y, bl.x + bl.width, bl.y + bl.height))
                 if child is not None:
@@ -1581,22 +1583,18 @@ def compose_ai_bricks_png(
     # Compute coordinate transform once (needed for polygon masking)
     offset_x, y_base = _get_ai_transform(ai_path, text, roots)
 
-    # Render bricks-layer-only once if needed for mixed bricks.
-    # Deliberately use _render_bricks_ocg_png (not _render_all_layers_png) so
-    # the lights OCG stays OFF and yellow window-glow never bleeds into bricks.
+    # Render bricks-layer-only once via PyMuPDF for vector/mixed bricks.
+    # PyMuPDF handles gradients natively and is much faster than parsing
+    # AI private data for complex gradient meshes.
     bricks_only_img: Image.Image | None = None
-    if any(bl.layer_type == "mixed_brick" for bl in brick_layers):
+    if any(bl.layer_type in ("mixed_brick", "vector_brick") for bl in brick_layers):
         bricks_only_img = _render_bricks_ocg_png(ai_path, dpi, clip_rect)
 
     canvas = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
 
     for bl in brick_layers:
         child = child_by_name.get(bl.name)
-        if bl.layer_type == "vector_brick":
-            if child is not None:
-                img = _render_vector_brick_pil(child, text, offset_x, y_base, scale, clip_rect, bl, raw_bytes)
-                canvas.paste(img, (bl.x, bl.y), img)
-        elif bl.layer_type == "mixed_brick":
+        if bl.layer_type in ("vector_brick", "mixed_brick"):
             if bricks_only_img is not None:
                 crop = bricks_only_img.crop((bl.x, bl.y, bl.x + bl.width, bl.y + bl.height))
                 if child is not None:
