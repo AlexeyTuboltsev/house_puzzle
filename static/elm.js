@@ -7348,6 +7348,7 @@ var $author$project$Main$scrollTrayToEnd = A2(
 			return A3($elm$browser$Browser$Dom$setViewportOf, 'wave-tray-scroll', 999999, 0);
 		},
 		$elm$core$Process$sleep(0)));
+var $author$project$Main$setTitle = _Platform_outgoingPort('setTitle', $elm$json$Json$Encode$string);
 var $elm$core$List$takeReverse = F3(
 	function (n, list, kept) {
 		takeReverse:
@@ -7603,7 +7604,7 @@ var $author$project$Main$update = F2(
 								houseUnitsHigh: response.houseUnitsHigh,
 								loadState: $author$project$Main$Loaded(response)
 							}),
-						$elm$core$Platform$Cmd$none);
+						$author$project$Main$setTitle(model.exportHouseName + ' — House Puzzle Editor'));
 				} else {
 					var err = msg.a.a;
 					return _Utils_Tuple2(

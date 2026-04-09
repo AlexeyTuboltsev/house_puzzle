@@ -955,6 +955,8 @@ window.addEventListener('error', function(e) {
 if (window.Elm && window.Elm.Main) {
   const app = window.Elm.Main.init({ node: document.getElementById('elm-root') });
 
+  app.ports.setTitle.subscribe(function(title) { document.title = title; });
+
   app.ports.logBrick.subscribe(function(data) {
     console.log('[brick click] id=' + data.brickId + '  piece=' + data.pieceId);
   });

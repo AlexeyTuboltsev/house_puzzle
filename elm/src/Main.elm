@@ -334,6 +334,9 @@ type Msg
 port logBrick : E.Value -> Cmd msg
 
 
+port setTitle : String -> Cmd msg
+
+
 
 scrollToBottom : Cmd Msg
 scrollToBottom =
@@ -461,7 +464,7 @@ update msg model =
                 , appMode = ModePdf
                 , houseUnitsHigh = response.houseUnitsHigh
               }
-            , Cmd.none
+            , setTitle (model.exportHouseName ++ " — House Puzzle Editor")
             )
 
         GotLoadResponse (Err err) ->
