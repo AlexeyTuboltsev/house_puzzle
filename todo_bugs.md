@@ -23,6 +23,8 @@ put number on pieces in housle view
 background darken in waves
 reset brick editing 
 fix picture reset
+keyed sessions: each loaded file gets a UUID key, all state (bricks, pieces, canvas) stored per-key,
+  API routes become /api/<key>/piece/... — enables batch flow, clean reset, no stale cache
 night lights
 house/city placement
 

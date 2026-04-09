@@ -24,6 +24,9 @@
 - Before EVERY push: run `git fetch origin`, then `git branch --merged origin/main`.
   Block if the current branch is already merged. Do this IMMEDIATELY before pushing —
   never assume a branch is unmerged based on an earlier check, even from the same session.
+- Before adding commits to an EXISTING PR branch, re-check if the PR was already merged.
+  The user may merge while you are still working. If merged, create a new branch from
+  origin/main and cherry-pick the commit instead of pushing to a dead branch.
 
 ### Bash Commands
 - NEVER chain multiple commands with `&&`, `||`, or `;` in a single Bash tool call.

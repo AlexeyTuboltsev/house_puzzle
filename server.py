@@ -247,8 +247,8 @@ def api_load_pdf():
     )
     _ai_kw = dict(dpi=house.render_dpi, clip_rect=house.clip_rect)
 
-    compose_ai_bricks_png(file_path, house.bricks, str(extract_dir / "composite.png"), **_ai_kw)
-    extract_ai_layers_batch(file_path, house.bricks, str(extract_dir), **_ai_kw, prefix="brick")
+    compose_ai_bricks_png(file_path, house.bricks, str(extract_dir / "composite.png"), **_ai_kw, pdf_offset_px=house.pdf_offset_px)
+    extract_ai_layers_batch(file_path, house.bricks, str(extract_dir), **_ai_kw, prefix="brick", pdf_offset_px=house.pdf_offset_px)
     render_ai_outlines_png(file_path, str(extract_dir / "outlines.png"), **_ai_kw, stroke_width=3.2)
     _layer_kw = dict(**_ai_kw,
                       pdf_offset_px=house.pdf_offset_px,
@@ -740,7 +740,8 @@ def api_export():
     )
     export_comp_path = export_dir / "composite.png"
     compose_ai_bricks_png(tif_path, house.bricks, str(export_comp_path),
-                          dpi=export_dpi, clip_rect=house.clip_rect)
+                          dpi=export_dpi, clip_rect=house.clip_rect,
+                          pdf_offset_px=house.pdf_offset_px)
 
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:

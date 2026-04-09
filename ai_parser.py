@@ -277,6 +277,23 @@ def _compute_ai_transform(background: _LayerBlock, text: str,
 # Step 4a — detect vector-only (gradient) bricks by parsing plain path bbox
 # ---------------------------------------------------------------------------
 
+def _find_gradient_name(block_text: str) -> str | None:
+    """Find the gradient name from a Bg operator line, or None.
+
+    Scans lines instead of using regex on the full block to avoid
+    catastrophic backtracking on large blocks (700KB+).
+    """
+    if "Bg" not in block_text:
+        return None
+    for line in block_text.split("\r"):
+        stripped = line.strip()
+        if stripped.endswith("Bg") and "(" in stripped:
+            m = re.match(r".*\(([^)]+)\)", stripped)
+            if m:
+                return m.group(1)
+    return None
+
+
 def _extract_plain_path_bbox(
     block: _LayerBlock, text: str,
 ) -> tuple[float, float, float, float] | None:
@@ -518,37 +535,31 @@ def _render_layer_png(ai_path: str, layer_name: str, out_path: str,
     scale = dpi / 72.0
     mat = fitz.Matrix(scale, scale)
     dx, dy = pdf_offset_px
+    cw, ch = canvas_size if canvas_size else (round((clip_rect[2] - clip_rect[0]) * scale),
+                                              round((clip_rect[3] - clip_rect[1]) * scale))
 
-    if dx != 0 or dy != 0:
-        # Expand clip rect to capture content that would be clipped after shifting.
-        # dx<0 means "shift left" → PDF content extends further right → expand right.
-        # dx>0 means "shift right" → PDF content extends further left → expand left.
-        x0, y0, x1, y1 = clip_rect
-        if dx < 0:
-            x1 -= dx / scale  # dx is negative, so this adds to x1
-        else:
-            x0 -= dx / scale  # dx is positive, so this subtracts from x0
-        if dy < 0:
-            y1 -= dy / scale
-        else:
-            y0 -= dy / scale
-        clip = fitz.Rect(max(0, x0), max(0, y0),
-                         min(page.rect.width, x1), min(page.rect.height, y1))
-    else:
-        clip = fitz.Rect(*clip_rect)
+    # Expand clip to capture content that shifts past the canvas edge.
+    # dx<0: content is right of expected → expand clip right so we render it.
+    # dx>0: content is left of expected → expand clip left.
+    x0, y0, x1, y1 = clip_rect
+    if dx < 0:
+        x1 -= dx / scale
+    elif dx > 0:
+        x0 -= dx / scale
+    if dy < 0:
+        y1 -= dy / scale
+    elif dy > 0:
+        y0 -= dy / scale
+    clip = fitz.Rect(max(0, x0), max(0, y0),
+                     min(page.rect.width, x1), min(page.rect.height, y1))
 
     pix = page.get_pixmap(matrix=mat, alpha=True, colorspace=fitz.csRGB, clip=clip)
     doc.close()
 
-    cw, ch = canvas_size if canvas_size else (pix.width, pix.height)
-
-    if dx != 0 or dy != 0 or pix.width != cw or pix.height != ch:
-        src = Image.frombytes("RGBA", (pix.width, pix.height), pix.samples)
-        out = Image.new("RGBA", (cw, ch), (0, 0, 0, 0))
-        out.paste(src, (dx, dy))
-        out.save(out_path, "PNG")
-    else:
-        pix.save(out_path)
+    src = Image.frombytes("RGBA", (pix.width, pix.height), pix.samples)
+    out = Image.new("RGBA", (cw, ch), (0, 0, 0, 0))
+    out.paste(src, (dx, dy))
+    out.save(out_path, "PNG")
 
 
 def _render_all_layers_png(ai_path: str, out_path: str,
@@ -575,6 +586,7 @@ def _render_bricks_ocg_png(
     ai_path: str,
     dpi: float,
     clip_rect: tuple[float, float, float, float],
+    pdf_offset_px: tuple[int, int] = (0, 0),
 ) -> Image.Image:
     """
     Render with ONLY the 'bricks' OCG on — lights layer stays OFF.
@@ -582,6 +594,9 @@ def _render_bricks_ocg_png(
     The gradient Rectangle for each window brick lives in the bricks OCG.
     The yellow glow Rectangle lives in the lights OCG.
     Rendering bricks-only gives us gradient fill without any yellow.
+
+    If pdf_offset_px is given, adjusts the clip rect so the PyMuPDF render
+    aligns with AI private data coordinates.
     """
     doc = fitz.open(ai_path)
     page = doc[0]
@@ -594,8 +609,12 @@ def _render_bricks_ocg_png(
     if bricks_layer:
         doc.set_layer_ui_config(bricks_layer["number"], action=0)  # bricks on
 
-    mat = fitz.Matrix(dpi / 72.0, dpi / 72.0)
-    clip = fitz.Rect(*clip_rect)
+    scale = dpi / 72.0
+    mat = fitz.Matrix(scale, scale)
+    dx, dy = pdf_offset_px
+    x0, y0, x1, y1 = clip_rect
+    clip = fitz.Rect(x0 - dx / scale, y0 - dy / scale,
+                     x1 - dx / scale, y1 - dy / scale)
     pix = page.get_pixmap(matrix=mat, alpha=True, colorspace=fitz.csRGB, clip=clip)
     doc.close()
     return Image.frombytes("RGBA", (pix.width, pix.height), pix.samples)
@@ -727,15 +746,7 @@ def parse_ai(
     placements: list[tuple[_LayerBlock, tuple[float, float, float, float], str]] = []
     for child in bricks_node.children:
         block_text = text[child.begin: child.end]
-        # Check for gradient fill: a line containing "Bg" preceded by a parenthesized name.
-        # Use simple string search — regex causes catastrophic backtracking on large blocks.
-        has_gradient = False
-        if "Bg" in block_text:
-            for line in block_text.split("\r"):
-                stripped = line.strip()
-                if stripped.endswith("Bg") and "(" in stripped:
-                    has_gradient = True
-                    break
+        has_gradient = _find_gradient_name(block_text) is not None
         _, mat_ai = _extract_raster(child, raw_bytes, text)
         if mat_ai is not None and not has_gradient:
             # Plain raster brick (and optionally a vector outline for masking).
@@ -748,30 +759,13 @@ def parse_ai(
             ltype = "mixed_brick" if has_vector else "brick"
             placements.append((child, (pymu_x0, pymu_y_top, pymu_x1, pymu_y_bottom), ltype))
         else:
-            # Gradient/vector-only brick: A block with a Bg operator contains a
-            # gradient fill that exists ONLY in AI private data (not in the PDF
-            # OCG), so render via _render_vector_brick_pil even if _extract_raster
-            # also found an Xh raster matrix.
-            #
-            # For the canvas bounding box, prefer the raster matrix when present:
-            # it covers the full object (frame + windows), whereas the plain path
-            # bbox only covers the inner gradient rectangle.  For arch-window bricks
-            # without a raster, fall back to the plain path bbox.
-            #
-            # Xh matrix convention: ty is the TOP of the image in AI y-up space.
-            # ai_ymax = ty, ai_ymin = ty - h_pts.
-            _, mat_ai_raster = _extract_raster(child, raw_bytes, text)
-            if mat_ai_raster is not None:
-                tx_r, ty_r, w_pts_r, h_pts_r = mat_ai_raster
-                ai_xmin = tx_r
-                ai_xmax = tx_r + w_pts_r
-                ai_ymax = ty_r              # top in AI y-up
-                ai_ymin = ty_r - h_pts_r    # bottom in AI y-up
-            else:
-                ai_bbox = _extract_plain_path_bbox(child, text)
-                if ai_bbox is None:
-                    continue
-                ai_xmin, ai_ymin, ai_xmax, ai_ymax = ai_bbox
+            # Gradient/vector-only brick: use the vector path bbox for the
+            # canvas bounding box.  The raster matrix (if present) may refer to
+            # a small embedded detail image, not the full brick extent.
+            ai_bbox = _extract_plain_path_bbox(child, text)
+            if ai_bbox is None:
+                continue
+            ai_xmin, ai_ymin, ai_xmax, ai_ymax = ai_bbox
             pymu_x0 = ai_xmin + offset_x
             pymu_x1 = ai_xmax + offset_x
             pymu_y_top = y_base - ai_ymax   # ai_ymax = top in AI y-up → smallest pymu y
@@ -807,20 +801,14 @@ def parse_ai(
                 screen_bbox_pymu = (sb_x0, sb_y_top, sb_x1, sb_y_bottom)
                 break
 
-    # Clip rect: use screen frame width, but bricks extent for top/bottom.
-    # Houses can be taller than the screen frame (scrolling in-game).
+    # Clip rect: bricks extent for all edges.
+    # Screen frame only provides height for scaling, not clip boundaries.
     # Bottom = bricks bottom (ground level = y=0 in Unity).
-    # Top = topmost brick (not screen frame — don't clip tall houses).
-    if screen_bbox_pymu is not None:
-        clip_x0 = max(0.0, screen_bbox_pymu[0])
-        clip_x1 = min(page_rect.width, screen_bbox_pymu[2])
-        clip_y0 = max(0.0, min(all_y0))  # topmost brick
-        clip_y1 = bricks_bottom
-    else:
-        clip_x0 = max(0.0, min(all_x0))
-        clip_y0 = max(0.0, min(all_y0))
-        clip_x1 = min(page_rect.width, max(all_x1))
-        clip_y1 = bricks_bottom
+    # Top = topmost brick (houses can be taller than screen frame).
+    clip_x0 = max(0.0, min(all_x0))
+    clip_y0 = max(0.0, min(all_y0))
+    clip_x1 = min(page_rect.width, max(all_x1))
+    clip_y1 = bricks_bottom
 
     clip_h_pts = clip_y1 - clip_y0
     clip_w_pts = clip_x1 - clip_x0
@@ -957,6 +945,7 @@ def extract_ai_layers_batch(
     dpi: float,
     clip_rect: tuple[float, float, float, float],
     prefix: str = "brick",
+    pdf_offset_px: tuple[int, int] = (0, 0),
 ) -> None:
     """
     Extract all brick PNGs as full-canvas images.
@@ -984,33 +973,22 @@ def extract_ai_layers_batch(
     # Compute coordinate transform once (needed for polygon masking)
     offset_x, y_base = _get_ai_transform(ai_path, text, roots)
 
-    # Render bricks-layer-only once via PyMuPDF for vector/mixed bricks.
-    bricks_only_img: Image.Image | None = None
-    if any(bl.layer_type in ("mixed_brick", "vector_brick") for bl in brick_layers):
-        bricks_only_img = _render_bricks_ocg_png(ai_path, dpi, clip_rect)
-
     for bl in brick_layers:
         out_path = out / f"{prefix}_{bl.index:03d}.png"
         canvas = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
         child = child_by_name.get(bl.name)
 
         if bl.layer_type in ("vector_brick", "mixed_brick"):
-            if bricks_only_img is not None:
-                crop = bricks_only_img.crop((bl.x, bl.y, bl.x + bl.width, bl.y + bl.height))
-                if child is not None:
-                    poly = _extract_vector_path(child, text, offset_x, y_base)
-                    scale_poly = [
-                        [(p[0] - clip_rect[0]) * scale, (p[1] - clip_rect[1]) * scale]
-                        for p in poly
-                    ]
-                    if len(scale_poly) >= 3:
-                        crop = _mask_crop_to_polygon(crop, scale_poly, bl.x, bl.y)
-                canvas.paste(crop, (bl.x, bl.y))
+            if child is not None:
+                img = _render_vector_brick_pil(child, text, offset_x, y_base, scale, clip_rect, bl, raw_bytes)
+                canvas.paste(img, (bl.x, bl.y), img)
         else:
             if child is None:
+                canvas.save(str(out_path), "PNG")
                 continue
             img, _ = _extract_raster(child, raw_bytes, text)
             if img is None:
+                canvas.save(str(out_path), "PNG")
                 continue
             brick_resized = img.resize((max(1, bl.width), max(1, bl.height)), Image.LANCZOS)
             canvas.paste(brick_resized, (bl.x, bl.y), brick_resized)
@@ -1113,11 +1091,9 @@ def _parse_block_gradient(block_text: str, full_text: str) -> dict | None:
         }
     or None if the Bg or Xm operators are absent or stops cannot be found.
     """
-    # Gradient name: find the line containing "Bg" and extract the (name) from it
-    bg_m = re.search(r"\(([^)]+)\)[^\r\n]*Bg", block_text)
-    if not bg_m:
+    grad_name = _find_gradient_name(block_text)
+    if grad_name is None:
         return None
-    grad_name = bg_m.group(1)
 
     # Xm transform: a b c d tx ty Xm  (captures a, b, tx, ty)
     _num = r"-?\d+(?:\.\d+)?"
@@ -1559,6 +1535,7 @@ def compose_ai_bricks_png(
     out_path: str,
     dpi: float,
     clip_rect: tuple[float, float, float, float],
+    pdf_offset_px: tuple[int, int] = (0, 0),
 ) -> None:
     """
     Assemble all brick rasters into a single full-canvas composite PNG.
@@ -1584,28 +1561,16 @@ def compose_ai_bricks_png(
     offset_x, y_base = _get_ai_transform(ai_path, text, roots)
 
     # Render bricks-layer-only once via PyMuPDF for vector/mixed bricks.
-    # PyMuPDF handles gradients natively and is much faster than parsing
-    # AI private data for complex gradient meshes.
-    bricks_only_img: Image.Image | None = None
-    if any(bl.layer_type in ("mixed_brick", "vector_brick") for bl in brick_layers):
-        bricks_only_img = _render_bricks_ocg_png(ai_path, dpi, clip_rect)
-
+    # Render all vector/mixed bricks via _render_vector_brick_pil.
+    # This uses AI private data coordinates — correct positioning, no offset issues.
     canvas = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
 
     for bl in brick_layers:
         child = child_by_name.get(bl.name)
         if bl.layer_type in ("vector_brick", "mixed_brick"):
-            if bricks_only_img is not None:
-                crop = bricks_only_img.crop((bl.x, bl.y, bl.x + bl.width, bl.y + bl.height))
-                if child is not None:
-                    poly = _extract_vector_path(child, text, offset_x, y_base)
-                    scale_poly = [
-                        [(p[0] - clip_rect[0]) * scale, (p[1] - clip_rect[1]) * scale]
-                        for p in poly
-                    ]
-                    if len(scale_poly) >= 3:
-                        crop = _mask_crop_to_polygon(crop, scale_poly, bl.x, bl.y)
-                canvas.paste(crop, (bl.x, bl.y))
+            if child is not None:
+                img = _render_vector_brick_pil(child, text, offset_x, y_base, scale, clip_rect, bl, raw_bytes)
+                canvas.paste(img, (bl.x, bl.y), img)
         else:
             if child is None:
                 continue
