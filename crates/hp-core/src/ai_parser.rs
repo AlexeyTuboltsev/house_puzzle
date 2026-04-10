@@ -230,9 +230,40 @@ fn extract_plain_path_bbox(block: &LayerBlock, data: &[u8]) -> Option<(f64, f64,
     let mut xs: Vec<f64> = Vec::new();
     let mut ys: Vec<f64> = Vec::new();
 
+    // Find %%BeginData / %%EndData byte ranges to skip binary raster data.
+    // Use byte-level search (not line splitting) for precise matching.
+    let begin_marker = b"%%BeginData:";
+    let end_marker = b"%%EndData";
+    let mut skip_ranges: Vec<(usize, usize)> = Vec::new();
+    {
+        let mut pos = 0;
+        while let Some(start) = block_data[pos..].windows(begin_marker.len())
+            .position(|w| w == begin_marker)
+        {
+            let abs_start = pos + start;
+            if let Some(end) = block_data[abs_start..].windows(end_marker.len())
+                .position(|w| w == end_marker)
+            {
+                let abs_end = abs_start + end + end_marker.len();
+                skip_ranges.push((abs_start, abs_end));
+                pos = abs_end;
+            } else {
+                // No matching EndData — skip rest of block
+                skip_ranges.push((abs_start, block_data.len()));
+                break;
+            }
+        }
+    }
+
+    let in_skip_range = |byte_offset: usize| -> bool {
+        skip_ranges.iter().any(|&(s, e)| byte_offset >= s && byte_offset < e)
+    };
+
+    let mut offset = 0usize;
     for line in block_data.split(|&b| b == b'\r') {
-        // Skip binary data lines (contain non-printable/non-ASCII bytes)
-        if line.iter().any(|&b| b > 127 || (b < 32 && b != b'\t' && b != b'\n')) {
+        let line_start = offset;
+        offset += line.len() + 1; // +1 for the \r delimiter
+        if in_skip_range(line_start) {
             continue;
         }
         let line = bstr(line).trim().to_string();

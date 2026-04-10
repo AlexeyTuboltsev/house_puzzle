@@ -160,8 +160,12 @@ pub fn find_covered_bricks(
                 }
             }
 
-            if total_s > 0 && (overlap as f64 / total_s as f64) >= 0.98 {
-                if !protected_ids.contains(&small.id) {
+            if total_s > 0 {
+                let pct = overlap as f64 / total_s as f64;
+                // Skip small bricks — rendering differences between image crate
+                // and PIL can cause false 100% overlap for small details
+                let is_small = total_s < 300;
+                if pct >= 0.98 && !is_small && !protected_ids.contains(&small.id) {
                     covered.insert(small.id.clone());
                 }
             }
