@@ -223,6 +223,10 @@ async fn do_load(sessions: SessionStore, key: String, req: LoadRequest) -> Respo
     let brick_images = render::render_brick_images(raw, &render_bricks, cw, ch, bricks_layer_img.as_ref());
 
     // Filter covered bricks using in-memory images
+    // Collect warnings
+    let mut all_warnings: Vec<String> = metadata.warnings.clone();
+    all_warnings.extend(metadata.skipped_bricks.iter().map(|n| format!("SKIPPED: '{n}' has no vector polygon")));
+
     // Protect vector bricks from covered-brick removal
     let protected: std::collections::HashSet<String> = render_bricks.iter()
         .filter(|(_, bp)| bp.layer_type == "vector_brick")
@@ -231,6 +235,11 @@ async fn do_load(sessions: SessionStore, key: String, req: LoadRequest) -> Respo
     let covered_ids = render::find_covered_bricks(&bricks, &brick_images, &protected);
     if !covered_ids.is_empty() {
         eprintln!("[load] Removing {} covered bricks", covered_ids.len());
+        // Add warnings for removed bricks
+        for id in &covered_ids {
+            let layer_name = brick_layer_names.get(id).cloned().unwrap_or_default();
+            all_warnings.push(format!("COVERED: '{}' removed (hidden under another brick)", layer_name));
+        }
         bricks.retain(|b| !covered_ids.contains(&b.id));
         render_bricks.retain(|(id, _)| !covered_ids.contains(id));
         for id in &covered_ids {
@@ -318,7 +327,7 @@ async fn do_load(sessions: SessionStore, key: String, req: LoadRequest) -> Respo
         "has_composite": comp_path.exists(),
         "has_base": false,
         "render_dpi": (metadata.render_dpi * 100.0).round() / 100.0,
-        "warnings": metadata.skipped_bricks.iter().map(|n| format!("SKIPPED: {n}")).collect::<Vec<_>>(),
+        "warnings": all_warnings,
         "houseUnitsHigh": house_units_high,
         "composite_url": format!("{pfx}/composite.png"),
         "outlines_url": format!("{pfx}/outlines.png"),

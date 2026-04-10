@@ -621,6 +621,7 @@ pub fn parse_ai(
     let mut seen_bbox = std::collections::HashSet::new();
     let mut results: Vec<BrickPlacement> = Vec::new();
     let mut skipped_bricks: Vec<String> = Vec::new();
+    let mut warnings: Vec<String> = Vec::new();
 
     for p in &placements {
         let px = ((p.pymu_bbox.0 - clip_x0) * scale).round() as i32;
@@ -662,7 +663,7 @@ pub fn parse_ai(
             })
             .count();
         if moveto_count > 1 {
-            eprintln!("[parse] WARNING: {} has {} objects (multi-object layer)", p.child.name, moveto_count);
+            warnings.push(format!("MULTI_OBJECT: layer '{}' contains {} objects — split in Illustrator", p.child.name, moveto_count));
         }
 
         results.push(BrickPlacement {
@@ -689,6 +690,7 @@ pub fn parse_ai(
         screen_frame_height_px,
         skipped_bricks,
         pdf_offset_px,
+        warnings,
     };
 
     Ok((results, metadata, ai_data))
@@ -704,6 +706,7 @@ pub struct ParsedAiMetadata {
     pub screen_frame_height_px: f64,
     pub skipped_bricks: Vec<String>,
     pub pdf_offset_px: (i32, i32),
+    pub warnings: Vec<String>,
 }
 
 #[cfg(test)]

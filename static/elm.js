@@ -12123,7 +12123,36 @@ var $author$project$Main$viewPdfTools = F2(
 						[
 							$elm$html$Html$text(
 							isGenerating ? 'Generating\u2026' : 'Generate Puzzle')
-						]))
+						])),
+					$elm$core$List$isEmpty(response.warnings) ? $elm$html$Html$text('') : A2(
+					$elm$html$Html$div,
+					_List_fromArray(
+						[
+							A2($elm$html$Html$Attributes$style, 'margin-top', '10px'),
+							A2($elm$html$Html$Attributes$style, 'padding', '8px'),
+							A2($elm$html$Html$Attributes$style, 'background', '#fff3cd'),
+							A2($elm$html$Html$Attributes$style, 'border', '1px solid #ffc107'),
+							A2($elm$html$Html$Attributes$style, 'border-radius', '4px'),
+							A2($elm$html$Html$Attributes$style, 'font-size', '11px'),
+							A2($elm$html$Html$Attributes$style, 'color', '#856404'),
+							A2($elm$html$Html$Attributes$style, 'max-height', '120px'),
+							A2($elm$html$Html$Attributes$style, 'overflow-y', 'auto')
+						]),
+					A2(
+						$elm$core$List$map,
+						function (w) {
+							return A2(
+								$elm$html$Html$div,
+								_List_fromArray(
+									[
+										A2($elm$html$Html$Attributes$style, 'margin-bottom', '2px')
+									]),
+								_List_fromArray(
+									[
+										$elm$html$Html$text(w)
+									]));
+						},
+						response.warnings))
 				]));
 	});
 var $author$project$Main$StartEdit = {$: 'StartEdit'};

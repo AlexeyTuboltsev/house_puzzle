@@ -2392,6 +2392,21 @@ viewPdfTools model response =
                     "Generate Puzzle"
                 )
             ]
+        , if List.isEmpty response.warnings then
+            text ""
+          else
+            div
+                [ style "margin-top" "10px"
+                , style "padding" "8px"
+                , style "background" "#fff3cd"
+                , style "border" "1px solid #ffc107"
+                , style "border-radius" "4px"
+                , style "font-size" "11px"
+                , style "color" "#856404"
+                , style "max-height" "120px"
+                , style "overflow-y" "auto"
+                ]
+                (List.map (\w -> div [ style "margin-bottom" "2px" ] [ text w ]) response.warnings)
         ]
 
 
