@@ -1,2597 +1,462 @@
 {
   "bricks": [
     {
-      "height": 23,
-      "id": 0,
+      "height": 24,
       "neighbors": [
-        1,
-        2,
-        252
+        "0,23,70,12",
+        "69,23,47,12",
+        "92,0,47,24"
       ],
-      "type": "vector_brick",
-      "width": 46,
-      "x": 0,
-      "y": 531
-    },
-    {
-      "height": 23,
-      "id": 1,
-      "neighbors": [
-        0,
-        2,
-        3
-      ],
-      "type": "vector_brick",
-      "width": 23,
-      "x": 23,
-      "y": 508
-    },
-    {
-      "height": 23,
-      "id": 2,
-      "neighbors": [
-        0,
-        1,
-        3
-      ],
-      "type": "vector_brick",
-      "width": 23,
-      "x": 0,
-      "y": 508
-    },
-    {
-      "height": 23,
-      "id": 3,
-      "neighbors": [
-        1,
-        2,
-        4
-      ],
-      "type": "vector_brick",
-      "width": 46,
-      "x": 0,
-      "y": 485
-    },
-    {
-      "height": 23,
-      "id": 4,
-      "neighbors": [
-        3,
-        5
-      ],
-      "type": "vector_brick",
-      "width": 46,
-      "x": 0,
-      "y": 462
-    },
-    {
-      "height": 23,
-      "id": 5,
-      "neighbors": [
-        4,
-        6,
-        7
-      ],
-      "type": "vector_brick",
-      "width": 46,
-      "x": 0,
-      "y": 439
-    },
-    {
-      "height": 23,
-      "id": 6,
-      "neighbors": [
-        5,
-        7,
-        8
-      ],
-      "type": "vector_brick",
-      "width": 23,
-      "x": 0,
-      "y": 416
-    },
-    {
-      "height": 23,
-      "id": 7,
-      "neighbors": [
-        5,
-        6,
-        8
-      ],
-      "type": "vector_brick",
-      "width": 23,
-      "x": 23,
-      "y": 416
-    },
-    {
-      "height": 23,
-      "id": 8,
-      "neighbors": [
-        6,
-        7,
-        9,
-        11
-      ],
-      "type": "vector_brick",
-      "width": 46,
-      "x": 0,
-      "y": 392
-    },
-    {
-      "height": 23,
-      "id": 9,
-      "neighbors": [
-        8,
-        10,
-        11
-      ],
-      "type": "vector_brick",
-      "width": 46,
-      "x": 0,
-      "y": 369
-    },
-    {
-      "height": 23,
-      "id": 10,
-      "neighbors": [
-        9,
-        11,
-        59
-      ],
-      "type": "vector_brick",
-      "width": 23,
-      "x": 0,
-      "y": 346
-    },
-    {
-      "height": 61,
-      "id": 11,
-      "neighbors": [
-        8,
-        9,
-        10,
-        12,
-        23,
-        60,
-        61
-      ],
-      "type": "brick",
-      "width": 127,
-      "x": 23,
-      "y": 331
-    },
-    {
-      "height": 23,
-      "id": 12,
-      "neighbors": [
-        11,
-        13,
-        23,
-        61
-      ],
-      "type": "vector_brick",
-      "width": 15,
-      "x": 146,
-      "y": 346
-    },
-    {
-      "height": 23,
-      "id": 13,
-      "neighbors": [
-        12,
-        14,
-        21,
-        22,
-        23,
-        61,
-        62
-      ],
-      "type": "vector_brick",
-      "width": 92,
-      "x": 162,
-      "y": 346
-    },
-    {
-      "height": 23,
-      "id": 14,
-      "neighbors": [
-        13,
-        15,
-        20,
-        21,
-        62,
-        63
-      ],
-      "type": "vector_brick",
-      "width": 92,
-      "x": 254,
-      "y": 346
-    },
-    {
-      "height": 23,
-      "id": 15,
-      "neighbors": [
-        14,
-        16,
-        20,
-        63
-      ],
-      "type": "vector_brick",
-      "width": 38,
-      "x": 346,
-      "y": 346
-    },
-    {
-      "height": 47,
-      "id": 16,
-      "neighbors": [
-        15,
-        17,
-        19,
-        20,
-        49,
-        63,
-        64
-      ],
+      "pos_key": "0,0,93,24",
       "type": "brick",
       "width": 93,
-      "x": 381,
-      "y": 346
+      "x": 0,
+      "y": 0
     },
     {
       "height": 23,
-      "id": 17,
       "neighbors": [
-        16,
-        18,
-        19,
-        64
+        "0,139,23,23",
+        "0,93,46,23",
+        "23,139,46,23",
+        "23,93,46,23"
       ],
+      "pos_key": "0,116,69,23",
       "type": "vector_brick",
-      "width": 38,
-      "x": 469,
-      "y": 346
+      "width": 69,
+      "x": 0,
+      "y": 116
     },
     {
       "height": 23,
-      "id": 18,
       "neighbors": [
-        17,
-        19,
-        49
+        "0,116,69,23",
+        "0,162,69,23",
+        "23,139,46,23"
       ],
-      "type": "vector_brick",
-      "width": 23,
-      "x": 485,
-      "y": 369
-    },
-    {
-      "height": 23,
-      "id": 19,
-      "neighbors": [
-        16,
-        17,
-        18,
-        49
-      ],
+      "pos_key": "0,139,23,23",
       "type": "vector_brick",
       "width": 23,
-      "x": 462,
-      "y": 369
+      "x": 0,
+      "y": 139
     },
     {
       "height": 23,
-      "id": 20,
       "neighbors": [
-        14,
-        15,
-        16,
-        21,
-        47,
-        48
+        "0,139,23,23",
+        "0,185,46,23",
+        "23,139,46,23",
+        "23,185,46,23"
       ],
+      "pos_key": "0,162,69,23",
       "type": "vector_brick",
-      "width": 62,
-      "x": 331,
-      "y": 369
+      "width": 69,
+      "x": 0,
+      "y": 162
     },
     {
-      "height": 47,
-      "id": 21,
+      "height": 23,
       "neighbors": [
-        13,
-        14,
-        20,
-        22,
-        25,
-        47,
-        176
+        "0,162,69,23",
+        "0,208,69,23",
+        "23,185,46,23"
       ],
+      "pos_key": "0,185,46,23",
+      "type": "vector_brick",
+      "width": 46,
+      "x": 0,
+      "y": 185
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "0,185,46,23",
+        "0,231,23,23",
+        "23,185,46,23",
+        "23,231,46,23"
+      ],
+      "pos_key": "0,208,69,23",
+      "type": "vector_brick",
+      "width": 69,
+      "x": 0,
+      "y": 208
+    },
+    {
+      "height": 12,
+      "neighbors": [
+        "0,0,93,24",
+        "0,35,70,35",
+        "23,35,24,24",
+        "69,23,47,12"
+      ],
+      "pos_key": "0,23,70,12",
       "type": "brick",
-      "width": 93,
-      "x": 242,
-      "y": 369
+      "width": 70,
+      "x": 0,
+      "y": 23
     },
     {
       "height": 23,
-      "id": 22,
       "neighbors": [
-        13,
-        21,
-        23,
-        25
+        "0,208,69,23",
+        "0,254,69,23",
+        "23,231,46,23"
       ],
-      "type": "vector_brick",
-      "width": 62,
-      "x": 185,
-      "y": 369
-    },
-    {
-      "height": 23,
-      "id": 23,
-      "neighbors": [
-        11,
-        12,
-        13,
-        22,
-        24,
-        25
-      ],
-      "type": "vector_brick",
-      "width": 46,
-      "x": 139,
-      "y": 369
-    },
-    {
-      "height": 23,
-      "id": 24,
-      "neighbors": [
-        23,
-        25,
-        26
-      ],
-      "type": "vector_brick",
-      "width": 23,
-      "x": 139,
-      "y": 392
-    },
-    {
-      "height": 23,
-      "id": 25,
-      "neighbors": [
-        21,
-        22,
-        23,
-        24,
-        26,
-        27
-      ],
-      "type": "vector_brick",
-      "width": 92,
-      "x": 162,
-      "y": 392
-    },
-    {
-      "height": 23,
-      "id": 26,
-      "neighbors": [
-        24,
-        25,
-        27,
-        28,
-        29
-      ],
-      "type": "vector_brick",
-      "width": 92,
-      "x": 139,
-      "y": 416
-    },
-    {
-      "height": 23,
-      "id": 27,
-      "neighbors": [
-        25,
-        26,
-        28
-      ],
-      "type": "vector_brick",
-      "width": 46,
-      "x": 208,
-      "y": 416
-    },
-    {
-      "height": 23,
-      "id": 28,
-      "neighbors": [
-        26,
-        27,
-        29,
-        30,
-        31
-      ],
-      "type": "vector_brick",
-      "width": 92,
-      "x": 162,
-      "y": 439
-    },
-    {
-      "height": 23,
-      "id": 29,
-      "neighbors": [
-        26,
-        28,
-        30
-      ],
-      "type": "vector_brick",
-      "width": 23,
-      "x": 139,
-      "y": 439
-    },
-    {
-      "height": 23,
-      "id": 30,
-      "neighbors": [
-        28,
-        29,
-        31,
-        32
-      ],
-      "type": "vector_brick",
-      "width": 69,
-      "x": 139,
-      "y": 462
-    },
-    {
-      "height": 23,
-      "id": 31,
-      "neighbors": [
-        28,
-        30,
-        32,
-        33
-      ],
-      "type": "vector_brick",
-      "width": 69,
-      "x": 185,
-      "y": 462
-    },
-    {
-      "height": 23,
-      "id": 32,
-      "neighbors": [
-        30,
-        31,
-        33,
-        34,
-        35
-      ],
-      "type": "vector_brick",
-      "width": 92,
-      "x": 139,
-      "y": 485
-    },
-    {
-      "height": 23,
-      "id": 33,
-      "neighbors": [
-        31,
-        32,
-        34
-      ],
-      "type": "vector_brick",
-      "width": 23,
-      "x": 231,
-      "y": 485
-    },
-    {
-      "height": 23,
-      "id": 34,
-      "neighbors": [
-        32,
-        33,
-        35,
-        37
-      ],
-      "type": "vector_brick",
-      "width": 69,
-      "x": 185,
-      "y": 508
-    },
-    {
-      "height": 23,
-      "id": 35,
-      "neighbors": [
-        32,
-        34,
-        36,
-        37
-      ],
-      "type": "vector_brick",
-      "width": 69,
-      "x": 139,
-      "y": 508
-    },
-    {
-      "height": 23,
-      "id": 36,
-      "neighbors": [
-        35,
-        37,
-        250
-      ],
-      "type": "vector_brick",
-      "width": 46,
-      "x": 139,
-      "y": 531
-    },
-    {
-      "height": 23,
-      "id": 37,
-      "neighbors": [
-        34,
-        35,
-        36,
-        263
-      ],
-      "type": "vector_brick",
-      "width": 69,
-      "x": 185,
-      "y": 531
-    },
-    {
-      "height": 23,
-      "id": 38,
-      "neighbors": [
-        39,
-        40,
-        253
-      ],
-      "type": "vector_brick",
-      "width": 23,
-      "x": 323,
-      "y": 531
-    },
-    {
-      "height": 23,
-      "id": 39,
-      "neighbors": [
-        38,
-        40,
-        253,
-        254
-      ],
-      "type": "vector_brick",
-      "width": 46,
-      "x": 346,
-      "y": 531
-    },
-    {
-      "height": 23,
-      "id": 40,
-      "neighbors": [
-        38,
-        39,
-        41,
-        42
-      ],
-      "type": "vector_brick",
-      "width": 69,
-      "x": 323,
-      "y": 508
-    },
-    {
-      "height": 23,
-      "id": 41,
-      "neighbors": [
-        40,
-        42,
-        43
-      ],
-      "type": "vector_brick",
-      "width": 46,
-      "x": 346,
-      "y": 485
-    },
-    {
-      "height": 23,
-      "id": 42,
-      "neighbors": [
-        40,
-        41,
-        43
-      ],
-      "type": "vector_brick",
-      "width": 46,
-      "x": 323,
-      "y": 485
-    },
-    {
-      "height": 23,
-      "id": 43,
-      "neighbors": [
-        41,
-        42,
-        44,
-        45
-      ],
-      "type": "vector_brick",
-      "width": 69,
-      "x": 323,
-      "y": 462
-    },
-    {
-      "height": 23,
-      "id": 44,
-      "neighbors": [
-        43,
-        45,
-        46
-      ],
-      "type": "vector_brick",
-      "width": 23,
-      "x": 323,
-      "y": 439
-    },
-    {
-      "height": 23,
-      "id": 45,
-      "neighbors": [
-        43,
-        44,
-        46
-      ],
-      "type": "vector_brick",
-      "width": 46,
-      "x": 346,
-      "y": 439
-    },
-    {
-      "height": 23,
-      "id": 46,
-      "neighbors": [
-        44,
-        45,
-        47,
-        48
-      ],
-      "type": "vector_brick",
-      "width": 69,
-      "x": 323,
-      "y": 416
-    },
-    {
-      "height": 23,
-      "id": 47,
-      "neighbors": [
-        20,
-        21,
-        46,
-        48
-      ],
-      "type": "vector_brick",
-      "width": 46,
-      "x": 323,
-      "y": 392
-    },
-    {
-      "height": 23,
-      "id": 48,
-      "neighbors": [
-        20,
-        46,
-        47
-      ],
-      "type": "vector_brick",
-      "width": 46,
-      "x": 346,
-      "y": 392
-    },
-    {
-      "height": 23,
-      "id": 49,
-      "neighbors": [
-        16,
-        18,
-        19,
-        50,
-        51
-      ],
-      "type": "vector_brick",
-      "width": 46,
-      "x": 462,
-      "y": 392
-    },
-    {
-      "height": 23,
-      "id": 50,
-      "neighbors": [
-        49,
-        51,
-        52
-      ],
-      "type": "vector_brick",
-      "width": 23,
-      "x": 462,
-      "y": 416
-    },
-    {
-      "height": 23,
-      "id": 51,
-      "neighbors": [
-        49,
-        50,
-        52
-      ],
-      "type": "vector_brick",
-      "width": 23,
-      "x": 485,
-      "y": 416
-    },
-    {
-      "height": 23,
-      "id": 52,
-      "neighbors": [
-        50,
-        51,
-        53,
-        54
-      ],
-      "type": "vector_brick",
-      "width": 46,
-      "x": 462,
-      "y": 439
-    },
-    {
-      "height": 23,
-      "id": 53,
-      "neighbors": [
-        52,
-        54
-      ],
-      "type": "vector_brick",
-      "width": 23,
-      "x": 462,
-      "y": 462
-    },
-    {
-      "height": 23,
-      "id": 54,
-      "neighbors": [
-        52,
-        53,
-        55
-      ],
-      "type": "vector_brick",
-      "width": 46,
-      "x": 462,
-      "y": 462
-    },
-    {
-      "height": 23,
-      "id": 55,
-      "neighbors": [
-        54,
-        56,
-        57
-      ],
-      "type": "vector_brick",
-      "width": 46,
-      "x": 462,
-      "y": 485
-    },
-    {
-      "height": 23,
-      "id": 56,
-      "neighbors": [
-        55,
-        57,
-        58
-      ],
-      "type": "vector_brick",
-      "width": 23,
-      "x": 462,
-      "y": 508
-    },
-    {
-      "height": 23,
-      "id": 57,
-      "neighbors": [
-        55,
-        56,
-        58
-      ],
-      "type": "vector_brick",
-      "width": 23,
-      "x": 485,
-      "y": 508
-    },
-    {
-      "height": 23,
-      "id": 58,
-      "neighbors": [
-        56,
-        57,
-        255
-      ],
-      "type": "vector_brick",
-      "width": 46,
-      "x": 462,
-      "y": 531
-    },
-    {
-      "height": 23,
-      "id": 59,
-      "neighbors": [
-        10,
-        60,
-        70
-      ],
+      "pos_key": "0,231,23,23",
       "type": "vector_brick",
       "width": 23,
       "x": 0,
-      "y": 323
+      "y": 231
     },
     {
       "height": 23,
-      "id": 60,
       "neighbors": [
-        11,
-        59,
-        61,
-        69,
-        70
+        "0,231,23,23",
+        "0,277,47,24",
+        "23,231,46,23",
+        "23,277,35,24",
+        "58,277,93,24"
       ],
-      "type": "vector_brick",
-      "width": 92,
-      "x": 23,
-      "y": 323
-    },
-    {
-      "height": 23,
-      "id": 61,
-      "neighbors": [
-        11,
-        12,
-        13,
-        60,
-        62,
-        68,
-        69
-      ],
-      "type": "vector_brick",
-      "width": 92,
-      "x": 116,
-      "y": 323
-    },
-    {
-      "height": 23,
-      "id": 62,
-      "neighbors": [
-        13,
-        14,
-        61,
-        63,
-        67,
-        68
-      ],
-      "type": "vector_brick",
-      "width": 92,
-      "x": 185,
-      "y": 323
-    },
-    {
-      "height": 23,
-      "id": 63,
-      "neighbors": [
-        14,
-        15,
-        16,
-        62,
-        64,
-        66,
-        67
-      ],
-      "type": "vector_brick",
-      "width": 115,
-      "x": 277,
-      "y": 323
-    },
-    {
-      "height": 23,
-      "id": 64,
-      "neighbors": [
-        16,
-        17,
-        63,
-        65,
-        66
-      ],
-      "type": "vector_brick",
-      "width": 115,
-      "x": 392,
-      "y": 323
-    },
-    {
-      "height": 23,
-      "id": 65,
-      "neighbors": [
-        64,
-        66,
-        77,
-        78,
-        79
-      ],
-      "type": "vector_brick",
-      "width": 69,
-      "x": 439,
-      "y": 300
-    },
-    {
-      "height": 23,
-      "id": 66,
-      "neighbors": [
-        63,
-        64,
-        65,
-        67,
-        76,
-        77
-      ],
-      "type": "vector_brick",
-      "width": 92,
-      "x": 346,
-      "y": 300
-    },
-    {
-      "height": 23,
-      "id": 67,
-      "neighbors": [
-        62,
-        63,
-        66,
-        68,
-        75,
-        76
-      ],
-      "type": "vector_brick",
-      "width": 115,
-      "x": 254,
-      "y": 300
-    },
-    {
-      "height": 23,
-      "id": 68,
-      "neighbors": [
-        61,
-        62,
-        67,
-        69,
-        73,
-        74,
-        75
-      ],
-      "type": "vector_brick",
-      "width": 115,
-      "x": 139,
-      "y": 300
-    },
-    {
-      "height": 23,
-      "id": 69,
-      "neighbors": [
-        60,
-        61,
-        68,
-        70,
-        73
-      ],
-      "type": "vector_brick",
-      "width": 69,
-      "x": 69,
-      "y": 300
-    },
-    {
-      "height": 23,
-      "id": 70,
-      "neighbors": [
-        59,
-        60,
-        69,
-        71,
-        72,
-        73
-      ],
+      "pos_key": "0,254,69,23",
       "type": "vector_brick",
       "width": 69,
       "x": 0,
-      "y": 300
+      "y": 254
     },
     {
       "height": 24,
-      "id": 71,
       "neighbors": [
-        70,
-        72,
-        126
+        "0,254,69,23",
+        "0,300,69,23",
+        "23,277,35,24"
       ],
+      "pos_key": "0,277,47,24",
       "type": "brick",
       "width": 47,
       "x": 0,
       "y": 277
     },
     {
-      "height": 24,
-      "id": 72,
-      "neighbors": [
-        70,
-        71,
-        73,
-        126
-      ],
-      "type": "brick",
-      "width": 35,
-      "x": 23,
-      "y": 277
-    },
-    {
-      "height": 24,
-      "id": 73,
-      "neighbors": [
-        68,
-        69,
-        70,
-        72,
-        74,
-        124,
-        126
-      ],
-      "type": "brick",
-      "width": 93,
-      "x": 58,
-      "y": 277
-    },
-    {
-      "height": 24,
-      "id": 74,
-      "neighbors": [
-        68,
-        73,
-        75,
-        124,
-        125
-      ],
-      "type": "brick",
-      "width": 47,
-      "x": 150,
-      "y": 277
-    },
-    {
-      "height": 24,
-      "id": 75,
-      "neighbors": [
-        67,
-        68,
-        74,
-        76,
-        93,
-        125
-      ],
-      "type": "brick",
-      "width": 127,
-      "x": 196,
-      "y": 277
-    },
-    {
-      "height": 24,
-      "id": 76,
-      "neighbors": [
-        66,
-        67,
-        75,
-        77,
-        92,
-        93
-      ],
-      "type": "brick",
-      "width": 58,
-      "x": 323,
-      "y": 277
-    },
-    {
-      "height": 24,
-      "id": 77,
-      "neighbors": [
-        65,
-        66,
-        76,
-        78,
-        80,
-        92
-      ],
-      "type": "brick",
-      "width": 93,
-      "x": 381,
-      "y": 277
-    },
-    {
-      "height": 24,
-      "id": 78,
-      "neighbors": [
-        65,
-        77,
-        79,
-        80
-      ],
-      "type": "brick",
-      "width": 12,
-      "x": 473,
-      "y": 277
-    },
-    {
-      "height": 24,
-      "id": 79,
-      "neighbors": [
-        65,
-        78,
-        80
-      ],
-      "type": "brick",
-      "width": 24,
-      "x": 484,
-      "y": 277
-    },
-    {
       "height": 23,
-      "id": 80,
       "neighbors": [
-        77,
-        78,
-        79,
-        81
+        "0,277,47,24",
+        "0,323,23,23",
+        "23,277,35,24",
+        "23,323,92,23",
+        "58,277,93,24",
+        "69,300,69,23"
       ],
-      "type": "vector_brick",
-      "width": 46,
-      "x": 462,
-      "y": 254
-    },
-    {
-      "height": 23,
-      "id": 81,
-      "neighbors": [
-        80,
-        82
-      ],
-      "type": "vector_brick",
-      "width": 46,
-      "x": 462,
-      "y": 231
-    },
-    {
-      "height": 23,
-      "id": 82,
-      "neighbors": [
-        81,
-        83,
-        84
-      ],
-      "type": "vector_brick",
-      "width": 46,
-      "x": 462,
-      "y": 208
-    },
-    {
-      "height": 23,
-      "id": 83,
-      "neighbors": [
-        82,
-        84,
-        85
-      ],
-      "type": "vector_brick",
-      "width": 23,
-      "x": 462,
-      "y": 185
-    },
-    {
-      "height": 23,
-      "id": 84,
-      "neighbors": [
-        82,
-        83,
-        85
-      ],
-      "type": "vector_brick",
-      "width": 23,
-      "x": 485,
-      "y": 185
-    },
-    {
-      "height": 23,
-      "id": 85,
-      "neighbors": [
-        83,
-        84,
-        86
-      ],
-      "type": "vector_brick",
-      "width": 46,
-      "x": 462,
-      "y": 162
-    },
-    {
-      "height": 23,
-      "id": 86,
-      "neighbors": [
-        85,
-        87
-      ],
-      "type": "vector_brick",
-      "width": 46,
-      "x": 462,
-      "y": 139
-    },
-    {
-      "height": 23,
-      "id": 87,
-      "neighbors": [
-        86,
-        88,
-        89,
-        91
-      ],
-      "type": "vector_brick",
-      "width": 46,
-      "x": 462,
-      "y": 116
-    },
-    {
-      "height": 23,
-      "id": 88,
-      "neighbors": [
-        87,
-        89,
-        90,
-        91
-      ],
-      "type": "vector_brick",
-      "width": 19,
-      "x": 465,
-      "y": 93
-    },
-    {
-      "height": 23,
-      "id": 89,
-      "neighbors": [
-        87,
-        88,
-        90
-      ],
-      "type": "vector_brick",
-      "width": 23,
-      "x": 485,
-      "y": 93
-    },
-    {
-      "height": 23,
-      "id": 90,
-      "neighbors": [
-        88,
-        89,
-        91,
-        148
-      ],
-      "type": "vector_brick",
-      "width": 35,
-      "x": 473,
-      "y": 69
-    },
-    {
-      "height": 58,
-      "id": 91,
-      "neighbors": [
-        87,
-        88,
-        90,
-        103,
-        104,
-        108,
-        146,
-        147,
-        148
-      ],
-      "type": "brick",
-      "width": 93,
-      "x": 381,
-      "y": 69
-    },
-    {
-      "height": 23,
-      "id": 92,
-      "neighbors": [
-        76,
-        77,
-        93,
-        94
-      ],
-      "type": "vector_brick",
-      "width": 46,
-      "x": 346,
-      "y": 254
-    },
-    {
-      "height": 23,
-      "id": 93,
-      "neighbors": [
-        75,
-        76,
-        92,
-        94
-      ],
-      "type": "vector_brick",
-      "width": 46,
-      "x": 300,
-      "y": 254
-    },
-    {
-      "height": 23,
-      "id": 94,
-      "neighbors": [
-        92,
-        93,
-        95,
-        96
-      ],
-      "type": "vector_brick",
-      "width": 92,
-      "x": 300,
-      "y": 231
-    },
-    {
-      "height": 23,
-      "id": 95,
-      "neighbors": [
-        94,
-        96,
-        97,
-        98
-      ],
+      "pos_key": "0,300,69,23",
       "type": "vector_brick",
       "width": 69,
-      "x": 300,
-      "y": 208
+      "x": 0,
+      "y": 300
     },
     {
       "height": 23,
-      "id": 96,
       "neighbors": [
-        94,
-        95,
-        97
+        "0,300,69,23",
+        "0,346,23,23",
+        "23,323,92,23"
       ],
-      "type": "vector_brick",
-      "width": 46,
-      "x": 346,
-      "y": 208
-    },
-    {
-      "height": 23,
-      "id": 97,
-      "neighbors": [
-        95,
-        96,
-        98,
-        99,
-        100
-      ],
-      "type": "vector_brick",
-      "width": 69,
-      "x": 323,
-      "y": 185
-    },
-    {
-      "height": 23,
-      "id": 98,
-      "neighbors": [
-        95,
-        97,
-        99
-      ],
+      "pos_key": "0,323,23,23",
       "type": "vector_brick",
       "width": 23,
-      "x": 300,
-      "y": 185
+      "x": 0,
+      "y": 323
     },
     {
       "height": 23,
-      "id": 99,
       "neighbors": [
-        97,
-        98,
-        100,
-        101
+        "0,323,23,23",
+        "0,369,46,23",
+        "23,331,127,61"
       ],
-      "type": "vector_brick",
-      "width": 69,
-      "x": 300,
-      "y": 162
-    },
-    {
-      "height": 23,
-      "id": 100,
-      "neighbors": [
-        97,
-        99,
-        101
-      ],
-      "type": "vector_brick",
-      "width": 46,
-      "x": 346,
-      "y": 162
-    },
-    {
-      "height": 23,
-      "id": 101,
-      "neighbors": [
-        99,
-        100,
-        102,
-        103
-      ],
-      "type": "vector_brick",
-      "width": 92,
-      "x": 300,
-      "y": 139
-    },
-    {
-      "height": 23,
-      "id": 102,
-      "neighbors": [
-        101,
-        103,
-        104,
-        105
-      ],
-      "type": "vector_brick",
-      "width": 46,
-      "x": 300,
-      "y": 116
-    },
-    {
-      "height": 23,
-      "id": 103,
-      "neighbors": [
-        91,
-        101,
-        102,
-        104
-      ],
-      "type": "vector_brick",
-      "width": 69,
-      "x": 323,
-      "y": 116
-    },
-    {
-      "height": 23,
-      "id": 104,
-      "neighbors": [
-        91,
-        102,
-        103,
-        105,
-        106,
-        108
-      ],
-      "type": "vector_brick",
-      "width": 65,
-      "x": 323,
-      "y": 93
-    },
-    {
-      "height": 23,
-      "id": 105,
-      "neighbors": [
-        102,
-        104,
-        106,
-        110
-      ],
+      "pos_key": "0,346,23,23",
       "type": "vector_brick",
       "width": 23,
-      "x": 300,
-      "y": 93
+      "x": 0,
+      "y": 346
+    },
+    {
+      "height": 35,
+      "neighbors": [
+        "0,23,70,12",
+        "0,69,62,23",
+        "23,35,24,24",
+        "58,69,93,47",
+        "69,35,24,24",
+        "69,35,47,35"
+      ],
+      "pos_key": "0,35,70,35",
+      "type": "brick",
+      "width": 70,
+      "x": 0,
+      "y": 35
     },
     {
       "height": 23,
-      "id": 106,
       "neighbors": [
-        104,
-        105,
-        108,
-        110,
-        145,
-        146
+        "0,346,23,23",
+        "0,392,46,23",
+        "23,331,127,61"
       ],
+      "pos_key": "0,369,46,23",
+      "type": "vector_brick",
+      "width": 46,
+      "x": 0,
+      "y": 369
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "0,369,46,23",
+        "0,416,23,23",
+        "23,331,127,61",
+        "23,416,23,23"
+      ],
+      "pos_key": "0,392,46,23",
+      "type": "vector_brick",
+      "width": 46,
+      "x": 0,
+      "y": 392
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "0,392,46,23",
+        "0,439,46,23",
+        "23,416,23,23"
+      ],
+      "pos_key": "0,416,23,23",
+      "type": "vector_brick",
+      "width": 23,
+      "x": 0,
+      "y": 416
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "0,416,23,23",
+        "0,462,46,23",
+        "23,416,23,23"
+      ],
+      "pos_key": "0,439,46,23",
+      "type": "vector_brick",
+      "width": 46,
+      "x": 0,
+      "y": 439
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "0,439,46,23",
+        "0,485,46,23"
+      ],
+      "pos_key": "0,462,46,23",
+      "type": "vector_brick",
+      "width": 46,
+      "x": 0,
+      "y": 462
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "0,462,46,23",
+        "0,508,23,23",
+        "23,508,23,23"
+      ],
+      "pos_key": "0,485,46,23",
+      "type": "vector_brick",
+      "width": 46,
+      "x": 0,
+      "y": 485
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "0,485,46,23",
+        "0,531,46,23",
+        "23,508,23,23"
+      ],
+      "pos_key": "0,508,23,23",
+      "type": "vector_brick",
+      "width": 23,
+      "x": 0,
+      "y": 508
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "0,508,23,23",
+        "0,554,46,23",
+        "23,508,23,23"
+      ],
+      "pos_key": "0,531,46,23",
+      "type": "vector_brick",
+      "width": 46,
+      "x": 0,
+      "y": 531
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "0,531,46,23",
+        "0,577,62,23",
+        "46,554,69,23"
+      ],
+      "pos_key": "0,554,46,23",
+      "type": "vector_brick",
+      "width": 46,
+      "x": 0,
+      "y": 554
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "0,554,46,23",
+        "0,600,23,23",
+        "23,600,46,23",
+        "46,554,69,23",
+        "58,565,93,58"
+      ],
+      "pos_key": "0,577,62,23",
       "type": "vector_brick",
       "width": 62,
-      "x": 308,
-      "y": 69
-    },
-    {
-      "height": 23,
-      "id": 108,
-      "neighbors": [
-        91,
-        104,
-        106,
-        146
-      ],
-      "type": "vector_brick",
-      "width": 12,
-      "x": 369,
-      "y": 69
-    },
-    {
-      "height": 47,
-      "id": 110,
-      "neighbors": [
-        105,
-        106,
-        111,
-        113,
-        143,
-        144,
-        145
-      ],
-      "type": "brick",
-      "width": 116,
-      "x": 196,
-      "y": 69
-    },
-    {
-      "height": 23,
-      "id": 111,
-      "neighbors": [
-        110,
-        112,
-        113,
-        142,
-        143
-      ],
-      "type": "vector_brick",
-      "width": 38,
-      "x": 162,
-      "y": 69
-    },
-    {
-      "height": 23,
-      "id": 112,
-      "neighbors": [
-        111,
-        113,
-        139,
-        142
-      ],
-      "type": "vector_brick",
-      "width": 15,
-      "x": 146,
-      "y": 69
-    },
-    {
-      "height": 23,
-      "id": 113,
-      "neighbors": [
-        110,
-        111,
-        112,
-        114,
-        115,
-        139
-      ],
-      "type": "vector_brick",
-      "width": 69,
-      "x": 139,
-      "y": 93
-    },
-    {
-      "height": 23,
-      "id": 114,
-      "neighbors": [
-        113,
-        115,
-        116
-      ],
-      "type": "vector_brick",
-      "width": 33,
-      "x": 175,
-      "y": 116
-    },
-    {
-      "height": 23,
-      "id": 115,
-      "neighbors": [
-        113,
-        114,
-        116
-      ],
-      "type": "vector_brick",
-      "width": 36,
-      "x": 139,
-      "y": 116
-    },
-    {
-      "height": 23,
-      "id": 116,
-      "neighbors": [
-        114,
-        115,
-        117,
-        119
-      ],
-      "type": "vector_brick",
-      "width": 69,
-      "x": 139,
-      "y": 139
-    },
-    {
-      "height": 23,
-      "id": 117,
-      "neighbors": [
-        116,
-        119,
-        120
-      ],
-      "type": "vector_brick",
-      "width": 46,
-      "x": 162,
-      "y": 162
-    },
-    {
-      "height": 23,
-      "id": 118,
-      "neighbors": [
-        120,
-        121,
-        122
-      ],
-      "type": "vector_brick",
-      "width": 46,
-      "x": 162,
-      "y": 208
-    },
-    {
-      "height": 23,
-      "id": 119,
-      "neighbors": [
-        116,
-        117,
-        120
-      ],
-      "type": "vector_brick",
-      "width": 46,
-      "x": 139,
-      "y": 162
-    },
-    {
-      "height": 23,
-      "id": 120,
-      "neighbors": [
-        117,
-        118,
-        119,
-        122
-      ],
-      "type": "vector_brick",
-      "width": 69,
-      "x": 139,
-      "y": 185
-    },
-    {
-      "height": 23,
-      "id": 121,
-      "neighbors": [
-        118,
-        122,
-        124,
-        125
-      ],
-      "type": "vector_brick",
-      "width": 69,
-      "x": 139,
-      "y": 231
-    },
-    {
-      "height": 23,
-      "id": 122,
-      "neighbors": [
-        118,
-        120,
-        121
-      ],
-      "type": "vector_brick",
-      "width": 46,
-      "x": 139,
-      "y": 208
-    },
-    {
-      "height": 23,
-      "id": 124,
-      "neighbors": [
-        73,
-        74,
-        121,
-        125
-      ],
-      "type": "vector_brick",
-      "width": 23,
-      "x": 139,
-      "y": 254
-    },
-    {
-      "height": 23,
-      "id": 125,
-      "neighbors": [
-        74,
-        75,
-        121,
-        124
-      ],
-      "type": "vector_brick",
-      "width": 46,
-      "x": 162,
-      "y": 254
-    },
-    {
-      "height": 23,
-      "id": 126,
-      "neighbors": [
-        71,
-        72,
-        73,
-        127,
-        128
-      ],
-      "type": "vector_brick",
-      "width": 69,
       "x": 0,
-      "y": 254
+      "y": 577
     },
     {
       "height": 23,
-      "id": 127,
       "neighbors": [
-        126,
-        128,
-        129
+        "0,577,62,23",
+        "0,623,46,23",
+        "23,600,46,23"
       ],
-      "type": "vector_brick",
-      "width": 46,
-      "x": 23,
-      "y": 231
-    },
-    {
-      "height": 23,
-      "id": 128,
-      "neighbors": [
-        126,
-        127,
-        129
-      ],
+      "pos_key": "0,600,23,23",
       "type": "vector_brick",
       "width": 23,
       "x": 0,
-      "y": 231
+      "y": 600
     },
     {
       "height": 23,
-      "id": 129,
       "neighbors": [
-        127,
-        128,
-        130,
-        131
+        "0,600,23,23",
+        "0,646,69,23",
+        "23,600,46,23",
+        "23,623,46,23"
       ],
+      "pos_key": "0,623,46,23",
+      "type": "vector_brick",
+      "width": 46,
+      "x": 0,
+      "y": 623
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "0,623,46,23",
+        "0,669,46,23",
+        "23,623,46,23",
+        "23,669,46,23"
+      ],
+      "pos_key": "0,646,69,23",
       "type": "vector_brick",
       "width": 69,
       "x": 0,
-      "y": 208
+      "y": 646
     },
     {
       "height": 23,
-      "id": 130,
       "neighbors": [
-        129,
-        131,
-        132
+        "0,646,69,23",
+        "0,692,69,23",
+        "23,669,46,23"
       ],
-      "type": "vector_brick",
-      "width": 46,
-      "x": 23,
-      "y": 185
-    },
-    {
-      "height": 23,
-      "id": 131,
-      "neighbors": [
-        129,
-        130,
-        132
-      ],
+      "pos_key": "0,669,46,23",
       "type": "vector_brick",
       "width": 46,
       "x": 0,
-      "y": 185
+      "y": 669
     },
     {
       "height": 23,
-      "id": 132,
       "neighbors": [
-        130,
-        131,
-        133,
-        134
+        "0,35,70,35",
+        "0,93,46,23",
+        "23,93,46,23",
+        "58,69,93,47"
       ],
-      "type": "vector_brick",
-      "width": 69,
-      "x": 0,
-      "y": 162
-    },
-    {
-      "height": 23,
-      "id": 133,
-      "neighbors": [
-        132,
-        134,
-        135
-      ],
-      "type": "vector_brick",
-      "width": 23,
-      "x": 0,
-      "y": 139
-    },
-    {
-      "height": 23,
-      "id": 134,
-      "neighbors": [
-        132,
-        133,
-        135
-      ],
-      "type": "vector_brick",
-      "width": 46,
-      "x": 23,
-      "y": 139
-    },
-    {
-      "height": 23,
-      "id": 135,
-      "neighbors": [
-        133,
-        134,
-        136,
-        137
-      ],
-      "type": "vector_brick",
-      "width": 69,
-      "x": 0,
-      "y": 116
-    },
-    {
-      "height": 23,
-      "id": 136,
-      "neighbors": [
-        135,
-        137,
-        138
-      ],
-      "type": "vector_brick",
-      "width": 46,
-      "x": 0,
-      "y": 93
-    },
-    {
-      "height": 23,
-      "id": 137,
-      "neighbors": [
-        135,
-        136,
-        138,
-        139
-      ],
-      "type": "vector_brick",
-      "width": 46,
-      "x": 23,
-      "y": 93
-    },
-    {
-      "height": 23,
-      "id": 138,
-      "neighbors": [
-        136,
-        137,
-        139,
-        140
-      ],
+      "pos_key": "0,69,62,23",
       "type": "vector_brick",
       "width": 62,
       "x": 0,
       "y": 69
     },
     {
-      "height": 47,
-      "id": 139,
+      "height": 23,
       "neighbors": [
-        112,
-        113,
-        137,
-        138,
-        140,
-        141,
-        142
+        "0,669,46,23",
+        "0,715,23,23",
+        "23,669,46,23",
+        "23,715,46,23"
       ],
-      "type": "brick",
-      "width": 93,
-      "x": 58,
-      "y": 69
-    },
-    {
-      "height": 35,
-      "id": 140,
-      "neighbors": [
-        138,
-        139,
-        141,
-        156,
-        157,
-        158
-      ],
-      "type": "brick",
-      "width": 70,
-      "x": 0,
-      "y": 35
-    },
-    {
-      "height": 35,
-      "id": 141,
-      "neighbors": [
-        139,
-        140,
-        142,
-        156,
-        159
-      ],
-      "type": "brick",
-      "width": 47,
-      "x": 69,
-      "y": 35
-    },
-    {
-      "height": 35,
-      "id": 142,
-      "neighbors": [
-        111,
-        112,
-        139,
-        141,
-        143,
-        154,
-        155,
-        160
-      ],
-      "type": "brick",
-      "width": 70,
-      "x": 115,
-      "y": 35
-    },
-    {
-      "height": 35,
-      "id": 143,
-      "neighbors": [
-        110,
-        111,
-        142,
-        144,
-        154,
-        161
-      ],
-      "type": "brick",
-      "width": 47,
-      "x": 185,
-      "y": 35
-    },
-    {
-      "height": 35,
-      "id": 144,
-      "neighbors": [
-        110,
-        143,
-        145,
-        152,
-        153,
-        162
-      ],
-      "type": "brick",
-      "width": 70,
-      "x": 231,
-      "y": 35
-    },
-    {
-      "height": 35,
-      "id": 145,
-      "neighbors": [
-        106,
-        110,
-        144,
-        146,
-        152,
-        163
-      ],
-      "type": "brick",
-      "width": 47,
-      "x": 300,
-      "y": 35
-    },
-    {
-      "height": 35,
-      "id": 146,
-      "neighbors": [
-        91,
-        106,
-        108,
-        145,
-        147,
-        150,
-        151,
-        164
-      ],
-      "type": "brick",
-      "width": 70,
-      "x": 346,
-      "y": 35
-    },
-    {
-      "height": 35,
-      "id": 147,
-      "neighbors": [
-        91,
-        146,
-        148,
-        150,
-        165
-      ],
-      "type": "brick",
-      "width": 47,
-      "x": 415,
-      "y": 35
-    },
-    {
-      "height": 35,
-      "id": 148,
-      "neighbors": [
-        90,
-        91,
-        147,
-        149,
-        167
-      ],
-      "type": "brick",
-      "width": 47,
-      "x": 461,
-      "y": 35
-    },
-    {
-      "height": 24,
-      "id": 149,
-      "neighbors": [
-        148,
-        167
-      ],
-      "type": "brick",
-      "width": 24,
-      "x": 484,
-      "y": 35
-    },
-    {
-      "height": 24,
-      "id": 150,
-      "neighbors": [
-        146,
-        147,
-        165
-      ],
-      "type": "brick",
-      "width": 24,
-      "x": 415,
-      "y": 35
-    },
-    {
-      "height": 24,
-      "id": 151,
-      "neighbors": [
-        146,
-        164
-      ],
-      "type": "brick",
-      "width": 24,
-      "x": 369,
-      "y": 35
-    },
-    {
-      "height": 24,
-      "id": 152,
-      "neighbors": [
-        144,
-        145,
-        163
-      ],
-      "type": "brick",
-      "width": 24,
-      "x": 300,
-      "y": 35
-    },
-    {
-      "height": 24,
-      "id": 153,
-      "neighbors": [
-        144,
-        162
-      ],
-      "type": "brick",
-      "width": 24,
-      "x": 254,
-      "y": 35
-    },
-    {
-      "height": 24,
-      "id": 154,
-      "neighbors": [
-        142,
-        143,
-        161
-      ],
-      "type": "brick",
-      "width": 24,
-      "x": 185,
-      "y": 35
-    },
-    {
-      "height": 24,
-      "id": 155,
-      "neighbors": [
-        142,
-        160
-      ],
-      "type": "brick",
-      "width": 24,
-      "x": 138,
-      "y": 35
-    },
-    {
-      "height": 24,
-      "id": 156,
-      "neighbors": [
-        140,
-        141,
-        159
-      ],
-      "type": "brick",
-      "width": 24,
-      "x": 69,
-      "y": 35
-    },
-    {
-      "height": 24,
-      "id": 157,
-      "neighbors": [
-        140,
-        158
-      ],
-      "type": "brick",
-      "width": 24,
-      "x": 23,
-      "y": 35
-    },
-    {
-      "height": 12,
-      "id": 158,
-      "neighbors": [
-        140,
-        157,
-        159,
-        174
-      ],
-      "type": "brick",
-      "width": 70,
-      "x": 0,
-      "y": 23
-    },
-    {
-      "height": 12,
-      "id": 159,
-      "neighbors": [
-        141,
-        156,
-        158,
-        160,
-        173,
-        174
-      ],
-      "type": "brick",
-      "width": 47,
-      "x": 69,
-      "y": 23
-    },
-    {
-      "height": 12,
-      "id": 160,
-      "neighbors": [
-        142,
-        155,
-        159,
-        161,
-        172,
-        173
-      ],
-      "type": "brick",
-      "width": 70,
-      "x": 115,
-      "y": 23
-    },
-    {
-      "height": 12,
-      "id": 161,
-      "neighbors": [
-        143,
-        154,
-        160,
-        162,
-        171,
-        172
-      ],
-      "type": "brick",
-      "width": 47,
-      "x": 185,
-      "y": 23
-    },
-    {
-      "height": 12,
-      "id": 162,
-      "neighbors": [
-        144,
-        153,
-        161,
-        163,
-        170,
-        171
-      ],
-      "type": "brick",
-      "width": 70,
-      "x": 231,
-      "y": 23
-    },
-    {
-      "height": 12,
-      "id": 163,
-      "neighbors": [
-        145,
-        152,
-        162,
-        164,
-        169,
-        170
-      ],
-      "type": "brick",
-      "width": 47,
-      "x": 300,
-      "y": 23
-    },
-    {
-      "height": 12,
-      "id": 164,
-      "neighbors": [
-        146,
-        151,
-        163,
-        165,
-        168,
-        169
-      ],
-      "type": "brick",
-      "width": 70,
-      "x": 346,
-      "y": 23
-    },
-    {
-      "height": 12,
-      "id": 165,
-      "neighbors": [
-        147,
-        150,
-        164,
-        166,
-        167,
-        168
-      ],
-      "type": "brick",
-      "width": 47,
-      "x": 415,
-      "y": 23
-    },
-    {
-      "height": 24,
-      "id": 166,
-      "neighbors": [
-        165,
-        167,
-        168
-      ],
-      "type": "brick",
-      "width": 70,
-      "x": 438,
-      "y": 0
-    },
-    {
-      "height": 12,
-      "id": 167,
-      "neighbors": [
-        148,
-        149,
-        165,
-        166
-      ],
-      "type": "brick",
-      "width": 47,
-      "x": 461,
-      "y": 23
-    },
-    {
-      "height": 24,
-      "id": 168,
-      "neighbors": [
-        164,
-        165,
-        166,
-        169
-      ],
-      "type": "brick",
-      "width": 70,
-      "x": 369,
-      "y": 0
-    },
-    {
-      "height": 24,
-      "id": 169,
-      "neighbors": [
-        163,
-        164,
-        168,
-        170
-      ],
-      "type": "brick",
-      "width": 47,
-      "x": 323,
-      "y": 0
-    },
-    {
-      "height": 24,
-      "id": 170,
-      "neighbors": [
-        162,
-        163,
-        169,
-        171
-      ],
-      "type": "brick",
-      "width": 70,
-      "x": 254,
-      "y": 0
-    },
-    {
-      "height": 24,
-      "id": 171,
-      "neighbors": [
-        161,
-        162,
-        170,
-        172
-      ],
-      "type": "brick",
-      "width": 47,
-      "x": 208,
-      "y": 0
-    },
-    {
-      "height": 24,
-      "id": 172,
-      "neighbors": [
-        160,
-        161,
-        171,
-        173
-      ],
-      "type": "brick",
-      "width": 70,
-      "x": 138,
-      "y": 0
-    },
-    {
-      "height": 24,
-      "id": 173,
-      "neighbors": [
-        159,
-        160,
-        172,
-        174
-      ],
-      "type": "brick",
-      "width": 47,
-      "x": 92,
-      "y": 0
-    },
-    {
-      "height": 24,
-      "id": 174,
-      "neighbors": [
-        158,
-        159,
-        173
-      ],
-      "type": "brick",
-      "width": 93,
-      "x": 0,
-      "y": 0
-    },
-    {
-      "height": 155,
-      "id": 175,
-      "neighbors": [],
-      "type": "vector_brick",
-      "width": 57,
-      "x": 398,
-      "y": 391
-    },
-    {
-      "height": 131,
-      "id": 176,
-      "neighbors": [
-        21
-      ],
-      "type": "vector_brick",
-      "width": 57,
-      "x": 261,
-      "y": 412
-    },
-    {
-      "height": 152,
-      "id": 177,
-      "neighbors": [],
-      "type": "vector_brick",
-      "width": 74,
-      "x": 55,
-      "y": 392
-    },
-    {
-      "height": 143,
-      "id": 178,
-      "neighbors": [],
-      "type": "vector_brick",
-      "width": 54,
-      "x": 77,
-      "y": 122
-    },
-    {
-      "height": 133,
-      "id": 179,
-      "neighbors": [],
-      "type": "vector_brick",
-      "width": 60,
-      "x": 395,
-      "y": 133
-    },
-    {
-      "height": 143,
-      "id": 180,
-      "neighbors": [],
-      "type": "vector_brick",
-      "width": 75,
-      "x": 217,
-      "y": 122
-    },
-    {
-      "height": 24,
-      "id": 181,
-      "neighbors": [
-        182,
-        186,
-        220,
-        272
-      ],
-      "type": "brick",
-      "width": 70,
-      "x": 92,
-      "y": 784
-    },
-    {
-      "height": 24,
-      "id": 182,
-      "neighbors": [
-        181,
-        183,
-        186,
-        272
-      ],
-      "type": "brick",
-      "width": 81,
-      "x": 104,
-      "y": 807
-    },
-    {
-      "height": 24,
-      "id": 183,
-      "neighbors": [
-        182,
-        184,
-        186,
-        271,
-        272
-      ],
-      "type": "brick",
-      "width": 93,
-      "x": 115,
-      "y": 830
-    },
-    {
-      "height": 24,
-      "id": 184,
-      "neighbors": [
-        183,
-        185,
-        186,
-        271
-      ],
-      "type": "brick",
-      "width": 104,
-      "x": 127,
-      "y": 853
-    },
-    {
-      "height": 24,
-      "id": 185,
-      "neighbors": [
-        184,
-        186,
-        271
-      ],
-      "type": "brick",
-      "width": 116,
-      "x": 138,
-      "y": 876
-    },
-    {
-      "height": 115,
-      "id": 186,
-      "neighbors": [
-        181,
-        182,
-        183,
-        184,
-        185,
-        187,
-        188
-      ],
+      "pos_key": "0,692,69,23",
       "type": "vector_brick",
       "width": 69,
-      "x": 69,
-      "y": 784
+      "x": 0,
+      "y": 692
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "0,692,69,23",
+        "0,738,69,23",
+        "23,715,46,23"
+      ],
+      "pos_key": "0,715,23,23",
+      "type": "vector_brick",
+      "width": 23,
+      "x": 0,
+      "y": 715
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "0,715,23,23",
+        "0,761,46,23",
+        "23,715,46,23",
+        "23,761,46,23"
+      ],
+      "pos_key": "0,738,69,23",
+      "type": "vector_brick",
+      "width": 69,
+      "x": 0,
+      "y": 738
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "0,738,69,23",
+        "0,784,70,70",
+        "23,761,46,23"
+      ],
+      "pos_key": "0,761,46,23",
+      "type": "vector_brick",
+      "width": 46,
+      "x": 0,
+      "y": 761
     },
     {
       "height": 70,
-      "id": 187,
       "neighbors": [
-        186,
-        188,
-        246,
-        247
+        "0,761,46,23",
+        "0,833,70,67",
+        "23,761,46,23",
+        "69,784,69,115"
       ],
+      "pos_key": "0,784,70,70",
       "type": "brick",
       "width": 70,
       "x": 0,
@@ -2599,578 +464,454 @@
     },
     {
       "height": 67,
-      "id": 188,
       "neighbors": [
-        186,
-        187
+        "0,784,70,70",
+        "69,784,69,115"
       ],
+      "pos_key": "0,833,70,67",
       "type": "brick",
       "width": 70,
       "x": 0,
       "y": 833
     },
     {
-      "height": 81,
-      "id": 189,
-      "neighbors": [
-        200,
-        203,
-        204,
-        207,
-        208,
-        209,
-        210
-      ],
-      "type": "brick",
-      "width": 93,
-      "x": 335,
-      "y": 588
-    },
-    {
-      "height": 75,
-      "id": 190,
-      "neighbors": [
-        208,
-        209,
-        210,
-        230,
-        233,
-        234,
-        248,
-        249
-      ],
-      "type": "brick",
-      "width": 93,
-      "x": 219,
-      "y": 588
-    },
-    {
-      "height": 58,
-      "id": 191,
-      "neighbors": [
-        232,
-        235,
-        236,
-        238,
-        250,
-        251
-      ],
-      "type": "brick",
-      "width": 93,
-      "x": 58,
-      "y": 565
-    },
-    {
       "height": 23,
-      "id": 192,
       "neighbors": [
-        193,
-        194,
-        267
+        "0,116,69,23",
+        "0,69,62,23",
+        "23,93,46,23"
       ],
+      "pos_key": "0,93,46,23",
       "type": "vector_brick",
       "width": 46,
-      "x": 415,
-      "y": 761
+      "x": 0,
+      "y": 93
+    },
+    {
+      "height": 24,
+      "neighbors": [
+        "115,830,93,24",
+        "161,784,81,47",
+        "69,784,69,115",
+        "92,784,70,24"
+      ],
+      "pos_key": "104,807,81,24",
+      "type": "brick",
+      "width": 81,
+      "x": 104,
+      "y": 807
+    },
+    {
+      "height": 12,
+      "neighbors": [
+        "115,35,70,35",
+        "138,0,70,24",
+        "138,35,24,24",
+        "185,23,47,12",
+        "69,23,47,12",
+        "92,0,47,24"
+      ],
+      "pos_key": "115,23,70,12",
+      "type": "brick",
+      "width": 70,
+      "x": 115,
+      "y": 23
+    },
+    {
+      "height": 35,
+      "neighbors": [
+        "115,23,70,12",
+        "138,35,24,24",
+        "146,69,15,23",
+        "162,69,38,23",
+        "185,35,24,24",
+        "185,35,47,35",
+        "58,69,93,47",
+        "69,35,47,35"
+      ],
+      "pos_key": "115,35,70,35",
+      "type": "brick",
+      "width": 70,
+      "x": 115,
+      "y": 35
+    },
+    {
+      "height": 24,
+      "neighbors": [
+        "104,807,81,24",
+        "127,853,104,24",
+        "161,784,81,47",
+        "208,819,70,81",
+        "69,784,69,115"
+      ],
+      "pos_key": "115,830,93,24",
+      "type": "brick",
+      "width": 93,
+      "x": 115,
+      "y": 830
     },
     {
       "height": 23,
-      "id": 193,
       "neighbors": [
-        192,
-        194,
-        266
+        "139,300,115,23",
+        "146,346,15,23",
+        "162,346,92,23",
+        "185,323,92,23",
+        "23,323,92,23",
+        "23,331,127,61",
+        "69,300,69,23"
       ],
-      "type": "vector_brick",
-      "width": 69,
-      "x": 439,
-      "y": 761
-    },
-    {
-      "height": 23,
-      "id": 194,
-      "neighbors": [
-        192,
-        193,
-        195,
-        196
-      ],
+      "pos_key": "116,323,92,23",
       "type": "vector_brick",
       "width": 92,
-      "x": 415,
-      "y": 738
+      "x": 116,
+      "y": 323
     },
     {
       "height": 23,
-      "id": 195,
       "neighbors": [
-        194,
-        196,
-        197,
-        198
+        "139,531,46,23",
+        "146,577,62,23",
+        "185,554,69,23",
+        "46,554,69,23",
+        "58,565,93,58"
       ],
+      "pos_key": "116,554,69,23",
       "type": "vector_brick",
       "width": 69,
-      "x": 439,
-      "y": 715
+      "x": 116,
+      "y": 554
+    },
+    {
+      "height": 24,
+      "neighbors": [
+        "115,830,93,24",
+        "138,876,116,24",
+        "208,819,70,81",
+        "69,784,69,115"
+      ],
+      "pos_key": "127,853,104,24",
+      "type": "brick",
+      "width": 104,
+      "x": 127,
+      "y": 853
+    },
+    {
+      "height": 24,
+      "neighbors": [
+        "115,23,70,12",
+        "185,23,47,12",
+        "208,0,47,24",
+        "92,0,47,24"
+      ],
+      "pos_key": "138,0,70,24",
+      "type": "brick",
+      "width": 70,
+      "x": 138,
+      "y": 0
+    },
+    {
+      "height": 24,
+      "neighbors": [
+        "115,23,70,12",
+        "115,35,70,35"
+      ],
+      "pos_key": "138,35,24,24",
+      "type": "brick",
+      "width": 24,
+      "x": 138,
+      "y": 35
+    },
+    {
+      "height": 24,
+      "neighbors": [
+        "127,853,104,24",
+        "208,819,70,81",
+        "69,784,69,115"
+      ],
+      "pos_key": "138,876,116,24",
+      "type": "brick",
+      "width": 116,
+      "x": 138,
+      "y": 876
     },
     {
       "height": 23,
-      "id": 196,
       "neighbors": [
-        194,
-        195,
-        197
+        "139,139,69,23",
+        "139,93,69,23",
+        "175,116,33,23"
       ],
+      "pos_key": "139,116,36,23",
+      "type": "vector_brick",
+      "width": 36,
+      "x": 139,
+      "y": 116
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "139,116,36,23",
+        "139,162,46,23",
+        "162,162,46,23",
+        "175,116,33,23"
+      ],
+      "pos_key": "139,139,69,23",
+      "type": "vector_brick",
+      "width": 69,
+      "x": 139,
+      "y": 139
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "139,139,69,23",
+        "139,185,69,23",
+        "162,162,46,23"
+      ],
+      "pos_key": "139,162,46,23",
+      "type": "vector_brick",
+      "width": 46,
+      "x": 139,
+      "y": 162
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "139,162,46,23",
+        "139,208,46,23",
+        "162,162,46,23",
+        "162,208,46,23"
+      ],
+      "pos_key": "139,185,69,23",
+      "type": "vector_brick",
+      "width": 69,
+      "x": 139,
+      "y": 185
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "139,185,69,23",
+        "139,231,69,23",
+        "162,208,46,23"
+      ],
+      "pos_key": "139,208,46,23",
+      "type": "vector_brick",
+      "width": 46,
+      "x": 139,
+      "y": 208
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "139,208,46,23",
+        "139,254,23,23",
+        "162,208,46,23",
+        "162,254,46,23"
+      ],
+      "pos_key": "139,231,69,23",
+      "type": "vector_brick",
+      "width": 69,
+      "x": 139,
+      "y": 231
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "139,231,69,23",
+        "150,277,47,24",
+        "162,254,46,23",
+        "58,277,93,24"
+      ],
+      "pos_key": "139,254,23,23",
       "type": "vector_brick",
       "width": 23,
-      "x": 415,
-      "y": 715
+      "x": 139,
+      "y": 254
     },
     {
       "height": 23,
-      "id": 197,
       "neighbors": [
-        195,
-        196,
-        198,
-        199
+        "116,323,92,23",
+        "150,277,47,24",
+        "185,323,92,23",
+        "196,277,127,24",
+        "254,300,115,23",
+        "58,277,93,24",
+        "69,300,69,23"
       ],
-      "type": "vector_brick",
-      "width": 69,
-      "x": 415,
-      "y": 692
-    },
-    {
-      "height": 23,
-      "id": 198,
-      "neighbors": [
-        195,
-        197,
-        199
-      ],
-      "type": "vector_brick",
-      "width": 46,
-      "x": 462,
-      "y": 692
-    },
-    {
-      "height": 23,
-      "id": 199,
-      "neighbors": [
-        197,
-        198,
-        200,
-        201
-      ],
-      "type": "vector_brick",
-      "width": 92,
-      "x": 415,
-      "y": 669
-    },
-    {
-      "height": 23,
-      "id": 200,
-      "neighbors": [
-        189,
-        199,
-        201,
-        202,
-        203
-      ],
-      "type": "vector_brick",
-      "width": 46,
-      "x": 415,
-      "y": 646
-    },
-    {
-      "height": 23,
-      "id": 201,
-      "neighbors": [
-        199,
-        200,
-        202
-      ],
-      "type": "vector_brick",
-      "width": 46,
-      "x": 462,
-      "y": 646
-    },
-    {
-      "height": 23,
-      "id": 202,
-      "neighbors": [
-        200,
-        201,
-        203,
-        204,
-        205
-      ],
-      "type": "vector_brick",
-      "width": 69,
-      "x": 439,
-      "y": 623
-    },
-    {
-      "height": 23,
-      "id": 203,
-      "neighbors": [
-        189,
-        200,
-        202,
-        204
-      ],
-      "type": "vector_brick",
-      "width": 18,
-      "x": 420,
-      "y": 623
-    },
-    {
-      "height": 23,
-      "id": 204,
-      "neighbors": [
-        189,
-        202,
-        203,
-        205,
-        206,
-        207
-      ],
-      "type": "vector_brick",
-      "width": 60,
-      "x": 425,
-      "y": 600
-    },
-    {
-      "height": 23,
-      "id": 205,
-      "neighbors": [
-        202,
-        204,
-        206
-      ],
-      "type": "vector_brick",
-      "width": 46,
-      "x": 462,
-      "y": 600
-    },
-    {
-      "height": 23,
-      "id": 206,
-      "neighbors": [
-        204,
-        205,
-        207,
-        255
-      ],
-      "type": "vector_brick",
-      "width": 69,
-      "x": 439,
-      "y": 577
-    },
-    {
-      "height": 23,
-      "id": 207,
-      "neighbors": [
-        189,
-        204,
-        206,
-        208,
-        253,
-        254,
-        255
-      ],
+      "pos_key": "139,300,115,23",
       "type": "vector_brick",
       "width": 115,
-      "x": 346,
-      "y": 577
+      "x": 139,
+      "y": 300
     },
     {
       "height": 23,
-      "id": 208,
       "neighbors": [
-        189,
-        190,
-        207,
-        209,
-        248,
-        253
+        "139,392,23,23",
+        "146,346,15,23",
+        "162,346,92,23",
+        "162,392,92,23",
+        "185,369,62,23",
+        "23,331,127,61"
       ],
+      "pos_key": "139,369,46,23",
       "type": "vector_brick",
       "width": 46,
-      "x": 300,
-      "y": 577
+      "x": 139,
+      "y": 369
     },
     {
       "height": 23,
-      "id": 209,
       "neighbors": [
-        189,
-        190,
-        208,
-        210
+        "139,369,46,23",
+        "139,416,92,23",
+        "162,392,92,23"
       ],
+      "pos_key": "139,392,23,23",
       "type": "vector_brick",
-      "width": 31,
-      "x": 308,
+      "width": 23,
+      "x": 139,
+      "y": 392
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "139,392,23,23",
+        "139,439,23,23",
+        "162,392,92,23",
+        "162,439,92,23",
+        "208,416,46,23"
+      ],
+      "pos_key": "139,416,92,23",
+      "type": "vector_brick",
+      "width": 92,
+      "x": 139,
+      "y": 416
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "139,416,92,23",
+        "139,462,69,23",
+        "162,439,92,23"
+      ],
+      "pos_key": "139,439,23,23",
+      "type": "vector_brick",
+      "width": 23,
+      "x": 139,
+      "y": 439
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "139,439,23,23",
+        "139,485,92,23",
+        "162,439,92,23",
+        "185,462,69,23"
+      ],
+      "pos_key": "139,462,69,23",
+      "type": "vector_brick",
+      "width": 69,
+      "x": 139,
+      "y": 462
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "139,462,69,23",
+        "139,508,69,23",
+        "185,462,69,23",
+        "185,508,69,23",
+        "231,485,23,23"
+      ],
+      "pos_key": "139,485,92,23",
+      "type": "vector_brick",
+      "width": 92,
+      "x": 139,
+      "y": 485
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "139,485,92,23",
+        "139,531,46,23",
+        "185,508,69,23",
+        "185,531,69,23"
+      ],
+      "pos_key": "139,508,69,23",
+      "type": "vector_brick",
+      "width": 69,
+      "x": 139,
+      "y": 508
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "116,554,69,23",
+        "139,508,69,23",
+        "185,531,69,23"
+      ],
+      "pos_key": "139,531,46,23",
+      "type": "vector_brick",
+      "width": 46,
+      "x": 139,
+      "y": 531
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "139,623,69,23",
+        "146,577,62,23",
+        "185,600,35,23",
+        "58,565,93,58"
+      ],
+      "pos_key": "139,600,46,23",
+      "type": "vector_brick",
+      "width": 46,
+      "x": 139,
       "y": 600
     },
     {
       "height": 23,
-      "id": 210,
       "neighbors": [
-        189,
-        190,
-        209,
-        211,
-        212
+        "139,600,46,23",
+        "139,646,46,23",
+        "162,646,69,23",
+        "185,600,35,23",
+        "185,623,41,23"
       ],
+      "pos_key": "139,623,69,23",
       "type": "vector_brick",
-      "width": 46,
-      "x": 300,
+      "width": 69,
+      "x": 139,
       "y": 623
     },
     {
       "height": 23,
-      "id": 211,
       "neighbors": [
-        210,
-        212,
-        213
+        "139,623,69,23",
+        "139,669,69,23",
+        "162,646,69,23"
       ],
+      "pos_key": "139,646,46,23",
       "type": "vector_brick",
-      "width": 23,
-      "x": 300,
+      "width": 46,
+      "x": 139,
       "y": 646
     },
     {
       "height": 23,
-      "id": 212,
       "neighbors": [
-        210,
-        211,
-        213
+        "139,646,46,23",
+        "139,692,23,23",
+        "162,646,69,23",
+        "162,692,69,23",
+        "208,669,23,23"
       ],
-      "type": "vector_brick",
-      "width": 23,
-      "x": 323,
-      "y": 646
-    },
-    {
-      "height": 23,
-      "id": 213,
-      "neighbors": [
-        211,
-        212,
-        214,
-        215
-      ],
-      "type": "vector_brick",
-      "width": 46,
-      "x": 300,
-      "y": 669
-    },
-    {
-      "height": 23,
-      "id": 214,
-      "neighbors": [
-        213,
-        215,
-        216
-      ],
-      "type": "vector_brick",
-      "width": 23,
-      "x": 300,
-      "y": 692
-    },
-    {
-      "height": 23,
-      "id": 215,
-      "neighbors": [
-        213,
-        214,
-        216
-      ],
-      "type": "vector_brick",
-      "width": 23,
-      "x": 323,
-      "y": 692
-    },
-    {
-      "height": 23,
-      "id": 216,
-      "neighbors": [
-        214,
-        215,
-        217,
-        218
-      ],
-      "type": "vector_brick",
-      "width": 46,
-      "x": 300,
-      "y": 715
-    },
-    {
-      "height": 23,
-      "id": 217,
-      "neighbors": [
-        216,
-        218,
-        219
-      ],
-      "type": "vector_brick",
-      "width": 23,
-      "x": 300,
-      "y": 738
-    },
-    {
-      "height": 23,
-      "id": 218,
-      "neighbors": [
-        216,
-        217,
-        219
-      ],
-      "type": "vector_brick",
-      "width": 23,
-      "x": 323,
-      "y": 738
-    },
-    {
-      "height": 23,
-      "id": 219,
-      "neighbors": [
-        217,
-        218,
-        269
-      ],
-      "type": "vector_brick",
-      "width": 46,
-      "x": 300,
-      "y": 761
-    },
-    {
-      "height": 23,
-      "id": 220,
-      "neighbors": [
-        181,
-        221,
-        222,
-        223,
-        272
-      ],
-      "type": "vector_brick",
-      "width": 69,
-      "x": 139,
-      "y": 761
-    },
-    {
-      "height": 23,
-      "id": 221,
-      "neighbors": [
-        220,
-        222,
-        272
-      ],
-      "type": "vector_brick",
-      "width": 23,
-      "x": 208,
-      "y": 761
-    },
-    {
-      "height": 23,
-      "id": 222,
-      "neighbors": [
-        220,
-        221,
-        223,
-        224,
-        225
-      ],
-      "type": "vector_brick",
-      "width": 69,
-      "x": 162,
-      "y": 738
-    },
-    {
-      "height": 23,
-      "id": 223,
-      "neighbors": [
-        220,
-        222,
-        224
-      ],
-      "type": "vector_brick",
-      "width": 23,
-      "x": 139,
-      "y": 738
-    },
-    {
-      "height": 23,
-      "id": 224,
-      "neighbors": [
-        222,
-        223,
-        225,
-        226,
-        227
-      ],
-      "type": "vector_brick",
-      "width": 69,
-      "x": 139,
-      "y": 715
-    },
-    {
-      "height": 23,
-      "id": 225,
-      "neighbors": [
-        222,
-        224,
-        226
-      ],
-      "type": "vector_brick",
-      "width": 46,
-      "x": 185,
-      "y": 715
-    },
-    {
-      "height": 23,
-      "id": 226,
-      "neighbors": [
-        224,
-        225,
-        227,
-        228,
-        229
-      ],
-      "type": "vector_brick",
-      "width": 69,
-      "x": 162,
-      "y": 692
-    },
-    {
-      "height": 23,
-      "id": 227,
-      "neighbors": [
-        224,
-        226,
-        228
-      ],
-      "type": "vector_brick",
-      "width": 23,
-      "x": 139,
-      "y": 692
-    },
-    {
-      "height": 23,
-      "id": 228,
-      "neighbors": [
-        226,
-        227,
-        229,
-        230,
-        231
-      ],
+      "pos_key": "139,669,69,23",
       "type": "vector_brick",
       "width": 69,
       "x": 139,
@@ -3178,101 +919,101 @@
     },
     {
       "height": 23,
-      "id": 229,
       "neighbors": [
-        226,
-        228,
-        230
+        "139,669,69,23",
+        "139,715,69,23",
+        "162,692,69,23"
       ],
+      "pos_key": "139,692,23,23",
       "type": "vector_brick",
       "width": 23,
-      "x": 208,
-      "y": 669
+      "x": 139,
+      "y": 692
     },
     {
       "height": 23,
-      "id": 230,
       "neighbors": [
-        190,
-        228,
-        229,
-        231,
-        233,
-        262
+        "139,692,23,23",
+        "139,738,23,23",
+        "162,692,69,23",
+        "162,738,69,23",
+        "185,715,46,23"
       ],
+      "pos_key": "139,715,69,23",
       "type": "vector_brick",
       "width": 69,
-      "x": 162,
-      "y": 646
-    },
-    {
-      "height": 23,
-      "id": 231,
-      "neighbors": [
-        228,
-        230,
-        262
-      ],
-      "type": "vector_brick",
-      "width": 46,
       "x": 139,
-      "y": 646
+      "y": 715
     },
     {
       "height": 23,
-      "id": 232,
       "neighbors": [
-        191,
-        234,
-        235,
-        262
+        "139,715,69,23",
+        "139,761,69,23",
+        "162,738,69,23"
       ],
+      "pos_key": "139,738,23,23",
       "type": "vector_brick",
-      "width": 46,
+      "width": 23,
       "x": 139,
-      "y": 600
+      "y": 738
     },
     {
       "height": 23,
-      "id": 233,
       "neighbors": [
-        190,
-        230,
-        234,
-        262
+        "139,738,23,23",
+        "161,784,81,47",
+        "162,738,69,23",
+        "208,761,23,23",
+        "92,784,70,24"
       ],
+      "pos_key": "139,761,69,23",
       "type": "vector_brick",
-      "width": 41,
-      "x": 185,
-      "y": 623
+      "width": 69,
+      "x": 139,
+      "y": 761
     },
     {
       "height": 23,
-      "id": 234,
       "neighbors": [
-        190,
-        232,
-        233,
-        235,
-        249,
-        262
+        "139,116,36,23",
+        "146,69,15,23",
+        "162,69,38,23",
+        "175,116,33,23",
+        "196,69,116,47",
+        "58,69,93,47"
       ],
+      "pos_key": "139,93,69,23",
       "type": "vector_brick",
-      "width": 35,
-      "x": 185,
-      "y": 600
+      "width": 69,
+      "x": 139,
+      "y": 93
     },
     {
       "height": 23,
-      "id": 235,
       "neighbors": [
-        191,
-        232,
-        234,
-        249,
-        250,
-        263
+        "116,323,92,23",
+        "139,369,46,23",
+        "162,346,92,23",
+        "23,331,127,61"
       ],
+      "pos_key": "146,346,15,23",
+      "type": "vector_brick",
+      "width": 15,
+      "x": 146,
+      "y": 346
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "116,554,69,23",
+        "139,600,46,23",
+        "185,554,69,23",
+        "185,600,35,23",
+        "208,577,46,23",
+        "58,565,93,58"
+      ],
+      "pos_key": "146,577,62,23",
       "type": "vector_brick",
       "width": 62,
       "x": 146,
@@ -3280,191 +1021,457 @@
     },
     {
       "height": 23,
-      "id": 236,
       "neighbors": [
-        191,
-        237,
-        238,
-        251,
-        252
+        "115,35,70,35",
+        "139,93,69,23",
+        "162,69,38,23",
+        "58,69,93,47"
       ],
+      "pos_key": "146,69,15,23",
       "type": "vector_brick",
-      "width": 62,
-      "x": 0,
-      "y": 577
+      "width": 15,
+      "x": 146,
+      "y": 69
+    },
+    {
+      "height": 24,
+      "neighbors": [
+        "139,254,23,23",
+        "139,300,115,23",
+        "162,254,46,23",
+        "196,277,127,24",
+        "58,277,93,24"
+      ],
+      "pos_key": "150,277,47,24",
+      "type": "brick",
+      "width": 47,
+      "x": 150,
+      "y": 277
+    },
+    {
+      "height": 47,
+      "neighbors": [
+        "104,807,81,24",
+        "115,830,93,24",
+        "139,761,69,23",
+        "208,761,23,23",
+        "208,819,70,81",
+        "231,784,63,70",
+        "92,784,70,24"
+      ],
+      "pos_key": "161,784,81,47",
+      "type": "brick",
+      "width": 81,
+      "x": 161,
+      "y": 784
     },
     {
       "height": 23,
-      "id": 237,
       "neighbors": [
-        236,
-        238,
-        261
+        "139,139,69,23",
+        "139,162,46,23",
+        "139,185,69,23"
       ],
-      "type": "vector_brick",
-      "width": 23,
-      "x": 0,
-      "y": 600
-    },
-    {
-      "height": 23,
-      "id": 238,
-      "neighbors": [
-        191,
-        236,
-        237,
-        260,
-        261
-      ],
+      "pos_key": "162,162,46,23",
       "type": "vector_brick",
       "width": 46,
-      "x": 23,
-      "y": 600
+      "x": 162,
+      "y": 162
     },
     {
       "height": 23,
-      "id": 239,
       "neighbors": [
-        240,
-        241,
-        260,
-        261
+        "139,185,69,23",
+        "139,208,46,23",
+        "139,231,69,23"
       ],
+      "pos_key": "162,208,46,23",
+      "type": "vector_brick",
+      "width": 46,
+      "x": 162,
+      "y": 208
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "139,231,69,23",
+        "139,254,23,23",
+        "150,277,47,24",
+        "196,277,127,24"
+      ],
+      "pos_key": "162,254,46,23",
+      "type": "vector_brick",
+      "width": 46,
+      "x": 162,
+      "y": 254
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "116,323,92,23",
+        "139,369,46,23",
+        "146,346,15,23",
+        "185,323,92,23",
+        "185,369,62,23",
+        "242,369,93,47",
+        "254,346,92,23"
+      ],
+      "pos_key": "162,346,92,23",
+      "type": "vector_brick",
+      "width": 92,
+      "x": 162,
+      "y": 346
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "139,369,46,23",
+        "139,392,23,23",
+        "139,416,92,23",
+        "185,369,62,23",
+        "208,416,46,23",
+        "242,369,93,47"
+      ],
+      "pos_key": "162,392,92,23",
+      "type": "vector_brick",
+      "width": 92,
+      "x": 162,
+      "y": 392
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "139,416,92,23",
+        "139,439,23,23",
+        "139,462,69,23",
+        "185,462,69,23",
+        "208,416,46,23"
+      ],
+      "pos_key": "162,439,92,23",
+      "type": "vector_brick",
+      "width": 92,
+      "x": 162,
+      "y": 439
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "139,623,69,23",
+        "139,646,46,23",
+        "139,669,69,23",
+        "185,623,41,23",
+        "208,669,23,23",
+        "219,588,93,75"
+      ],
+      "pos_key": "162,646,69,23",
       "type": "vector_brick",
       "width": 69,
-      "x": 0,
+      "x": 162,
       "y": 646
     },
     {
       "height": 23,
-      "id": 240,
       "neighbors": [
-        239,
-        241,
-        242
+        "115,35,70,35",
+        "139,93,69,23",
+        "146,69,15,23",
+        "185,35,47,35",
+        "196,69,116,47"
       ],
+      "pos_key": "162,69,38,23",
       "type": "vector_brick",
-      "width": 46,
-      "x": 23,
-      "y": 669
+      "width": 38,
+      "x": 162,
+      "y": 69
     },
     {
       "height": 23,
-      "id": 241,
       "neighbors": [
-        239,
-        240,
-        242
+        "139,669,69,23",
+        "139,692,23,23",
+        "139,715,69,23",
+        "185,715,46,23",
+        "208,669,23,23"
       ],
-      "type": "vector_brick",
-      "width": 46,
-      "x": 0,
-      "y": 669
-    },
-    {
-      "height": 23,
-      "id": 242,
-      "neighbors": [
-        240,
-        241,
-        243,
-        244
-      ],
+      "pos_key": "162,692,69,23",
       "type": "vector_brick",
       "width": 69,
-      "x": 0,
+      "x": 162,
       "y": 692
     },
     {
       "height": 23,
-      "id": 243,
       "neighbors": [
-        242,
-        244,
-        245
+        "139,715,69,23",
+        "139,738,23,23",
+        "139,761,69,23",
+        "185,715,46,23",
+        "208,761,23,23"
       ],
-      "type": "vector_brick",
-      "width": 23,
-      "x": 0,
-      "y": 715
-    },
-    {
-      "height": 23,
-      "id": 244,
-      "neighbors": [
-        242,
-        243,
-        245
-      ],
-      "type": "vector_brick",
-      "width": 46,
-      "x": 23,
-      "y": 715
-    },
-    {
-      "height": 23,
-      "id": 245,
-      "neighbors": [
-        243,
-        244,
-        246,
-        247
-      ],
+      "pos_key": "162,738,69,23",
       "type": "vector_brick",
       "width": 69,
-      "x": 0,
+      "x": 162,
       "y": 738
     },
     {
       "height": 23,
-      "id": 246,
       "neighbors": [
-        187,
-        245,
-        247
+        "139,116,36,23",
+        "139,139,69,23",
+        "139,93,69,23"
       ],
+      "pos_key": "175,116,33,23",
       "type": "vector_brick",
-      "width": 46,
-      "x": 23,
-      "y": 761
+      "width": 33,
+      "x": 175,
+      "y": 116
+    },
+    {
+      "height": 12,
+      "neighbors": [
+        "115,23,70,12",
+        "138,0,70,24",
+        "185,35,24,24",
+        "185,35,47,35",
+        "208,0,47,24",
+        "231,23,70,12"
+      ],
+      "pos_key": "185,23,47,12",
+      "type": "brick",
+      "width": 47,
+      "x": 185,
+      "y": 23
     },
     {
       "height": 23,
-      "id": 247,
       "neighbors": [
-        187,
-        245,
-        246
+        "116,323,92,23",
+        "139,300,115,23",
+        "162,346,92,23",
+        "254,300,115,23",
+        "254,346,92,23",
+        "277,323,115,23"
       ],
+      "pos_key": "185,323,92,23",
       "type": "vector_brick",
-      "width": 46,
-      "x": 0,
-      "y": 761
+      "width": 92,
+      "x": 185,
+      "y": 323
     },
     {
-      "height": 18,
-      "id": 248,
+      "height": 24,
       "neighbors": [
-        190,
-        208,
-        249,
-        253
+        "115,35,70,35",
+        "185,23,47,12",
+        "185,35,47,35"
       ],
-      "type": "vector_brick",
-      "width": 46,
-      "x": 254,
-      "y": 577
+      "pos_key": "185,35,24,24",
+      "type": "brick",
+      "width": 24,
+      "x": 185,
+      "y": 35
+    },
+    {
+      "height": 35,
+      "neighbors": [
+        "115,35,70,35",
+        "162,69,38,23",
+        "185,23,47,12",
+        "185,35,24,24",
+        "196,69,116,47",
+        "231,35,70,35"
+      ],
+      "pos_key": "185,35,47,35",
+      "type": "brick",
+      "width": 47,
+      "x": 185,
+      "y": 35
     },
     {
       "height": 23,
-      "id": 249,
       "neighbors": [
-        190,
-        234,
-        235,
-        248,
-        263
+        "139,369,46,23",
+        "162,346,92,23",
+        "162,392,92,23",
+        "242,369,93,47"
       ],
+      "pos_key": "185,369,62,23",
+      "type": "vector_brick",
+      "width": 62,
+      "x": 185,
+      "y": 369
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "139,462,69,23",
+        "139,485,92,23",
+        "162,439,92,23",
+        "231,485,23,23"
+      ],
+      "pos_key": "185,462,69,23",
+      "type": "vector_brick",
+      "width": 69,
+      "x": 185,
+      "y": 462
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "139,485,92,23",
+        "139,508,69,23",
+        "185,531,69,23",
+        "231,485,23,23"
+      ],
+      "pos_key": "185,508,69,23",
+      "type": "vector_brick",
+      "width": 69,
+      "x": 185,
+      "y": 508
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "139,508,69,23",
+        "139,531,46,23",
+        "185,508,69,23",
+        "185,554,69,23"
+      ],
+      "pos_key": "185,531,69,23",
+      "type": "vector_brick",
+      "width": 69,
+      "x": 185,
+      "y": 531
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "116,554,69,23",
+        "146,577,62,23",
+        "185,531,69,23",
+        "208,577,46,23",
+        "254,554,115,23"
+      ],
+      "pos_key": "185,554,69,23",
+      "type": "vector_brick",
+      "width": 69,
+      "x": 185,
+      "y": 554
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "139,600,46,23",
+        "139,623,69,23",
+        "146,577,62,23",
+        "185,623,41,23",
+        "208,577,46,23",
+        "219,588,93,75"
+      ],
+      "pos_key": "185,600,35,23",
+      "type": "vector_brick",
+      "width": 35,
+      "x": 185,
+      "y": 600
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "139,623,69,23",
+        "162,646,69,23",
+        "185,600,35,23",
+        "219,588,93,75"
+      ],
+      "pos_key": "185,623,41,23",
+      "type": "vector_brick",
+      "width": 41,
+      "x": 185,
+      "y": 623
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "139,715,69,23",
+        "162,692,69,23",
+        "162,738,69,23"
+      ],
+      "pos_key": "185,715,46,23",
+      "type": "vector_brick",
+      "width": 46,
+      "x": 185,
+      "y": 715
+    },
+    {
+      "height": 24,
+      "neighbors": [
+        "139,300,115,23",
+        "150,277,47,24",
+        "162,254,46,23",
+        "254,300,115,23",
+        "300,254,46,23",
+        "323,277,58,24"
+      ],
+      "pos_key": "196,277,127,24",
+      "type": "brick",
+      "width": 127,
+      "x": 196,
+      "y": 277
+    },
+    {
+      "height": 47,
+      "neighbors": [
+        "139,93,69,23",
+        "162,69,38,23",
+        "185,35,47,35",
+        "231,35,70,35",
+        "300,35,47,35",
+        "300,93,23,23",
+        "308,69,62,23"
+      ],
+      "pos_key": "196,69,116,47",
+      "type": "brick",
+      "width": 116,
+      "x": 196,
+      "y": 69
+    },
+    {
+      "height": 24,
+      "neighbors": [
+        "138,0,70,24",
+        "185,23,47,12",
+        "231,23,70,12",
+        "254,0,70,24"
+      ],
+      "pos_key": "208,0,47,24",
+      "type": "brick",
+      "width": 47,
+      "x": 208,
+      "y": 0
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "139,416,92,23",
+        "162,392,92,23",
+        "162,439,92,23"
+      ],
+      "pos_key": "208,416,46,23",
+      "type": "vector_brick",
+      "width": 46,
+      "x": 208,
+      "y": 416
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "146,577,62,23",
+        "185,554,69,23",
+        "185,600,35,23",
+        "219,588,93,75",
+        "254,577,46,18"
+      ],
+      "pos_key": "208,577,46,23",
       "type": "vector_brick",
       "width": 46,
       "x": 208,
@@ -3472,138 +1479,218 @@
     },
     {
       "height": 23,
-      "id": 250,
       "neighbors": [
-        36,
-        191,
-        235,
-        251,
-        263
+        "139,669,69,23",
+        "162,646,69,23",
+        "162,692,69,23"
       ],
+      "pos_key": "208,669,23,23",
       "type": "vector_brick",
-      "width": 69,
-      "x": 116,
-      "y": 554
+      "width": 23,
+      "x": 208,
+      "y": 669
     },
     {
       "height": 23,
-      "id": 251,
       "neighbors": [
-        191,
-        236,
-        250,
-        252
+        "139,761,69,23",
+        "161,784,81,47",
+        "162,738,69,23"
       ],
+      "pos_key": "208,761,23,23",
       "type": "vector_brick",
-      "width": 69,
-      "x": 46,
-      "y": 554
+      "width": 23,
+      "x": 208,
+      "y": 761
+    },
+    {
+      "height": 81,
+      "neighbors": [
+        "115,830,93,24",
+        "127,853,104,24",
+        "138,876,116,24",
+        "161,784,81,47",
+        "231,784,63,70"
+      ],
+      "pos_key": "208,819,70,81",
+      "type": "brick",
+      "width": 70,
+      "x": 208,
+      "y": 819
+    },
+    {
+      "height": 143,
+      "neighbors": [],
+      "pos_key": "217,122,75,143",
+      "type": "vector_brick",
+      "width": 75,
+      "x": 217,
+      "y": 122
+    },
+    {
+      "height": 75,
+      "neighbors": [
+        "162,646,69,23",
+        "185,600,35,23",
+        "185,623,41,23",
+        "208,577,46,23",
+        "254,577,46,18",
+        "300,577,46,23",
+        "300,623,46,23",
+        "308,600,31,23"
+      ],
+      "pos_key": "219,588,93,75",
+      "type": "brick",
+      "width": 93,
+      "x": 219,
+      "y": 588
     },
     {
       "height": 23,
-      "id": 252,
       "neighbors": [
-        0,
-        236,
-        251
+        "0,116,69,23",
+        "0,139,23,23",
+        "0,162,69,23"
       ],
+      "pos_key": "23,139,46,23",
       "type": "vector_brick",
       "width": 46,
-      "x": 0,
-      "y": 554
+      "x": 23,
+      "y": 139
     },
     {
       "height": 23,
-      "id": 253,
       "neighbors": [
-        38,
-        39,
-        207,
-        208,
-        248,
-        254,
-        263
+        "0,162,69,23",
+        "0,185,46,23",
+        "0,208,69,23"
       ],
+      "pos_key": "23,185,46,23",
       "type": "vector_brick",
-      "width": 115,
-      "x": 254,
-      "y": 554
+      "width": 46,
+      "x": 23,
+      "y": 185
     },
     {
       "height": 23,
-      "id": 254,
       "neighbors": [
-        39,
-        207,
-        253,
-        255
+        "0,208,69,23",
+        "0,231,23,23",
+        "0,254,69,23"
       ],
+      "pos_key": "23,231,46,23",
       "type": "vector_brick",
-      "width": 69,
-      "x": 369,
-      "y": 554
+      "width": 46,
+      "x": 23,
+      "y": 231
+    },
+    {
+      "height": 24,
+      "neighbors": [
+        "0,254,69,23",
+        "0,277,47,24",
+        "0,300,69,23",
+        "58,277,93,24"
+      ],
+      "pos_key": "23,277,35,24",
+      "type": "brick",
+      "width": 35,
+      "x": 23,
+      "y": 277
     },
     {
       "height": 23,
-      "id": 255,
       "neighbors": [
-        58,
-        206,
-        207,
-        254
+        "0,300,69,23",
+        "0,323,23,23",
+        "116,323,92,23",
+        "23,331,127,61",
+        "69,300,69,23"
       ],
+      "pos_key": "23,323,92,23",
       "type": "vector_brick",
-      "width": 69,
-      "x": 439,
-      "y": 554
+      "width": 92,
+      "x": 23,
+      "y": 323
     },
     {
-      "height": 108,
-      "id": 256,
-      "neighbors": [],
-      "type": "vector_brick",
-      "width": 54,
-      "x": 77,
-      "y": 633
-    },
-    {
-      "height": 1,
-      "id": 257,
-      "neighbors": [],
-      "type": "vector_brick",
-      "width": 57,
-      "x": 236,
-      "y": 779
-    },
-    {
-      "height": 1,
-      "id": 258,
-      "neighbors": [],
-      "type": "vector_brick",
-      "width": 57,
-      "x": 352,
-      "y": 779
-    },
-    {
-      "height": 66,
-      "id": 259,
+      "height": 61,
       "neighbors": [
-        266,
-        267
+        "0,346,23,23",
+        "0,369,46,23",
+        "0,392,46,23",
+        "116,323,92,23",
+        "139,369,46,23",
+        "146,346,15,23",
+        "23,323,92,23"
       ],
-      "type": "vector_brick",
-      "width": 55,
-      "x": 401,
-      "y": 827
+      "pos_key": "23,331,127,61",
+      "type": "brick",
+      "width": 127,
+      "x": 23,
+      "y": 331
+    },
+    {
+      "height": 24,
+      "neighbors": [
+        "0,23,70,12",
+        "0,35,70,35"
+      ],
+      "pos_key": "23,35,24,24",
+      "type": "brick",
+      "width": 24,
+      "x": 23,
+      "y": 35
     },
     {
       "height": 23,
-      "id": 260,
       "neighbors": [
-        238,
-        239,
-        261
+        "0,392,46,23",
+        "0,416,23,23",
+        "0,439,46,23"
       ],
+      "pos_key": "23,416,23,23",
+      "type": "vector_brick",
+      "width": 23,
+      "x": 23,
+      "y": 416
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "0,485,46,23",
+        "0,508,23,23",
+        "0,531,46,23"
+      ],
+      "pos_key": "23,508,23,23",
+      "type": "vector_brick",
+      "width": 23,
+      "x": 23,
+      "y": 508
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "0,577,62,23",
+        "0,600,23,23",
+        "0,623,46,23",
+        "23,623,46,23",
+        "58,565,93,58"
+      ],
+      "pos_key": "23,600,46,23",
+      "type": "vector_brick",
+      "width": 46,
+      "x": 23,
+      "y": 600
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "0,623,46,23",
+        "0,646,69,23",
+        "23,600,46,23"
+      ],
+      "pos_key": "23,623,46,23",
       "type": "vector_brick",
       "width": 46,
       "x": 23,
@@ -3611,95 +1698,1009 @@
     },
     {
       "height": 23,
-      "id": 261,
       "neighbors": [
-        237,
-        238,
-        239,
-        260
+        "0,646,69,23",
+        "0,669,46,23",
+        "0,692,69,23"
       ],
+      "pos_key": "23,669,46,23",
       "type": "vector_brick",
       "width": 46,
-      "x": 0,
-      "y": 623
+      "x": 23,
+      "y": 669
     },
     {
       "height": 23,
-      "id": 262,
       "neighbors": [
-        230,
-        231,
-        232,
-        233,
-        234
+        "0,692,69,23",
+        "0,715,23,23",
+        "0,738,69,23"
       ],
+      "pos_key": "23,715,46,23",
       "type": "vector_brick",
-      "width": 69,
-      "x": 139,
-      "y": 623
+      "width": 46,
+      "x": 23,
+      "y": 715
     },
     {
       "height": 23,
-      "id": 263,
       "neighbors": [
-        37,
-        235,
-        249,
-        250,
-        253
+        "0,738,69,23",
+        "0,761,46,23",
+        "0,784,70,70"
       ],
+      "pos_key": "23,761,46,23",
       "type": "vector_brick",
-      "width": 69,
-      "x": 185,
+      "width": 46,
+      "x": 23,
+      "y": 761
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "0,116,69,23",
+        "0,69,62,23",
+        "0,93,46,23",
+        "58,69,93,47"
+      ],
+      "pos_key": "23,93,46,23",
+      "type": "vector_brick",
+      "width": 46,
+      "x": 23,
+      "y": 93
+    },
+    {
+      "height": 12,
+      "neighbors": [
+        "185,23,47,12",
+        "208,0,47,24",
+        "231,35,70,35",
+        "254,0,70,24",
+        "254,35,24,24",
+        "300,23,47,12"
+      ],
+      "pos_key": "231,23,70,12",
+      "type": "brick",
+      "width": 70,
+      "x": 231,
+      "y": 23
+    },
+    {
+      "height": 35,
+      "neighbors": [
+        "185,35,47,35",
+        "196,69,116,47",
+        "231,23,70,12",
+        "254,35,24,24",
+        "300,35,24,24",
+        "300,35,47,35"
+      ],
+      "pos_key": "231,35,70,35",
+      "type": "brick",
+      "width": 70,
+      "x": 231,
+      "y": 35
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "139,485,92,23",
+        "185,462,69,23",
+        "185,508,69,23"
+      ],
+      "pos_key": "231,485,23,23",
+      "type": "vector_brick",
+      "width": 23,
+      "x": 231,
+      "y": 485
+    },
+    {
+      "height": 70,
+      "neighbors": [
+        "161,784,81,47",
+        "208,819,70,81",
+        "277,784,85,47",
+        "284,827,55,66"
+      ],
+      "pos_key": "231,784,63,70",
+      "type": "brick",
+      "width": 63,
+      "x": 231,
+      "y": 784
+    },
+    {
+      "height": 1,
+      "neighbors": [],
+      "pos_key": "236,779,57,1",
+      "type": "vector_brick",
+      "width": 57,
+      "x": 236,
+      "y": 779
+    },
+    {
+      "height": 47,
+      "neighbors": [
+        "162,346,92,23",
+        "162,392,92,23",
+        "185,369,62,23",
+        "254,346,92,23",
+        "261,412,57,131",
+        "323,392,46,23",
+        "331,369,62,23"
+      ],
+      "pos_key": "242,369,93,47",
+      "type": "brick",
+      "width": 93,
+      "x": 242,
+      "y": 369
+    },
+    {
+      "height": 24,
+      "neighbors": [
+        "208,0,47,24",
+        "231,23,70,12",
+        "300,23,47,12",
+        "323,0,47,24"
+      ],
+      "pos_key": "254,0,70,24",
+      "type": "brick",
+      "width": 70,
+      "x": 254,
+      "y": 0
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "139,300,115,23",
+        "185,323,92,23",
+        "196,277,127,24",
+        "277,323,115,23",
+        "323,277,58,24",
+        "346,300,92,23"
+      ],
+      "pos_key": "254,300,115,23",
+      "type": "vector_brick",
+      "width": 115,
+      "x": 254,
+      "y": 300
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "162,346,92,23",
+        "185,323,92,23",
+        "242,369,93,47",
+        "277,323,115,23",
+        "331,369,62,23",
+        "346,346,38,23"
+      ],
+      "pos_key": "254,346,92,23",
+      "type": "vector_brick",
+      "width": 92,
+      "x": 254,
+      "y": 346
+    },
+    {
+      "height": 24,
+      "neighbors": [
+        "231,23,70,12",
+        "231,35,70,35"
+      ],
+      "pos_key": "254,35,24,24",
+      "type": "brick",
+      "width": 24,
+      "x": 254,
+      "y": 35
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "185,554,69,23",
+        "254,577,46,18",
+        "300,577,46,23",
+        "323,531,23,23",
+        "346,531,46,23",
+        "346,577,115,23",
+        "369,554,69,23"
+      ],
+      "pos_key": "254,554,115,23",
+      "type": "vector_brick",
+      "width": 115,
+      "x": 254,
       "y": 554
     },
     {
-      "height": 66,
-      "id": 264,
+      "height": 18,
       "neighbors": [
-        269,
-        270
+        "208,577,46,23",
+        "219,588,93,75",
+        "254,554,115,23",
+        "300,577,46,23"
       ],
+      "pos_key": "254,577,46,18",
+      "type": "vector_brick",
+      "width": 46,
+      "x": 254,
+      "y": 577
+    },
+    {
+      "height": 131,
+      "neighbors": [
+        "242,369,93,47"
+      ],
+      "pos_key": "261,412,57,131",
+      "type": "vector_brick",
+      "width": 57,
+      "x": 261,
+      "y": 412
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "185,323,92,23",
+        "254,300,115,23",
+        "254,346,92,23",
+        "346,300,92,23",
+        "346,346,38,23",
+        "381,346,93,47",
+        "392,323,115,23"
+      ],
+      "pos_key": "277,323,115,23",
+      "type": "vector_brick",
+      "width": 115,
+      "x": 277,
+      "y": 323
+    },
+    {
+      "height": 47,
+      "neighbors": [
+        "231,784,63,70",
+        "284,827,55,66",
+        "300,761,46,23",
+        "346,784,116,47",
+        "346,815,47,85"
+      ],
+      "pos_key": "277,784,85,47",
+      "type": "brick",
+      "width": 85,
+      "x": 277,
+      "y": 784
+    },
+    {
+      "height": 66,
+      "neighbors": [
+        "231,784,63,70",
+        "277,784,85,47"
+      ],
+      "pos_key": "284,827,55,66",
       "type": "vector_brick",
       "width": 55,
       "x": 284,
       "y": 827
     },
     {
-      "height": 70,
-      "id": 265,
+      "height": 23,
       "neighbors": [
-        266
+        "300,139,92,23",
+        "300,93,23,23",
+        "323,116,69,23",
+        "323,93,65,23"
       ],
-      "type": "brick",
-      "width": 47,
-      "x": 461,
-      "y": 830
+      "pos_key": "300,116,46,23",
+      "type": "vector_brick",
+      "width": 46,
+      "x": 300,
+      "y": 116
     },
     {
-      "height": 70,
-      "id": 266,
+      "height": 23,
       "neighbors": [
-        193,
-        259,
-        265,
-        267
+        "300,116,46,23",
+        "300,162,69,23",
+        "323,116,69,23",
+        "346,162,46,23"
       ],
+      "pos_key": "300,139,92,23",
+      "type": "vector_brick",
+      "width": 92,
+      "x": 300,
+      "y": 139
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "300,139,92,23",
+        "300,185,23,23",
+        "323,185,69,23",
+        "346,162,46,23"
+      ],
+      "pos_key": "300,162,69,23",
+      "type": "vector_brick",
+      "width": 69,
+      "x": 300,
+      "y": 162
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "300,162,69,23",
+        "300,208,69,23",
+        "323,185,69,23"
+      ],
+      "pos_key": "300,185,23,23",
+      "type": "vector_brick",
+      "width": 23,
+      "x": 300,
+      "y": 185
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "300,185,23,23",
+        "300,231,92,23",
+        "323,185,69,23",
+        "346,208,46,23"
+      ],
+      "pos_key": "300,208,69,23",
+      "type": "vector_brick",
+      "width": 69,
+      "x": 300,
+      "y": 208
+    },
+    {
+      "height": 12,
+      "neighbors": [
+        "231,23,70,12",
+        "254,0,70,24",
+        "300,35,24,24",
+        "300,35,47,35",
+        "323,0,47,24",
+        "346,23,70,12"
+      ],
+      "pos_key": "300,23,47,12",
+      "type": "brick",
+      "width": 47,
+      "x": 300,
+      "y": 23
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "300,208,69,23",
+        "300,254,46,23",
+        "346,208,46,23",
+        "346,254,46,23"
+      ],
+      "pos_key": "300,231,92,23",
+      "type": "vector_brick",
+      "width": 92,
+      "x": 300,
+      "y": 231
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "196,277,127,24",
+        "300,231,92,23",
+        "323,277,58,24",
+        "346,254,46,23"
+      ],
+      "pos_key": "300,254,46,23",
+      "type": "vector_brick",
+      "width": 46,
+      "x": 300,
+      "y": 254
+    },
+    {
+      "height": 24,
+      "neighbors": [
+        "231,35,70,35",
+        "300,23,47,12",
+        "300,35,47,35"
+      ],
+      "pos_key": "300,35,24,24",
+      "type": "brick",
+      "width": 24,
+      "x": 300,
+      "y": 35
+    },
+    {
+      "height": 35,
+      "neighbors": [
+        "196,69,116,47",
+        "231,35,70,35",
+        "300,23,47,12",
+        "300,35,24,24",
+        "308,69,62,23",
+        "346,35,70,35"
+      ],
+      "pos_key": "300,35,47,35",
+      "type": "brick",
+      "width": 47,
+      "x": 300,
+      "y": 35
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "219,588,93,75",
+        "254,554,115,23",
+        "254,577,46,18",
+        "308,600,31,23",
+        "335,588,93,81",
+        "346,577,115,23"
+      ],
+      "pos_key": "300,577,46,23",
+      "type": "vector_brick",
+      "width": 46,
+      "x": 300,
+      "y": 577
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "219,588,93,75",
+        "300,646,23,23",
+        "308,600,31,23",
+        "323,646,23,23",
+        "335,588,93,81"
+      ],
+      "pos_key": "300,623,46,23",
+      "type": "vector_brick",
+      "width": 46,
+      "x": 300,
+      "y": 623
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "300,623,46,23",
+        "300,669,46,23",
+        "323,646,23,23"
+      ],
+      "pos_key": "300,646,23,23",
+      "type": "vector_brick",
+      "width": 23,
+      "x": 300,
+      "y": 646
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "300,646,23,23",
+        "300,692,23,23",
+        "323,646,23,23",
+        "323,692,23,23"
+      ],
+      "pos_key": "300,669,46,23",
+      "type": "vector_brick",
+      "width": 46,
+      "x": 300,
+      "y": 669
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "300,669,46,23",
+        "300,715,46,23",
+        "323,692,23,23"
+      ],
+      "pos_key": "300,692,23,23",
+      "type": "vector_brick",
+      "width": 23,
+      "x": 300,
+      "y": 692
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "300,692,23,23",
+        "300,738,23,23",
+        "323,692,23,23",
+        "323,738,23,23"
+      ],
+      "pos_key": "300,715,46,23",
+      "type": "vector_brick",
+      "width": 46,
+      "x": 300,
+      "y": 715
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "300,715,46,23",
+        "300,761,46,23",
+        "323,738,23,23"
+      ],
+      "pos_key": "300,738,23,23",
+      "type": "vector_brick",
+      "width": 23,
+      "x": 300,
+      "y": 738
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "277,784,85,47",
+        "300,738,23,23",
+        "323,738,23,23"
+      ],
+      "pos_key": "300,761,46,23",
+      "type": "vector_brick",
+      "width": 46,
+      "x": 300,
+      "y": 761
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "196,69,116,47",
+        "300,116,46,23",
+        "308,69,62,23",
+        "323,93,65,23"
+      ],
+      "pos_key": "300,93,23,23",
+      "type": "vector_brick",
+      "width": 23,
+      "x": 300,
+      "y": 93
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "219,588,93,75",
+        "300,577,46,23",
+        "300,623,46,23",
+        "335,588,93,81"
+      ],
+      "pos_key": "308,600,31,23",
+      "type": "vector_brick",
+      "width": 31,
+      "x": 308,
+      "y": 600
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "196,69,116,47",
+        "300,35,47,35",
+        "300,93,23,23",
+        "323,93,65,23",
+        "346,35,70,35",
+        "369,69,12,23"
+      ],
+      "pos_key": "308,69,62,23",
+      "type": "vector_brick",
+      "width": 62,
+      "x": 308,
+      "y": 69
+    },
+    {
+      "height": 24,
+      "neighbors": [
+        "254,0,70,24",
+        "300,23,47,12",
+        "346,23,70,12",
+        "369,0,70,24"
+      ],
+      "pos_key": "323,0,47,24",
+      "type": "brick",
+      "width": 47,
+      "x": 323,
+      "y": 0
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "300,116,46,23",
+        "300,139,92,23",
+        "323,93,65,23",
+        "381,69,93,58"
+      ],
+      "pos_key": "323,116,69,23",
+      "type": "vector_brick",
+      "width": 69,
+      "x": 323,
+      "y": 116
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "300,162,69,23",
+        "300,185,23,23",
+        "300,208,69,23",
+        "346,162,46,23",
+        "346,208,46,23"
+      ],
+      "pos_key": "323,185,69,23",
+      "type": "vector_brick",
+      "width": 69,
+      "x": 323,
+      "y": 185
+    },
+    {
+      "height": 24,
+      "neighbors": [
+        "196,277,127,24",
+        "254,300,115,23",
+        "300,254,46,23",
+        "346,254,46,23",
+        "346,300,92,23",
+        "381,277,93,24"
+      ],
+      "pos_key": "323,277,58,24",
+      "type": "brick",
+      "width": 58,
+      "x": 323,
+      "y": 277
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "242,369,93,47",
+        "323,416,69,23",
+        "331,369,62,23",
+        "346,392,46,23"
+      ],
+      "pos_key": "323,392,46,23",
+      "type": "vector_brick",
+      "width": 46,
+      "x": 323,
+      "y": 392
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "323,392,46,23",
+        "323,439,23,23",
+        "346,392,46,23",
+        "346,439,46,23"
+      ],
+      "pos_key": "323,416,69,23",
+      "type": "vector_brick",
+      "width": 69,
+      "x": 323,
+      "y": 416
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "323,416,69,23",
+        "323,462,69,23",
+        "346,439,46,23"
+      ],
+      "pos_key": "323,439,23,23",
+      "type": "vector_brick",
+      "width": 23,
+      "x": 323,
+      "y": 439
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "323,439,23,23",
+        "323,485,46,23",
+        "346,439,46,23",
+        "346,485,46,23"
+      ],
+      "pos_key": "323,462,69,23",
+      "type": "vector_brick",
+      "width": 69,
+      "x": 323,
+      "y": 462
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "323,462,69,23",
+        "323,508,69,23",
+        "346,485,46,23"
+      ],
+      "pos_key": "323,485,46,23",
+      "type": "vector_brick",
+      "width": 46,
+      "x": 323,
+      "y": 485
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "323,485,46,23",
+        "323,531,23,23",
+        "346,485,46,23",
+        "346,531,46,23"
+      ],
+      "pos_key": "323,508,69,23",
+      "type": "vector_brick",
+      "width": 69,
+      "x": 323,
+      "y": 508
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "254,554,115,23",
+        "323,508,69,23",
+        "346,531,46,23"
+      ],
+      "pos_key": "323,531,23,23",
+      "type": "vector_brick",
+      "width": 23,
+      "x": 323,
+      "y": 531
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "300,623,46,23",
+        "300,646,23,23",
+        "300,669,46,23"
+      ],
+      "pos_key": "323,646,23,23",
+      "type": "vector_brick",
+      "width": 23,
+      "x": 323,
+      "y": 646
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "300,669,46,23",
+        "300,692,23,23",
+        "300,715,46,23"
+      ],
+      "pos_key": "323,692,23,23",
+      "type": "vector_brick",
+      "width": 23,
+      "x": 323,
+      "y": 692
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "300,715,46,23",
+        "300,738,23,23",
+        "300,761,46,23"
+      ],
+      "pos_key": "323,738,23,23",
+      "type": "vector_brick",
+      "width": 23,
+      "x": 323,
+      "y": 738
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "300,116,46,23",
+        "300,93,23,23",
+        "308,69,62,23",
+        "323,116,69,23",
+        "369,69,12,23",
+        "381,69,93,58"
+      ],
+      "pos_key": "323,93,65,23",
+      "type": "vector_brick",
+      "width": 65,
+      "x": 323,
+      "y": 93
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "242,369,93,47",
+        "254,346,92,23",
+        "323,392,46,23",
+        "346,346,38,23",
+        "346,392,46,23",
+        "381,346,93,47"
+      ],
+      "pos_key": "331,369,62,23",
+      "type": "vector_brick",
+      "width": 62,
+      "x": 331,
+      "y": 369
+    },
+    {
+      "height": 81,
+      "neighbors": [
+        "300,577,46,23",
+        "300,623,46,23",
+        "308,600,31,23",
+        "346,577,115,23",
+        "415,646,46,23",
+        "420,623,18,23",
+        "425,600,60,23"
+      ],
+      "pos_key": "335,588,93,81",
+      "type": "brick",
+      "width": 93,
+      "x": 335,
+      "y": 588
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "300,139,92,23",
+        "300,162,69,23",
+        "323,185,69,23"
+      ],
+      "pos_key": "346,162,46,23",
+      "type": "vector_brick",
+      "width": 46,
+      "x": 346,
+      "y": 162
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "300,208,69,23",
+        "300,231,92,23",
+        "323,185,69,23"
+      ],
+      "pos_key": "346,208,46,23",
+      "type": "vector_brick",
+      "width": 46,
+      "x": 346,
+      "y": 208
+    },
+    {
+      "height": 12,
+      "neighbors": [
+        "300,23,47,12",
+        "323,0,47,24",
+        "346,35,70,35",
+        "369,0,70,24",
+        "369,35,24,24",
+        "415,23,47,12"
+      ],
+      "pos_key": "346,23,70,12",
       "type": "brick",
       "width": 70,
-      "x": 438,
-      "y": 784
+      "x": 346,
+      "y": 23
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "300,231,92,23",
+        "300,254,46,23",
+        "323,277,58,24",
+        "381,277,93,24"
+      ],
+      "pos_key": "346,254,46,23",
+      "type": "vector_brick",
+      "width": 46,
+      "x": 346,
+      "y": 254
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "254,300,115,23",
+        "277,323,115,23",
+        "323,277,58,24",
+        "381,277,93,24",
+        "392,323,115,23",
+        "439,300,69,23"
+      ],
+      "pos_key": "346,300,92,23",
+      "type": "vector_brick",
+      "width": 92,
+      "x": 346,
+      "y": 300
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "254,346,92,23",
+        "277,323,115,23",
+        "331,369,62,23",
+        "381,346,93,47"
+      ],
+      "pos_key": "346,346,38,23",
+      "type": "vector_brick",
+      "width": 38,
+      "x": 346,
+      "y": 346
+    },
+    {
+      "height": 35,
+      "neighbors": [
+        "300,35,47,35",
+        "308,69,62,23",
+        "346,23,70,12",
+        "369,35,24,24",
+        "369,69,12,23",
+        "381,69,93,58",
+        "415,35,24,24",
+        "415,35,47,35"
+      ],
+      "pos_key": "346,35,70,35",
+      "type": "brick",
+      "width": 70,
+      "x": 346,
+      "y": 35
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "323,392,46,23",
+        "323,416,69,23",
+        "331,369,62,23"
+      ],
+      "pos_key": "346,392,46,23",
+      "type": "vector_brick",
+      "width": 46,
+      "x": 346,
+      "y": 392
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "323,416,69,23",
+        "323,439,23,23",
+        "323,462,69,23"
+      ],
+      "pos_key": "346,439,46,23",
+      "type": "vector_brick",
+      "width": 46,
+      "x": 346,
+      "y": 439
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "323,462,69,23",
+        "323,485,46,23",
+        "323,508,69,23"
+      ],
+      "pos_key": "346,485,46,23",
+      "type": "vector_brick",
+      "width": 46,
+      "x": 346,
+      "y": 485
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "254,554,115,23",
+        "323,508,69,23",
+        "323,531,23,23",
+        "369,554,69,23"
+      ],
+      "pos_key": "346,531,46,23",
+      "type": "vector_brick",
+      "width": 46,
+      "x": 346,
+      "y": 531
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "254,554,115,23",
+        "300,577,46,23",
+        "335,588,93,81",
+        "369,554,69,23",
+        "425,600,60,23",
+        "439,554,69,23",
+        "439,577,69,23"
+      ],
+      "pos_key": "346,577,115,23",
+      "type": "vector_brick",
+      "width": 115,
+      "x": 346,
+      "y": 577
     },
     {
       "height": 47,
-      "id": 267,
       "neighbors": [
-        192,
-        259,
-        266,
-        268,
-        269
+        "277,784,85,47",
+        "346,815,47,85",
+        "401,827,55,66",
+        "415,761,46,23",
+        "438,784,70,70"
       ],
+      "pos_key": "346,784,116,47",
       "type": "brick",
       "width": 116,
       "x": 346,
@@ -3707,75 +2708,1074 @@
     },
     {
       "height": 85,
-      "id": 268,
       "neighbors": [
-        267,
-        269
+        "277,784,85,47",
+        "346,784,116,47"
       ],
+      "pos_key": "346,815,47,85",
       "type": "brick",
       "width": 47,
       "x": 346,
       "y": 815
     },
     {
-      "height": 47,
-      "id": 269,
+      "height": 1,
+      "neighbors": [],
+      "pos_key": "352,779,57,1",
+      "type": "vector_brick",
+      "width": 57,
+      "x": 352,
+      "y": 779
+    },
+    {
+      "height": 24,
       "neighbors": [
-        219,
-        264,
-        267,
-        268,
-        270
+        "323,0,47,24",
+        "346,23,70,12",
+        "415,23,47,12",
+        "438,0,70,24"
       ],
+      "pos_key": "369,0,70,24",
       "type": "brick",
-      "width": 85,
-      "x": 277,
-      "y": 784
+      "width": 70,
+      "x": 369,
+      "y": 0
+    },
+    {
+      "height": 24,
+      "neighbors": [
+        "346,23,70,12",
+        "346,35,70,35"
+      ],
+      "pos_key": "369,35,24,24",
+      "type": "brick",
+      "width": 24,
+      "x": 369,
+      "y": 35
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "254,554,115,23",
+        "346,531,46,23",
+        "346,577,115,23",
+        "439,554,69,23"
+      ],
+      "pos_key": "369,554,69,23",
+      "type": "vector_brick",
+      "width": 69,
+      "x": 369,
+      "y": 554
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "308,69,62,23",
+        "323,93,65,23",
+        "346,35,70,35",
+        "381,69,93,58"
+      ],
+      "pos_key": "369,69,12,23",
+      "type": "vector_brick",
+      "width": 12,
+      "x": 369,
+      "y": 69
+    },
+    {
+      "height": 24,
+      "neighbors": [
+        "323,277,58,24",
+        "346,254,46,23",
+        "346,300,92,23",
+        "439,300,69,23",
+        "462,254,46,23",
+        "473,277,12,24"
+      ],
+      "pos_key": "381,277,93,24",
+      "type": "brick",
+      "width": 93,
+      "x": 381,
+      "y": 277
+    },
+    {
+      "height": 47,
+      "neighbors": [
+        "277,323,115,23",
+        "331,369,62,23",
+        "346,346,38,23",
+        "392,323,115,23",
+        "462,369,23,23",
+        "462,392,46,23",
+        "469,346,38,23"
+      ],
+      "pos_key": "381,346,93,47",
+      "type": "brick",
+      "width": 93,
+      "x": 381,
+      "y": 346
+    },
+    {
+      "height": 58,
+      "neighbors": [
+        "323,116,69,23",
+        "323,93,65,23",
+        "346,35,70,35",
+        "369,69,12,23",
+        "415,35,47,35",
+        "461,35,47,35",
+        "462,116,46,23",
+        "465,93,19,23",
+        "473,69,35,23"
+      ],
+      "pos_key": "381,69,93,58",
+      "type": "brick",
+      "width": 93,
+      "x": 381,
+      "y": 69
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "277,323,115,23",
+        "346,300,92,23",
+        "381,346,93,47",
+        "439,300,69,23",
+        "469,346,38,23"
+      ],
+      "pos_key": "392,323,115,23",
+      "type": "vector_brick",
+      "width": 115,
+      "x": 392,
+      "y": 323
+    },
+    {
+      "height": 133,
+      "neighbors": [],
+      "pos_key": "395,133,60,133",
+      "type": "vector_brick",
+      "width": 60,
+      "x": 395,
+      "y": 133
+    },
+    {
+      "height": 155,
+      "neighbors": [],
+      "pos_key": "398,391,57,155",
+      "type": "vector_brick",
+      "width": 57,
+      "x": 398,
+      "y": 391
+    },
+    {
+      "height": 66,
+      "neighbors": [
+        "346,784,116,47",
+        "438,784,70,70"
+      ],
+      "pos_key": "401,827,55,66",
+      "type": "vector_brick",
+      "width": 55,
+      "x": 401,
+      "y": 827
+    },
+    {
+      "height": 12,
+      "neighbors": [
+        "346,23,70,12",
+        "369,0,70,24",
+        "415,35,24,24",
+        "415,35,47,35",
+        "438,0,70,24",
+        "461,23,47,12"
+      ],
+      "pos_key": "415,23,47,12",
+      "type": "brick",
+      "width": 47,
+      "x": 415,
+      "y": 23
+    },
+    {
+      "height": 24,
+      "neighbors": [
+        "346,35,70,35",
+        "415,23,47,12",
+        "415,35,47,35"
+      ],
+      "pos_key": "415,35,24,24",
+      "type": "brick",
+      "width": 24,
+      "x": 415,
+      "y": 35
+    },
+    {
+      "height": 35,
+      "neighbors": [
+        "346,35,70,35",
+        "381,69,93,58",
+        "415,23,47,12",
+        "415,35,24,24",
+        "461,35,47,35"
+      ],
+      "pos_key": "415,35,47,35",
+      "type": "brick",
+      "width": 47,
+      "x": 415,
+      "y": 35
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "335,588,93,81",
+        "415,669,92,23",
+        "420,623,18,23",
+        "439,623,69,23",
+        "462,646,46,23"
+      ],
+      "pos_key": "415,646,46,23",
+      "type": "vector_brick",
+      "width": 46,
+      "x": 415,
+      "y": 646
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "415,646,46,23",
+        "415,692,69,23",
+        "462,646,46,23",
+        "462,692,46,23"
+      ],
+      "pos_key": "415,669,92,23",
+      "type": "vector_brick",
+      "width": 92,
+      "x": 415,
+      "y": 669
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "415,669,92,23",
+        "415,715,23,23",
+        "439,715,69,23",
+        "462,692,46,23"
+      ],
+      "pos_key": "415,692,69,23",
+      "type": "vector_brick",
+      "width": 69,
+      "x": 415,
+      "y": 692
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "415,692,69,23",
+        "415,738,92,23",
+        "439,715,69,23"
+      ],
+      "pos_key": "415,715,23,23",
+      "type": "vector_brick",
+      "width": 23,
+      "x": 415,
+      "y": 715
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "415,715,23,23",
+        "415,761,46,23",
+        "439,715,69,23",
+        "439,761,69,23"
+      ],
+      "pos_key": "415,738,92,23",
+      "type": "vector_brick",
+      "width": 92,
+      "x": 415,
+      "y": 738
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "346,784,116,47",
+        "415,738,92,23",
+        "439,761,69,23"
+      ],
+      "pos_key": "415,761,46,23",
+      "type": "vector_brick",
+      "width": 46,
+      "x": 415,
+      "y": 761
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "335,588,93,81",
+        "415,646,46,23",
+        "425,600,60,23",
+        "439,623,69,23"
+      ],
+      "pos_key": "420,623,18,23",
+      "type": "vector_brick",
+      "width": 18,
+      "x": 420,
+      "y": 623
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "335,588,93,81",
+        "346,577,115,23",
+        "420,623,18,23",
+        "439,577,69,23",
+        "439,623,69,23",
+        "462,600,46,23"
+      ],
+      "pos_key": "425,600,60,23",
+      "type": "vector_brick",
+      "width": 60,
+      "x": 425,
+      "y": 600
+    },
+    {
+      "height": 24,
+      "neighbors": [
+        "369,0,70,24",
+        "415,23,47,12",
+        "461,23,47,12"
+      ],
+      "pos_key": "438,0,70,24",
+      "type": "brick",
+      "width": 70,
+      "x": 438,
+      "y": 0
     },
     {
       "height": 70,
-      "id": 270,
       "neighbors": [
-        264,
-        269,
-        271,
-        272
+        "346,784,116,47",
+        "401,827,55,66",
+        "439,761,69,23",
+        "461,830,47,70"
       ],
+      "pos_key": "438,784,70,70",
       "type": "brick",
-      "width": 63,
-      "x": 231,
+      "width": 70,
+      "x": 438,
       "y": 784
     },
     {
-      "height": 81,
-      "id": 271,
+      "height": 23,
       "neighbors": [
-        183,
-        184,
-        185,
-        270,
-        272
+        "346,300,92,23",
+        "381,277,93,24",
+        "392,323,115,23",
+        "473,277,12,24",
+        "484,277,24,24"
       ],
+      "pos_key": "439,300,69,23",
+      "type": "vector_brick",
+      "width": 69,
+      "x": 439,
+      "y": 300
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "346,577,115,23",
+        "369,554,69,23",
+        "439,577,69,23",
+        "462,531,46,23"
+      ],
+      "pos_key": "439,554,69,23",
+      "type": "vector_brick",
+      "width": 69,
+      "x": 439,
+      "y": 554
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "346,577,115,23",
+        "425,600,60,23",
+        "439,554,69,23",
+        "462,600,46,23"
+      ],
+      "pos_key": "439,577,69,23",
+      "type": "vector_brick",
+      "width": 69,
+      "x": 439,
+      "y": 577
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "415,646,46,23",
+        "420,623,18,23",
+        "425,600,60,23",
+        "462,600,46,23",
+        "462,646,46,23"
+      ],
+      "pos_key": "439,623,69,23",
+      "type": "vector_brick",
+      "width": 69,
+      "x": 439,
+      "y": 623
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "415,692,69,23",
+        "415,715,23,23",
+        "415,738,92,23",
+        "462,692,46,23"
+      ],
+      "pos_key": "439,715,69,23",
+      "type": "vector_brick",
+      "width": 69,
+      "x": 439,
+      "y": 715
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "415,738,92,23",
+        "415,761,46,23",
+        "438,784,70,70"
+      ],
+      "pos_key": "439,761,69,23",
+      "type": "vector_brick",
+      "width": 69,
+      "x": 439,
+      "y": 761
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "0,554,46,23",
+        "0,577,62,23",
+        "116,554,69,23",
+        "58,565,93,58"
+      ],
+      "pos_key": "46,554,69,23",
+      "type": "vector_brick",
+      "width": 69,
+      "x": 46,
+      "y": 554
+    },
+    {
+      "height": 12,
+      "neighbors": [
+        "415,23,47,12",
+        "438,0,70,24",
+        "461,35,47,35",
+        "484,35,24,24"
+      ],
+      "pos_key": "461,23,47,12",
       "type": "brick",
-      "width": 70,
-      "x": 208,
-      "y": 819
+      "width": 47,
+      "x": 461,
+      "y": 23
+    },
+    {
+      "height": 35,
+      "neighbors": [
+        "381,69,93,58",
+        "415,35,47,35",
+        "461,23,47,12",
+        "473,69,35,23",
+        "484,35,24,24"
+      ],
+      "pos_key": "461,35,47,35",
+      "type": "brick",
+      "width": 47,
+      "x": 461,
+      "y": 35
+    },
+    {
+      "height": 70,
+      "neighbors": [
+        "438,784,70,70"
+      ],
+      "pos_key": "461,830,47,70",
+      "type": "brick",
+      "width": 47,
+      "x": 461,
+      "y": 830
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "381,69,93,58",
+        "462,139,46,23",
+        "465,93,19,23",
+        "485,93,23,23"
+      ],
+      "pos_key": "462,116,46,23",
+      "type": "vector_brick",
+      "width": 46,
+      "x": 462,
+      "y": 116
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "462,116,46,23",
+        "462,162,46,23"
+      ],
+      "pos_key": "462,139,46,23",
+      "type": "vector_brick",
+      "width": 46,
+      "x": 462,
+      "y": 139
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "462,139,46,23",
+        "462,185,23,23",
+        "485,185,23,23"
+      ],
+      "pos_key": "462,162,46,23",
+      "type": "vector_brick",
+      "width": 46,
+      "x": 462,
+      "y": 162
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "462,162,46,23",
+        "462,208,46,23",
+        "485,185,23,23"
+      ],
+      "pos_key": "462,185,23,23",
+      "type": "vector_brick",
+      "width": 23,
+      "x": 462,
+      "y": 185
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "462,185,23,23",
+        "462,231,46,23",
+        "485,185,23,23"
+      ],
+      "pos_key": "462,208,46,23",
+      "type": "vector_brick",
+      "width": 46,
+      "x": 462,
+      "y": 208
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "462,208,46,23",
+        "462,254,46,23"
+      ],
+      "pos_key": "462,231,46,23",
+      "type": "vector_brick",
+      "width": 46,
+      "x": 462,
+      "y": 231
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "381,277,93,24",
+        "462,231,46,23",
+        "473,277,12,24",
+        "484,277,24,24"
+      ],
+      "pos_key": "462,254,46,23",
+      "type": "vector_brick",
+      "width": 46,
+      "x": 462,
+      "y": 254
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "381,346,93,47",
+        "462,392,46,23",
+        "469,346,38,23",
+        "485,369,23,23"
+      ],
+      "pos_key": "462,369,23,23",
+      "type": "vector_brick",
+      "width": 23,
+      "x": 462,
+      "y": 369
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "381,346,93,47",
+        "462,369,23,23",
+        "462,416,23,23",
+        "485,369,23,23",
+        "485,416,23,23"
+      ],
+      "pos_key": "462,392,46,23",
+      "type": "vector_brick",
+      "width": 46,
+      "x": 462,
+      "y": 392
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "462,392,46,23",
+        "462,439,46,23",
+        "485,416,23,23"
+      ],
+      "pos_key": "462,416,23,23",
+      "type": "vector_brick",
+      "width": 23,
+      "x": 462,
+      "y": 416
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "462,416,23,23",
+        "462,462,23,23",
+        "462,462,46,23",
+        "485,416,23,23"
+      ],
+      "pos_key": "462,439,46,23",
+      "type": "vector_brick",
+      "width": 46,
+      "x": 462,
+      "y": 439
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "462,439,46,23",
+        "462,462,46,23"
+      ],
+      "pos_key": "462,462,23,23",
+      "type": "vector_brick",
+      "width": 23,
+      "x": 462,
+      "y": 462
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "462,439,46,23",
+        "462,462,23,23",
+        "462,485,46,23"
+      ],
+      "pos_key": "462,462,46,23",
+      "type": "vector_brick",
+      "width": 46,
+      "x": 462,
+      "y": 462
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "462,462,46,23",
+        "462,508,23,23",
+        "485,508,23,23"
+      ],
+      "pos_key": "462,485,46,23",
+      "type": "vector_brick",
+      "width": 46,
+      "x": 462,
+      "y": 485
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "462,485,46,23",
+        "462,531,46,23",
+        "485,508,23,23"
+      ],
+      "pos_key": "462,508,23,23",
+      "type": "vector_brick",
+      "width": 23,
+      "x": 462,
+      "y": 508
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "439,554,69,23",
+        "462,508,23,23",
+        "485,508,23,23"
+      ],
+      "pos_key": "462,531,46,23",
+      "type": "vector_brick",
+      "width": 46,
+      "x": 462,
+      "y": 531
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "425,600,60,23",
+        "439,577,69,23",
+        "439,623,69,23"
+      ],
+      "pos_key": "462,600,46,23",
+      "type": "vector_brick",
+      "width": 46,
+      "x": 462,
+      "y": 600
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "415,646,46,23",
+        "415,669,92,23",
+        "439,623,69,23"
+      ],
+      "pos_key": "462,646,46,23",
+      "type": "vector_brick",
+      "width": 46,
+      "x": 462,
+      "y": 646
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "415,669,92,23",
+        "415,692,69,23",
+        "439,715,69,23"
+      ],
+      "pos_key": "462,692,46,23",
+      "type": "vector_brick",
+      "width": 46,
+      "x": 462,
+      "y": 692
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "381,69,93,58",
+        "462,116,46,23",
+        "473,69,35,23",
+        "485,93,23,23"
+      ],
+      "pos_key": "465,93,19,23",
+      "type": "vector_brick",
+      "width": 19,
+      "x": 465,
+      "y": 93
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "381,346,93,47",
+        "392,323,115,23",
+        "462,369,23,23",
+        "485,369,23,23"
+      ],
+      "pos_key": "469,346,38,23",
+      "type": "vector_brick",
+      "width": 38,
+      "x": 469,
+      "y": 346
+    },
+    {
+      "height": 24,
+      "neighbors": [
+        "381,277,93,24",
+        "439,300,69,23",
+        "462,254,46,23",
+        "484,277,24,24"
+      ],
+      "pos_key": "473,277,12,24",
+      "type": "brick",
+      "width": 12,
+      "x": 473,
+      "y": 277
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "381,69,93,58",
+        "461,35,47,35",
+        "465,93,19,23",
+        "485,93,23,23"
+      ],
+      "pos_key": "473,69,35,23",
+      "type": "vector_brick",
+      "width": 35,
+      "x": 473,
+      "y": 69
+    },
+    {
+      "height": 24,
+      "neighbors": [
+        "439,300,69,23",
+        "462,254,46,23",
+        "473,277,12,24"
+      ],
+      "pos_key": "484,277,24,24",
+      "type": "brick",
+      "width": 24,
+      "x": 484,
+      "y": 277
+    },
+    {
+      "height": 24,
+      "neighbors": [
+        "461,23,47,12",
+        "461,35,47,35"
+      ],
+      "pos_key": "484,35,24,24",
+      "type": "brick",
+      "width": 24,
+      "x": 484,
+      "y": 35
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "462,162,46,23",
+        "462,185,23,23",
+        "462,208,46,23"
+      ],
+      "pos_key": "485,185,23,23",
+      "type": "vector_brick",
+      "width": 23,
+      "x": 485,
+      "y": 185
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "462,369,23,23",
+        "462,392,46,23",
+        "469,346,38,23"
+      ],
+      "pos_key": "485,369,23,23",
+      "type": "vector_brick",
+      "width": 23,
+      "x": 485,
+      "y": 369
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "462,392,46,23",
+        "462,416,23,23",
+        "462,439,46,23"
+      ],
+      "pos_key": "485,416,23,23",
+      "type": "vector_brick",
+      "width": 23,
+      "x": 485,
+      "y": 416
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "462,485,46,23",
+        "462,508,23,23",
+        "462,531,46,23"
+      ],
+      "pos_key": "485,508,23,23",
+      "type": "vector_brick",
+      "width": 23,
+      "x": 485,
+      "y": 508
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "462,116,46,23",
+        "465,93,19,23",
+        "473,69,35,23"
+      ],
+      "pos_key": "485,93,23,23",
+      "type": "vector_brick",
+      "width": 23,
+      "x": 485,
+      "y": 93
+    },
+    {
+      "height": 152,
+      "neighbors": [],
+      "pos_key": "55,392,74,152",
+      "type": "vector_brick",
+      "width": 74,
+      "x": 55,
+      "y": 392
+    },
+    {
+      "height": 24,
+      "neighbors": [
+        "0,254,69,23",
+        "0,300,69,23",
+        "139,254,23,23",
+        "139,300,115,23",
+        "150,277,47,24",
+        "23,277,35,24",
+        "69,300,69,23"
+      ],
+      "pos_key": "58,277,93,24",
+      "type": "brick",
+      "width": 93,
+      "x": 58,
+      "y": 277
+    },
+    {
+      "height": 58,
+      "neighbors": [
+        "0,577,62,23",
+        "116,554,69,23",
+        "139,600,46,23",
+        "146,577,62,23",
+        "23,600,46,23",
+        "46,554,69,23"
+      ],
+      "pos_key": "58,565,93,58",
+      "type": "brick",
+      "width": 93,
+      "x": 58,
+      "y": 565
     },
     {
       "height": 47,
-      "id": 272,
       "neighbors": [
-        181,
-        182,
-        183,
-        220,
-        221,
-        270,
-        271
+        "0,35,70,35",
+        "0,69,62,23",
+        "115,35,70,35",
+        "139,93,69,23",
+        "146,69,15,23",
+        "23,93,46,23",
+        "69,35,47,35"
       ],
+      "pos_key": "58,69,93,47",
       "type": "brick",
-      "width": 81,
-      "x": 161,
+      "width": 93,
+      "x": 58,
+      "y": 69
+    },
+    {
+      "height": 12,
+      "neighbors": [
+        "0,0,93,24",
+        "0,23,70,12",
+        "115,23,70,12",
+        "69,35,24,24",
+        "69,35,47,35",
+        "92,0,47,24"
+      ],
+      "pos_key": "69,23,47,12",
+      "type": "brick",
+      "width": 47,
+      "x": 69,
+      "y": 23
+    },
+    {
+      "height": 23,
+      "neighbors": [
+        "0,300,69,23",
+        "116,323,92,23",
+        "139,300,115,23",
+        "23,323,92,23",
+        "58,277,93,24"
+      ],
+      "pos_key": "69,300,69,23",
+      "type": "vector_brick",
+      "width": 69,
+      "x": 69,
+      "y": 300
+    },
+    {
+      "height": 24,
+      "neighbors": [
+        "0,35,70,35",
+        "69,23,47,12",
+        "69,35,47,35"
+      ],
+      "pos_key": "69,35,24,24",
+      "type": "brick",
+      "width": 24,
+      "x": 69,
+      "y": 35
+    },
+    {
+      "height": 35,
+      "neighbors": [
+        "0,35,70,35",
+        "115,35,70,35",
+        "58,69,93,47",
+        "69,23,47,12",
+        "69,35,24,24"
+      ],
+      "pos_key": "69,35,47,35",
+      "type": "brick",
+      "width": 47,
+      "x": 69,
+      "y": 35
+    },
+    {
+      "height": 115,
+      "neighbors": [
+        "0,784,70,70",
+        "0,833,70,67",
+        "104,807,81,24",
+        "115,830,93,24",
+        "127,853,104,24",
+        "138,876,116,24",
+        "92,784,70,24"
+      ],
+      "pos_key": "69,784,69,115",
+      "type": "vector_brick",
+      "width": 69,
+      "x": 69,
+      "y": 784
+    },
+    {
+      "height": 143,
+      "neighbors": [],
+      "pos_key": "77,122,54,143",
+      "type": "vector_brick",
+      "width": 54,
+      "x": 77,
+      "y": 122
+    },
+    {
+      "height": 108,
+      "neighbors": [],
+      "pos_key": "77,633,54,108",
+      "type": "vector_brick",
+      "width": 54,
+      "x": 77,
+      "y": 633
+    },
+    {
+      "height": 24,
+      "neighbors": [
+        "0,0,93,24",
+        "115,23,70,12",
+        "138,0,70,24",
+        "69,23,47,12"
+      ],
+      "pos_key": "92,0,47,24",
+      "type": "brick",
+      "width": 47,
+      "x": 92,
+      "y": 0
+    },
+    {
+      "height": 24,
+      "neighbors": [
+        "104,807,81,24",
+        "139,761,69,23",
+        "161,784,81,47",
+        "69,784,69,115"
+      ],
+      "pos_key": "92,784,70,24",
+      "type": "brick",
+      "width": 70,
+      "x": 92,
       "y": 784
     }
   ],
@@ -3788,276 +3788,276 @@
   "num_bricks": 270,
   "png_hashes": {
     "background": "40e6a85275c3395a0dcf99eb3e16851322b4345fe78d20c37387f1869bc1793c",
-    "brick_000": "87119680254c58ffd32b04c4047f90bf3a067b06a8710905216f86c655cc146d",
-    "brick_001": "f585e2d78e2bb3845f7047ecc852755998295bdfecc4a65e04c263e25c4fee13",
-    "brick_002": "70ae0797098dc0985dcf731272a905bafb63e45686fd20e2f61dc0f487abce79",
-    "brick_003": "6e43fa0886caf2bf99b47b632422d75c4505546a1189021c5ef2663fe920e63f",
-    "brick_004": "03ca8e81dfc9b95b6f60212e0cd28be5288a25a5c7aaf4726293484691018dbd",
-    "brick_005": "62d5bd219514b5b2f9b047b152f61608bfcb5d0e688496413acefd3187fd39e5",
-    "brick_006": "b9f1134d58f1cdfc90a7625a34218b513a0fe97b91fc85fd5ec53028febf86e7",
-    "brick_007": "de5ef186b2f928df4df220e318780b788cb09f9cb782af2cf170b6ddda3e3401",
-    "brick_008": "560ca0c83c7c120113888e9d124144191a1e2df62757951ca185c7e5a3e71c58",
-    "brick_009": "fff352d811b16f8c08bd9991a2f30ea631039bba576233c5e1f3289bc4173227",
-    "brick_010": "893f65be1b0d1634fa6ec4c0fab0e7bff12aec41774d928f55e931d37a23d91d",
-    "brick_011": "cea33975cafca3a3178db01817e4b6171934f19ce4614bfdbce777099df3fa0e",
-    "brick_012": "1b424ecd90a08951a62324bf027177fdcb2965a420e96f9653731d6cb68a620f",
-    "brick_013": "45b968ca997232f1ccdb61562dfe22d1c2688a71bacd894e64db653dcde21e84",
-    "brick_014": "4d0ab90e120a7dc73b3cd759ef64c29ac89c86ec406e2df90769e52c63b2553d",
-    "brick_015": "69bfda8e1db2d479715cdba50428ad1cbba43bac7d6e4992b6d1a569b6d35abb",
-    "brick_016": "4882019a893c13c88f8765b598ac0aa6df1699900ec35e9eaaa6d6353b02d027",
-    "brick_017": "ef71046309bd19b31e32b703c6cba8841af8eb81bbb9a0434e00b164c1839de9",
-    "brick_018": "415ae8abe9b9c0b1f9e16424299a018718e9bac0dcd3e4f697a9b9748ea31524",
-    "brick_019": "4e2c32f96dd690e69b027b934a0af5a0eff1d3d4049e2e56bae6d6bd7fb847b9",
-    "brick_020": "bb6b92f8bcf3714808ec65f1249b07b180402fbd361c8c1bf9068d87a4ee18c3",
-    "brick_021": "f3c6d29d7eba7f3fc69326cf4ba77ecbea8544da7b2403b7af8ae24151709b56",
-    "brick_022": "afa09f66c9070cbeed6fe3aa954b5ccc68a2e9266cc8d867fcef36d75a14953f",
-    "brick_023": "43004ea3f5d5c0b18120c4993cf121e193e7f3bd2bd9fff333e59d52dbe3b879",
-    "brick_024": "000a3f1953efccdac909d94d0bc100a79edbec0ba1c6485a5b1740b23599b9e1",
-    "brick_025": "e2b65e1073f8fbb9b79fcf450bc0f2511557cb4ecebbc92d378bdcca424d01ff",
-    "brick_026": "b57ce82333940e5238ff133d8495a2b2af91fd2af6a24fe1f850dd89531fbffa",
-    "brick_027": "03f47371b0cc25c4f87c631b91928268c48ae9a51a7840d08756454846373afe",
-    "brick_028": "2341218ebf6a07c942e3b07c69e918fb83b27576fb239bfecda568ff103add62",
-    "brick_029": "1a4f9a6a68dcd292fe93102b8de656f03ff6ece3420406435414e5459f188ac6",
-    "brick_030": "4ac33b5e46f2aac0f7ba4bcc155d4f9df551e49d1d8377f895c0e773a0d42eb8",
-    "brick_031": "794400e6a50370abbcb9636e0b54bc28081c25a6d8496cdc9918ad8e1378e50e",
-    "brick_032": "97548f27c468125643ab45916e208eee08b9f8e1b0c249b1f424215374511de9",
-    "brick_033": "e32d2fff5a303a825855f9b3cc284719ca2b1fb2b751afe4b695b1354326defd",
-    "brick_034": "76c1a4bcbf1daa1d5aec5b973d411614caffab015fe1ccb31dcfbff2757dd0e4",
-    "brick_035": "343000784343d55767f2d4659b28ec91481cb89ea263afc29ebd0827dfa8707c",
-    "brick_036": "64b91c08fff1ebbb43910f38cd2e8b070b0759e223983c03a754e98e760e57b9",
-    "brick_037": "8e0d4e13d71692c52b36cfd9546f472b4ae89cea86039da0008e06f0debd8187",
-    "brick_038": "69e885a528908dc31bfd28d216ed86cce15ad81d5c42448fee033f98fc18e583",
-    "brick_039": "ed87b4e4d6e2fc2fce2bfaec6e43336429bb781b56d5cc1d874448b36b632887",
-    "brick_040": "6089343fd21a9ba4a3dea3b4d10bbe80a837bd991ba9946127d3ff5861fef404",
-    "brick_041": "7ba483421dbf6881963054e5a24cf7e943c99ea54b8627e042272cf36a2e8c3b",
-    "brick_042": "7f88df67b0580ffbe00ab62c140637c7ad8f4c47cbdf0fd112383aac55ec8744",
-    "brick_043": "2744e5f95eaf8db04301d11f52c5ab2813ad8275e1eccc77b6ab2437ee25c7f0",
-    "brick_044": "6f4e6e29700f5a11231a409074ecd715cde3e073127e4139c163f28c7d30ad9a",
-    "brick_045": "e8c4f95b4a0fe0c7df8ad8e412f119c34ccc342a61295f91dfbb6aea4f8a1ddb",
-    "brick_046": "7e8f9b7c9ac1b612f76d4ab91822605d0b6e3d6a12f2345cf2ec1071a800ee93",
-    "brick_047": "81af929ac756fb4ce2854a526b167d648e19d5e46555a0c80dc32ef56b07b76a",
-    "brick_048": "a42d33f1058098ce261bcc7dc57e2fa93c4636c0e065c8cda2e1f9e838380a20",
-    "brick_049": "7dd5303b63539815866066ce74a2448b75eeb78357fdc183de2016a4998284d5",
-    "brick_050": "eb4131046948c96dff3c0c1bae0677474785ef3247034e2f6b78446d9afd2304",
-    "brick_051": "392bf439a3f5cf642d6a51fadd2384172453f53734f4fa9d68e2bd6700ef4ddd",
-    "brick_052": "e469a50ccbadd3c15f5393713ce729fc035216af225afa1e97b9e6f741e26aef",
-    "brick_053": "183030b17cf0eb156b0e06982ace5e0e222d03bf820f591ccaae3dbaa48bc4d1",
-    "brick_054": "320824a9fca42b7484b9a6ed4c5c99ad28270104e7b6d7d465d5f7cf0a680f06",
-    "brick_055": "de63b4df39ef3adcafe8248c0ce4fc43abb53e7c7ff96c9db261873909b3f03a",
-    "brick_056": "caa7053ad9c2859037dcb4afafd674b94056cc80d14bf0c2237421b50898544e",
-    "brick_057": "6906689be85bf4a5c561a21df0539979d930dc138e291794e9e5c542a285817c",
-    "brick_058": "78ba5b26d9cc9836ad235f4f79b10c3b6ed3eefff52b5002f6f2409a0ca0eaca",
-    "brick_059": "c895b9871e5a70e707aa23d0d84458853890bdedabc79aeef3386765e0f28f94",
-    "brick_060": "36c1d6887226a40010fc00c48009076fb5adf0b1e58fa4e7c3ba7fd4718d2163",
-    "brick_061": "cdfc61c489553ba9aa06e85fd6a593f1532f552b9368e5455ab9a417c64634da",
-    "brick_062": "3c75d7f35b6fe93f8533663f045c02b66477f1b8982e53c56accbd37e4e666dc",
-    "brick_063": "f7269f613ea8b5692d8542adfef69284b2e3a0d8c30f1a8333806a4590c55b7c",
-    "brick_064": "2f1993cef9792ea36fe5fa477769009ba45cd14def7616da6d8cfa69f0bb17a0",
-    "brick_065": "64386b6f3e6ad25994405ef77c586efb934b023a1dd8d85fcb307227b52ca522",
-    "brick_066": "90629ee2e61bc936e8e2675bbb43083d15078365a452157f0bdbcd3d7869fbae",
-    "brick_067": "e77c25972b6086d0b5fc7ef5aa19d7a9f30fbedb7a40fafc8fdd368fddabe9a4",
-    "brick_068": "019df1fc994864db3f420778d7694b77a9b313d2532414bd2d02cbb0c47b9101",
-    "brick_069": "f575c45af2fbeac2e19d1925d29ab89c002c1afe8c57d51b3ad10454a70aff65",
-    "brick_070": "44cd93c41edca2129ae0f38eee5dfe146b9f6f62e0d09edbda675047ee6981aa",
-    "brick_071": "12b4dd7095f29a599b28e773badb8da8f78f046f7c8b3da47ffc873a2dff3f15",
-    "brick_072": "8bb4df2e3837537475494d0e93cd0bec47e3acf5f0e8758c3c1260ec9aa34147",
-    "brick_073": "d594a706cdd7a0a8c135a86b20e2edeb005c4b9c5fa12225c3b4a12efdb4224c",
-    "brick_074": "9ed2d12d1d6410e88582de714b2268637e5141db753ac9bcf5d45e55c030a5a2",
-    "brick_075": "1068fa6d0cbd880482f14850f92124b3b97079fe96d7b72617bd347ef3a75237",
-    "brick_076": "231fca45316671974e22164e80618c796bd588ab1c45224f2763e6931e34aa16",
-    "brick_077": "f75f6a24b6646250612ea80e1573dccb59830e21a63ac65ed04260f5aa9da988",
-    "brick_078": "8f17f1a409f06bc81ba3d924b9247be2b9d205e676be31212e6771ef7c29f390",
-    "brick_079": "9b8225036b1632ebe5a75c3a31a7e8b537f2613b4ad30b807008cf12cbd44d2f",
-    "brick_080": "dc7be6929a5472ef0c8b98f0401f5c78787e4d2d67cfb4f44783886978bb7706",
-    "brick_081": "1c6b05f0ca382c0fa5c34e3ac075935500c053dc3a72a5a2090d4e8c32dbbd19",
-    "brick_082": "a25b4fd7bfc559fa645489779eaa0b1953839ceabffdd478d64353fd68c03d86",
-    "brick_083": "1fa9122677415c20a517d2e80e18ffc680f27d1476bfe64b1e5af2c86c368274",
-    "brick_084": "74d4234c5f56fd09783f0a929c1ef3373b8e658a9410292605371a2fe9c8f856",
-    "brick_085": "63192621fff80f6db379a7e236788705271cb51d622328bbee7aee53ad72e964",
-    "brick_086": "f6e10866ab509a50855230bb1c0b2504e105c4d7fa48ab276a88facdfed4c900",
-    "brick_087": "0bc2488b77497943e24b0658d5ba5c4c5ab597ed139e25844cbc101650589b28",
-    "brick_088": "037a811dd39ec594fe70e2b71fb30b46af6cc64057b1fdce4c5dbe987f675947",
-    "brick_089": "c43fde5863b1bbf9b2fe2d2454f3f2e6c6d4b87b54c560a94a2b5e96f07d2d91",
-    "brick_090": "af8364f151b396f9912c554e84092e39048333300e64616767776e77cc2f7555",
-    "brick_091": "82eb71a20dda0cc0f7df7f3e87d1c38eff00764e500487c7b5a31cd4117c5997",
-    "brick_092": "3982db9341d5593ef0b81e2ff428808596700c54811d2708b48d50b1eb7bd236",
-    "brick_093": "48c1b72819e0344915264b8bea620d8f9c87355251cf5ac8731eaab1b5da6900",
-    "brick_094": "58e2dfccdfcc01533b4d6d9934799fe28c4b587e18c7192c1b25cc68c4f12e05",
-    "brick_095": "56014397de0cd1026d13a4035f6468dea5659d557b31315d0fb162a5a3195f25",
-    "brick_096": "c2419e31e726ce0d2e9fec74cc490e6dbfdaaf9ff21afd53872b03c1d6670417",
-    "brick_097": "54e57f86bfb18b2932d872549f041db872791c3ccd0ce9024b32fb88ed112625",
-    "brick_098": "bfae81f7bb3497813c61ef29a2028a9aa0eec3c318a6cb330295e41668b753ee",
-    "brick_099": "5ed86291ca5613e3cd9f2216bed9cabdb885ebfa0cdc3bbdb7bcc30952cc7943",
-    "brick_100": "59ef197a4b42b111e929e87ccf39fd1c8f1ea6acae2aa5f3f30394d14002627a",
-    "brick_101": "cfa82e2ce3faa5fce89a7c7db76e11e536351342591146a5fbd7543b5dc5e2a2",
-    "brick_102": "24f5bdb139426d18bab230cb83070de0266b08e6e5aee86f46cca1facc8b74ef",
-    "brick_103": "c817f8b55b6139a8eb5e275fa9858a827faf5f2408ef4523f9fb9ec2a0cc502d",
-    "brick_104": "a8eabf340fdcebc25071bfad3abd2c2de9d8e72f87ca5421d0f57595f158f76d",
-    "brick_105": "e9ad4f22fa14affb9427df54575c422b378aaafd4ac58db5956122805b9f1a2f",
-    "brick_106": "34a8e7ce4bb8671e06128dc8ec3f06efcbe3c6ba2261eb5ab44a00744713a734",
-    "brick_108": "abd9509aee46bdbb32325806222377baa551731c51eb36c8cfd42b1c75524648",
-    "brick_110": "51aa22fe3bb881c15d1c7dadc9f858a746f59cba51b5e6ecd580192da86b8450",
-    "brick_111": "54807738954e11245ba2dad911e0433c710e9008e310ff3e45188fee8027f0d6",
-    "brick_112": "2e3fa58b342b1c889fe462fc7bcf9affbb0a156f660cc740ad63c1434998a2f8",
-    "brick_113": "d41c8a9944b68ccddef41fdd56ee7a2286b202d1ea23e9f3b5fb2d7cffa0358c",
-    "brick_114": "6094b4e8776468dece1638c4d7b983dada5544239ff0d3e560c1944775071c65",
-    "brick_115": "6cdf18a140fe4ecaee07ffd6cf712cb7c4bc3142b4b5353ed42bfc15f7591464",
-    "brick_116": "a693566fe0d75a39d8310fec1fb256616a43daebd9c61fefde235939c8e9da80",
-    "brick_117": "586cdf64790e1cd99d19f1edaa53266a5df7a465de3f18b098a3c03d1d0e7978",
-    "brick_118": "e8b2560d28f621b580a61eaa36767bb7d10d76f80a050390d0309e1c52add490",
-    "brick_119": "39cf5954853466d11d700a5ab07426eecb3cb9de71264d2b3ae538cd93cfde06",
-    "brick_120": "dfc65977b3f53ce9b6cce87977ac3ad839d76fee49ba2a39e445e2401fc52962",
-    "brick_121": "182d3d8d0bf38c35c375bf6e5f4d3064786949397cbeeb51390a6079c5679759",
-    "brick_122": "1c00618dad0acc6652c885299cd964381d71e72dcbb09544a1c58ea3e22da680",
-    "brick_124": "30397ab51e85cc9a411d8fe88fe7a9b5ab18fa45d48a8cfe527c2fb712f6c68b",
-    "brick_125": "5cb5aec259fe1cc76270a16eee13e800eedeed9ecc2674fe8b0e7e4f6955c5d3",
-    "brick_126": "f14d224363f6d8f614d6d8382f8ca29129fcc7760f9c49132a910109fc50a009",
-    "brick_127": "1715657135fe04404ae47c0b1b2d2e55046a618e3b2f3851cdf436e573919ab3",
-    "brick_128": "5d13af43649bccccde756f5cb235cc0a18c2cc17959fce387f17d7fe7ac5256e",
-    "brick_129": "99941d5fe8d4d75baa94777aa622bef0ba081682bf2f984c7f0226a4e277d4c6",
-    "brick_130": "a4f2fe7152519ce376af7babbc650a09ff92b4c208c037137a031aba992cd2dd",
-    "brick_131": "d0c78f9963a50e02d338994c8661fb3df63a73f1f70f19d73f866bf08b680f00",
-    "brick_132": "54bb214411430f1fe5ae8a5690dfee7b746c4599289882e1a6f80cbb677dbd2b",
-    "brick_133": "f6817f66d234a2ef403751eec6b3b17de39dbf94b82673c9784d58f7d862512b",
-    "brick_134": "43b7a76d805cd9b72f3bf922e5d7ff2bae01a1f5e00ff0c3899a2a68c50adaa7",
-    "brick_135": "d649f3d9b5dd02d0e059c547f1282f7c7c90b47143dcc27b22d856fa0630c077",
-    "brick_136": "fa4c38645f322bb30383e8974a3e3df0553cc512aa5244f9560c6a7fcbb00779",
-    "brick_137": "d7ad63006d93c4c156b43e33df0450f31a2f5212d3071a563038d0c8b24f6025",
-    "brick_138": "1094996594af53784f11336b91c59526664461ace84e9818c9c57a47967bcf5e",
-    "brick_139": "00ebdf446132ec8816a363453e9740f9b593ab5a3ec172995bb6d0cd69dbd78b",
-    "brick_140": "3cf6d0eae1f58356b512a0627fa1b6a2aba81bac76aa4dc87254cd2012e6d2c1",
-    "brick_141": "f6e14c7dd7cf80d038a96fedbc7ae4019929e8242c7a82575c3e7f12d5799796",
-    "brick_142": "204be6fc7c31090f233acfd0ee46bb94617c4fac6caf243f2a0cc82c7da3e48c",
-    "brick_143": "4f125b34ece698c9fee88358662fa24db00d4a87444151918b68b8f271eaf9f5",
-    "brick_144": "2c59762fc2131571c093f29c13bd79b735e59a3cea11deca1921edca3f8794c6",
-    "brick_145": "b47202dfd453d086ea375425227b5936c73df283effb16979bd8c64513b725ce",
-    "brick_146": "480c5d7d80311f02702d4717df423d958378062bd0e28b2fb111bf7788e43f81",
-    "brick_147": "b193aaca90fdcfe0ae771981ec2c5ae989366c3cd9a9b4a316eed4895d91d70b",
-    "brick_148": "cad923f7ba14c1e122fb2d187ca4935833aacf8301f8a63f94a40de874c184a0",
-    "brick_149": "1d3cc17d30c15b357e158d6aee43034c5ddacf2c319c9a21f713b3a6215b4472",
-    "brick_150": "165d31d97b191b16ec2b68180c1bd80d14564d6585f7dafa2f90e67e80fc8155",
-    "brick_151": "acba203c9276ca2ae28c48b4bad0e04c5c0be73ab56cf9c85dc980984e562708",
-    "brick_152": "cbba9eac962caec5695fddb462427454629d9dacd4c88c2d869e5b6da4b88e5f",
-    "brick_153": "5581b8633d0ef95ac3f598acb32652826dcf7ce9d206b59a5c5a1a91de7b509d",
-    "brick_154": "ecc085e93f6ff3b694c9ac2d0815badbdf0f845ed2a914787240d0e307133156",
-    "brick_155": "903e2fd902259a0ff079988d9a59f8c68a218302e44e6b1d9e75a29d658e55de",
-    "brick_156": "a773c730b40f75cdc4e687afed152c6f4eaa71a22056be8b03a4157864c70cd4",
-    "brick_157": "ef9149febf38901e2f8052b8792a2a2e71b3fbe28cf716e809ae170a68f7b26d",
-    "brick_158": "7a00988290825f337f4568313d2fdc0a1d3fae68e493a4ed7832713152f25e8f",
-    "brick_159": "a311487723a352605b7bfd58df8c8699980cabf7c9b62cde17d649428418886e",
-    "brick_160": "97a2fe9885383a4628d40a51d40adb17168d72a9d1fa295c21c3c9e84c5543f1",
-    "brick_161": "cd45190a370269c7bfea6ea599695f0b468bf6661b5bcdf2cfce351386704b27",
-    "brick_162": "b04e1f1a17df8c41224d4a7cac1fc7fcfab0ca0f842c08596dd0bef4f28c643b",
-    "brick_163": "03bdd92fe4f6f07e7a2e78ce305afb785b4625ee04ca723b0c3fead3d87e3ff7",
-    "brick_164": "a889071d7ea80390e0b0f7ff3ca018a1977f276922c849ac03d958fa4c3005c3",
-    "brick_165": "954e1ddcf0efc99a3ff1070b82d9fd052535d594303631872f04b587d8f6e128",
-    "brick_166": "3250030a9e929c6af73ebe98a26f7f4a972518a245d21818011da8a7ac6403f4",
-    "brick_167": "b9c8f26ed25d2157b98b4e8eb1cf08f594fb4fe2482b5763275c5b711c352c2f",
-    "brick_168": "ff7ce8c28503290bdab4f42faedb7c0bee7a60d880585cd3dc97b6c593088652",
-    "brick_169": "ee794d0a622a2b738a4a52b60fceff1a7c47fd61414513c87da4176b401300f4",
-    "brick_170": "9c1ccde36f4649db895e53aef9eb5b4862bf2516570a3d7b63b08124f2fb1970",
-    "brick_171": "b4797cc99dae3fd29922e2fea07f95fb00fd15e6e720b4fa12a2abe1a710e7d2",
-    "brick_172": "dec5b1223c8238cb30181aa43be96438792b091625d28aab98f6e49b1cee8131",
-    "brick_173": "a7676296968797b121abaddfd3c8c4a2f6016de9a352c5da1d369e47f9438420",
-    "brick_174": "48cd66b4d7c1a41066d3d1e96233cee717f1df3ba697e82172ca803f81b588df",
-    "brick_175": "39a7e7380402275b6a8a4f5eaf7facf91d2e6d5cd80d6a551679965a87d7a0bf",
-    "brick_176": "6e8cefd32c3688e26a5f0bae1693143c59a991d3809acfc5f1b721b6e50c88c4",
-    "brick_177": "a3bd520c81ae342c3a0590d80b44ee1dd94c7a045a2698299bcb0969ce810e5c",
-    "brick_178": "8e0da7a7ee06870aa65fa665aa469ec6a70e4827404eeaed6a1172518d40b209",
-    "brick_179": "0bd329899ef6962345b945ac39cff9eeed42eae212aeaf400f82deaca63d7902",
-    "brick_180": "f5e39fb436b2c95aba1db00511eb7ec3e818d584d59cc7c69361de2cc92c06e1",
-    "brick_181": "1d6b46bdcf9fbaa92c738de8de54a7f01559da48a38a6e4597460b4f7dc3a10e",
-    "brick_182": "cfccd09c0d0494e378f45f514690e9b9350cb94c373f0fbdb73d38d4dbb1464f",
-    "brick_183": "1fdd1651ff76bd5a5a2ebfc5350c4693d875f5b33fb49e0af8db429ef560a965",
-    "brick_184": "e5ff64063a5c26241550f77e2e37e62ca55b1d7a322764088ab20133e04a1c54",
-    "brick_185": "f3e5478bc52117c27e182ea38380267a073b95fc6ad8a01e94a46925aa15247d",
-    "brick_186": "a2dfede07e1bdbb92093ec975ca75a3147b08dd6061fa296d280bd99f7ce919b",
-    "brick_187": "3fc6bb15667a041751f3815ceb17e9cb990ed180ee068c25106cb27d4645e44e",
-    "brick_188": "f9ff6baebaf8e38464c6de62c82a4315bf27a6c3188a185ae4b4ce417ece83d8",
-    "brick_189": "87e4c4cd09049afe577b151a7c94fa7f43874a87b66304cfdcb4e1fd6612ed91",
-    "brick_190": "dcdc756279448bed0b08e850a881bdf827c044761fe1eac63bfabeae66574163",
-    "brick_191": "4c6f0f168b150483eb8034cd052bb80de8e915fb38fb1ca0ff0671c718eea5eb",
-    "brick_192": "33d500f12b0f58779952e1eb6fb8dc80d3ab1b6b2a583bf16963b2f48da4ebba",
-    "brick_193": "878225fde719461d957f0836c49a9106ee18ac0ed3e6e3a09db5bae24d2dadc1",
-    "brick_194": "e064a66ef0418e3e50746fa51575b74fd9f4eebc222b15007f12b8bfa7e69648",
-    "brick_195": "a5d6292ce1adedbf3e3d8643e851e1eb29520e94433e684d3f15b54037096940",
-    "brick_196": "0a30b9d7f57c4a04b4fa2e6c53774256f837051191c84251a5e94965dfeb6140",
-    "brick_197": "45ad34611666bb05b28c040248f0d8756aae97e993427447ac190c2328915be6",
-    "brick_198": "792e47051951c005f0100e6df54cff9b9ec7a7c5fa0d4514db19fa0db4010442",
-    "brick_199": "33bcb530e3bf5b5cb1f51c5bf4d2033ab1d9a332c1adeb1a0f734244ff26bbdb",
-    "brick_200": "af3ef56a62b358a60409c52b2a4f046cf719bdd60872e08671f2a6ba7da5c248",
-    "brick_201": "ed2dfed048848d93eeaa4ed380fb67633a00177ff09ad91d4d9666cea066bd1e",
-    "brick_202": "4ea2f4d88ffd4163c025eab1a999aca923d929fe42c2b43a43973780d64fcf0d",
-    "brick_203": "13326a4df7971ed462f979639cd73bd48680cee5b6dfeafa7ef0b2e47e1ff54c",
-    "brick_204": "ba4fbf343e49cdfe25a95cc67573f4ce265724875c17a573a7e3e87950c95f1a",
-    "brick_205": "31fed4a62961de17d4d7ed8d1127c16d1378c76efe87beda96a25538833532ba",
-    "brick_206": "5681d9bf3e0eb98c29dc94ffde40376f039e1e108622866bc3d218aba081218d",
-    "brick_207": "6612e89108c2e42404aa434361d677d9f929e5a77f46c1ebde4301d841f16a16",
-    "brick_208": "4ca1d7259ee198bd1885340929ed36d0a662215f066f1905a7214cd86d1bc19c",
-    "brick_209": "a48cc8856da3d545a304a42d793ab33ddeec44279ab4e39ab3e177aee957d753",
-    "brick_210": "3a62be587a0f0d196d2e4a30907261058333d28d5fdc5ca6ce5f28e51e5cdbe3",
-    "brick_211": "e880824cb3c0e3abce9836aaeed6462e53b45ab94caedde8e656684d19252e25",
-    "brick_212": "835d588fcfe79944f111a1d57734d926557e09683d5de1bab26c4e533cfb8cea",
-    "brick_213": "c5e1b03aab8edd24c2c2003665f01dd36d01fa5959706846dc2f73c98e39abeb",
-    "brick_214": "de2b4b5736e54247cc6085d53987e96cdcc355de6526a490c800681dbbb30059",
-    "brick_215": "2c535f4e4c7c5f6ad6cf2a14351d69148d3ae879b283cfd81242d4d4e83aae6e",
-    "brick_216": "46a024e565bac722b8766708759d7f3096c38dd8e9d7b11a6f4c2068f0c86e55",
-    "brick_217": "4717a86edb32935a09179ead2a7ab47b97f6d8908bb5262f819cfdeb02117632",
-    "brick_218": "62f71d93915f19e0e48cca18a1bc46e1a73b6e12707b3a63b6fb01afe2c450b0",
-    "brick_219": "b4a3aeac16ef74e9f1877f35bc940846a6f5d44d9c9dbafda9a023c27907c819",
-    "brick_220": "c2ebcce1bf68c8eb153f622d5f89f5e52dbc2afac8d3aa5b650120f248538e86",
-    "brick_221": "c77dc23bf0483df52365caa1e14571d4e761ba0d8e1866e035b04d38b3d53e63",
-    "brick_222": "d91604d410ba0c3901dcbdaee4fda57cc356093222460060df046a7395530e7b",
-    "brick_223": "9e07b1c6e74ec7278fa2ad75e4714116a4c8be3bf46632895641594fa832f7ad",
-    "brick_224": "aa83baa2b12ccaa689c8b61d354677ca6118c5b9f2917726ec72213755770af1",
-    "brick_225": "694224d92b57ccf9bb8e99bd75feaeed7c0702a84ee9c51c337855d97a388212",
-    "brick_226": "cf7782accad3fec09da260ed1fe90f9f205958274c64e232de24f1e4e10b9804",
-    "brick_227": "d59f639b50c01adcfcfb2d398e2118b93b3664a3e7d9a23af915d15e38c4a1e8",
-    "brick_228": "c8de48e86f37feff491754a22d553d198999dce7f86a90e6332501bc2d2ba228",
-    "brick_229": "dca4898c8e86afe28cefbd39eb630eace1d5ea6602b16751a3d90d50138dbdc2",
-    "brick_230": "18e3c3735b384324c0f1c18c6edfafc429538cf4dc076455c20b4ad231556797",
-    "brick_231": "01b93c44721987cbe62163f67217428475b2706fb57987081dc891a797cb6982",
-    "brick_232": "44ad26bc8b7eaee4245635578f91f5d9fdd8fe13448dc447cdf82786dc78a7fc",
-    "brick_233": "4712ea10cb517d8d63e49edcd00b01bcd2c1c8c8da4b0339a6069e24a0bcd39d",
-    "brick_234": "4bacb566ddda99a451b0922465cde92b8fba43aefd8b8671e4278eeefb537ad1",
-    "brick_235": "23f342a1d3b3c578182c3bb4290ffb2c2ebbb33df8fb0552941bcbe294eb2bb0",
-    "brick_236": "0c1368b4020e3dd799c73b7b3961f07206a209aca9d6c784924f9858508112b8",
-    "brick_237": "67df8dbb69684072aeb5ec876bf8c2ebd31eac997a9c26ae9dc4fe799f0380eb",
-    "brick_238": "25db8359eccc1bff0138020686b8874344462d225fd8a21f6f9c3f6fb815ab63",
-    "brick_239": "34d215e4c36582ae16e252a5da5d8bf37819b0b4812e23b02363395cebd1234a",
-    "brick_240": "a3cefef14fb9f79ef2d5c6dbf119fa0af724437769c6ce316b39161049702d39",
-    "brick_241": "9348c25edaecb77028022782ef1c881118b1907a8857365ccd0318bb6600ac07",
-    "brick_242": "f7a378a34268b0604dc7e1ca83e34235a374b134c2194156c2f134b20207928d",
-    "brick_243": "073466e9acfaa56602192ec31ecadf5e8d9a53b3dee34ae99e54bb8514d4e55a",
-    "brick_244": "1dc9fe8127e81fadc8fd9bb43dadd2deee2822d325c5631d45344e93d3b82ba9",
-    "brick_245": "9bafef2d8467fe953b66fd2f4f27576ef9323ae15436e76be4b0eb0a962c88ab",
-    "brick_246": "9d0262a70cfd5c6a378b79b4b9896cd70c525ae4eb80020b246414d572d4fff7",
-    "brick_247": "cf2fde72a0466d5e34d19ed305ed2e183506add8f5ae853bd3af346c6f19d257",
-    "brick_248": "f4958b57ea43a80b701c38f70bf32312da2587e78b72ad1bff9d2d686b010ee7",
-    "brick_249": "29d24a387f411880c642192826009f478dfce64546507a8b0f546738443ad3ab",
-    "brick_250": "8ebc140892e6f71f0baac8137684061aa812668ed4a9a6ed35e0205a846dbc83",
-    "brick_251": "7b934543b6391c83eeeb9057f40e3bafde07c95c58520df47f4b78c7d864870a",
-    "brick_252": "bc0093193e7f3e8859cc4dc0f37065eadf90bb8af4e048a7573184c3c0a3a0eb",
-    "brick_253": "34b993e07cfbe7c01342ef596fd81c5506f068ffeccb3c72c44a7e87a541b3b8",
-    "brick_254": "5ddfe338b8a51210a273df9306230534f07201e72d0fca31d4081fb6c3369c33",
-    "brick_255": "97fc76cd539b3ea950fb77f25c25631d789261b57013627221381eb599a9f1f2",
-    "brick_256": "666c2b3c32932191a31aad796dfa43ce577ad3b187680b362d52c6979b826728",
-    "brick_257": "59afe37859a267b3451fa6df25f793198c0fec787955df602ca2d500188778d5",
-    "brick_258": "6e492cffaba0dca6d7592a19224c0685b5f17bc62492111030cd4930736203de",
-    "brick_259": "6ff5e6a8334fa6331d1abeb219d54f4154f1de857a4356c4df23fca99f37f2d3",
-    "brick_260": "6634e3022012cf0c966d338918b5541d6cf2270de75dbd7926554d887a98698f",
-    "brick_261": "5a69ec46837e17a780055eb5cafe35af3cf124a487373e7b4f361893e57b0242",
-    "brick_262": "f27017f8c8047393ff07e5ff9d50eed03b8c25f8d5b284fb615edb4d83ade623",
-    "brick_263": "681d9cbd4780045d577160d816ebe978c2314c4d71eef10fb934709124847d14",
-    "brick_264": "fa93e706e123f4f08f08c5e519f60291c6f2929d0023b13d86f7d18baea6c559",
-    "brick_265": "e0366a2523ca2fe0a3e6228a5cb904087c4df66bacc68d151811403cf98f07b7",
-    "brick_266": "1838a9c409542acfad89e6f1e895069d5f50a2f8dcd7593313090e553e3b835d",
-    "brick_267": "9aa145f43b0e08e8c352f3a1a0b4b6f07b96500cfb4e1c77411142d7ff7df52c",
-    "brick_268": "9e7b948b27a5a1553e76f3497487b8eeedc712a8d84bc5ec2993c468d05b627c",
-    "brick_269": "1ddd8ad0fb9b016a3ea4fd8117267af04545594956c151c83346ef71dba9e9ec",
-    "brick_270": "f8b198594092bd81b9e00335e78fb1c1364a1cd1ee265d942c2c31b269b00570",
-    "brick_271": "25bb4dec8748938fb6e87784e58c7da9315aeb5ec8a9cc87f6591971bd09380f",
-    "brick_272": "c880389ec2e77548b91fac6ef2196479c6a6d5afd73da4f2b715c22076d69cff",
+    "brick_0,0,93,24": "48cd66b4d7c1a41066d3d1e96233cee717f1df3ba697e82172ca803f81b588df",
+    "brick_0,116,69,23": "d649f3d9b5dd02d0e059c547f1282f7c7c90b47143dcc27b22d856fa0630c077",
+    "brick_0,139,23,23": "f6817f66d234a2ef403751eec6b3b17de39dbf94b82673c9784d58f7d862512b",
+    "brick_0,162,69,23": "54bb214411430f1fe5ae8a5690dfee7b746c4599289882e1a6f80cbb677dbd2b",
+    "brick_0,185,46,23": "d0c78f9963a50e02d338994c8661fb3df63a73f1f70f19d73f866bf08b680f00",
+    "brick_0,208,69,23": "99941d5fe8d4d75baa94777aa622bef0ba081682bf2f984c7f0226a4e277d4c6",
+    "brick_0,23,70,12": "7a00988290825f337f4568313d2fdc0a1d3fae68e493a4ed7832713152f25e8f",
+    "brick_0,231,23,23": "5d13af43649bccccde756f5cb235cc0a18c2cc17959fce387f17d7fe7ac5256e",
+    "brick_0,254,69,23": "f14d224363f6d8f614d6d8382f8ca29129fcc7760f9c49132a910109fc50a009",
+    "brick_0,277,47,24": "12b4dd7095f29a599b28e773badb8da8f78f046f7c8b3da47ffc873a2dff3f15",
+    "brick_0,300,69,23": "44cd93c41edca2129ae0f38eee5dfe146b9f6f62e0d09edbda675047ee6981aa",
+    "brick_0,323,23,23": "c895b9871e5a70e707aa23d0d84458853890bdedabc79aeef3386765e0f28f94",
+    "brick_0,346,23,23": "893f65be1b0d1634fa6ec4c0fab0e7bff12aec41774d928f55e931d37a23d91d",
+    "brick_0,35,70,35": "3cf6d0eae1f58356b512a0627fa1b6a2aba81bac76aa4dc87254cd2012e6d2c1",
+    "brick_0,369,46,23": "fff352d811b16f8c08bd9991a2f30ea631039bba576233c5e1f3289bc4173227",
+    "brick_0,392,46,23": "560ca0c83c7c120113888e9d124144191a1e2df62757951ca185c7e5a3e71c58",
+    "brick_0,416,23,23": "b9f1134d58f1cdfc90a7625a34218b513a0fe97b91fc85fd5ec53028febf86e7",
+    "brick_0,439,46,23": "62d5bd219514b5b2f9b047b152f61608bfcb5d0e688496413acefd3187fd39e5",
+    "brick_0,462,46,23": "03ca8e81dfc9b95b6f60212e0cd28be5288a25a5c7aaf4726293484691018dbd",
+    "brick_0,485,46,23": "6e43fa0886caf2bf99b47b632422d75c4505546a1189021c5ef2663fe920e63f",
+    "brick_0,508,23,23": "70ae0797098dc0985dcf731272a905bafb63e45686fd20e2f61dc0f487abce79",
+    "brick_0,531,46,23": "87119680254c58ffd32b04c4047f90bf3a067b06a8710905216f86c655cc146d",
+    "brick_0,554,46,23": "bc0093193e7f3e8859cc4dc0f37065eadf90bb8af4e048a7573184c3c0a3a0eb",
+    "brick_0,577,62,23": "0c1368b4020e3dd799c73b7b3961f07206a209aca9d6c784924f9858508112b8",
+    "brick_0,600,23,23": "67df8dbb69684072aeb5ec876bf8c2ebd31eac997a9c26ae9dc4fe799f0380eb",
+    "brick_0,623,46,23": "5a69ec46837e17a780055eb5cafe35af3cf124a487373e7b4f361893e57b0242",
+    "brick_0,646,69,23": "34d215e4c36582ae16e252a5da5d8bf37819b0b4812e23b02363395cebd1234a",
+    "brick_0,669,46,23": "9348c25edaecb77028022782ef1c881118b1907a8857365ccd0318bb6600ac07",
+    "brick_0,69,62,23": "1094996594af53784f11336b91c59526664461ace84e9818c9c57a47967bcf5e",
+    "brick_0,692,69,23": "f7a378a34268b0604dc7e1ca83e34235a374b134c2194156c2f134b20207928d",
+    "brick_0,715,23,23": "073466e9acfaa56602192ec31ecadf5e8d9a53b3dee34ae99e54bb8514d4e55a",
+    "brick_0,738,69,23": "9bafef2d8467fe953b66fd2f4f27576ef9323ae15436e76be4b0eb0a962c88ab",
+    "brick_0,761,46,23": "cf2fde72a0466d5e34d19ed305ed2e183506add8f5ae853bd3af346c6f19d257",
+    "brick_0,784,70,70": "3fc6bb15667a041751f3815ceb17e9cb990ed180ee068c25106cb27d4645e44e",
+    "brick_0,833,70,67": "f9ff6baebaf8e38464c6de62c82a4315bf27a6c3188a185ae4b4ce417ece83d8",
+    "brick_0,93,46,23": "fa4c38645f322bb30383e8974a3e3df0553cc512aa5244f9560c6a7fcbb00779",
+    "brick_104,807,81,24": "cfccd09c0d0494e378f45f514690e9b9350cb94c373f0fbdb73d38d4dbb1464f",
+    "brick_115,23,70,12": "97a2fe9885383a4628d40a51d40adb17168d72a9d1fa295c21c3c9e84c5543f1",
+    "brick_115,35,70,35": "204be6fc7c31090f233acfd0ee46bb94617c4fac6caf243f2a0cc82c7da3e48c",
+    "brick_115,830,93,24": "1fdd1651ff76bd5a5a2ebfc5350c4693d875f5b33fb49e0af8db429ef560a965",
+    "brick_116,323,92,23": "cdfc61c489553ba9aa06e85fd6a593f1532f552b9368e5455ab9a417c64634da",
+    "brick_116,554,69,23": "8ebc140892e6f71f0baac8137684061aa812668ed4a9a6ed35e0205a846dbc83",
+    "brick_127,853,104,24": "e5ff64063a5c26241550f77e2e37e62ca55b1d7a322764088ab20133e04a1c54",
+    "brick_138,0,70,24": "dec5b1223c8238cb30181aa43be96438792b091625d28aab98f6e49b1cee8131",
+    "brick_138,35,24,24": "903e2fd902259a0ff079988d9a59f8c68a218302e44e6b1d9e75a29d658e55de",
+    "brick_138,876,116,24": "f3e5478bc52117c27e182ea38380267a073b95fc6ad8a01e94a46925aa15247d",
+    "brick_139,116,36,23": "6cdf18a140fe4ecaee07ffd6cf712cb7c4bc3142b4b5353ed42bfc15f7591464",
+    "brick_139,139,69,23": "a693566fe0d75a39d8310fec1fb256616a43daebd9c61fefde235939c8e9da80",
+    "brick_139,162,46,23": "39cf5954853466d11d700a5ab07426eecb3cb9de71264d2b3ae538cd93cfde06",
+    "brick_139,185,69,23": "dfc65977b3f53ce9b6cce87977ac3ad839d76fee49ba2a39e445e2401fc52962",
+    "brick_139,208,46,23": "1c00618dad0acc6652c885299cd964381d71e72dcbb09544a1c58ea3e22da680",
+    "brick_139,231,69,23": "182d3d8d0bf38c35c375bf6e5f4d3064786949397cbeeb51390a6079c5679759",
+    "brick_139,254,23,23": "30397ab51e85cc9a411d8fe88fe7a9b5ab18fa45d48a8cfe527c2fb712f6c68b",
+    "brick_139,300,115,23": "019df1fc994864db3f420778d7694b77a9b313d2532414bd2d02cbb0c47b9101",
+    "brick_139,369,46,23": "43004ea3f5d5c0b18120c4993cf121e193e7f3bd2bd9fff333e59d52dbe3b879",
+    "brick_139,392,23,23": "000a3f1953efccdac909d94d0bc100a79edbec0ba1c6485a5b1740b23599b9e1",
+    "brick_139,416,92,23": "b57ce82333940e5238ff133d8495a2b2af91fd2af6a24fe1f850dd89531fbffa",
+    "brick_139,439,23,23": "1a4f9a6a68dcd292fe93102b8de656f03ff6ece3420406435414e5459f188ac6",
+    "brick_139,462,69,23": "4ac33b5e46f2aac0f7ba4bcc155d4f9df551e49d1d8377f895c0e773a0d42eb8",
+    "brick_139,485,92,23": "97548f27c468125643ab45916e208eee08b9f8e1b0c249b1f424215374511de9",
+    "brick_139,508,69,23": "343000784343d55767f2d4659b28ec91481cb89ea263afc29ebd0827dfa8707c",
+    "brick_139,531,46,23": "64b91c08fff1ebbb43910f38cd2e8b070b0759e223983c03a754e98e760e57b9",
+    "brick_139,600,46,23": "44ad26bc8b7eaee4245635578f91f5d9fdd8fe13448dc447cdf82786dc78a7fc",
+    "brick_139,623,69,23": "f27017f8c8047393ff07e5ff9d50eed03b8c25f8d5b284fb615edb4d83ade623",
+    "brick_139,646,46,23": "01b93c44721987cbe62163f67217428475b2706fb57987081dc891a797cb6982",
+    "brick_139,669,69,23": "c8de48e86f37feff491754a22d553d198999dce7f86a90e6332501bc2d2ba228",
+    "brick_139,692,23,23": "d59f639b50c01adcfcfb2d398e2118b93b3664a3e7d9a23af915d15e38c4a1e8",
+    "brick_139,715,69,23": "aa83baa2b12ccaa689c8b61d354677ca6118c5b9f2917726ec72213755770af1",
+    "brick_139,738,23,23": "9e07b1c6e74ec7278fa2ad75e4714116a4c8be3bf46632895641594fa832f7ad",
+    "brick_139,761,69,23": "c2ebcce1bf68c8eb153f622d5f89f5e52dbc2afac8d3aa5b650120f248538e86",
+    "brick_139,93,69,23": "d41c8a9944b68ccddef41fdd56ee7a2286b202d1ea23e9f3b5fb2d7cffa0358c",
+    "brick_146,346,15,23": "1b424ecd90a08951a62324bf027177fdcb2965a420e96f9653731d6cb68a620f",
+    "brick_146,577,62,23": "23f342a1d3b3c578182c3bb4290ffb2c2ebbb33df8fb0552941bcbe294eb2bb0",
+    "brick_146,69,15,23": "2e3fa58b342b1c889fe462fc7bcf9affbb0a156f660cc740ad63c1434998a2f8",
+    "brick_150,277,47,24": "9ed2d12d1d6410e88582de714b2268637e5141db753ac9bcf5d45e55c030a5a2",
+    "brick_161,784,81,47": "c880389ec2e77548b91fac6ef2196479c6a6d5afd73da4f2b715c22076d69cff",
+    "brick_162,162,46,23": "586cdf64790e1cd99d19f1edaa53266a5df7a465de3f18b098a3c03d1d0e7978",
+    "brick_162,208,46,23": "e8b2560d28f621b580a61eaa36767bb7d10d76f80a050390d0309e1c52add490",
+    "brick_162,254,46,23": "5cb5aec259fe1cc76270a16eee13e800eedeed9ecc2674fe8b0e7e4f6955c5d3",
+    "brick_162,346,92,23": "45b968ca997232f1ccdb61562dfe22d1c2688a71bacd894e64db653dcde21e84",
+    "brick_162,392,92,23": "e2b65e1073f8fbb9b79fcf450bc0f2511557cb4ecebbc92d378bdcca424d01ff",
+    "brick_162,439,92,23": "2341218ebf6a07c942e3b07c69e918fb83b27576fb239bfecda568ff103add62",
+    "brick_162,646,69,23": "18e3c3735b384324c0f1c18c6edfafc429538cf4dc076455c20b4ad231556797",
+    "brick_162,69,38,23": "54807738954e11245ba2dad911e0433c710e9008e310ff3e45188fee8027f0d6",
+    "brick_162,692,69,23": "cf7782accad3fec09da260ed1fe90f9f205958274c64e232de24f1e4e10b9804",
+    "brick_162,738,69,23": "d91604d410ba0c3901dcbdaee4fda57cc356093222460060df046a7395530e7b",
+    "brick_175,116,33,23": "6094b4e8776468dece1638c4d7b983dada5544239ff0d3e560c1944775071c65",
+    "brick_185,23,47,12": "cd45190a370269c7bfea6ea599695f0b468bf6661b5bcdf2cfce351386704b27",
+    "brick_185,323,92,23": "3c75d7f35b6fe93f8533663f045c02b66477f1b8982e53c56accbd37e4e666dc",
+    "brick_185,35,24,24": "ecc085e93f6ff3b694c9ac2d0815badbdf0f845ed2a914787240d0e307133156",
+    "brick_185,35,47,35": "4f125b34ece698c9fee88358662fa24db00d4a87444151918b68b8f271eaf9f5",
+    "brick_185,369,62,23": "afa09f66c9070cbeed6fe3aa954b5ccc68a2e9266cc8d867fcef36d75a14953f",
+    "brick_185,462,69,23": "794400e6a50370abbcb9636e0b54bc28081c25a6d8496cdc9918ad8e1378e50e",
+    "brick_185,508,69,23": "76c1a4bcbf1daa1d5aec5b973d411614caffab015fe1ccb31dcfbff2757dd0e4",
+    "brick_185,531,69,23": "8e0d4e13d71692c52b36cfd9546f472b4ae89cea86039da0008e06f0debd8187",
+    "brick_185,554,69,23": "681d9cbd4780045d577160d816ebe978c2314c4d71eef10fb934709124847d14",
+    "brick_185,600,35,23": "4bacb566ddda99a451b0922465cde92b8fba43aefd8b8671e4278eeefb537ad1",
+    "brick_185,623,41,23": "4712ea10cb517d8d63e49edcd00b01bcd2c1c8c8da4b0339a6069e24a0bcd39d",
+    "brick_185,715,46,23": "694224d92b57ccf9bb8e99bd75feaeed7c0702a84ee9c51c337855d97a388212",
+    "brick_196,277,127,24": "1068fa6d0cbd880482f14850f92124b3b97079fe96d7b72617bd347ef3a75237",
+    "brick_196,69,116,47": "51aa22fe3bb881c15d1c7dadc9f858a746f59cba51b5e6ecd580192da86b8450",
+    "brick_208,0,47,24": "b4797cc99dae3fd29922e2fea07f95fb00fd15e6e720b4fa12a2abe1a710e7d2",
+    "brick_208,416,46,23": "03f47371b0cc25c4f87c631b91928268c48ae9a51a7840d08756454846373afe",
+    "brick_208,577,46,23": "29d24a387f411880c642192826009f478dfce64546507a8b0f546738443ad3ab",
+    "brick_208,669,23,23": "dca4898c8e86afe28cefbd39eb630eace1d5ea6602b16751a3d90d50138dbdc2",
+    "brick_208,761,23,23": "c77dc23bf0483df52365caa1e14571d4e761ba0d8e1866e035b04d38b3d53e63",
+    "brick_208,819,70,81": "25bb4dec8748938fb6e87784e58c7da9315aeb5ec8a9cc87f6591971bd09380f",
+    "brick_217,122,75,143": "f5e39fb436b2c95aba1db00511eb7ec3e818d584d59cc7c69361de2cc92c06e1",
+    "brick_219,588,93,75": "dcdc756279448bed0b08e850a881bdf827c044761fe1eac63bfabeae66574163",
+    "brick_23,139,46,23": "43b7a76d805cd9b72f3bf922e5d7ff2bae01a1f5e00ff0c3899a2a68c50adaa7",
+    "brick_23,185,46,23": "a4f2fe7152519ce376af7babbc650a09ff92b4c208c037137a031aba992cd2dd",
+    "brick_23,231,46,23": "1715657135fe04404ae47c0b1b2d2e55046a618e3b2f3851cdf436e573919ab3",
+    "brick_23,277,35,24": "8bb4df2e3837537475494d0e93cd0bec47e3acf5f0e8758c3c1260ec9aa34147",
+    "brick_23,323,92,23": "36c1d6887226a40010fc00c48009076fb5adf0b1e58fa4e7c3ba7fd4718d2163",
+    "brick_23,331,127,61": "cea33975cafca3a3178db01817e4b6171934f19ce4614bfdbce777099df3fa0e",
+    "brick_23,35,24,24": "ef9149febf38901e2f8052b8792a2a2e71b3fbe28cf716e809ae170a68f7b26d",
+    "brick_23,416,23,23": "de5ef186b2f928df4df220e318780b788cb09f9cb782af2cf170b6ddda3e3401",
+    "brick_23,508,23,23": "f585e2d78e2bb3845f7047ecc852755998295bdfecc4a65e04c263e25c4fee13",
+    "brick_23,600,46,23": "25db8359eccc1bff0138020686b8874344462d225fd8a21f6f9c3f6fb815ab63",
+    "brick_23,623,46,23": "6634e3022012cf0c966d338918b5541d6cf2270de75dbd7926554d887a98698f",
+    "brick_23,669,46,23": "a3cefef14fb9f79ef2d5c6dbf119fa0af724437769c6ce316b39161049702d39",
+    "brick_23,715,46,23": "1dc9fe8127e81fadc8fd9bb43dadd2deee2822d325c5631d45344e93d3b82ba9",
+    "brick_23,761,46,23": "9d0262a70cfd5c6a378b79b4b9896cd70c525ae4eb80020b246414d572d4fff7",
+    "brick_23,93,46,23": "d7ad63006d93c4c156b43e33df0450f31a2f5212d3071a563038d0c8b24f6025",
+    "brick_231,23,70,12": "b04e1f1a17df8c41224d4a7cac1fc7fcfab0ca0f842c08596dd0bef4f28c643b",
+    "brick_231,35,70,35": "2c59762fc2131571c093f29c13bd79b735e59a3cea11deca1921edca3f8794c6",
+    "brick_231,485,23,23": "e32d2fff5a303a825855f9b3cc284719ca2b1fb2b751afe4b695b1354326defd",
+    "brick_231,784,63,70": "f8b198594092bd81b9e00335e78fb1c1364a1cd1ee265d942c2c31b269b00570",
+    "brick_236,779,57,1": "59afe37859a267b3451fa6df25f793198c0fec787955df602ca2d500188778d5",
+    "brick_242,369,93,47": "f3c6d29d7eba7f3fc69326cf4ba77ecbea8544da7b2403b7af8ae24151709b56",
+    "brick_254,0,70,24": "9c1ccde36f4649db895e53aef9eb5b4862bf2516570a3d7b63b08124f2fb1970",
+    "brick_254,300,115,23": "e77c25972b6086d0b5fc7ef5aa19d7a9f30fbedb7a40fafc8fdd368fddabe9a4",
+    "brick_254,346,92,23": "4d0ab90e120a7dc73b3cd759ef64c29ac89c86ec406e2df90769e52c63b2553d",
+    "brick_254,35,24,24": "5581b8633d0ef95ac3f598acb32652826dcf7ce9d206b59a5c5a1a91de7b509d",
+    "brick_254,554,115,23": "34b993e07cfbe7c01342ef596fd81c5506f068ffeccb3c72c44a7e87a541b3b8",
+    "brick_254,577,46,18": "f4958b57ea43a80b701c38f70bf32312da2587e78b72ad1bff9d2d686b010ee7",
+    "brick_261,412,57,131": "6e8cefd32c3688e26a5f0bae1693143c59a991d3809acfc5f1b721b6e50c88c4",
+    "brick_277,323,115,23": "f7269f613ea8b5692d8542adfef69284b2e3a0d8c30f1a8333806a4590c55b7c",
+    "brick_277,784,85,47": "1ddd8ad0fb9b016a3ea4fd8117267af04545594956c151c83346ef71dba9e9ec",
+    "brick_284,827,55,66": "fa93e706e123f4f08f08c5e519f60291c6f2929d0023b13d86f7d18baea6c559",
+    "brick_300,116,46,23": "24f5bdb139426d18bab230cb83070de0266b08e6e5aee86f46cca1facc8b74ef",
+    "brick_300,139,92,23": "cfa82e2ce3faa5fce89a7c7db76e11e536351342591146a5fbd7543b5dc5e2a2",
+    "brick_300,162,69,23": "5ed86291ca5613e3cd9f2216bed9cabdb885ebfa0cdc3bbdb7bcc30952cc7943",
+    "brick_300,185,23,23": "bfae81f7bb3497813c61ef29a2028a9aa0eec3c318a6cb330295e41668b753ee",
+    "brick_300,208,69,23": "56014397de0cd1026d13a4035f6468dea5659d557b31315d0fb162a5a3195f25",
+    "brick_300,23,47,12": "03bdd92fe4f6f07e7a2e78ce305afb785b4625ee04ca723b0c3fead3d87e3ff7",
+    "brick_300,231,92,23": "58e2dfccdfcc01533b4d6d9934799fe28c4b587e18c7192c1b25cc68c4f12e05",
+    "brick_300,254,46,23": "48c1b72819e0344915264b8bea620d8f9c87355251cf5ac8731eaab1b5da6900",
+    "brick_300,35,24,24": "cbba9eac962caec5695fddb462427454629d9dacd4c88c2d869e5b6da4b88e5f",
+    "brick_300,35,47,35": "b47202dfd453d086ea375425227b5936c73df283effb16979bd8c64513b725ce",
+    "brick_300,577,46,23": "4ca1d7259ee198bd1885340929ed36d0a662215f066f1905a7214cd86d1bc19c",
+    "brick_300,623,46,23": "3a62be587a0f0d196d2e4a30907261058333d28d5fdc5ca6ce5f28e51e5cdbe3",
+    "brick_300,646,23,23": "e880824cb3c0e3abce9836aaeed6462e53b45ab94caedde8e656684d19252e25",
+    "brick_300,669,46,23": "c5e1b03aab8edd24c2c2003665f01dd36d01fa5959706846dc2f73c98e39abeb",
+    "brick_300,692,23,23": "de2b4b5736e54247cc6085d53987e96cdcc355de6526a490c800681dbbb30059",
+    "brick_300,715,46,23": "46a024e565bac722b8766708759d7f3096c38dd8e9d7b11a6f4c2068f0c86e55",
+    "brick_300,738,23,23": "4717a86edb32935a09179ead2a7ab47b97f6d8908bb5262f819cfdeb02117632",
+    "brick_300,761,46,23": "b4a3aeac16ef74e9f1877f35bc940846a6f5d44d9c9dbafda9a023c27907c819",
+    "brick_300,93,23,23": "e9ad4f22fa14affb9427df54575c422b378aaafd4ac58db5956122805b9f1a2f",
+    "brick_308,600,31,23": "a48cc8856da3d545a304a42d793ab33ddeec44279ab4e39ab3e177aee957d753",
+    "brick_308,69,62,23": "34a8e7ce4bb8671e06128dc8ec3f06efcbe3c6ba2261eb5ab44a00744713a734",
+    "brick_323,0,47,24": "ee794d0a622a2b738a4a52b60fceff1a7c47fd61414513c87da4176b401300f4",
+    "brick_323,116,69,23": "c817f8b55b6139a8eb5e275fa9858a827faf5f2408ef4523f9fb9ec2a0cc502d",
+    "brick_323,185,69,23": "54e57f86bfb18b2932d872549f041db872791c3ccd0ce9024b32fb88ed112625",
+    "brick_323,277,58,24": "231fca45316671974e22164e80618c796bd588ab1c45224f2763e6931e34aa16",
+    "brick_323,392,46,23": "81af929ac756fb4ce2854a526b167d648e19d5e46555a0c80dc32ef56b07b76a",
+    "brick_323,416,69,23": "7e8f9b7c9ac1b612f76d4ab91822605d0b6e3d6a12f2345cf2ec1071a800ee93",
+    "brick_323,439,23,23": "6f4e6e29700f5a11231a409074ecd715cde3e073127e4139c163f28c7d30ad9a",
+    "brick_323,462,69,23": "2744e5f95eaf8db04301d11f52c5ab2813ad8275e1eccc77b6ab2437ee25c7f0",
+    "brick_323,485,46,23": "7f88df67b0580ffbe00ab62c140637c7ad8f4c47cbdf0fd112383aac55ec8744",
+    "brick_323,508,69,23": "6089343fd21a9ba4a3dea3b4d10bbe80a837bd991ba9946127d3ff5861fef404",
+    "brick_323,531,23,23": "69e885a528908dc31bfd28d216ed86cce15ad81d5c42448fee033f98fc18e583",
+    "brick_323,646,23,23": "835d588fcfe79944f111a1d57734d926557e09683d5de1bab26c4e533cfb8cea",
+    "brick_323,692,23,23": "2c535f4e4c7c5f6ad6cf2a14351d69148d3ae879b283cfd81242d4d4e83aae6e",
+    "brick_323,738,23,23": "62f71d93915f19e0e48cca18a1bc46e1a73b6e12707b3a63b6fb01afe2c450b0",
+    "brick_323,93,65,23": "a8eabf340fdcebc25071bfad3abd2c2de9d8e72f87ca5421d0f57595f158f76d",
+    "brick_331,369,62,23": "bb6b92f8bcf3714808ec65f1249b07b180402fbd361c8c1bf9068d87a4ee18c3",
+    "brick_335,588,93,81": "87e4c4cd09049afe577b151a7c94fa7f43874a87b66304cfdcb4e1fd6612ed91",
+    "brick_346,162,46,23": "59ef197a4b42b111e929e87ccf39fd1c8f1ea6acae2aa5f3f30394d14002627a",
+    "brick_346,208,46,23": "c2419e31e726ce0d2e9fec74cc490e6dbfdaaf9ff21afd53872b03c1d6670417",
+    "brick_346,23,70,12": "a889071d7ea80390e0b0f7ff3ca018a1977f276922c849ac03d958fa4c3005c3",
+    "brick_346,254,46,23": "3982db9341d5593ef0b81e2ff428808596700c54811d2708b48d50b1eb7bd236",
+    "brick_346,300,92,23": "90629ee2e61bc936e8e2675bbb43083d15078365a452157f0bdbcd3d7869fbae",
+    "brick_346,346,38,23": "69bfda8e1db2d479715cdba50428ad1cbba43bac7d6e4992b6d1a569b6d35abb",
+    "brick_346,35,70,35": "480c5d7d80311f02702d4717df423d958378062bd0e28b2fb111bf7788e43f81",
+    "brick_346,392,46,23": "a42d33f1058098ce261bcc7dc57e2fa93c4636c0e065c8cda2e1f9e838380a20",
+    "brick_346,439,46,23": "e8c4f95b4a0fe0c7df8ad8e412f119c34ccc342a61295f91dfbb6aea4f8a1ddb",
+    "brick_346,485,46,23": "7ba483421dbf6881963054e5a24cf7e943c99ea54b8627e042272cf36a2e8c3b",
+    "brick_346,531,46,23": "ed87b4e4d6e2fc2fce2bfaec6e43336429bb781b56d5cc1d874448b36b632887",
+    "brick_346,577,115,23": "6612e89108c2e42404aa434361d677d9f929e5a77f46c1ebde4301d841f16a16",
+    "brick_346,784,116,47": "9aa145f43b0e08e8c352f3a1a0b4b6f07b96500cfb4e1c77411142d7ff7df52c",
+    "brick_346,815,47,85": "9e7b948b27a5a1553e76f3497487b8eeedc712a8d84bc5ec2993c468d05b627c",
+    "brick_352,779,57,1": "6e492cffaba0dca6d7592a19224c0685b5f17bc62492111030cd4930736203de",
+    "brick_369,0,70,24": "ff7ce8c28503290bdab4f42faedb7c0bee7a60d880585cd3dc97b6c593088652",
+    "brick_369,35,24,24": "acba203c9276ca2ae28c48b4bad0e04c5c0be73ab56cf9c85dc980984e562708",
+    "brick_369,554,69,23": "5ddfe338b8a51210a273df9306230534f07201e72d0fca31d4081fb6c3369c33",
+    "brick_369,69,12,23": "abd9509aee46bdbb32325806222377baa551731c51eb36c8cfd42b1c75524648",
+    "brick_381,277,93,24": "f75f6a24b6646250612ea80e1573dccb59830e21a63ac65ed04260f5aa9da988",
+    "brick_381,346,93,47": "4882019a893c13c88f8765b598ac0aa6df1699900ec35e9eaaa6d6353b02d027",
+    "brick_381,69,93,58": "82eb71a20dda0cc0f7df7f3e87d1c38eff00764e500487c7b5a31cd4117c5997",
+    "brick_392,323,115,23": "2f1993cef9792ea36fe5fa477769009ba45cd14def7616da6d8cfa69f0bb17a0",
+    "brick_395,133,60,133": "0bd329899ef6962345b945ac39cff9eeed42eae212aeaf400f82deaca63d7902",
+    "brick_398,391,57,155": "39a7e7380402275b6a8a4f5eaf7facf91d2e6d5cd80d6a551679965a87d7a0bf",
+    "brick_401,827,55,66": "6ff5e6a8334fa6331d1abeb219d54f4154f1de857a4356c4df23fca99f37f2d3",
+    "brick_415,23,47,12": "954e1ddcf0efc99a3ff1070b82d9fd052535d594303631872f04b587d8f6e128",
+    "brick_415,35,24,24": "165d31d97b191b16ec2b68180c1bd80d14564d6585f7dafa2f90e67e80fc8155",
+    "brick_415,35,47,35": "b193aaca90fdcfe0ae771981ec2c5ae989366c3cd9a9b4a316eed4895d91d70b",
+    "brick_415,646,46,23": "af3ef56a62b358a60409c52b2a4f046cf719bdd60872e08671f2a6ba7da5c248",
+    "brick_415,669,92,23": "33bcb530e3bf5b5cb1f51c5bf4d2033ab1d9a332c1adeb1a0f734244ff26bbdb",
+    "brick_415,692,69,23": "45ad34611666bb05b28c040248f0d8756aae97e993427447ac190c2328915be6",
+    "brick_415,715,23,23": "0a30b9d7f57c4a04b4fa2e6c53774256f837051191c84251a5e94965dfeb6140",
+    "brick_415,738,92,23": "e064a66ef0418e3e50746fa51575b74fd9f4eebc222b15007f12b8bfa7e69648",
+    "brick_415,761,46,23": "33d500f12b0f58779952e1eb6fb8dc80d3ab1b6b2a583bf16963b2f48da4ebba",
+    "brick_420,623,18,23": "13326a4df7971ed462f979639cd73bd48680cee5b6dfeafa7ef0b2e47e1ff54c",
+    "brick_425,600,60,23": "ba4fbf343e49cdfe25a95cc67573f4ce265724875c17a573a7e3e87950c95f1a",
+    "brick_438,0,70,24": "3250030a9e929c6af73ebe98a26f7f4a972518a245d21818011da8a7ac6403f4",
+    "brick_438,784,70,70": "1838a9c409542acfad89e6f1e895069d5f50a2f8dcd7593313090e553e3b835d",
+    "brick_439,300,69,23": "64386b6f3e6ad25994405ef77c586efb934b023a1dd8d85fcb307227b52ca522",
+    "brick_439,554,69,23": "97fc76cd539b3ea950fb77f25c25631d789261b57013627221381eb599a9f1f2",
+    "brick_439,577,69,23": "5681d9bf3e0eb98c29dc94ffde40376f039e1e108622866bc3d218aba081218d",
+    "brick_439,623,69,23": "4ea2f4d88ffd4163c025eab1a999aca923d929fe42c2b43a43973780d64fcf0d",
+    "brick_439,715,69,23": "a5d6292ce1adedbf3e3d8643e851e1eb29520e94433e684d3f15b54037096940",
+    "brick_439,761,69,23": "878225fde719461d957f0836c49a9106ee18ac0ed3e6e3a09db5bae24d2dadc1",
+    "brick_46,554,69,23": "7b934543b6391c83eeeb9057f40e3bafde07c95c58520df47f4b78c7d864870a",
+    "brick_461,23,47,12": "b9c8f26ed25d2157b98b4e8eb1cf08f594fb4fe2482b5763275c5b711c352c2f",
+    "brick_461,35,47,35": "cad923f7ba14c1e122fb2d187ca4935833aacf8301f8a63f94a40de874c184a0",
+    "brick_461,830,47,70": "e0366a2523ca2fe0a3e6228a5cb904087c4df66bacc68d151811403cf98f07b7",
+    "brick_462,116,46,23": "0bc2488b77497943e24b0658d5ba5c4c5ab597ed139e25844cbc101650589b28",
+    "brick_462,139,46,23": "f6e10866ab509a50855230bb1c0b2504e105c4d7fa48ab276a88facdfed4c900",
+    "brick_462,162,46,23": "63192621fff80f6db379a7e236788705271cb51d622328bbee7aee53ad72e964",
+    "brick_462,185,23,23": "1fa9122677415c20a517d2e80e18ffc680f27d1476bfe64b1e5af2c86c368274",
+    "brick_462,208,46,23": "a25b4fd7bfc559fa645489779eaa0b1953839ceabffdd478d64353fd68c03d86",
+    "brick_462,231,46,23": "1c6b05f0ca382c0fa5c34e3ac075935500c053dc3a72a5a2090d4e8c32dbbd19",
+    "brick_462,254,46,23": "dc7be6929a5472ef0c8b98f0401f5c78787e4d2d67cfb4f44783886978bb7706",
+    "brick_462,369,23,23": "4e2c32f96dd690e69b027b934a0af5a0eff1d3d4049e2e56bae6d6bd7fb847b9",
+    "brick_462,392,46,23": "7dd5303b63539815866066ce74a2448b75eeb78357fdc183de2016a4998284d5",
+    "brick_462,416,23,23": "eb4131046948c96dff3c0c1bae0677474785ef3247034e2f6b78446d9afd2304",
+    "brick_462,439,46,23": "e469a50ccbadd3c15f5393713ce729fc035216af225afa1e97b9e6f741e26aef",
+    "brick_462,462,23,23": "183030b17cf0eb156b0e06982ace5e0e222d03bf820f591ccaae3dbaa48bc4d1",
+    "brick_462,462,46,23": "320824a9fca42b7484b9a6ed4c5c99ad28270104e7b6d7d465d5f7cf0a680f06",
+    "brick_462,485,46,23": "de63b4df39ef3adcafe8248c0ce4fc43abb53e7c7ff96c9db261873909b3f03a",
+    "brick_462,508,23,23": "caa7053ad9c2859037dcb4afafd674b94056cc80d14bf0c2237421b50898544e",
+    "brick_462,531,46,23": "78ba5b26d9cc9836ad235f4f79b10c3b6ed3eefff52b5002f6f2409a0ca0eaca",
+    "brick_462,600,46,23": "31fed4a62961de17d4d7ed8d1127c16d1378c76efe87beda96a25538833532ba",
+    "brick_462,646,46,23": "ed2dfed048848d93eeaa4ed380fb67633a00177ff09ad91d4d9666cea066bd1e",
+    "brick_462,692,46,23": "792e47051951c005f0100e6df54cff9b9ec7a7c5fa0d4514db19fa0db4010442",
+    "brick_465,93,19,23": "037a811dd39ec594fe70e2b71fb30b46af6cc64057b1fdce4c5dbe987f675947",
+    "brick_469,346,38,23": "ef71046309bd19b31e32b703c6cba8841af8eb81bbb9a0434e00b164c1839de9",
+    "brick_473,277,12,24": "8f17f1a409f06bc81ba3d924b9247be2b9d205e676be31212e6771ef7c29f390",
+    "brick_473,69,35,23": "af8364f151b396f9912c554e84092e39048333300e64616767776e77cc2f7555",
+    "brick_484,277,24,24": "9b8225036b1632ebe5a75c3a31a7e8b537f2613b4ad30b807008cf12cbd44d2f",
+    "brick_484,35,24,24": "1d3cc17d30c15b357e158d6aee43034c5ddacf2c319c9a21f713b3a6215b4472",
+    "brick_485,185,23,23": "74d4234c5f56fd09783f0a929c1ef3373b8e658a9410292605371a2fe9c8f856",
+    "brick_485,369,23,23": "415ae8abe9b9c0b1f9e16424299a018718e9bac0dcd3e4f697a9b9748ea31524",
+    "brick_485,416,23,23": "392bf439a3f5cf642d6a51fadd2384172453f53734f4fa9d68e2bd6700ef4ddd",
+    "brick_485,508,23,23": "6906689be85bf4a5c561a21df0539979d930dc138e291794e9e5c542a285817c",
+    "brick_485,93,23,23": "c43fde5863b1bbf9b2fe2d2454f3f2e6c6d4b87b54c560a94a2b5e96f07d2d91",
+    "brick_55,392,74,152": "a3bd520c81ae342c3a0590d80b44ee1dd94c7a045a2698299bcb0969ce810e5c",
+    "brick_58,277,93,24": "d594a706cdd7a0a8c135a86b20e2edeb005c4b9c5fa12225c3b4a12efdb4224c",
+    "brick_58,565,93,58": "4c6f0f168b150483eb8034cd052bb80de8e915fb38fb1ca0ff0671c718eea5eb",
+    "brick_58,69,93,47": "00ebdf446132ec8816a363453e9740f9b593ab5a3ec172995bb6d0cd69dbd78b",
+    "brick_69,23,47,12": "a311487723a352605b7bfd58df8c8699980cabf7c9b62cde17d649428418886e",
+    "brick_69,300,69,23": "f575c45af2fbeac2e19d1925d29ab89c002c1afe8c57d51b3ad10454a70aff65",
+    "brick_69,35,24,24": "a773c730b40f75cdc4e687afed152c6f4eaa71a22056be8b03a4157864c70cd4",
+    "brick_69,35,47,35": "f6e14c7dd7cf80d038a96fedbc7ae4019929e8242c7a82575c3e7f12d5799796",
+    "brick_69,784,69,115": "a2dfede07e1bdbb92093ec975ca75a3147b08dd6061fa296d280bd99f7ce919b",
+    "brick_77,122,54,143": "8e0da7a7ee06870aa65fa665aa469ec6a70e4827404eeaed6a1172518d40b209",
+    "brick_77,633,54,108": "666c2b3c32932191a31aad796dfa43ce577ad3b187680b362d52c6979b826728",
+    "brick_92,0,47,24": "a7676296968797b121abaddfd3c8c4a2f6016de9a352c5da1d369e47f9438420",
+    "brick_92,784,70,24": "1d6b46bdcf9fbaa92c738de8de54a7f01559da48a38a6e4597460b4f7dc3a10e",
     "composite": "e12feaf3a14a71124f8a01cb1c5c0c90bc465a5d6b30bbec7f093292e79a6e5b",
     "lights": "1b8371536594839a3be7f93345d3ee74c4f2333c26744eb2606c2a4e94112211",
     "outlines": "147c57e1924cb61814bde3f6daa219bde2d8560a6b74309b052acc2f43bedbb2"
