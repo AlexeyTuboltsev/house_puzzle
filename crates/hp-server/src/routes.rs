@@ -342,36 +342,18 @@ async fn do_load(sessions: SessionStore, key: String, req: LoadRequest) -> Respo
 // Merge
 // ---------------------------------------------------------------------------
 
-#[derive(Deserialize)]
-struct MergeRequest {
-    #[serde(default = "default_target")]
-    target_count: usize,
-    #[serde(default = "default_seed")]
-    seed: u64,
-    #[serde(default = "default_min_border")]
-    min_border: f64,
-    #[serde(default = "default_border_gap")]
-    border_gap: f64,
-}
-
-fn default_target() -> usize { 60 }
-fn default_seed() -> u64 { 42 }
-fn default_min_border() -> f64 { 5.0 }
-fn default_border_gap() -> f64 { 2.0 }
-
 async fn api_merge_keyed(
     State(sessions): State<SessionStore>,
     Path(key): Path<String>,
-    Json(req): Json<MergeRequest>,
+    Json(req): Json<serde_json::Value>,
 ) -> Response {
     do_merge(sessions, &key, req).await
 }
 
 async fn api_merge(
     State(sessions): State<SessionStore>,
-    Json(req): Json<MergeRequest>,
+    Json(req): Json<serde_json::Value>,
 ) -> Response {
-    // Use the most recent session (legacy compat)
     let key = {
         let store = sessions.lock().unwrap();
         store.keys().last().cloned().unwrap_or_default()
@@ -379,7 +361,7 @@ async fn api_merge(
     do_merge(sessions, &key, req).await
 }
 
-async fn do_merge(sessions: SessionStore, key: &str, req: MergeRequest) -> Response {
+async fn do_merge(sessions: SessionStore, key: &str, req: serde_json::Value) -> Response {
     let (bricks, polygons, areas, extract_dir) = {
         let store = sessions.lock().unwrap();
         let session = match store.get(key) {
@@ -390,9 +372,45 @@ async fn do_merge(sessions: SessionStore, key: &str, req: MergeRequest) -> Respo
          session.brick_areas.clone(), session.extract_dir.clone())
     };
 
-    // Build adjacency with user's params and merge
-    let adj = puzzle::build_adjacency_vector(&bricks, &polygons, 15.0, req.min_border, req.border_gap);
-    let pieces = puzzle::merge_bricks(&bricks, req.target_count, req.seed, &adj, &areas);
+    let bricks_by_id: HashMap<String, Brick> = bricks.iter().map(|b| (b.id.clone(), b.clone())).collect();
+
+    // Two modes: recompute (has "pieces" key) or normal merge
+    let pieces = if let Some(pieces_arr) = req.get("pieces").and_then(|v| v.as_array()) {
+        // Recompute mode: rebuild pieces from supplied definitions
+        pieces_arr.iter().filter_map(|p| {
+            let id = p.get("id")?.as_str()?.to_string();
+            let brick_ids: Vec<String> = p.get("brick_ids")?
+                .as_array()?
+                .iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect();
+            if brick_ids.is_empty() { return None; }
+            let mut x = i32::MAX;
+            let mut y = i32::MAX;
+            let mut x2 = i32::MIN;
+            let mut y2 = i32::MIN;
+            for bid in &brick_ids {
+                if let Some(b) = bricks_by_id.get(bid) {
+                    x = x.min(b.x);
+                    y = y.min(b.y);
+                    x2 = x2.max(b.right());
+                    y2 = y2.max(b.bottom());
+                }
+            }
+            Some(hp_core::types::PuzzlePiece {
+                id, brick_ids,
+                x, y, width: x2 - x, height: y2 - y,
+            })
+        }).collect()
+    } else {
+        // Normal merge
+        let target = req.get("target_count").and_then(|v| v.as_u64()).unwrap_or(60) as usize;
+        let seed = req.get("seed").and_then(|v| v.as_u64()).unwrap_or(42);
+        let min_border = req.get("min_border").and_then(|v| v.as_f64()).unwrap_or(5.0);
+        let border_gap = req.get("border_gap").and_then(|v| v.as_f64()).unwrap_or(2.0);
+        let adj = puzzle::build_adjacency_vector(&bricks, &polygons, 15.0, min_border, border_gap);
+        puzzle::merge_bricks(&bricks, target, seed, &adj, &areas)
+    };
 
     // Render piece PNGs (composited from brick PNGs on disk)
     let bricks_by_id: HashMap<String, Brick> = bricks.iter().map(|b| (b.id.clone(), b.clone())).collect();
