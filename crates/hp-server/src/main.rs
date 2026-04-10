@@ -1,10 +1,12 @@
 mod routes;
+mod session;
 
 use std::net::SocketAddr;
 
 #[tokio::main]
 async fn main() {
-    let app = routes::build_router();
+    let sessions = session::new_session_store();
+    let app = routes::build_router(sessions);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 5050));
     eprintln!("House Puzzle Editor listening on http://localhost:5050");
