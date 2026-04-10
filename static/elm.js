@@ -9877,12 +9877,24 @@ var $author$project$Main$viewPieceOverlay = F9(
 					return isHov ? 'fill: rgba(64,120,255,0.2);' : 'fill: transparent;';
 				}
 			} else {
-				if (maybeWave.$ === 'Just') {
-					var wv = maybeWave.a;
-					var eff = isHov ? A2($elm$core$Basics$min, 1.0, wv.opacity + 0.15) : wv.opacity;
-					return 'fill: ' + (A2($author$project$Main$waveColor, wv.hue, eff) + ';');
+				if (_Utils_eq(appMode, $author$project$Main$ModeWaves)) {
+					if (maybeWave.$ === 'Just') {
+						var wv = maybeWave.a;
+						var eff = isHov ? A2($elm$core$Basics$min, 1.0, wv.opacity + 0.15) : wv.opacity;
+						return 'fill: ' + (A2($author$project$Main$waveColor, wv.hue, eff) + ';');
+					} else {
+						return isHov ? 'fill: rgba(64,120,255,0.2);' : (isSel ? 'fill: rgba(64,120,255,0.45);' : 'fill: transparent;');
+					}
 				} else {
-					return isHov ? 'fill: rgba(64,120,255,0.2);' : (isSel ? 'fill: rgba(64,120,255,0.45);' : 'fill: transparent;');
+					if (isHov) {
+						return 'fill: rgba(64,120,255,0.2);';
+					} else {
+						if (isSel) {
+							return 'fill: rgba(64,120,255,0.45);';
+						} else {
+							return 'fill: transparent;';
+						}
+					}
 				}
 			}
 		}();

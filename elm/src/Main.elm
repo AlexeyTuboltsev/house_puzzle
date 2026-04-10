@@ -3489,7 +3489,7 @@ viewPieceOverlay appMode hoveredId selectedId selectedWaveId waves groups select
                         if isHov then "fill: rgba(64,120,255,0.2);"
                         else "fill: transparent;"
 
-            else
+            else if appMode == ModeWaves then
                 case maybeWave of
                     Just wv ->
                         let eff = if isHov then Basics.min 1.0 (wv.opacity + 0.15) else wv.opacity
@@ -3498,6 +3498,11 @@ viewPieceOverlay appMode hoveredId selectedId selectedWaveId waves groups select
                         if isHov then "fill: rgba(64,120,255,0.2);"
                         else if isSel then "fill: rgba(64,120,255,0.45);"
                         else "fill: transparent;"
+
+            else
+                if isHov then "fill: rgba(64,120,255,0.2);"
+                else if isSel then "fill: rgba(64,120,255,0.45);"
+                else "fill: transparent;"
 
         clsStr =
             [ "piece-overlay"
