@@ -1,5 +1,8 @@
 FROM rust:1.87-bookworm
 
+# System deps: libclang for bindgen (mupdf-sys), C build tools for mupdf
+RUN apt-get update && apt-get install -y libclang-dev && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 # Copy manifests first for dependency caching
@@ -15,11 +18,11 @@ RUN mkdir -p crates/hp-server/src && echo "fn main() {}" > crates/hp-server/src/
 COPY templates/ templates/
 COPY static/ static/
 
-RUN cargo build 2>&1 || true
+RUN cargo build --release 2>&1 || true
 
 # Copy real source
 COPY crates/ crates/
-RUN cargo build
+RUN cargo build --release
 
 EXPOSE 5050
-CMD ["cargo", "run", "--bin", "hp-server"]
+CMD ["target/release/hp-server"]
