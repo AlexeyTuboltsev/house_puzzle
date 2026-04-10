@@ -231,6 +231,10 @@ fn extract_plain_path_bbox(block: &LayerBlock, data: &[u8]) -> Option<(f64, f64,
     let mut ys: Vec<f64> = Vec::new();
 
     for line in block_data.split(|&b| b == b'\r') {
+        // Skip binary data lines (contain non-printable/non-ASCII bytes)
+        if line.iter().any(|&b| b > 127 || (b < 32 && b != b'\t' && b != b'\n')) {
+            continue;
+        }
         let line = bstr(line).trim().to_string();
         if line.starts_with('%') {
             continue;
@@ -367,7 +371,7 @@ fn extract_vector_path(
 ) -> Vec<[f64; 2]> {
     let block_data = &data[block.begin..block.end];
 
-    // Parse all lines into owned strings first (avoids lifetime issues)
+    // Parse all lines into owned strings
     let lines: Vec<String> = block_data.split(|&b| b == b'\r')
         .map(|l| bstr(l).trim().to_string())
         .collect();
