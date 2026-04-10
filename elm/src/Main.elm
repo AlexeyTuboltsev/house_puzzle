@@ -2392,6 +2392,21 @@ viewPdfTools model response =
                     "Generate Puzzle"
                 )
             ]
+        , if List.isEmpty response.warnings then
+            text ""
+          else
+            div
+                [ style "margin-top" "10px"
+                , style "padding" "8px"
+                , style "background" "#fff3cd"
+                , style "border" "1px solid #ffc107"
+                , style "border-radius" "4px"
+                , style "font-size" "11px"
+                , style "color" "#856404"
+                , style "max-height" "120px"
+                , style "overflow-y" "auto"
+                ]
+                (List.map (\w -> div [ style "margin-bottom" "2px" ] [ text w ]) response.warnings)
         ]
 
 
@@ -3443,7 +3458,7 @@ viewPieceOverlay : AppMode -> Maybe String -> Maybe String -> Maybe Int -> List 
 viewPieceOverlay appMode hoveredId selectedId selectedWaveId waves groups selectedGroupId isLassoing piece =
     let
         inWaveAssign =
-            selectedWaveId /= Nothing
+            appMode == ModeWaves && selectedWaveId /= Nothing
 
         inGroupAssign =
             appMode == ModeGroups && selectedGroupId /= Nothing
@@ -3474,7 +3489,7 @@ viewPieceOverlay appMode hoveredId selectedId selectedWaveId waves groups select
                         if isHov then "fill: rgba(64,120,255,0.2);"
                         else "fill: transparent;"
 
-            else
+            else if appMode == ModeWaves then
                 case maybeWave of
                     Just wv ->
                         let eff = if isHov then Basics.min 1.0 (wv.opacity + 0.15) else wv.opacity
@@ -3483,6 +3498,11 @@ viewPieceOverlay appMode hoveredId selectedId selectedWaveId waves groups select
                         if isHov then "fill: rgba(64,120,255,0.2);"
                         else if isSel then "fill: rgba(64,120,255,0.45);"
                         else "fill: transparent;"
+
+            else
+                if isHov then "fill: rgba(64,120,255,0.2);"
+                else if isSel then "fill: rgba(64,120,255,0.45);"
+                else "fill: transparent;"
 
         clsStr =
             [ "piece-overlay"

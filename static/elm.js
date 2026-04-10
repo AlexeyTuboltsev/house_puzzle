@@ -9862,7 +9862,7 @@ var $author$project$Main$viewPieceOverlay = F9(
 		var isHov = _Utils_eq(
 			hoveredId,
 			$elm$core$Maybe$Just(piece.id));
-		var inWaveAssign = !_Utils_eq(selectedWaveId, $elm$core$Maybe$Nothing);
+		var inWaveAssign = _Utils_eq(appMode, $author$project$Main$ModeWaves) && (!_Utils_eq(selectedWaveId, $elm$core$Maybe$Nothing));
 		var inGroupAssign = _Utils_eq(appMode, $author$project$Main$ModeGroups) && (!_Utils_eq(selectedGroupId, $elm$core$Maybe$Nothing));
 		var isSel = (!inWaveAssign) && ((!inGroupAssign) && _Utils_eq(
 			selectedId,
@@ -9877,12 +9877,24 @@ var $author$project$Main$viewPieceOverlay = F9(
 					return isHov ? 'fill: rgba(64,120,255,0.2);' : 'fill: transparent;';
 				}
 			} else {
-				if (maybeWave.$ === 'Just') {
-					var wv = maybeWave.a;
-					var eff = isHov ? A2($elm$core$Basics$min, 1.0, wv.opacity + 0.15) : wv.opacity;
-					return 'fill: ' + (A2($author$project$Main$waveColor, wv.hue, eff) + ';');
+				if (_Utils_eq(appMode, $author$project$Main$ModeWaves)) {
+					if (maybeWave.$ === 'Just') {
+						var wv = maybeWave.a;
+						var eff = isHov ? A2($elm$core$Basics$min, 1.0, wv.opacity + 0.15) : wv.opacity;
+						return 'fill: ' + (A2($author$project$Main$waveColor, wv.hue, eff) + ';');
+					} else {
+						return isHov ? 'fill: rgba(64,120,255,0.2);' : (isSel ? 'fill: rgba(64,120,255,0.45);' : 'fill: transparent;');
+					}
 				} else {
-					return isHov ? 'fill: rgba(64,120,255,0.2);' : (isSel ? 'fill: rgba(64,120,255,0.45);' : 'fill: transparent;');
+					if (isHov) {
+						return 'fill: rgba(64,120,255,0.2);';
+					} else {
+						if (isSel) {
+							return 'fill: rgba(64,120,255,0.45);';
+						} else {
+							return 'fill: transparent;';
+						}
+					}
 				}
 			}
 		}();
@@ -12123,7 +12135,36 @@ var $author$project$Main$viewPdfTools = F2(
 						[
 							$elm$html$Html$text(
 							isGenerating ? 'Generating\u2026' : 'Generate Puzzle')
-						]))
+						])),
+					$elm$core$List$isEmpty(response.warnings) ? $elm$html$Html$text('') : A2(
+					$elm$html$Html$div,
+					_List_fromArray(
+						[
+							A2($elm$html$Html$Attributes$style, 'margin-top', '10px'),
+							A2($elm$html$Html$Attributes$style, 'padding', '8px'),
+							A2($elm$html$Html$Attributes$style, 'background', '#fff3cd'),
+							A2($elm$html$Html$Attributes$style, 'border', '1px solid #ffc107'),
+							A2($elm$html$Html$Attributes$style, 'border-radius', '4px'),
+							A2($elm$html$Html$Attributes$style, 'font-size', '11px'),
+							A2($elm$html$Html$Attributes$style, 'color', '#856404'),
+							A2($elm$html$Html$Attributes$style, 'max-height', '120px'),
+							A2($elm$html$Html$Attributes$style, 'overflow-y', 'auto')
+						]),
+					A2(
+						$elm$core$List$map,
+						function (w) {
+							return A2(
+								$elm$html$Html$div,
+								_List_fromArray(
+									[
+										A2($elm$html$Html$Attributes$style, 'margin-bottom', '2px')
+									]),
+								_List_fromArray(
+									[
+										$elm$html$Html$text(w)
+									]));
+						},
+						response.warnings))
 				]));
 	});
 var $author$project$Main$StartEdit = {$: 'StartEdit'};
