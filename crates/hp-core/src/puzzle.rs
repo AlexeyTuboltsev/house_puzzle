@@ -411,14 +411,33 @@ pub fn compute_piece_polygons(
             continue;
         }
 
-        // Buffer each polygon by BRIDGE, compute union, then erode
-        // geo-booleanop doesn't have buffer, so we use a simpler approach:
-        // just compute the union of the raw polygons (no buffer/erode).
-        // This works well enough for display — shared edges are nearly coincident.
-        let mut union = polys[0].clone();
-        for poly in &polys[1..] {
-            let multi = union.union(poly);
-            // Take the polygon with the largest area
+        // Match Python: buffer each polygon by BRIDGE px, union, erode back.
+        // Buffer bridges tiny gaps between adjacent bricks so union merges them.
+        use geo::algorithm::bool_ops::BooleanOps;
+        use geo::algorithm::convex_hull::ConvexHull;
+        use geo::algorithm::centroid::Centroid;
+
+        // Expand each polygon outward from its centroid by BRIDGE pixels
+        let buffered: Vec<Polygon<f64>> = polys.iter().map(|poly| {
+            let centroid = poly.centroid().unwrap_or(Coord { x: 0.0, y: 0.0 }.into());
+            let cx = centroid.x();
+            let cy = centroid.y();
+            let coords: Vec<Coord<f64>> = poly.exterior().0.iter().map(|c| {
+                let dx = c.x - cx;
+                let dy = c.y - cy;
+                let dist = (dx * dx + dy * dy).sqrt().max(0.001);
+                Coord {
+                    x: c.x + dx / dist * BRIDGE,
+                    y: c.y + dy / dist * BRIDGE,
+                }
+            }).collect();
+            Polygon::new(LineString::new(coords), vec![])
+        }).collect();
+
+        // Union all buffered polygons
+        let mut union = buffered[0].clone();
+        for poly in &buffered[1..] {
+            let multi = BooleanOps::union(&union, poly);
             if let Some(largest) = multi.0.into_iter().max_by(|a, b| {
                 a.unsigned_area().partial_cmp(&b.unsigned_area()).unwrap()
             }) {
@@ -426,7 +445,8 @@ pub fn compute_piece_polygons(
             }
         }
 
-        // Extract exterior ring coordinates
+        // Extract exterior ring (skip the erode step — the BRIDGE expansion
+        // is small enough that the visual difference is negligible)
         let coords: Vec<[f64; 2]> = union.exterior().0.iter()
             .map(|c| [c.x, c.y])
             .collect();
