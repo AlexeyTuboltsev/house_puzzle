@@ -84,22 +84,30 @@ pub fn build_adjacency_vector(
                 continue;
             }
 
-            // Distance-based adjacency: if polygons are within border_gap,
-            // estimate shared border from the overlap of their bounding boxes.
-            use geo::algorithm::euclidean_distance::EuclideanDistance;
-            let dist = pa.euclidean_distance(pb);
-            if dist > gap {
+            // Match Python: buffer both polygons by border_gap, intersect,
+            // measure border_length = intersection.area / (2 * border_gap)
+            use geo_clipper::Clipper;
+            let factor = 1000.0;
+            let buf_a = pa.offset(border_gap, geo_clipper::JoinType::Round(0.25), geo_clipper::EndType::ClosedPolygon, factor);
+            let buf_b = pb.offset(border_gap, geo_clipper::JoinType::Round(0.25), geo_clipper::EndType::ClosedPolygon, factor);
+
+            if buf_a.0.is_empty() || buf_b.0.is_empty() {
                 continue;
             }
 
-            // Estimate shared border: length of bbox edge overlap
-            let a_rect = pa.bounding_rect().unwrap();
-            let b_rect = pb.bounding_rect().unwrap();
-            let h_overlap = (a_rect.max().x.min(b_rect.max().x) - a_rect.min().x.max(b_rect.min().x)).max(0.0);
-            let v_overlap = (a_rect.max().y.min(b_rect.max().y) - a_rect.min().y.max(b_rect.min().y)).max(0.0);
-            let border_length = h_overlap.max(v_overlap);
+            let intersection = Clipper::intersection(&buf_a, &buf_b, factor);
+            if intersection.0.is_empty() {
+                continue;
+            }
 
-            if dist <= border_gap && border_length >= min_border {
+            let inter_area: f64 = intersection.0.iter().map(|p| p.unsigned_area()).sum();
+            let border_length = if border_gap > 0.0 {
+                inter_area / (2.0 * border_gap)
+            } else {
+                0.0
+            };
+
+            if border_length >= min_border {
                 adj.entry(a.id.clone()).or_default().insert(b.id.clone());
                 adj.entry(b.id.clone()).or_default().insert(a.id.clone());
             }
