@@ -1,0 +1,382 @@
+//! Puzzle engine — brick merging via area-balanced adjacency grouping.
+//!
+//! Takes bricks with positions and vector polygons, builds an adjacency graph
+//! using polygon proximity, then merges bricks into puzzle pieces targeting
+//! a specified piece count.
+
+use geo::algorithm::area::Area;
+use geo::algorithm::bounding_rect::BoundingRect;
+use geo::{Coord, LineString, Polygon};
+use rand::seq::SliceRandom;
+use rand::SeedableRng;
+use rand_chacha::ChaCha8Rng;
+use std::collections::{HashMap, HashSet};
+
+use crate::types::{Brick, PuzzlePiece};
+
+/// Adjacency threshold: bricks within this many pixels are candidates.
+const ADJACENCY_THRESHOLD: f64 = 15.0;
+
+/// Build a Shapely-equivalent polygon from brick-local point coordinates.
+fn brick_polygon(brick: &Brick, polygon: &[[f64; 2]]) -> Option<Polygon<f64>> {
+    if polygon.len() < 3 {
+        return None;
+    }
+    let coords: Vec<Coord<f64>> = polygon
+        .iter()
+        .map(|p| Coord {
+            x: p[0] + brick.x as f64,
+            y: p[1] + brick.y as f64,
+        })
+        .collect();
+    let ring = LineString::new(coords);
+    let poly = Polygon::new(ring, vec![]);
+    if poly.unsigned_area() < 1.0 {
+        return None;
+    }
+    Some(poly)
+}
+
+/// Build vector-based adjacency graph.
+///
+/// Two bricks are adjacent if their polygons, each buffered by `border_gap`,
+/// overlap with intersection area implying shared border >= `min_border`.
+pub fn build_adjacency_vector(
+    bricks: &[Brick],
+    brick_polygons: &HashMap<String, Vec<[f64; 2]>>,
+    gap: f64,
+    min_border: f64,
+    border_gap: f64,
+) -> HashMap<String, HashSet<String>> {
+    // Build Shapely-equivalent polygons
+    let polys: HashMap<&str, Polygon<f64>> = bricks
+        .iter()
+        .filter_map(|b| {
+            let pts = brick_polygons.get(&b.id)?;
+            let poly = brick_polygon(b, pts)?;
+            Some((b.id.as_str(), poly))
+        })
+        .collect();
+
+    let mut adj: HashMap<String, HashSet<String>> = HashMap::new();
+    let n = bricks.len();
+
+    for i in 0..n {
+        let a = &bricks[i];
+        let pa = match polys.get(a.id.as_str()) {
+            Some(p) => p,
+            None => continue,
+        };
+
+        for j in (i + 1)..n {
+            let b = &bricks[j];
+            let pb = match polys.get(b.id.as_str()) {
+                Some(p) => p,
+                None => continue,
+            };
+
+            // Bbox pre-filter
+            if !((a.x as f64 - gap) < b.right() as f64
+                && (a.right() as f64 + gap) > b.x as f64
+                && (a.y as f64 - gap) < b.bottom() as f64
+                && (a.bottom() as f64 + gap) > b.y as f64)
+            {
+                continue;
+            }
+
+            // Distance-based adjacency: if polygons are within border_gap,
+            // estimate shared border from the overlap of their bounding boxes.
+            use geo::algorithm::euclidean_distance::EuclideanDistance;
+            let dist = pa.euclidean_distance(pb);
+            if dist > gap {
+                continue;
+            }
+
+            // Estimate shared border: length of bbox edge overlap
+            let a_rect = pa.bounding_rect().unwrap();
+            let b_rect = pb.bounding_rect().unwrap();
+            let h_overlap = (a_rect.max().x.min(b_rect.max().x) - a_rect.min().x.max(b_rect.min().x)).max(0.0);
+            let v_overlap = (a_rect.max().y.min(b_rect.max().y) - a_rect.min().y.max(b_rect.min().y)).max(0.0);
+            let border_length = h_overlap.max(v_overlap);
+
+            if dist <= border_gap && border_length >= min_border {
+                adj.entry(a.id.clone()).or_default().insert(b.id.clone());
+                adj.entry(b.id.clone()).or_default().insert(a.id.clone());
+            }
+        }
+    }
+
+    adj
+}
+
+/// Compute polygon areas for all bricks.
+pub fn compute_polygon_areas(
+    bricks: &[Brick],
+    brick_polygons: &HashMap<String, Vec<[f64; 2]>>,
+) -> HashMap<String, f64> {
+    bricks
+        .iter()
+        .map(|b| {
+            let area = brick_polygons
+                .get(&b.id)
+                .and_then(|pts| brick_polygon(b, pts))
+                .map(|p| p.unsigned_area())
+                .unwrap_or(b.area() as f64);
+            (b.id.clone(), area)
+        })
+        .collect()
+}
+
+/// Compute bounding box for a set of bricks.
+fn compute_piece_bbox(brick_ids: &[String], bricks_by_id: &HashMap<&str, &Brick>) -> (i32, i32, i32, i32) {
+    let mut x0 = i32::MAX;
+    let mut y0 = i32::MAX;
+    let mut x1 = i32::MIN;
+    let mut y1 = i32::MIN;
+    for bid in brick_ids {
+        if let Some(b) = bricks_by_id.get(bid.as_str()) {
+            x0 = x0.min(b.x);
+            y0 = y0.min(b.y);
+            x1 = x1.max(b.right());
+            y1 = y1.max(b.bottom());
+        }
+    }
+    (x0, y0, x1 - x0, y1 - y0)
+}
+
+/// Merge bricks into puzzle pieces using area-balanced adjacency grouping.
+pub fn merge_bricks(
+    bricks: &[Brick],
+    target_piece_count: usize,
+    seed: u64,
+    adjacency: &HashMap<String, HashSet<String>>,
+    brick_areas: &HashMap<String, f64>,
+) -> Vec<PuzzlePiece> {
+    let bricks_by_id: HashMap<&str, &Brick> = bricks.iter().map(|b| (b.id.as_str(), b)).collect();
+    let all_ids: HashSet<String> = bricks.iter().map(|b| b.id.clone()).collect();
+    let target_count = target_piece_count.max(1);
+
+    // Phase 0: exclude oversized bricks
+    let total_area: f64 = all_ids.iter().map(|id| brick_areas.get(id).copied().unwrap_or(0.0)).sum();
+    let mut fixed_ids: HashSet<String> = HashSet::new();
+    for _ in 0..10 {
+        let target_area = total_area / target_count.max(1) as f64;
+        let new_fixed: HashSet<String> = all_ids
+            .iter()
+            .filter(|id| brick_areas.get(*id).copied().unwrap_or(0.0) >= target_area)
+            .cloned()
+            .collect();
+        if new_fixed == fixed_ids {
+            break;
+        }
+        fixed_ids = new_fixed;
+    }
+
+    let mergeable_ids: HashSet<String> = all_ids.difference(&fixed_ids).cloned().collect();
+    let target_mergeable = target_count.saturating_sub(fixed_ids.len()).max(1);
+    let mergeable_area: f64 = mergeable_ids
+        .iter()
+        .map(|id| brick_areas.get(id).copied().unwrap_or(0.0))
+        .sum();
+    let target_area = mergeable_area / target_mergeable as f64;
+
+    let mut rng = ChaCha8Rng::seed_from_u64(seed);
+
+    // Initialize: each mergeable brick is its own piece
+    let mut piece_of: HashMap<String, String> = HashMap::new();
+    let mut pieces_dict: HashMap<String, Vec<String>> = HashMap::new();
+    let mut piece_area: HashMap<String, f64> = HashMap::new();
+
+    for bid in &mergeable_ids {
+        piece_of.insert(bid.clone(), bid.clone());
+        pieces_dict.insert(bid.clone(), vec![bid.clone()]);
+        piece_area.insert(bid.clone(), brick_areas.get(bid).copied().unwrap_or(0.0));
+    }
+
+    // Build piece-level adjacency
+    let mut piece_adj: HashMap<String, HashSet<String>> = HashMap::new();
+    for bid in &mergeable_ids {
+        let pid = &piece_of[bid];
+        if let Some(neighbors) = adjacency.get(bid) {
+            for nbr in neighbors {
+                if !mergeable_ids.contains(nbr) {
+                    continue;
+                }
+                let npid = &piece_of[nbr];
+                if npid != pid {
+                    piece_adj.entry(pid.clone()).or_default().insert(npid.clone());
+                    piece_adj.entry(npid.clone()).or_default().insert(pid.clone());
+                }
+            }
+        }
+    }
+
+    // Phase 1: greedy merge
+    while pieces_dict.len() > target_mergeable {
+        let mut candidates: Vec<String> = pieces_dict.keys().cloned().collect();
+        candidates.sort_by(|a, b| {
+            piece_area
+                .get(a)
+                .unwrap_or(&0.0)
+                .partial_cmp(piece_area.get(b).unwrap_or(&0.0))
+                .unwrap()
+        });
+
+        let mut merged = false;
+        for smallest_pid in &candidates {
+            let neighbors = match piece_adj.get(smallest_pid) {
+                Some(n) if !n.is_empty() => n.clone(),
+                _ => continue,
+            };
+
+            let cur_area = piece_area.get(smallest_pid).copied().unwrap_or(0.0);
+            let mut nbr_list: Vec<String> = neighbors.into_iter().collect();
+            nbr_list.shuffle(&mut rng);
+
+            let mut best_nbr: Option<String> = None;
+            let mut best_score = f64::INFINITY;
+
+            for npid in &nbr_list {
+                if !pieces_dict.contains_key(npid) {
+                    continue;
+                }
+                let combined = cur_area + piece_area.get(npid).copied().unwrap_or(0.0);
+                let mut score = (combined - target_area).abs();
+                if combined > target_area * 1.5 {
+                    score += combined;
+                }
+                // Compactness penalty
+                let merged_ids: Vec<String> = pieces_dict[smallest_pid]
+                    .iter()
+                    .chain(pieces_dict[npid].iter())
+                    .cloned()
+                    .collect();
+                let (_, _, bw, bh) = compute_piece_bbox(&merged_ids, &bricks_by_id);
+                let aspect = bw.max(bh) as f64 / bw.min(bh).max(1) as f64;
+                score += target_area * (aspect - 1.0) * 0.3;
+
+                if score < best_score {
+                    best_score = score;
+                    best_nbr = Some(npid.clone());
+                }
+            }
+
+            if let Some(absorb_pid) = best_nbr {
+                let keep_pid = smallest_pid.clone();
+                // Merge absorb into keep
+                let absorbed_bricks = pieces_dict.remove(&absorb_pid).unwrap();
+                pieces_dict.get_mut(&keep_pid).unwrap().extend(absorbed_bricks.iter().cloned());
+                *piece_area.get_mut(&keep_pid).unwrap() +=
+                    piece_area.remove(&absorb_pid).unwrap_or(0.0);
+                for bid in &absorbed_bricks {
+                    piece_of.insert(bid.clone(), keep_pid.clone());
+                }
+
+                // Update adjacency
+                let absorb_neighbors = piece_adj.remove(&absorb_pid).unwrap_or_default();
+                for neighbor_pid in &absorb_neighbors {
+                    if *neighbor_pid == keep_pid {
+                        continue;
+                    }
+                    if let Some(ns) = piece_adj.get_mut(neighbor_pid) {
+                        ns.remove(&absorb_pid);
+                        ns.insert(keep_pid.clone());
+                    }
+                    piece_adj.entry(keep_pid.clone()).or_default().insert(neighbor_pid.clone());
+                }
+                if let Some(ns) = piece_adj.get_mut(&keep_pid) {
+                    ns.remove(&absorb_pid);
+                }
+
+                merged = true;
+                break;
+            }
+        }
+
+        if !merged {
+            break;
+        }
+    }
+
+    // Build result
+    let mut result: Vec<PuzzlePiece> = Vec::new();
+
+    // Fixed solo pieces first
+    let mut sorted_fixed: Vec<&String> = fixed_ids.iter().collect();
+    sorted_fixed.sort();
+    for bid in sorted_fixed {
+        let b = bricks_by_id[bid.as_str()];
+        result.push(PuzzlePiece {
+            id: format!("p{}", result.len()),
+            brick_ids: vec![bid.clone()],
+            x: b.x,
+            y: b.y,
+            width: b.width,
+            height: b.height,
+        });
+    }
+
+    // Merged pieces
+    for (_, brick_ids) in &pieces_dict {
+        let (x, y, w, h) = compute_piece_bbox(brick_ids, &bricks_by_id);
+        result.push(PuzzlePiece {
+            id: format!("p{}", result.len()),
+            brick_ids: brick_ids.clone(),
+            x,
+            y,
+            width: w,
+            height: h,
+        });
+    }
+
+    // Re-assign IDs
+    for (i, piece) in result.iter_mut().enumerate() {
+        piece.id = format!("p{i}");
+    }
+
+    result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ai_parser;
+
+    #[test]
+    fn test_merge_ny1() {
+        let ai_path = std::path::PathBuf::from("../../in/_NY1.ai");
+        if !ai_path.exists() {
+            eprintln!("Skipping: in/_NY1.ai not found");
+            return;
+        }
+
+        let (placements, _meta) = ai_parser::parse_ai(&ai_path, 900).unwrap();
+
+        // Convert to Brick + polygons
+        let mut bricks: Vec<Brick> = Vec::new();
+        let mut polygons: HashMap<String, Vec<[f64; 2]>> = HashMap::new();
+        for (i, p) in placements.iter().enumerate() {
+            let id = format!("b{i}");
+            bricks.push(Brick {
+                id: id.clone(),
+                x: p.x,
+                y: p.y,
+                width: p.width,
+                height: p.height,
+                brick_type: p.layer_type.clone(),
+            });
+            if let Some(poly) = &p.polygon {
+                polygons.insert(id, poly.clone());
+            }
+        }
+
+        let adj = build_adjacency_vector(&bricks, &polygons, ADJACENCY_THRESHOLD, 10.0, 2.0);
+        let areas = compute_polygon_areas(&bricks, &polygons);
+
+        eprintln!("Adjacency: {} bricks have neighbors", adj.len());
+
+        let pieces = merge_bricks(&bricks, 60, 42, &adj, &areas);
+        eprintln!("Pieces: {}", pieces.len());
+        assert_eq!(pieces.len(), 60, "Expected 60 pieces");
+    }
+}
