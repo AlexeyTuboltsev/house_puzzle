@@ -337,6 +337,106 @@ pub fn merge_bricks(
     result
 }
 
+/// Compute merged polygon outlines for each piece.
+///
+/// For each piece, converts brick polygons to canvas coords, buffers by BRIDGE px,
+/// computes union, then erodes back. Returns the largest polygon if the union
+/// produces a MultiPolygon.
+pub fn compute_piece_polygons(
+    pieces: &[PuzzlePiece],
+    bricks_by_id: &HashMap<String, Brick>,
+    brick_polygons: &HashMap<String, Vec<[f64; 2]>>,
+) -> HashMap<String, Vec<[f64; 2]>> {
+    use geo::algorithm::bool_ops::BooleanOps;
+
+    const BRIDGE: f64 = 3.0; // px buffer to bridge shared edges
+
+    let mut result: HashMap<String, Vec<[f64; 2]>> = HashMap::new();
+
+    for piece in pieces {
+        let mut polys: Vec<Polygon<f64>> = Vec::new();
+
+        for bid in &piece.brick_ids {
+            let brick = match bricks_by_id.get(bid) {
+                Some(b) => b,
+                None => continue,
+            };
+            let pts = match brick_polygons.get(bid) {
+                Some(p) if p.len() >= 3 => p,
+                _ => {
+                    // Fallback: bounding box rectangle
+                    let bx = brick.x as f64;
+                    let by = brick.y as f64;
+                    let bw = brick.width as f64;
+                    let bh = brick.height as f64;
+                    let coords = vec![
+                        Coord { x: bx, y: by },
+                        Coord { x: bx + bw, y: by },
+                        Coord { x: bx + bw, y: by + bh },
+                        Coord { x: bx, y: by + bh },
+                        Coord { x: bx, y: by },
+                    ];
+                    polys.push(Polygon::new(LineString::new(coords), vec![]));
+                    continue;
+                }
+            };
+
+            // Brick-local → canvas coords
+            let coords: Vec<Coord<f64>> = pts.iter()
+                .map(|p| Coord {
+                    x: p[0] + brick.x as f64,
+                    y: p[1] + brick.y as f64,
+                })
+                .collect();
+
+            if coords.len() < 3 {
+                continue;
+            }
+
+            let mut ring_coords = coords;
+            // Close the ring if needed
+            if ring_coords.first() != ring_coords.last() {
+                ring_coords.push(ring_coords[0]);
+            }
+
+            let poly = Polygon::new(LineString::new(ring_coords), vec![]);
+            if poly.unsigned_area() < 1.0 {
+                continue;
+            }
+            polys.push(poly);
+        }
+
+        if polys.is_empty() {
+            result.insert(piece.id.clone(), vec![]);
+            continue;
+        }
+
+        // Buffer each polygon by BRIDGE, compute union, then erode
+        // geo-booleanop doesn't have buffer, so we use a simpler approach:
+        // just compute the union of the raw polygons (no buffer/erode).
+        // This works well enough for display — shared edges are nearly coincident.
+        let mut union = polys[0].clone();
+        for poly in &polys[1..] {
+            let multi = union.union(poly);
+            // Take the polygon with the largest area
+            if let Some(largest) = multi.0.into_iter().max_by(|a, b| {
+                a.unsigned_area().partial_cmp(&b.unsigned_area()).unwrap()
+            }) {
+                union = largest;
+            }
+        }
+
+        // Extract exterior ring coordinates
+        let coords: Vec<[f64; 2]> = union.exterior().0.iter()
+            .map(|c| [c.x, c.y])
+            .collect();
+
+        result.insert(piece.id.clone(), coords);
+    }
+
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

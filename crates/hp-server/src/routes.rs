@@ -327,6 +327,9 @@ async fn do_merge(sessions: SessionStore, key: &str, req: MergeRequest) -> Respo
     let bricks_by_id: HashMap<String, Brick> = bricks.iter().map(|b| (b.id.clone(), b.clone())).collect();
     render::render_piece_pngs(&pieces, &bricks_by_id, &extract_dir);
 
+    // Compute piece polygons (union of brick vector polygons)
+    let piece_polys = puzzle::compute_piece_polygons(&pieces, &bricks_by_id, &polygons);
+
     let bricks_by_id_ref: HashMap<&str, &Brick> = bricks.iter().map(|b| (b.id.as_str(), b)).collect();
 
     let pieces_json: Vec<serde_json::Value> = pieces.iter().map(|p| {
@@ -335,13 +338,16 @@ async fn do_merge(sessions: SessionStore, key: &str, req: MergeRequest) -> Respo
                 "id": b.id, "x": b.x, "y": b.y, "width": b.width, "height": b.height,
             }))
         }).collect();
+        let poly = piece_polys.get(&p.id)
+            .map(|pts| pts.iter().map(|pt| json!([pt[0], pt[1]])).collect::<Vec<_>>())
+            .unwrap_or_default();
         json!({
             "id": p.id,
             "x": p.x, "y": p.y,
             "width": p.width, "height": p.height,
             "brick_ids": p.brick_ids,
             "bricks": brick_refs,
-            "polygon": [],
+            "polygon": poly,
             "img_url": "",
             "outline_url": "",
         })
