@@ -276,6 +276,19 @@ fn extract_plain_path_bbox(block: &LayerBlock, data: &[u8]) -> Option<(f64, f64,
 
 const PATH_OPS: &[&str] = &["m", "L", "l", "C", "c", "n", "N", "f", "F", "s", "S", "b", "B"];
 
+/// Shoelace formula for polygon area (absolute value).
+fn polygon_area(pts: &[[f64; 2]]) -> f64 {
+    if pts.len() < 3 { return 0.0; }
+    let mut area = 0.0;
+    let n = pts.len();
+    for i in 0..n {
+        let j = (i + 1) % n;
+        area += pts[i][0] * pts[j][1];
+        area -= pts[j][0] * pts[i][1];
+    }
+    area.abs() / 2.0
+}
+
 /// Parse path operator lines into polygons (PyMuPDF y-down coords).
 fn parse_path_lines(
     lines: &[Vec<&str>],
@@ -396,7 +409,13 @@ fn extract_vector_path(
         .map(|parts| parts.iter().map(|s| s.as_str()).collect())
         .collect();
     let polygons = parse_path_lines(&refs, offset_x, y_base);
-    polygons.into_iter().max_by_key(|p| p.len()).unwrap_or_default()
+    // Pick the polygon with the largest area (not just most points)
+    // This correctly selects the full door/window frame over a small glass insert
+    polygons.into_iter().max_by(|a, b| {
+        let area_a = polygon_area(a);
+        let area_b = polygon_area(b);
+        area_a.partial_cmp(&area_b).unwrap_or(std::cmp::Ordering::Equal)
+    }).unwrap_or_default()
 }
 
 // ---------------------------------------------------------------------------
