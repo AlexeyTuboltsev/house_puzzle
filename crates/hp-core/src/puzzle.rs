@@ -349,7 +349,7 @@ pub fn compute_piece_polygons(
 ) -> HashMap<String, Vec<[f64; 2]>> {
     use geo::algorithm::bool_ops::BooleanOps;
 
-    const BRIDGE: f64 = 3.0; // px buffer to bridge shared edges
+    const BRIDGE: f64 = 5.0; // px buffer to bridge shared edges (larger than Python's 3 to account for polygon precision differences)
 
     let mut result: HashMap<String, Vec<[f64; 2]>> = HashMap::new();
 
