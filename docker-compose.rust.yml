@@ -1,0 +1,16 @@
+services:
+  rust-editor:
+    build:
+      context: .
+      dockerfile: Dockerfile.rust
+    ports:
+      - "5051:5050"
+    volumes:
+      - .:/app
+      - rust-cargo-cache:/usr/local/cargo/registry
+      - rust-target-cache:/app/target
+    working_dir: /app
+
+volumes:
+  rust-cargo-cache:
+  rust-target-cache:
