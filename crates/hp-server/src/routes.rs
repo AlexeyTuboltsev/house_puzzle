@@ -198,12 +198,35 @@ async fn do_load(sessions: SessionStore, key: String, req: LoadRequest) -> Respo
     let ch = metadata.canvas_height as u32;
     let raw = &ai_data.raw;
 
+    // Render bricks layer via MuPDF OCG (needed for vector brick fallback)
+    let has_vector_bricks = render_bricks.iter().any(|(_, bp)| bp.layer_type == "vector_brick");
+    let bricks_layer_img = if has_vector_bricks {
+        render::render_ocg_layer_image(
+            &file_path, "bricks", metadata.render_dpi, metadata.clip_rect,
+            cw, ch, (0, 0),
+        )
+    } else {
+        None
+    };
+
     // Render brick PNGs (parallelized with rayon)
-    render::render_brick_pngs(raw, &render_bricks, cw, ch, &extract_dir);
+    render::render_brick_pngs(raw, &render_bricks, cw, ch, &extract_dir, bricks_layer_img.as_ref());
 
     // Render composite
     let comp_path = extract_dir.join("composite.png");
-    render::render_composite_png(raw, &render_bricks, cw, ch, &comp_path);
+    render::render_composite_png(raw, &render_bricks, cw, ch, &comp_path, bricks_layer_img.as_ref());
+
+    // Render OCG layers (lights, background)
+    let clip = metadata.clip_rect;
+    let pdf_offset = (0i32, 0i32); // TODO: compute pdf_offset_px
+    let has_lights = render::render_ocg_layer(
+        &file_path, "lights", &extract_dir.join("lights.png"),
+        metadata.render_dpi, clip, cw, ch, pdf_offset,
+    );
+    let has_background = render::render_ocg_layer(
+        &file_path, "background", &extract_dir.join("background.png"),
+        metadata.render_dpi, clip, cw, ch, pdf_offset,
+    );
 
     // Build brick response data
     let brick_data: Vec<serde_json::Value> = bricks.iter().map(|b| {
@@ -260,8 +283,8 @@ async fn do_load(sessions: SessionStore, key: String, req: LoadRequest) -> Respo
         "houseUnitsHigh": house_units_high,
         "composite_url": format!("{pfx}/composite.png"),
         "outlines_url": format!("{pfx}/outlines.png"),
-        "lights_url": null,
-        "blueprint_bg_url": null,
+        "lights_url": if has_lights { Some(format!("{pfx}/lights.png")) } else { None },
+        "blueprint_bg_url": if has_background { Some(format!("{pfx}/background.png")) } else { None },
     });
 
     Json(response).into_response()

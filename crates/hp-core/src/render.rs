@@ -48,13 +48,15 @@ pub fn extract_raster_image(block_data: &[u8]) -> Option<RgbaImage> {
 }
 
 /// Render all brick PNGs to disk (full-canvas RGBA, brick at its position).
-/// Parallelized with rayon.
+/// Parallelized with rayon for raster bricks.
+/// Vector bricks are rendered via `bricks_layer_img` (MuPDF OCG render of bricks layer).
 pub fn render_brick_pngs(
     raw: &[u8],
-    bricks: &[(String, BrickPlacement)], // (id, placement)
+    bricks: &[(String, BrickPlacement)],
     canvas_width: u32,
     canvas_height: u32,
     out_dir: &Path,
+    bricks_layer_img: Option<&RgbaImage>,
 ) {
     std::fs::create_dir_all(out_dir).ok();
 
@@ -70,8 +72,24 @@ pub fn render_brick_pngs(
                 let resized = image::imageops::resize(&raster, w, h, image::imageops::Lanczos3);
                 image::imageops::overlay(&mut canvas, &resized, bp.x as i64, bp.y as i64);
             }
+        } else if bp.layer_type == "vector_brick" {
+            // Vector brick: crop from the full bricks-layer MuPDF render
+            if let Some(layer_img) = bricks_layer_img {
+                // Copy the brick's region from the layer render
+                for dy in 0..bp.height.max(0) {
+                    for dx in 0..bp.width.max(0) {
+                        let sx = (bp.x + dx) as u32;
+                        let sy = (bp.y + dy) as u32;
+                        if sx < layer_img.width() && sy < layer_img.height() {
+                            let px = layer_img.get_pixel(sx, sy);
+                            if px[3] > 0 {
+                                canvas.put_pixel(sx, sy, *px);
+                            }
+                        }
+                    }
+                }
+            }
         }
-        // TODO: vector_brick rendering (gradients + compound paths)
 
         canvas.save(&out_path).ok();
     });
@@ -84,6 +102,7 @@ pub fn render_composite_png(
     canvas_width: u32,
     canvas_height: u32,
     out_path: &Path,
+    bricks_layer_img: Option<&RgbaImage>,
 ) {
     let mut canvas = RgbaImage::new(canvas_width, canvas_height);
 
@@ -95,6 +114,21 @@ pub fn render_composite_png(
                 let h = bp.height.max(1) as u32;
                 let resized = image::imageops::resize(&raster, w, h, image::imageops::Lanczos3);
                 image::imageops::overlay(&mut canvas, &resized, bp.x as i64, bp.y as i64);
+            }
+        } else if bp.layer_type == "vector_brick" {
+            if let Some(layer_img) = bricks_layer_img {
+                for dy in 0..bp.height.max(0) {
+                    for dx in 0..bp.width.max(0) {
+                        let sx = (bp.x + dx) as u32;
+                        let sy = (bp.y + dy) as u32;
+                        if sx < layer_img.width() && sy < layer_img.height() {
+                            let px = layer_img.get_pixel(sx, sy);
+                            if px[3] > 0 {
+                                canvas.put_pixel(sx, sy, *px);
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -171,6 +205,165 @@ fn render_piece_outline(piece_img: &RgbaImage, out_path: &Path) {
     }
 
     outline.save(out_path).ok();
+}
+
+/// Render a specific OCG layer to an RgbaImage (for in-memory use).
+pub fn render_ocg_layer_image(
+    ai_path: &Path,
+    layer_name: &str,
+    dpi: f64,
+    clip_rect: (f64, f64, f64, f64),
+    canvas_width: u32,
+    canvas_height: u32,
+    pdf_offset_px: (i32, i32),
+) -> Option<RgbaImage> {
+    use crate::mupdf_ffi;
+
+    let doc = mupdf::pdf::PdfDocument::open(ai_path.to_str()?).ok()?;
+
+    let layer_count = mupdf_ffi::count_layer_ui(&doc);
+    let mut found = false;
+    for i in 0..layer_count {
+        mupdf_ffi::deselect_layer_ui(&doc, i);
+    }
+    for i in 0..layer_count {
+        let info = mupdf_ffi::layer_ui_info(&doc, i);
+        if info.text == layer_name {
+            mupdf_ffi::select_layer_ui(&doc, i);
+            found = true;
+        }
+    }
+    if !found {
+        return None;
+    }
+
+    let scale = dpi as f32 / 72.0;
+    let matrix = mupdf::Matrix::new_scale(scale, scale);
+    let page = doc.load_page(0).ok()?;
+    let cs = mupdf::Colorspace::device_rgb();
+    let pixmap = page.to_pixmap(&matrix, &cs, true, false).ok()?;
+
+    let pw = pixmap.width() as u32;
+    let ph = pixmap.height() as u32;
+    let n = pixmap.n() as u32;
+    let samples = pixmap.samples();
+
+    let mut full_img = RgbaImage::new(pw, ph);
+    for y in 0..ph {
+        for x in 0..pw {
+            let idx = ((y * pw + x) * n) as usize;
+            if idx + 3 < samples.len() {
+                let r = samples[idx];
+                let g = samples[idx + 1];
+                let b = samples[idx + 2];
+                let a = if n >= 4 { samples[idx + 3] } else { 255 };
+                full_img.put_pixel(x, y, Rgba([r, g, b, a]));
+            }
+        }
+    }
+
+    // Crop to clip rect
+    let cx = (clip_rect.0 * scale as f64).round() as i64;
+    let cy = (clip_rect.1 * scale as f64).round() as i64;
+    let dx = pdf_offset_px.0 as i64;
+    let dy = pdf_offset_px.1 as i64;
+
+    let mut canvas = RgbaImage::new(canvas_width, canvas_height);
+    image::imageops::overlay(&mut canvas, &full_img, -(cx - dx), -(cy - dy));
+    Some(canvas)
+}
+
+/// Render a specific OCG layer (e.g., "lights", "background") to a PNG.
+///
+/// Opens the AI file, toggles OCG layers (disable all, enable target),
+/// renders the page to a pixmap, crops to the clip rect, and saves.
+pub fn render_ocg_layer(
+    ai_path: &Path,
+    layer_name: &str,
+    out_path: &Path,
+    dpi: f64,
+    clip_rect: (f64, f64, f64, f64),
+    canvas_width: u32,
+    canvas_height: u32,
+    pdf_offset_px: (i32, i32),
+) -> bool {
+    use crate::mupdf_ffi;
+
+    let doc = match mupdf::pdf::PdfDocument::open(ai_path.to_str().unwrap_or("")) {
+        Ok(d) => d,
+        Err(_) => return false,
+    };
+
+    // Find and toggle OCG layers
+    let layer_count = mupdf_ffi::count_layer_ui(&doc);
+    let mut target_idx: Option<i32> = None;
+
+    // Disable all layers first
+    for i in 0..layer_count {
+        mupdf_ffi::deselect_layer_ui(&doc, i);
+    }
+
+    // Enable only the target layer
+    for i in 0..layer_count {
+        let info = mupdf_ffi::layer_ui_info(&doc, i);
+        if info.text == layer_name {
+            mupdf_ffi::select_layer_ui(&doc, i);
+            target_idx = Some(i);
+        }
+    }
+
+    if target_idx.is_none() {
+        return false;
+    }
+
+    // Render page at DPI scale
+    let scale = dpi as f32 / 72.0;
+    let matrix = mupdf::Matrix::new_scale(scale, scale);
+    let page = match doc.load_page(0) {
+        Ok(p) => p,
+        Err(_) => return false,
+    };
+    let cs = mupdf::Colorspace::device_rgb();
+    let pixmap = match page.to_pixmap(&matrix, &cs, true, false) {
+        Ok(p) => p,
+        Err(_) => return false,
+    };
+
+    // Convert pixmap to RgbaImage
+    let pw = pixmap.width() as u32;
+    let ph = pixmap.height() as u32;
+    let n = pixmap.n() as u32;
+    let samples = pixmap.samples();
+
+    let mut full_img = RgbaImage::new(pw, ph);
+    for y in 0..ph {
+        for x in 0..pw {
+            let idx = (y * pw + x) * n;
+            let idx = idx as usize;
+            if idx + 3 < samples.len() {
+                let r = samples[idx];
+                let g = samples[idx + 1];
+                let b = samples[idx + 2];
+                let a = if n >= 4 { samples[idx + 3] } else { 255 };
+                full_img.put_pixel(x, y, Rgba([r, g, b, a]));
+            }
+        }
+    }
+
+    // Crop to clip rect (in scaled pixel coords)
+    let cx = (clip_rect.0 * scale as f64).round() as i64;
+    let cy = (clip_rect.1 * scale as f64).round() as i64;
+
+    // Apply PDF offset
+    let dx = pdf_offset_px.0 as i64;
+    let dy = pdf_offset_px.1 as i64;
+
+    // Create canvas-sized output with the layer cropped and shifted
+    let mut canvas = RgbaImage::new(canvas_width, canvas_height);
+    image::imageops::overlay(&mut canvas, &full_img, -(cx - dx), -(cy - dy));
+
+    canvas.save(out_path).ok();
+    true
 }
 
 #[cfg(test)]
