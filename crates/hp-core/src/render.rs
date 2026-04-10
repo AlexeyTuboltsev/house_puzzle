@@ -110,9 +110,12 @@ pub fn render_composite_from_images(
 }
 
 /// Find covered bricks using in-memory images (no disk I/O).
+/// Find bricks that are covered by another (>= 80% alpha overlap).
+/// `protected_ids`: bricks that should never be removed (e.g., vector bricks).
 pub fn find_covered_bricks(
     bricks: &[crate::types::Brick],
     brick_images: &HashMap<String, RgbaImage>,
+    protected_ids: &std::collections::HashSet<String>,
 ) -> std::collections::HashSet<String> {
     let mut covered = std::collections::HashSet::new();
 
@@ -158,7 +161,9 @@ pub fn find_covered_bricks(
             }
 
             if total_s > 0 && (overlap as f64 / total_s as f64) >= 0.8 {
-                covered.insert(small.id.clone());
+                if !protected_ids.contains(&small.id) {
+                    covered.insert(small.id.clone());
+                }
             }
         }
     }

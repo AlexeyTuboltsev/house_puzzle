@@ -644,9 +644,26 @@ pub fn parse_ai(
                 }).collect()
             )
         } else {
-            skipped_bricks.push(p.child.name.clone());
-            None
+            // Fallback: use bounding box as polygon (for bricks with no %_ path)
+            Some(vec![
+                [0.0, 0.0],
+                [pw as f64, 0.0],
+                [pw as f64, ph as f64],
+                [0.0, ph as f64],
+            ])
         };
+
+        // Detect multi-object layers (multiple %_ moveto commands)
+        let block_data = &data[p.child.begin..p.child.end];
+        let moveto_count = block_data.split(|&b| b == b'\r')
+            .filter(|line| {
+                let s = bstr(line).trim();
+                s.starts_with("%_") && s.ends_with(" m")
+            })
+            .count();
+        if moveto_count > 1 {
+            eprintln!("[parse] WARNING: {} has {} objects (multi-object layer)", p.child.name, moveto_count);
+        }
 
         results.push(BrickPlacement {
             name: p.child.name.clone(),

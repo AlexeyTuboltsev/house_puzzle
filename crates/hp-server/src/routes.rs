@@ -158,6 +158,7 @@ async fn do_load(sessions: SessionStore, key: String, req: LoadRequest) -> Respo
     let mut bricks: Vec<Brick> = Vec::new();
     let mut brick_polygons: HashMap<String, Vec<[f64; 2]>> = HashMap::new();
     let mut layer_blocks: HashMap<String, ai_parser::LayerBlock> = HashMap::new();
+    let mut brick_layer_names: HashMap<String, String> = HashMap::new();
 
     for (i, p) in placements.iter().enumerate() {
         let id = if deterministic {
@@ -180,6 +181,7 @@ async fn do_load(sessions: SessionStore, key: String, req: LoadRequest) -> Respo
         if let Some(poly) = &p.polygon {
             brick_polygons.insert(id.clone(), poly.clone());
         }
+        brick_layer_names.insert(id, p.name.clone());
     }
 
     // Compute adjacency and areas
@@ -221,7 +223,12 @@ async fn do_load(sessions: SessionStore, key: String, req: LoadRequest) -> Respo
     let brick_images = render::render_brick_images(raw, &render_bricks, cw, ch, bricks_layer_img.as_ref());
 
     // Filter covered bricks using in-memory images
-    let covered_ids = render::find_covered_bricks(&bricks, &brick_images);
+    // Protect vector bricks from covered-brick removal
+    let protected: std::collections::HashSet<String> = render_bricks.iter()
+        .filter(|(_, bp)| bp.layer_type == "vector_brick")
+        .map(|(id, _)| id.clone())
+        .collect();
+    let covered_ids = render::find_covered_bricks(&bricks, &brick_images, &protected);
     if !covered_ids.is_empty() {
         eprintln!("[load] Removing {} covered bricks", covered_ids.len());
         bricks.retain(|b| !covered_ids.contains(&b.id));
@@ -266,11 +273,13 @@ async fn do_load(sessions: SessionStore, key: String, req: LoadRequest) -> Respo
         let polygon = brick_polygons.get(&b.id)
             .map(|p| p.iter().map(|pt| json!([pt[0], pt[1]])).collect::<Vec<_>>())
             .unwrap_or_default();
+        let layer_name = brick_layer_names.get(&b.id).cloned().unwrap_or_default();
         json!({
             "id": b.id,
             "x": b.x, "y": b.y,
             "width": b.width, "height": b.height,
             "type": b.brick_type,
+            "layer_name": layer_name,
             "neighbors": neighbors,
             "polygon": polygon,
         })
