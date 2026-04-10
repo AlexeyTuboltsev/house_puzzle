@@ -437,32 +437,64 @@ pub fn compute_piece_polygons(
             continue;
         }
 
-        // Union all buffered polygons
-        let mut union = buffered[0].clone();
+        // Iteratively union buffered polygons. When union produces a
+        // MultiPolygon (non-overlapping parts), keep ALL parts and continue
+        // unioning subsequent polygons against the accumulated set.
+        let mut accumulated: Vec<Polygon<f64>> = vec![buffered[0].clone()];
         for poly in &buffered[1..] {
-            let multi = Clipper::union(&union, poly, factor);
-            if let Some(largest) = multi.0.into_iter().max_by(|a, b| {
-                a.unsigned_area().partial_cmp(&b.unsigned_area()).unwrap()
-            }) {
-                union = largest;
+            let mut merged = false;
+            let mut new_acc = Vec::new();
+            for existing in &accumulated {
+                let multi = Clipper::union(existing, poly, factor);
+                if multi.0.len() == 1 && !merged {
+                    // Successfully merged
+                    new_acc.push(multi.0.into_iter().next().unwrap());
+                    merged = true;
+                } else if !merged {
+                    // Didn't merge — keep existing, try next
+                    new_acc.push(existing.clone());
+                } else {
+                    new_acc.push(existing.clone());
+                }
             }
+            if !merged {
+                // Poly didn't merge with anything — add it standalone
+                new_acc.push(poly.clone());
+            }
+            accumulated = new_acc;
         }
 
-        // Erode back by BRIDGE to restore original outline
-        let eroded = union.offset(-BRIDGE, geo_clipper::JoinType::Round(0.25), geo_clipper::EndType::ClosedPolygon, factor);
+        // Now take the convex hull of ALL accumulated polygon points
+        // This ensures the piece outline covers all bricks
+        let all_points: Vec<Coord<f64>> = accumulated.iter()
+            .flat_map(|p| p.exterior().0.iter().cloned())
+            .collect();
 
-        let final_poly = if !eroded.0.is_empty() {
-            eroded.0.into_iter()
-                .max_by(|a, b| a.unsigned_area().partial_cmp(&b.unsigned_area()).unwrap())
-                .unwrap()
+        if all_points.len() < 3 {
+            result.insert(piece.id.clone(), vec![]);
+            continue;
+        }
+
+        // If we got a single merged polygon, erode it for accurate outline
+        let final_coords = if accumulated.len() == 1 {
+            let eroded = accumulated[0].offset(-BRIDGE, geo_clipper::JoinType::Round(0.25), geo_clipper::EndType::ClosedPolygon, factor);
+            if !eroded.0.is_empty() {
+                eroded.0.into_iter()
+                    .max_by(|a, b| a.unsigned_area().partial_cmp(&b.unsigned_area()).unwrap())
+                    .unwrap()
+                    .exterior().0.iter()
+                    .map(|c| [c.x, c.y])
+                    .collect()
+            } else {
+                accumulated[0].exterior().0.iter().map(|c| [c.x, c.y]).collect()
+            }
         } else {
-            union
+            // Multiple disconnected parts — use convex hull
+            let hull = LineString::new(all_points).convex_hull();
+            hull.exterior().0.iter().map(|c| [c.x, c.y]).collect()
         };
 
-        let coords: Vec<[f64; 2]> = final_poly.exterior().0.iter()
-            .map(|c| [c.x, c.y])
-            .collect();
-        result.insert(piece.id.clone(), coords);
+        result.insert(piece.id.clone(), final_coords);
     }
 
     result
