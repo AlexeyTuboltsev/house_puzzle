@@ -6,12 +6,18 @@
 //! 2. Parses the PostScript layer tree
 //! 3. (TODO) Extracts brick placement and vector polygon data
 
-use regex::Regex;
+use regex::bytes::Regex;
 use std::path::Path;
 
 use crate::mupdf_ffi;
 
+/// Helper: convert a byte slice to &str (ASCII portion).
+fn bstr(b: &[u8]) -> &str {
+    std::str::from_utf8(b).unwrap_or("")
+}
+
 /// A parsed layer block from the AI PostScript data.
+/// `begin` and `end` are byte offsets into the raw decompressed data.
 #[derive(Debug, Clone)]
 pub struct LayerBlock {
     pub name: String,
@@ -21,10 +27,19 @@ pub struct LayerBlock {
     pub children: Vec<LayerBlock>,
 }
 
-/// Raw AI data: the decompressed bytes and decoded text.
+/// Raw AI data: the decompressed bytes.
+/// All offsets (LayerBlock.begin/end) are byte positions into `raw`.
+/// Use `text_slice()` to get a &str for a range (ASCII portions only).
 pub struct AiPrivateData {
     pub raw: Vec<u8>,
-    pub text: String,
+}
+
+impl AiPrivateData {
+    /// Get a text slice from the raw data (lossy UTF-8).
+    /// Safe for ASCII/latin-1 content like PostScript operators.
+    pub fn text_slice(&self, begin: usize, end: usize) -> String {
+        String::from_utf8_lossy(&self.raw[begin..end]).to_string()
+    }
 }
 
 /// Extract and decompress all AIPrivateData streams from an AI file.
@@ -64,27 +79,23 @@ pub fn decompress_ai_data(ai_path: &Path) -> Result<AiPrivateData, String> {
     let decompressed = zstd::decode_all(std::io::Cursor::new(compressed))
         .map_err(|e| format!("ZStd decompression failed: {e}"))?;
 
-    // Decode as latin-1 (each byte maps directly to its unicode codepoint)
-    let text: String = decompressed.iter().map(|&b| b as char).collect();
-
     Ok(AiPrivateData {
         raw: decompressed,
-        text,
     })
 }
 
 /// Parse `%AI5_BeginLayer` / `%AI5_EndLayer` pairs into a nested tree.
-pub fn parse_layer_tree(text: &str) -> Vec<LayerBlock> {
+/// Operates on raw bytes — all offsets are byte positions.
+pub fn parse_layer_tree(data: &[u8]) -> Vec<LayerBlock> {
     let begin_re = Regex::new(r"%AI5_BeginLayer").unwrap();
     let end_re = Regex::new(r"%AI5_EndLayer").unwrap();
     let name_re = Regex::new(r"Lb\r\(([^)]*)\)").unwrap();
 
-    // Collect all begin/end events with positions
     let mut events: Vec<(char, usize)> = Vec::new();
-    for m in begin_re.find_iter(text) {
+    for m in begin_re.find_iter(data) {
         events.push(('B', m.start()));
     }
-    for m in end_re.find_iter(text) {
+    for m in end_re.find_iter(data) {
         events.push(('E', m.start()));
     }
     events.sort_by_key(|e| e.1);
@@ -94,11 +105,10 @@ pub fn parse_layer_tree(text: &str) -> Vec<LayerBlock> {
 
     for (typ, pos) in events {
         if typ == 'B' {
-            // Extract layer name from nearby text
-            let snippet_end = (pos + 300).min(text.len());
-            let snippet = &text[pos..snippet_end];
+            let snippet_end = (pos + 300).min(data.len());
+            let snippet = &data[pos..snippet_end];
             let name = name_re.captures(snippet)
-                .map(|c| c[1].to_string())
+                .map(|c| String::from_utf8_lossy(&c[1]).to_string())
                 .unwrap_or_default();
             let depth = stack.len();
             let block = LayerBlock {
@@ -110,9 +120,8 @@ pub fn parse_layer_tree(text: &str) -> Vec<LayerBlock> {
             };
             stack.push(block);
         } else {
-            // End layer
             if let Some(mut block) = stack.pop() {
-                block.end = pos + "%AI5_EndLayer".len();
+                block.end = pos + b"%AI5_EndLayer".len();
                 if let Some(parent) = stack.last_mut() {
                     parent.children.push(block);
                 } else {
@@ -133,16 +142,18 @@ pub fn parse_layer_tree(text: &str) -> Vec<LayerBlock> {
 /// pymu_x = ai_x + offset_x; pymu_y = y_base - ai_y
 pub fn compute_ai_transform(
     background: &LayerBlock,
-    text: &str,
+    data: &[u8],
     page: &mupdf::Page,
 ) -> (f64, f64) {
-    let block_text = &text[background.begin..background.end];
+    let block_data = &data[background.begin..background.end];
     let coord_re = Regex::new(r"(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+[mLCl]\b").unwrap();
 
     let mut xs: Vec<f64> = Vec::new();
     let mut ys: Vec<f64> = Vec::new();
-    for cap in coord_re.captures_iter(block_text) {
-        if let (Ok(x), Ok(y)) = (cap[1].parse::<f64>(), cap[2].parse::<f64>()) {
+    for cap in coord_re.captures_iter(block_data) {
+        let x_str = std::str::from_utf8(&cap[1]).unwrap_or("0");
+        let y_str = std::str::from_utf8(&cap[2]).unwrap_or("0");
+        if let (Ok(x), Ok(y)) = (x_str.parse::<f64>(), y_str.parse::<f64>()) {
             xs.push(x);
             ys.push(y);
         }
@@ -166,13 +177,13 @@ pub fn compute_ai_transform(
 // ---------------------------------------------------------------------------
 
 /// Check if a block contains a gradient fill (Bg operator).
-fn has_gradient(block_text: &str) -> bool {
-    if !block_text.contains("Bg") {
+fn has_gradient(block_data: &[u8]) -> bool {
+    if !block_data.windows(2).any(|w| w == b"Bg") {
         return false;
     }
-    for line in block_text.split('\r') {
-        let stripped = line.trim();
-        if stripped.ends_with("Bg") && stripped.contains('(') {
+    for line in block_data.split(|&b| b == b'\r') {
+        let s = bstr(line).trim();
+        if s.ends_with("Bg") && s.contains('(') {
             return true;
         }
     }
@@ -181,21 +192,21 @@ fn has_gradient(block_text: &str) -> bool {
 
 /// Extract the raster placement matrix from an Xh operator.
 /// Returns (tx, ty, w_pts, h_pts) in AI coordinate space.
-fn extract_raster_matrix(block_text: &str) -> Option<(f64, f64, f64, f64)> {
+fn extract_raster_matrix(block_data: &[u8]) -> Option<(f64, f64, f64, f64)> {
     let num = r"-?\d+(?:\.\d+)?";
     let pattern = format!(
         r"\[\s*({n})\s+{n}\s+{n}\s+({n})\s+({n})\s+({n})\s*\]\s+(\d+)\s+(\d+)\s+\d+\s+Xh",
         n = num
     );
     let re = Regex::new(&pattern).unwrap();
-    let m = re.captures(block_text)?;
+    let m = re.captures(block_data)?;
 
-    let a: f64 = m[1].parse().ok()?;
-    let d: f64 = m[2].parse().ok()?;
-    let tx: f64 = m[3].parse().ok()?;
-    let ty: f64 = m[4].parse().ok()?;
-    let img_w: f64 = m[5].parse().ok()?;
-    let img_h: f64 = m[6].parse().ok()?;
+    let a: f64 = bstr(&m[1]).parse().ok()?;
+    let d: f64 = bstr(&m[2]).parse().ok()?;
+    let tx: f64 = bstr(&m[3]).parse().ok()?;
+    let ty: f64 = bstr(&m[4]).parse().ok()?;
+    let img_w: f64 = bstr(&m[5]).parse().ok()?;
+    let img_h: f64 = bstr(&m[6]).parse().ok()?;
 
     if img_w <= 0.0 || img_h <= 0.0 {
         return None;
@@ -208,13 +219,13 @@ fn extract_raster_matrix(block_text: &str) -> Option<(f64, f64, f64, f64)> {
 
 /// Extract bounding box from plain (non-%_) path operators.
 /// Returns (ai_xmin, ai_ymin, ai_xmax, ai_ymax) in AI y-up coords.
-fn extract_plain_path_bbox(block: &LayerBlock, text: &str) -> Option<(f64, f64, f64, f64)> {
-    let block_text = &text[block.begin..block.end];
+fn extract_plain_path_bbox(block: &LayerBlock, data: &[u8]) -> Option<(f64, f64, f64, f64)> {
+    let block_data = &data[block.begin..block.end];
     let mut xs: Vec<f64> = Vec::new();
     let mut ys: Vec<f64> = Vec::new();
 
-    for line in block_text.split('\r') {
-        let line = line.trim();
+    for line in block_data.split(|&b| b == b'\r') {
+        let line = bstr(line).trim().to_string();
         if line.starts_with('%') {
             continue;
         }
@@ -331,35 +342,37 @@ fn parse_path_lines(
 /// Extract the vector polygon for a brick from %_ prefixed PostScript path lines.
 fn extract_vector_path(
     block: &LayerBlock,
-    text: &str,
+    data: &[u8],
     offset_x: f64,
     y_base: f64,
 ) -> Vec<[f64; 2]> {
-    let block_text = &text[block.begin..block.end];
+    let block_data = &data[block.begin..block.end];
+
+    // Parse all lines into owned strings first (avoids lifetime issues)
+    let lines: Vec<String> = block_data.split(|&b| b == b'\r')
+        .map(|l| bstr(l).trim().to_string())
+        .collect();
 
     // Primary: %_ prefixed lines
-    let mut parsed_lines: Vec<Vec<&str>> = Vec::new();
-    for line in block_text.split('\r') {
-        let line = line.trim();
+    let mut parsed_lines: Vec<Vec<String>> = Vec::new();
+    for line in &lines {
         if !line.starts_with("%_") {
             continue;
         }
-        let parts: Vec<&str> = line[2..].split_whitespace().collect();
-        if !parts.is_empty() && PATH_OPS.contains(parts.last().unwrap()) {
+        let parts: Vec<String> = line[2..].split_whitespace().map(|s| s.to_string()).collect();
+        if !parts.is_empty() && PATH_OPS.contains(&parts.last().unwrap().as_str()) {
             parsed_lines.push(parts);
         }
     }
 
     if parsed_lines.is_empty() {
-        // Fallback: plain operator lines
-        for line in block_text.split('\r') {
-            let line = line.trim();
+        for line in &lines {
             if line.starts_with('%') {
                 continue;
             }
-            let parts: Vec<&str> = line.split_whitespace().collect();
+            let parts: Vec<String> = line.split_whitespace().map(|s| s.to_string()).collect();
             if !parts.is_empty()
-                && PATH_OPS.contains(parts.last().unwrap())
+                && PATH_OPS.contains(&parts.last().unwrap().as_str())
                 && (parts.len() == 3 || parts.len() == 7)
             {
                 let all_numeric = parts[..parts.len() - 1]
@@ -372,7 +385,11 @@ fn extract_vector_path(
         }
     }
 
-    let polygons = parse_path_lines(&parsed_lines, offset_x, y_base);
+    // Convert to &str slices for parse_path_lines
+    let refs: Vec<Vec<&str>> = parsed_lines.iter()
+        .map(|parts| parts.iter().map(|s| s.as_str()).collect())
+        .collect();
+    let polygons = parse_path_lines(&refs, offset_x, y_base);
     polygons.into_iter().max_by_key(|p| p.len()).unwrap_or_default()
 }
 
@@ -401,10 +418,10 @@ pub fn parse_ai(
 ) -> Result<(Vec<BrickPlacement>, ParsedAiMetadata), String> {
     // Step 1: decompress AI private data
     let ai_data = decompress_ai_data(ai_path)?;
-    let text = &ai_data.text;
+    let data = &ai_data.raw;
 
     // Step 2: parse layer tree
-    let roots = parse_layer_tree(text);
+    let roots = parse_layer_tree(data);
     let bg = roots.iter().find(|r| r.name == "background")
         .ok_or("No 'background' layer found")?;
     let bricks_node = roots.iter().find(|r| r.name == "bricks")
@@ -415,7 +432,7 @@ pub fn parse_ai(
         .map_err(|e| format!("Failed to open AI as PDF: {e}"))?;
     let page = doc.load_page(0)
         .map_err(|e| format!("Failed to load page: {e}"))?;
-    let (offset_x, y_base) = compute_ai_transform(bg, text, &page);
+    let (offset_x, y_base) = compute_ai_transform(bg, data, &page);
 
     // Step 4: collect brick placements (PyMuPDF y-down coords)
     struct RawPlacement<'a> {
@@ -426,9 +443,9 @@ pub fn parse_ai(
 
     let mut placements: Vec<RawPlacement> = Vec::new();
     for child in &bricks_node.children {
-        let block_text = &text[child.begin..child.end];
-        let is_gradient = has_gradient(block_text);
-        let mat = extract_raster_matrix(block_text);
+        let block_data = &data[child.begin..child.end];
+        let is_gradient = has_gradient(block_data);
+        let mat = extract_raster_matrix(block_data);
 
         if let Some((tx, ty, w_pts, h_pts)) = mat {
             if !is_gradient {
@@ -436,7 +453,7 @@ pub fn parse_ai(
                 let pymu_y_top = y_base - ty;
                 let pymu_x1 = tx + w_pts + offset_x;
                 let pymu_y_bottom = y_base - ty + h_pts;
-                let has_vector = extract_plain_path_bbox(child, text).is_some();
+                let has_vector = extract_plain_path_bbox(child, data).is_some();
                 let ltype = if has_vector { "mixed_brick" } else { "brick" };
                 placements.push(RawPlacement {
                     child,
@@ -448,7 +465,7 @@ pub fn parse_ai(
         }
 
         // Gradient/vector-only brick
-        if let Some((ai_xmin, ai_ymin, ai_xmax, ai_ymax)) = extract_plain_path_bbox(child, text) {
+        if let Some((ai_xmin, ai_ymin, ai_xmax, ai_ymax)) = extract_plain_path_bbox(child, data) {
             let pymu_x0 = ai_xmin + offset_x;
             let pymu_x1 = ai_xmax + offset_x;
             let pymu_y_top = y_base - ai_ymax;
@@ -490,7 +507,7 @@ pub fn parse_ai(
     if let Some(sn) = screen_node {
         let targets = if sn.children.is_empty() { vec![sn] } else { sn.children.iter().collect() };
         for t in targets {
-            if let Some((_, ai_ymin, _, ai_ymax)) = extract_plain_path_bbox(t, text) {
+            if let Some((_, ai_ymin, _, ai_ymax)) = extract_plain_path_bbox(t, data) {
                 let screen_h_pts = (y_base - ai_ymin) - (y_base - ai_ymax);
                 screen_frame_height_px = screen_h_pts * scale;
                 break;
@@ -516,7 +533,7 @@ pub fn parse_ai(
         seen_bbox.insert(bbox_key);
 
         // Extract vector polygon
-        let poly_pymu = extract_vector_path(p.child, text, offset_x, y_base);
+        let poly_pymu = extract_vector_path(p.child, data, offset_x, y_base);
         let polygon = if poly_pymu.len() >= 3 {
             Some(
                 poly_pymu.iter().map(|pt| {
@@ -582,9 +599,9 @@ mod tests {
             None => { eprintln!("Skipping: in/_NY1.ai not found"); return; }
         };
         let data = decompress_ai_data(&path).unwrap();
-        assert!(!data.text.is_empty());
-        assert!(data.text.contains("%AI5_BeginLayer"));
-        eprintln!("Decompressed {} bytes, {} chars", data.raw.len(), data.text.len());
+        assert!(!data.raw.is_empty());
+        assert!(data.raw.windows(15).any(|w| w == b"%AI5_BeginLayer"));
+        eprintln!("Decompressed {} bytes", data.raw.len());
     }
 
     #[test]
@@ -594,7 +611,7 @@ mod tests {
             None => { eprintln!("Skipping: in/_NY1.ai not found"); return; }
         };
         let data = decompress_ai_data(&path).unwrap();
-        let roots = parse_layer_tree(&data.text);
+        let roots = parse_layer_tree(&data.raw);
         assert!(!roots.is_empty());
 
         let names: Vec<&str> = roots.iter().map(|r| r.name.as_str()).collect();
