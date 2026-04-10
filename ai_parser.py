@@ -881,11 +881,20 @@ def parse_ai(
     )
 
     # Pass 2: build BrickLayer for each brick (all in PyMuPDF y-down, same as pixel space)
-    for brick_idx, (child, (pymu_x0, pymu_y_top, pymu_x1, pymu_y_bottom), ltype) in enumerate(placements):
+    # Deduplicate by bbox — AI files can contain two layers at the exact same position
+    seen_bbox: set[tuple] = set()
+    child_by_name: dict[str, _LayerBlock] = {}
+    brick_idx = 0
+    for child, (pymu_x0, pymu_y_top, pymu_x1, pymu_y_bottom), ltype in placements:
         px = round((pymu_x0 - clip_x0) * scale)
         py = round((pymu_y_top - clip_y0) * scale)
         pw = max(1, round((pymu_x1 - pymu_x0) * scale))
         ph = max(1, round((pymu_y_bottom - pymu_y_top) * scale))
+
+        bbox_key = (px, py, pw, ph)
+        if bbox_key in seen_bbox:
+            continue
+        seen_bbox.add(bbox_key)
 
         bl = BrickLayer(
             index=brick_idx,
@@ -895,6 +904,21 @@ def parse_ai(
             layer_type=ltype,
         )
         house.bricks.append(bl)
+        child_by_name[child.name] = child
+        brick_idx += 1
+
+    # Pass 3: extract vector outline polygons from the PostScript data
+    for bl in house.bricks:
+        child = child_by_name.get(bl.name)
+        if child is None:
+            continue
+        poly = _extract_vector_path(child, text, offset_x, y_base)
+        if len(poly) >= 3:
+            bl.polygon = [
+                [(p[0] - clip_x0) * scale - bl.x,
+                 (p[1] - clip_y0) * scale - bl.y]
+                for p in poly
+            ]
 
     # Store clip_rect on house for use by extract/render functions
     house.clip_rect = (clip_x0, clip_y0, clip_x1, clip_y1)
@@ -974,7 +998,7 @@ def extract_ai_layers_batch(
     offset_x, y_base = _get_ai_transform(ai_path, text, roots)
 
     for bl in brick_layers:
-        out_path = out / f"{prefix}_{bl.index:03d}.png"
+        out_path = out / f"{prefix}_{bl.id if bl.id else f'{bl.index:03d}'}.png"
         canvas = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
         child = child_by_name.get(bl.name)
 

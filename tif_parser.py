@@ -23,6 +23,8 @@ class BrickLayer:
     width: int
     height: int
     layer_type: str = "brick"  # brick, window, door, base, composite, tiny
+    id: str | None = None                       # assigned post-parse by server
+    polygon: list[list[float]] | None = None    # vector outline in brick-local px coords
 
 
 @dataclass

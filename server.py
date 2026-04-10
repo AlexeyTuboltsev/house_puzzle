@@ -58,7 +58,6 @@ def _new_session() -> dict:
         "brick_areas": {},      # dict[str, int] pixel area per brick
         "brick_polygons": {},   # dict[str, list[[x,y]]] traced outlines per brick
         "canvas_height": None,  # display canvas height (pixels)
-        "idx_to_uuid": {},      # dict[int, str] original brick index → UUID
     }
 
 
@@ -191,22 +190,6 @@ def api_upload_file():
     return jsonify({"path": str(dest)})
 
 
-def _vectorize_bricks(bricks, extract_dir: Path, idx_to_uuid: dict | None = None) -> dict:
-    """Read brick polygon cache (pre-populated from PDF vector layer).
-
-    No raster fallback — shapes must come from the PDF outline layer.
-    Missing bricks = unmatched vector paths; caller reports them to the user.
-    Returns dict[brick_id -> list[[x,y]]] keyed by UUID string IDs.
-    """
-    cache_path = extract_dir / "brick_polygons.json"
-    if not cache_path.exists():
-        return {}
-    with open(cache_path) as f:
-        cached = json.load(f)
-    if idx_to_uuid:
-        return {idx_to_uuid.get(int(k), k): v for k, v in cached.items()}
-    return {int(k): v for k, v in cached.items()}
-
 
 @app.route("/api/s/<key>/load", methods=["POST"])
 @app.route("/api/load_pdf", methods=["POST"])
@@ -236,36 +219,23 @@ def api_load_pdf(key=None):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-    # Convert to engine Brick objects, deduplicating bricks with identical bbox
-    # (the AI file can contain two layers at the exact same position — keep the
-    # first occurrence and drop subsequent ones so the puzzle engine never sees
-    # phantom "ghost" bricks that inflate piece brick-counts)
-    seen_bbox: set[tuple] = set()
-    deduped_layers: list = []
-    for bl in house.bricks:
-        bbox_key = (bl.x, bl.y, bl.width, bl.height)
-        if bbox_key not in seen_bbox:
-            seen_bbox.add(bbox_key)
-            deduped_layers.append(bl)
-    house.bricks = deduped_layers
-
+    # Assign string IDs to BrickLayers (parse_ai already deduped by bbox)
     deterministic = data.get("deterministic_ids", False)
     if deterministic:
         import hashlib as _hl
-        def _brick_id(bl):
-            return _hl.md5(f"{int(bl.x)},{int(bl.y)},{int(bl.width)},{int(bl.height)}".encode()).hexdigest()[:8]
+        for bl in house.bricks:
+            bl.id = _hl.md5(f"{int(bl.x)},{int(bl.y)},{int(bl.width)},{int(bl.height)}".encode()).hexdigest()[:8]
     else:
         import uuid as _uuid
-        def _brick_id(bl):
-            return str(_uuid.uuid4())[:8]
+        for bl in house.bricks:
+            bl.id = str(_uuid.uuid4())[:8]
 
+    # Create engine Brick objects
     bricks = [
-        Brick(id=_brick_id(bl), x=bl.x, y=bl.y,
+        Brick(id=bl.id, x=bl.x, y=bl.y,
               width=bl.width, height=bl.height, brick_type=bl.layer_type)
         for bl in house.bricks
     ]
-    # Map original index → UUID for PNG filename mapping
-    _idx_to_uuid = {bl.index: bricks[i].id for i, bl in enumerate(house.bricks)}
     bricks_by_id = {b.id: b for b in bricks}
 
     # Store state
@@ -275,7 +245,6 @@ def api_load_pdf(key=None):
     _state["tif_path"] = file_path
     _state["pieces"] = []
     _state["canvas_height"] = canvas_height
-    _state["idx_to_uuid"] = _idx_to_uuid
 
     # Extract all layers as PNGs (always regenerate, no caching)
     import shutil
@@ -291,7 +260,6 @@ def api_load_pdf(key=None):
         render_ai_outlines_png,
         render_ai_lights_png,
         render_ai_background_png,
-        extract_ai_vector_polygons,
     )
     _ai_kw = dict(dpi=house.render_dpi, clip_rect=house.clip_rect)
 
@@ -304,18 +272,6 @@ def api_load_pdf(key=None):
     render_ai_lights_png(file_path, str(extract_dir / "lights.png"), **_layer_kw)
     render_ai_background_png(file_path, str(extract_dir / "background.png"), **_layer_kw)
 
-    vec_polys = extract_ai_vector_polygons(file_path, house.bricks, **_ai_kw)
-    if vec_polys:
-        with open(extract_dir / "brick_polygons.json", "w") as f:
-            json.dump({str(k): v for k, v in vec_polys.items()}, f)
-
-    # Rename brick PNGs from index-based to UUID-based names
-    for bl_idx, brick_uuid in _idx_to_uuid.items():
-        old_path = extract_dir / f"brick_{bl_idx:03d}.png"
-        new_path = extract_dir / f"brick_{brick_uuid}.png"
-        if old_path.exists():
-            old_path.rename(new_path)
-
     # Compute border pixels and areas (single PNG read per brick)
     bp, ba = compute_borders_and_areas(bricks, str(extract_dir))
     _state["border_pixels"] = bp
@@ -327,10 +283,7 @@ def api_load_pdf(key=None):
     if covered_ids:
         print(f"[load] Removing {len(covered_ids)} covered bricks: {sorted(covered_ids)}", flush=True)
         bricks = [b for b in bricks if b.id not in covered_ids]
-        # Map UUID back to original index for filtering house.bricks
-        _uuid_to_idx = {v: k for k, v in _idx_to_uuid.items()}
-        covered_indices = {_uuid_to_idx[uid] for uid in covered_ids if uid in _uuid_to_idx}
-        house.bricks = [bl for bl in house.bricks if bl.index not in covered_indices]
+        house.bricks = [bl for bl in house.bricks if bl.id not in covered_ids]
         bricks_by_id = {b.id: b for b in bricks}
         _state["house"] = house
         _state["bricks"] = bricks
@@ -340,16 +293,16 @@ def api_load_pdf(key=None):
         _state["border_pixels"] = bp
         _state["brick_areas"] = ba
 
-    # Vectorize outlines — reads cache pre-populated from PDF vector layer
-    polygons = _vectorize_bricks(bricks, extract_dir, _idx_to_uuid)
+    # Polygons come from BrickLayer (populated by parse_ai)
+    polygons = {bl.id: bl.polygon for bl in house.bricks if bl.polygon}
     _state["brick_polygons"] = polygons
 
     # Build adjacency for visualization
     adj = build_adjacency(bricks, border_pixels=bp)
 
-    id_to_name = {bl.index: bl.name for bl in house.bricks}
-    missing = [b for b in bricks if not polygons.get(b.id)]
+    missing = [b for b in bricks if b.id not in polygons]
     if missing:
+        id_to_name = {bl.id: bl.name for bl in house.bricks}
         labels = ", ".join(f"#{b.id} '{id_to_name.get(b.id, '?')}'" for b in missing)
         house.warnings.append(f"NO_POLYGON: {labels}")
 
@@ -822,12 +775,6 @@ def api_export(key=None):
         tif_path, house.bricks, str(export_dir),
         dpi=export_dpi, clip_rect=house.clip_rect, prefix="brick"
     )
-    # Rename export brick PNGs from index-based to UUID-based names
-    for bl_idx, brick_uuid in s.get("idx_to_uuid", {}).items():
-        old_p = export_dir / f"brick_{bl_idx:03d}.png"
-        new_p = export_dir / f"brick_{brick_uuid}.png"
-        if old_p.exists():
-            old_p.rename(new_p)
     export_comp_path = export_dir / "composite.png"
     compose_ai_bricks_png(tif_path, house.bricks, str(export_comp_path),
                           dpi=export_dpi, clip_rect=house.clip_rect,
