@@ -160,7 +160,7 @@ pub fn find_covered_bricks(
                 }
             }
 
-            if total_s > 0 && (overlap as f64 / total_s as f64) >= 0.8 {
+            if total_s > 0 && (overlap as f64 / total_s as f64) >= 0.98 {
                 if !protected_ids.contains(&small.id) {
                     covered.insert(small.id.clone());
                 }
