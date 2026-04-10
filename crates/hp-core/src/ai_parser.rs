@@ -144,6 +144,7 @@ pub fn compute_ai_transform(
     background: &LayerBlock,
     data: &[u8],
     page: &mupdf::Page,
+    artbox: Option<(f64, f64, f64, f64)>,
 ) -> (f64, f64) {
     let block_data = &data[background.begin..background.end];
     let coord_re = Regex::new(r"(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+[mLCl]\b").unwrap();
@@ -159,16 +160,21 @@ pub fn compute_ai_transform(
         }
     }
 
-    let art = mupdf_ffi::page_artbox(page);
+    // Use artbox if available, else fall back to page bounds (mediabox)
+    let (art_x0, _art_y0, _art_x1, art_y1) = artbox.unwrap_or_else(|| {
+        let b = mupdf_ffi::page_artbox(page);
+        (b.0 as f64, b.1 as f64, b.2 as f64, b.3 as f64)
+    });
+
     if xs.is_empty() {
-        return (art.0 as f64, art.3 as f64);
+        return (art_x0, art_y1);
     }
 
     let ai_xmin = xs.iter().cloned().fold(f64::INFINITY, f64::min);
     let ai_ymin = ys.iter().cloned().fold(f64::INFINITY, f64::min);
 
-    let offset_x = art.0 as f64 - ai_xmin;
-    let y_base = art.3 as f64 + ai_ymin;
+    let offset_x = art_x0 - ai_xmin;
+    let y_base = art_y1 + ai_ymin;
     (offset_x, y_base)
 }
 
@@ -436,7 +442,13 @@ pub fn parse_ai(
         .map_err(|e| format!("Failed to open AI as PDF: {e}"))?;
     let page = doc.load_page(0)
         .map_err(|e| format!("Failed to load page: {e}"))?;
-    let (offset_x, y_base) = compute_ai_transform(bg, data, &page);
+
+    // Get artbox via FFI (more accurate than page.bounds() which returns mediabox)
+    let artbox = mupdf_ffi::pdf_page_artbox(ai_path.to_str().unwrap_or(""));
+    eprintln!("[parse] artbox via FFI: {:?}", artbox);
+    eprintln!("[parse] page.bounds(): {:?}", page.bounds());
+
+    let (offset_x, y_base) = compute_ai_transform(bg, data, &page, artbox);
 
     // Step 4: collect brick placements (PyMuPDF y-down coords)
     struct RawPlacement<'a> {
@@ -502,6 +514,9 @@ pub fn parse_ai(
     let clip_w_pts = clip_x1 - clip_x0;
     let dpi = if clip_h_pts > 0.0 { canvas_height as f64 / clip_h_pts * 72.0 } else { 72.0 };
     let scale = dpi / 72.0;
+    eprintln!("[parse] clip_rect: ({:.1}, {:.1}, {:.1}, {:.1})", clip_x0, clip_y0, clip_x1, clip_y1);
+    eprintln!("[parse] clip_size: {:.1} x {:.1} pts, DPI={:.2}, scale={:.4}", clip_w_pts, clip_h_pts, dpi, scale);
+    eprintln!("[parse] page_rect: {:?}", page_rect);
     let canvas_w_px = (clip_w_pts * scale).round() as i32;
     let canvas_h_px = (clip_h_pts * scale).round() as i32;
 

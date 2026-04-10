@@ -201,8 +201,9 @@ async fn do_load(sessions: SessionStore, key: String, req: LoadRequest) -> Respo
     let raw = &ai_data.raw;
 
     // Render bricks layer via MuPDF OCG (needed for vector brick fallback)
-    let has_vector_bricks = render_bricks.iter().any(|(_, bp)| bp.layer_type == "vector_brick");
-    let bricks_layer_img = if has_vector_bricks {
+    let vec_count = render_bricks.iter().filter(|(_, bp)| bp.layer_type == "vector_brick").count();
+    eprintln!("[load] Vector bricks: {vec_count}");
+    let bricks_layer_img = if vec_count > 0 {
         render::render_ocg_layer_image(
             &file_path, "bricks", metadata.render_dpi, metadata.clip_rect,
             cw, ch, (0, 0),
@@ -210,6 +211,11 @@ async fn do_load(sessions: SessionStore, key: String, req: LoadRequest) -> Respo
     } else {
         None
     };
+    eprintln!("[load] Bricks layer image: {:?}", bricks_layer_img.as_ref().map(|i| format!("{}x{}", i.width(), i.height())));
+    if let Some(ref img) = bricks_layer_img {
+        img.save(extract_dir.join("_debug_bricks_layer.png")).ok();
+        eprintln!("[load] Saved debug bricks layer to extract dir");
+    }
 
     // Render brick images IN MEMORY (no disk I/O yet)
     let brick_images = render::render_brick_images(raw, &render_bricks, cw, ch, bricks_layer_img.as_ref());

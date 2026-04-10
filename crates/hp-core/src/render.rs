@@ -275,6 +275,7 @@ fn draw_line(img: &mut RgbaImage, x0: i32, y0: i32, x1: i32, y1: i32, color: Rgb
 }
 
 /// Render a specific OCG layer to an RgbaImage (for in-memory use).
+/// Uses pure FFI rendering to ensure OCG layer state is respected.
 pub fn render_ocg_layer_image(
     ai_path: &Path,
     layer_name: &str,
@@ -286,45 +287,15 @@ pub fn render_ocg_layer_image(
 ) -> Option<RgbaImage> {
     use crate::mupdf_ffi;
 
-    let doc = mupdf::pdf::PdfDocument::open(ai_path.to_str()?).ok()?;
-    let layer_count = mupdf_ffi::count_layer_ui(&doc);
-    let mut found = false;
-    for i in 0..layer_count { mupdf_ffi::deselect_layer_ui(&doc, i); }
-    for i in 0..layer_count {
-        if mupdf_ffi::layer_ui_info(&doc, i).text == layer_name {
-            mupdf_ffi::select_layer_ui(&doc, i);
-            found = true;
-        }
-    }
-    if !found { return None; }
+    let (rgba, pw, ph) = mupdf_ffi::render_page_with_ocg(
+        ai_path.to_str()?, layer_name, dpi,
+    )?;
 
-    let scale = dpi as f32 / 72.0;
-    let matrix = mupdf::Matrix::new_scale(scale, scale);
-    let page = doc.load_page(0).ok()?;
-    let cs = mupdf::Colorspace::device_rgb();
-    let pixmap = page.to_pixmap(&matrix, &cs, true, false).ok()?;
+    let full_img = RgbaImage::from_raw(pw, ph, rgba)?;
 
-    let pw = pixmap.width() as u32;
-    let ph = pixmap.height() as u32;
-    let n = pixmap.n() as u32;
-    let samples = pixmap.samples();
-
-    let mut full_img = RgbaImage::new(pw, ph);
-    for y in 0..ph {
-        for x in 0..pw {
-            let idx = ((y * pw + x) * n) as usize;
-            if idx + 3 < samples.len() {
-                let r = samples[idx];
-                let g = samples[idx + 1];
-                let b = samples[idx + 2];
-                let a = if n >= 4 { samples[idx + 3] } else { 255 };
-                full_img.put_pixel(x, y, Rgba([r, g, b, a]));
-            }
-        }
-    }
-
-    let cx = (clip_rect.0 * scale as f64).round() as i64;
-    let cy = (clip_rect.1 * scale as f64).round() as i64;
+    let scale = dpi / 72.0;
+    let cx = (clip_rect.0 * scale).round() as i64;
+    let cy = (clip_rect.1 * scale).round() as i64;
     let dx = pdf_offset_px.0 as i64;
     let dy = pdf_offset_px.1 as i64;
 
