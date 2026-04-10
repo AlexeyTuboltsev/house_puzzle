@@ -481,11 +481,26 @@ pub fn parse_ai(
         }
 
         // Gradient/vector-only brick
+        // Use plain path bbox as baseline, then expand with %_ vector path bbox
         if let Some((ai_xmin, ai_ymin, ai_xmax, ai_ymax)) = extract_plain_path_bbox(child, data) {
-            let pymu_x0 = ai_xmin + offset_x;
-            let pymu_x1 = ai_xmax + offset_x;
-            let pymu_y_top = y_base - ai_ymax;
-            let pymu_y_bottom = y_base - ai_ymin;
+            let mut pymu_x0 = ai_xmin + offset_x;
+            let mut pymu_x1 = ai_xmax + offset_x;
+            let mut pymu_y_top = y_base - ai_ymax;
+            let mut pymu_y_bottom = y_base - ai_ymin;
+
+            // Expand bbox with the %_ vector outline (frame/arch may extend beyond gradient fill)
+            let vector_path = extract_vector_path(child, data, offset_x, y_base);
+            if vector_path.len() >= 3 {
+                let vx_min = vector_path.iter().map(|p| p[0]).fold(f64::INFINITY, f64::min);
+                let vx_max = vector_path.iter().map(|p| p[0]).fold(f64::NEG_INFINITY, f64::max);
+                let vy_min = vector_path.iter().map(|p| p[1]).fold(f64::INFINITY, f64::min);
+                let vy_max = vector_path.iter().map(|p| p[1]).fold(f64::NEG_INFINITY, f64::max);
+                pymu_x0 = pymu_x0.min(vx_min);
+                pymu_x1 = pymu_x1.max(vx_max);
+                pymu_y_top = pymu_y_top.min(vy_min);
+                pymu_y_bottom = pymu_y_bottom.max(vy_max);
+            }
+
             placements.push(RawPlacement {
                 child,
                 pymu_bbox: (pymu_x0, pymu_y_top, pymu_x1, pymu_y_bottom),
