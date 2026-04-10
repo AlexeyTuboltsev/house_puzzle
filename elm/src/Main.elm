@@ -27,19 +27,19 @@ type alias Point =
 
 
 type alias Brick =
-    { id : Int
+    { id : String
     , x : Float
     , y : Float
     , width : Float
     , height : Float
     , brickType : String
-    , neighbors : List Int
+    , neighbors : List String
     , polygon : List Point
     }
 
 
 type alias BrickRef =
-    { id : Int
+    { id : String
     , x : Float
     , y : Float
     , width : Float
@@ -48,12 +48,12 @@ type alias BrickRef =
 
 
 type alias Piece =
-    { id : Int
+    { id : String
     , x : Float
     , y : Float
     , width : Float
     , height : Float
-    , brickIds : List Int
+    , brickIds : List String
     , bricks : List BrickRef
     , polygon : List Point
     , imgUrl : String
@@ -80,6 +80,7 @@ type alias LoadResponse =
     , blueprintBgUrl : Maybe String
     , lightsUrl : Maybe String
     , houseUnitsHigh : Float
+    , key : String
     }
 
 
@@ -100,7 +101,7 @@ type alias Wave =
     , name : String
     , visible : Bool
     , locked : Bool
-    , pieceIds : List Int
+    , pieceIds : List String
     , hue : Float
     , opacity : Float
     }
@@ -109,15 +110,15 @@ type alias Wave =
 type alias Group =
     { id : Int
     , name : String
-    , pieceIds : List Int
+    , pieceIds : List String
     , hue : Float
     , locked : Bool
     }
 
 
 type PieceDisplay
-    = SinglePiece Int
-    | GroupedPiece Int (List Int)
+    = SinglePiece String
+    | GroupedPiece String (List String)
 
 
 type AppMode
@@ -157,7 +158,7 @@ type alias Model =
     , generateState : GenerateState
     , pieces : List Piece
     , pieceGeneration : Int
-    , bricksById : Dict Int Brick
+    , bricksById : Dict String Brick
     , appMode : AppMode
     , showOutlines : Bool
     , showGrid : Bool
@@ -169,12 +170,12 @@ type alias Model =
     , nextGroupId : Int
     , selectedGroupId : Maybe Int
     , dragOverGroupId : Maybe (Maybe Int)
-    , hoveredPieceId : Maybe Int
-    , selectedPieceId : Maybe Int
+    , hoveredPieceId : Maybe String
+    , selectedPieceId : Maybe String
     , selectedWaveId : Maybe Int
     , editMode : Bool
-    , editBrickIds : List Int
-    , editOriginalBrickIds : List Int
+    , editBrickIds : List String
+    , editOriginalBrickIds : List String
     , recomputing : Bool
     , exporting : Bool
     , exportCanvasHeight : String
@@ -182,9 +183,9 @@ type alias Model =
     , exportHouseName : String
     , exportPosition : String
     , exportSpacing : String
-    , draggingPieceId : Maybe Int
+    , draggingPieceId : Maybe String
     , dragOverWaveId : Maybe (Maybe Int)
-    , dragInsertBeforeId : Maybe Int
+    , dragInsertBeforeId : Maybe String
     , lasso : Maybe { x0 : Float, y0 : Float, x1 : Float, y1 : Float }
     , colorPicking : Maybe { target : ColorPickTarget, panelX : Float, panelY : Float, hueOnly : Bool }
     , gridHue : Float
@@ -194,6 +195,8 @@ type alias Model =
     , houseUnitsHigh : Float
     , zoomLevel : Float
     , zoomGridActive : Bool
+    , sessionKey : String
+    , nextSessionId : Int
     }
 
 
@@ -245,6 +248,8 @@ init _ =
       , houseUnitsHigh = 15.5
       , zoomLevel = 1.0
       , zoomGridActive = False
+      , sessionKey = ""
+      , nextSessionId = 1
       }
     , Cmd.batch
         [ fetchPdfList
@@ -279,18 +284,18 @@ type Msg
     | ToggleLights Bool
     | AddWave
     | ToggleWaveVisibility Int
-    | SetHoveredPiece (Maybe Int)
-    | SelectPiece Int
+    | SetHoveredPiece (Maybe String)
+    | SelectPiece String
     | SelectWave (Maybe Int)
-    | AssignPieceToWave Int
-    | RemovePieceFromWave Int Int
+    | AssignPieceToWave String
+    | RemovePieceFromWave Int String
     | MoveWave Int Int
     | RemoveWave Int
     | StartEdit
-    | ToggleBrickInEdit Int
+    | ToggleBrickInEdit String
     | SaveEdit
     | CancelEdit
-    | GotPiecePolygons (Result Http.Error (List ( Int, List Point )))
+    | GotPiecePolygons (Result Http.Error (List ( String, List Point )))
     | SetExportCanvasHeight String
     | SetExportLocation String
     | SetExportHouseName String
@@ -298,11 +303,11 @@ type Msg
     | SetExportSpacing String
     | RequestExport
     | GotExportResponse (Result Http.Error ())
-    | LogBrickClick Int
-    | DragPieceStart Int
+    | LogBrickClick String
+    | DragPieceStart String
     | DragPieceEnd
     | DragEnterWave (Maybe Int)
-    | DragEnterPiece Int
+    | DragEnterPiece String
     | DropOnWave (Maybe Int)
     | ToggleWaveLock Int
     | ToggleGroupLock Int
@@ -310,7 +315,7 @@ type Msg
     | SelectGroup (Maybe Int)
     | RemoveGroup Int
     | MoveGroup Int Int
-    | AssignPieceToGroup Int
+    | AssignPieceToGroup String
     | DragEnterGroup (Maybe Int)
     | DropOnGroup (Maybe Int)
     | AssignGroupToWave Int Int
@@ -390,7 +395,13 @@ update msg model =
             )
 
         FileUploaded (Ok path) ->
-            ( model, loadPdf path model.availableH )
+            let
+                key =
+                    String.fromInt model.nextSessionId
+            in
+            ( { model | sessionKey = key, nextSessionId = model.nextSessionId + 1 }
+            , loadPdf key path model.availableH
+            )
 
         FileUploaded (Err _) ->
             ( { model | loadState = Idle }, Cmd.none )
@@ -411,13 +422,14 @@ update msg model =
                 , editOriginalBrickIds = []
                 , recomputing = False
                 , appMode = ModeInit
+                , sessionKey = ""
               }
             , fetchPdfList
             )
 
         LoadFile path ->
             let
-                -- Extract house name from path: "in/_NY2.ai" → "NY2"
+                -- Extract house name from path: "in/_NY2.ai" -> "NY2"
                 baseName =
                     path
                         |> String.split "/"
@@ -433,6 +445,9 @@ update msg model =
 
                     else
                         baseName
+
+                key =
+                    String.fromInt model.nextSessionId
             in
             ( { model
                 | selectedFileName = path
@@ -450,13 +465,16 @@ update msg model =
                 , recomputing = False
                 , appMode = ModeInit
                 , exportHouseName = houseName
+                , sessionKey = key
+                , nextSessionId = model.nextSessionId + 1
               }
-            , loadPdf path model.availableH
+            , loadPdf key path model.availableH
             )
 
         GotLoadResponse (Ok response) ->
             ( { model
                 | loadState = Loaded response
+                , sessionKey = response.key
                 , bricksById =
                     response.bricks
                         |> List.map (\b -> ( b.id, b ))
@@ -519,7 +537,7 @@ update msg model =
                         , editOriginalBrickIds = []
                         , recomputing = False
                       }
-                    , mergeBricks model.targetCount model.minBorder model.seed
+                    , mergeBricks model.sessionKey model.targetCount model.minBorder model.seed
                     )
 
                 _ ->
@@ -527,7 +545,7 @@ update msg model =
 
         GotMergeResponse (Ok response) ->
             ( { model
-                | pieces = response.pieces
+                | pieces = List.map (withPieceUrls model.sessionKey) response.pieces
                 , generateState = Generated
                 , appMode = ModePieces
                 , pieceGeneration = model.pieceGeneration + 1
@@ -865,15 +883,22 @@ update msg model =
                                 model.pieces
 
                         -- New single-brick pieces for bricks removed from the edited piece
-                        maxId =
-                            List.foldl Basics.max 0 (List.map .id model.pieces)
+                        maxIdNum =
+                            List.foldl
+                                (\p acc ->
+                                    case String.toInt (String.dropLeft 1 p.id) of
+                                        Just n -> Basics.max n acc
+                                        Nothing -> acc
+                                )
+                                0
+                                model.pieces
 
                         newSinglePieces =
                             List.indexedMap
                                 (\i bid ->
                                     let
                                         newId =
-                                            maxId + i + 1
+                                            "p" ++ String.fromInt (maxIdNum + i + 1)
                                     in
                                     case Dict.get bid model.bricksById of
                                         Just brick ->
@@ -885,8 +910,8 @@ update msg model =
                                             , brickIds = [ bid ]
                                             , bricks = [ BrickRef bid brick.x brick.y brick.width brick.height ]
                                             , polygon = []
-                                            , imgUrl = "/api/piece/" ++ String.fromInt newId ++ ".png"
-                                            , outlineUrl = "/api/piece_outline/" ++ String.fromInt newId ++ ".png"
+                                            , imgUrl = "/api/s/" ++ model.sessionKey ++ "/piece/" ++ newId ++ ".png"
+                                            , outlineUrl = "/api/s/" ++ model.sessionKey ++ "/piece_outline/" ++ newId ++ ".png"
                                             }
 
                                         Nothing ->
@@ -898,8 +923,8 @@ update msg model =
                                             , brickIds = [ bid ]
                                             , bricks = []
                                             , polygon = []
-                                            , imgUrl = "/api/piece/" ++ String.fromInt newId ++ ".png"
-                                            , outlineUrl = "/api/piece_outline/" ++ String.fromInt newId ++ ".png"
+                                            , imgUrl = "/api/s/" ++ model.sessionKey ++ "/piece/" ++ newId ++ ".png"
+                                            , outlineUrl = "/api/s/" ++ model.sessionKey ++ "/piece_outline/" ++ newId ++ ".png"
                                             }
                                 )
                                 removedBrickIds
@@ -908,7 +933,7 @@ update msg model =
                         allPieces =
                             (updatedExisting ++ newSinglePieces)
                                 |> List.filter (\p -> not (List.isEmpty p.brickIds))
-                                |> List.map (recalcPieceBbox model.bricksById)
+                                |> List.map (recalcPieceBbox model.sessionKey model.bricksById)
 
                         -- Prune stale wave piece references
                         validIds =
@@ -929,7 +954,7 @@ update msg model =
                         , recomputing = True
                         , selectedPieceId = Just editedPieceId
                       }
-                    , recomputePiecePolygons allPieces
+                    , recomputePiecePolygons model.sessionKey allPieces
                     )
 
         CancelEdit ->
@@ -985,7 +1010,7 @@ update msg model =
                         (\( idx, wv ) ->
                             E.object
                                 [ ( "wave", E.int (idx + 1) )
-                                , ( "pieceIds", E.list E.int wv.pieceIds )
+                                , ( "pieceIds", E.list E.string wv.pieceIds )
                                 ]
                         )
                         (List.indexedMap Tuple.pair model.waves)
@@ -1012,7 +1037,7 @@ update msg model =
                     E.list
                         (\g ->
                             E.object
-                                [ ( "pieceIds", E.list E.int g.pieceIds )
+                                [ ( "pieceIds", E.list E.string g.pieceIds )
                                 ]
                         )
                         model.groups
@@ -1037,7 +1062,7 @@ update msg model =
             , Http.riskyRequest
                 { method = "POST"
                 , headers = []
-                , url = "/api/export"
+                , url = "/api/s/" ++ model.sessionKey ++ "/export"
                 , body = Http.jsonBody payload
                 , expect = Http.expectWhatever GotExportResponse
                 , timeout = Just (10 * 60 * 1000)
@@ -1052,12 +1077,12 @@ update msg model =
             ( model
             , logBrick
                 (E.object
-                    [ ( "brickId", E.int brickId )
+                    [ ( "brickId", E.string brickId )
                     , ( "pieceId"
                       , model.pieces
                             |> List.filter (\p -> List.any (\br -> br.id == brickId) p.bricks)
                             |> List.head
-                            |> Maybe.map (.id >> E.int)
+                            |> Maybe.map (.id >> E.string)
                             |> Maybe.withDefault E.null
                       )
                     ]
@@ -1565,8 +1590,16 @@ update msg model =
 -- ── Helpers ─────────────────────────────────────────────────────────────────
 
 
-recalcPieceBbox : Dict Int Brick -> Piece -> Piece
-recalcPieceBbox bricksById piece =
+withPieceUrls : String -> Piece -> Piece
+withPieceUrls key p =
+    { p
+        | imgUrl = "/api/s/" ++ key ++ "/piece/" ++ p.id ++ ".png"
+        , outlineUrl = "/api/s/" ++ key ++ "/piece_outline/" ++ p.id ++ ".png"
+    }
+
+
+recalcPieceBbox : String -> Dict String Brick -> Piece -> Piece
+recalcPieceBbox sessionKey bricksById piece =
     let
         bricks =
             List.filterMap (\bid -> Dict.get bid bricksById) piece.brickIds
@@ -1593,7 +1626,7 @@ recalcPieceBbox bricksById piece =
         Just x ->
             case ( List.minimum ys, List.maximum x2s, List.maximum y2s ) of
                 ( Just y, Just x2, Just y2 ) ->
-                    { piece | x = x, y = y, width = x2 - x, height = y2 - y, bricks = newBrickRefs, polygon = [], imgUrl = "/api/piece/" ++ String.fromInt piece.id ++ ".png", outlineUrl = "/api/piece_outline/" ++ String.fromInt piece.id ++ ".png" }
+                    { piece | x = x, y = y, width = x2 - x, height = y2 - y, bricks = newBrickRefs, polygon = [], imgUrl = "/api/s/" ++ sessionKey ++ "/piece/" ++ piece.id ++ ".png", outlineUrl = "/api/s/" ++ sessionKey ++ "/piece_outline/" ++ piece.id ++ ".png" }
 
                 _ ->
                     piece
@@ -1632,12 +1665,12 @@ uploadFile file =
         }
 
 
-loadPdf : String -> Float -> Cmd Msg
-loadPdf path canvasHeight =
+loadPdf : String -> String -> Float -> Cmd Msg
+loadPdf key path canvasHeight =
     Http.riskyRequest
         { method = "POST"
         , headers = []
-        , url = "/api/load_pdf"
+        , url = "/api/s/" ++ key ++ "/load"
         , body =
             Http.jsonBody
                 (E.object
@@ -1651,10 +1684,10 @@ loadPdf path canvasHeight =
         }
 
 
-mergeBricks : Int -> Int -> Int -> Cmd Msg
-mergeBricks targetCount minBorder seed =
+mergeBricks : String -> Int -> Int -> Int -> Cmd Msg
+mergeBricks key targetCount minBorder seed =
     Http.post
-        { url = "/api/merge"
+        { url = "/api/s/" ++ key ++ "/merge"
         , body =
             Http.jsonBody
                 (E.object
@@ -1668,10 +1701,10 @@ mergeBricks targetCount minBorder seed =
 
 
 
-recomputePiecePolygons : List Piece -> Cmd Msg
-recomputePiecePolygons pieces =
+recomputePiecePolygons : String -> List Piece -> Cmd Msg
+recomputePiecePolygons key pieces =
     Http.post
-        { url = "/api/merge"
+        { url = "/api/s/" ++ key ++ "/merge"
         , body =
             Http.jsonBody
                 (E.object
@@ -1679,8 +1712,8 @@ recomputePiecePolygons pieces =
                       , E.list
                             (\p ->
                                 E.object
-                                    [ ( "id", E.int p.id )
-                                    , ( "brick_ids", E.list E.int p.brickIds )
+                                    [ ( "id", E.string p.id )
+                                    , ( "brick_ids", E.list E.string p.brickIds )
                                     ]
                             )
                             pieces
@@ -1691,12 +1724,12 @@ recomputePiecePolygons pieces =
         }
 
 
-decodePiecePolygonResponse : D.Decoder (List ( Int, List Point ))
+decodePiecePolygonResponse : D.Decoder (List ( String, List Point ))
 decodePiecePolygonResponse =
     D.field "pieces"
         (D.list
             (D.map2 Tuple.pair
-                (D.field "id" D.int)
+                (D.field "id" D.string)
                 (D.field "polygon" (D.list decodePoint))
             )
         )
@@ -1710,8 +1743,8 @@ decodeLoadResponse =
     D.map8
         (\canvas bricks hasComposite hasBase renderDpi warnings outlinesUrl compositeUrl ->
             \blueprintBgUrl lightsUrl ->
-                \houseUnitsHigh ->
-                    LoadResponse canvas bricks hasComposite hasBase renderDpi warnings outlinesUrl compositeUrl blueprintBgUrl lightsUrl houseUnitsHigh
+                \houseUnitsHigh key ->
+                    LoadResponse canvas bricks hasComposite hasBase renderDpi warnings outlinesUrl compositeUrl blueprintBgUrl lightsUrl houseUnitsHigh key
         )
         (D.field "canvas" decodeCanvas)
         (D.field "bricks" (D.list decodeBrick))
@@ -1724,6 +1757,7 @@ decodeLoadResponse =
         |> D.andThen (\f -> D.map f (D.field "blueprint_bg_url" D.string |> D.maybe))
         |> D.andThen (\f -> D.map f (D.field "lights_url" D.string |> D.maybe))
         |> D.andThen (\f -> D.map f (D.field "houseUnitsHigh" D.float |> D.maybe |> D.map (Maybe.withDefault 15.5)))
+        |> D.andThen (\f -> D.map f (D.field "key" D.string))
 
 
 decodeCanvas : D.Decoder Canvas
@@ -1736,13 +1770,13 @@ decodeCanvas =
 decodeBrick : D.Decoder Brick
 decodeBrick =
     D.map8 Brick
-        (D.field "id" D.int)
+        (D.field "id" D.string)
         (D.field "x" D.float)
         (D.field "y" D.float)
         (D.field "width" D.float)
         (D.field "height" D.float)
         (D.field "type" D.string)
-        (D.field "neighbors" (D.list D.int))
+        (D.field "neighbors" (D.list D.string))
         (D.field "polygon" (D.list decodePoint))
 
 
@@ -1771,16 +1805,16 @@ decodePiece =
             , brickIds = brickIds_
             , bricks = bricks_
             , polygon = polygon_
-            , imgUrl = "/api/piece/" ++ String.fromInt id_ ++ ".png"
-            , outlineUrl = "/api/piece_outline/" ++ String.fromInt id_ ++ ".png"
+            , imgUrl = ""
+            , outlineUrl = ""
             }
         )
-        (D.field "id" D.int)
+        (D.field "id" D.string)
         (D.field "x" D.float)
         (D.field "y" D.float)
         (D.field "width" D.float)
         (D.field "height" D.float)
-        (D.field "brick_ids" (D.list D.int))
+        (D.field "brick_ids" (D.list D.string))
         (D.field "bricks" (D.list decodeBrickRef))
         (D.field "polygon" (D.list decodePoint))
 
@@ -1788,11 +1822,12 @@ decodePiece =
 decodeBrickRef : D.Decoder BrickRef
 decodeBrickRef =
     D.map5 BrickRef
-        (D.field "id" D.int)
+        (D.field "id" D.string)
         (D.field "x" D.float)
         (D.field "y" D.float)
         (D.field "width" D.float)
         (D.field "height" D.float)
+
 
 
 -- ── Encoders ────────────────────────────────────────────────────────────────
@@ -2227,7 +2262,7 @@ viewWaveTray model _ =
 
 -- scale: computed from viewport height and SVG natural height (stored in model.svgScale).
 -- Produces exact px dimensions matching how the piece appears in the house view.
-viewWaveTrayThumb : Piece -> Bool -> Float -> Maybe Int -> Int -> Bool -> Int -> Maybe Int -> Html Msg
+viewWaveTrayThumb : Piece -> Bool -> Float -> Maybe String -> Int -> Bool -> Int -> Maybe Int -> Html Msg
 viewWaveTrayThumb piece isLocked scale hoveredId generation showNum pos maybeGroupN =
     let
         isHovered =
@@ -2395,10 +2430,10 @@ viewPiecesTools model =
             , case selectedPiece of
                 Just piece ->
                     div [ class "piece-info" ]
-                        [ div [ class "piece-info-row" ] [ text ("Piece ID: " ++ String.fromInt piece.id) ]
+                        [ div [ class "piece-info-row" ] [ text ("Piece ID: " ++ piece.id) ]
                         , div [ class "piece-info-row" ] [ text ("Bricks: " ++ String.fromInt (List.length piece.brickIds)) ]
                         , div [ class "piece-info-row" ]
-                            [ text ("Brick IDs: " ++ String.join ", " (List.map String.fromInt piece.brickIds)) ]
+                            [ text ("Brick IDs: " ++ String.join ", " piece.brickIds) ]
                         , button
                             [ class "primary"
                             , onClick StartEdit
@@ -2464,7 +2499,7 @@ viewWavePieceInfoBox model =
                             ]
                         , div [ class "row" ]
                             [ span [] [ text "Piece ID" ]
-                            , span [ class "val" ] [ text (String.fromInt pid) ]
+                            , span [ class "val" ] [ text pid ]
                             ]
                         , div [ class "row" ]
                             [ span [] [ text "Bricks" ]
@@ -2472,7 +2507,7 @@ viewWavePieceInfoBox model =
                             ]
                         , div [ class "row" ]
                             [ span [] [ text "Brick IDs" ]
-                            , span [ class "val" ] [ text (String.join ", " (List.map String.fromInt piece.brickIds)) ]
+                            , span [ class "val" ] [ text (String.join ", " piece.brickIds) ]
                             ]
                         ]
 
@@ -2483,7 +2518,7 @@ viewWavePieceInfoBox model =
                             ]
                         , div [ class "row" ]
                             [ span [] [ text "Piece ID" ]
-                            , span [ class "val" ] [ text (String.fromInt pid) ]
+                            , span [ class "val" ] [ text pid ]
                             ]
                         ]
                 )
@@ -2524,7 +2559,7 @@ viewBlueprintTools model =
 -- ── Groups helpers ──────────────────────────────────────────────────────────
 
 
-toPieceDisplays : List Group -> List Int -> List PieceDisplay
+toPieceDisplays : List Group -> List String -> List PieceDisplay
 toPieceDisplays groups pieceIds =
     let
         go remaining seen acc =
@@ -3083,7 +3118,7 @@ viewMainSvg response model =
 
             else
                 []
-        -- Decoder: convert offsetX/offsetY (CSS px relative to SVG element) → SVG coords
+        -- Decoder: convert offsetX/offsetY (CSS px relative to SVG element) -> SVG coords
         decodeLassoCoords toMsg =
             D.map2 toMsg
                 (D.map (\x -> x / effectiveScale - 10) (D.field "offsetX" D.float))
@@ -3218,7 +3253,7 @@ viewBrickOverlay brick =
                 , SA.fill "white"
                 , SA.fontWeight "bold"
                 ]
-                [ Svg.text ("!" ++ String.fromInt brick.id) ]
+                [ Svg.text ("!" ++ brick.id) ]
             ]
 
     else
@@ -3232,7 +3267,7 @@ viewBrickOverlay brick =
             []
 
 
-viewBrickEditOverlay : List Int -> Brick -> Svg.Svg Msg
+viewBrickEditOverlay : List String -> Brick -> Svg.Svg Msg
 viewBrickEditOverlay editBrickIds brick =
     let
         inEdit =
@@ -3272,7 +3307,7 @@ viewBrickEditOverlay editBrickIds brick =
                 , SA.fill "white"
                 , SA.fontWeight "bold"
                 ]
-                [ Svg.text ("!" ++ String.fromInt brick.id) ]
+                [ Svg.text ("!" ++ brick.id) ]
             ]
 
     else
@@ -3404,7 +3439,7 @@ waveColor hue opacity =
     "rgba(" ++ String.fromInt r ++ "," ++ String.fromInt g ++ "," ++ String.fromInt b ++ "," ++ String.fromFloat opacity ++ ")"
 
 
-viewPieceOverlay : AppMode -> Maybe Int -> Maybe Int -> Maybe Int -> List Wave -> List Group -> Maybe Int -> Bool -> Piece -> Svg.Svg Msg
+viewPieceOverlay : AppMode -> Maybe String -> Maybe String -> Maybe Int -> List Wave -> List Group -> Maybe Int -> Bool -> Piece -> Svg.Svg Msg
 viewPieceOverlay appMode hoveredId selectedId selectedWaveId waves groups selectedGroupId isLassoing piece =
     let
         inWaveAssign =
@@ -3717,7 +3752,7 @@ viewUnassignedRow model unassignedPieces =
             ]
 
 
-viewPieceThumb : Maybe ( Int, Int ) -> Bool -> Maybe Int -> Int -> String -> Maybe Int -> Html Msg
+viewPieceThumb : Maybe ( Int, String ) -> Bool -> Maybe String -> String -> String -> Maybe Int -> Html Msg
 viewPieceThumb removeInfo isLocked hoveredId pieceId dataUrl maybePos =
     let
         isHovered =
@@ -3776,7 +3811,7 @@ viewPieceThumb removeInfo isLocked hoveredId pieceId dataUrl maybePos =
 -- A thumbnail for a group of interchangeable pieces: shows one representative
 -- image with an "xN" badge at the bottom. Clicking assigns/removes the whole group to/from
 -- the wave identified by maybeWaveId. Draggable when not locked.
-viewGroupThumb : Maybe Int -> Maybe Int -> Maybe Group -> Piece -> List Int -> Int -> Maybe Int -> Bool -> Html Msg
+viewGroupThumb : Maybe Int -> Maybe String -> Maybe Group -> Piece -> List String -> Int -> Maybe Int -> Bool -> Html Msg
 viewGroupThumb maybeWaveId hoveredId maybeGroup piece allIds generation maybePos isLocked =
     let
         n =
@@ -3835,7 +3870,7 @@ viewEditControls model =
         pieceLabel =
             case model.selectedPieceId of
                 Just pid ->
-                    "Piece #" ++ String.fromInt pid
+                    "Piece #" ++ pid
 
                 Nothing ->
                     "Piece"

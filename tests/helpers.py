@@ -1,4 +1,8 @@
-"""Shared helpers for e2e test suite."""
+"""Shared helpers for e2e test suite.
+
+Tests use deterministic_ids=true so brick IDs are stable position hashes
+across runs, enabling direct ID-based comparison against baselines.
+"""
 
 import hashlib
 import json
@@ -7,6 +11,9 @@ from pathlib import Path
 
 BASE_URL = "http://localhost:5050"
 BASELINES_DIR = Path(__file__).parent / "baselines"
+
+# All test loads use deterministic IDs for reproducibility
+LOAD_DEFAULTS = {"canvas_height": 900, "deterministic_ids": True}
 
 
 def api_post(path, data):
@@ -40,27 +47,18 @@ def extract_load_snapshot(resp, file_stem=""):
             "neighbors": sorted(b.get("neighbors", [])),
         })
 
-    # Capture pixel-level hashes for all PNGs
+    # Capture pixel-level hashes for composite/outlines/lights/background PNGs
+    key = resp.get("key")
+    pfx = f"/api/s/{key}" if key else "/api"
     png_hashes = {}
-    try:
-        png_hashes["composite"] = api_get_png_hash(f"/api/composite.png?f={file_stem}")
-    except Exception:
-        pass
-    try:
-        png_hashes["outlines"] = api_get_png_hash(f"/api/outlines.png?f={file_stem}")
-    except Exception:
-        pass
-    try:
-        png_hashes["lights"] = api_get_png_hash(f"/api/lights.png?f={file_stem}")
-    except Exception:
-        pass
-    try:
-        png_hashes["background"] = api_get_png_hash(f"/api/background.png?f={file_stem}")
-    except Exception:
-        pass
+    for name in ["composite", "outlines", "lights", "background"]:
+        try:
+            png_hashes[name] = api_get_png_hash(f"{pfx}/{name}.png?f={file_stem}")
+        except Exception:
+            pass
     for b in resp["bricks"]:
         try:
-            png_hashes[f"brick_{b['id']:03d}"] = api_get_png_hash(f"/api/brick/{b['id']}.png")
+            png_hashes[f"brick_{b['id']}"] = api_get_png_hash(f"{pfx}/brick/{b['id']}.png")
         except Exception:
             pass
 

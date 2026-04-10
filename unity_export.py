@@ -424,7 +424,7 @@ def build_house_data(
     canvas_center_x = scaled_w / 2.0 / ppu
 
     for piece in pieces:
-        name = f"piece_{piece.id:03d}"
+        name = f"piece_{piece.id}"
 
         # Position = center of bounding box in scaled pixel coords
         center_px_x = (piece.x + piece.width / 2.0) * scale
@@ -454,19 +454,22 @@ def build_house_data(
         })
 
     # Build steps from waves
-    # piece.id == index in blocks array (pieces are ordered 0..N-1)
-    # All pieces must be in a step; unassigned pieces go into a final step
-    all_piece_ids = set(range(len(pieces)))
+    # Map piece UUID → block array index for Unity's blockIndices
+    piece_id_to_idx = {piece.id: i for i, piece in enumerate(pieces)}
+    all_piece_ids = set(piece.id for piece in pieces)
     assigned_ids = set()
     steps = []
     for w in waves:
-        piece_ids = w.get("pieceIds", [])
-        assigned_ids.update(piece_ids)
+        wave_piece_ids = w.get("pieceIds", [])
+        assigned_ids.update(wave_piece_ids)
+        # Convert piece UUIDs to block array indices
+        block_indices = [piece_id_to_idx[pid] for pid in wave_piece_ids if pid in piece_id_to_idx]
         steps.append({
             "wave": w.get("wave", len(steps) + 1),
-            "blockIndices": piece_ids,
+            "blockIndices": block_indices,
         })
-    unassigned = sorted(all_piece_ids - assigned_ids)
+    unassigned_ids = all_piece_ids - assigned_ids
+    unassigned = sorted([piece_id_to_idx[pid] for pid in unassigned_ids])
     if unassigned:
         if not steps:
             # Auto-assign waves by Y position (bottom → top).
@@ -512,18 +515,20 @@ def build_house_data(
     scaling_factor = 2.0
 
     # SameBlocksSettings: each entry is the list of block indices in the same group.
-    # Pieces in the same editor group get identical lists; ungrouped pieces get [i].
-    # piece.id == index in blocks array.
-    piece_to_group: dict[int, list[int]] = {}
+    # Convert piece UUIDs from groups to block array indices.
+    piece_to_group: dict[str, list[str]] = {}
     if groups:
         for g in groups:
             ids = g.get("pieceIds", [])
             for pid in ids:
                 piece_to_group[pid] = ids
     same_blocks_settings = []
-    for piece in pieces:
-        group_ids = piece_to_group.get(piece.id)
-        same_blocks_settings.append(group_ids if group_ids is not None else [piece.id])
+    for i, piece in enumerate(pieces):
+        group_pids = piece_to_group.get(piece.id)
+        if group_pids is not None:
+            same_blocks_settings.append([piece_id_to_idx[pid] for pid in group_pids if pid in piece_id_to_idx])
+        else:
+            same_blocks_settings.append([i])
 
     # Spacing is passed as a parameter (default 12.0 Unity units).
     # Caller can override for first-in-location (0) or custom gaps.

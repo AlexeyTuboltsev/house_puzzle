@@ -20,6 +20,7 @@ from helpers import (
     compare_load,
     compare_merge,
     BASELINES_DIR,
+    LOAD_DEFAULTS,
 )
 
 FILES = [f"_NY{i}" for i in range(1, 11)]
@@ -41,8 +42,8 @@ class TestE2E(unittest.TestCase):
         with open(merge_baseline_path) as f:
             merge_baseline = json.load(f)
 
-        # Load
-        load_resp = api_post("/api/load_pdf", {"path": f"in/{name}.ai", "canvas_height": 900})
+        # Load (deterministic IDs for reproducible comparison)
+        load_resp = api_post("/api/load_pdf", {"path": f"in/{name}.ai", **LOAD_DEFAULTS})
         load_snap = extract_load_snapshot(load_resp, file_stem=name)
         load_diffs = compare_load(load_snap, load_baseline)
         self.assertEqual(load_diffs, [], f"{name} load diffs:\n" + "\n".join(load_diffs))

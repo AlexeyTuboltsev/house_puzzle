@@ -20,7 +20,7 @@ ADJACENCY_THRESHOLD = 15
 
 @dataclass
 class Brick:
-    id: int
+    id: str
     x: int
     y: int
     width: int
@@ -50,8 +50,8 @@ class Brick:
 
 @dataclass
 class PuzzlePiece:
-    id: int
-    brick_ids: list[int] = field(default_factory=list)
+    id: str
+    brick_ids: list[str] = field(default_factory=list)
     # Bounding box (computed from constituent bricks)
     x: int = 0
     y: int = 0
@@ -91,12 +91,12 @@ def compute_border_pixels(img_path: str, brick_x: int, brick_y: int) -> set[tupl
 
 def compute_all_border_pixels(bricks: list[Brick],
                               extract_dir: str,
-                              prefix: str = "brick") -> dict[int, set[tuple[int, int]]]:
+                              prefix: str = "brick") -> dict[str, set[tuple[int, int]]]:
     """Compute border pixels for all bricks from their extracted PNGs."""
     result = {}
     extract_path = Path(extract_dir)
     for b in bricks:
-        png_path = extract_path / f"{prefix}_{b.id:03d}.png"
+        png_path = extract_path / f"{prefix}_{b.id}.png"
         if png_path.exists():
             result[b.id] = compute_border_pixels(str(png_path), b.x, b.y)
         else:
@@ -106,12 +106,12 @@ def compute_all_border_pixels(bricks: list[Brick],
 
 def compute_brick_areas(bricks: list[Brick],
                         extract_dir: str,
-                        prefix: str = "brick") -> dict[int, int]:
+                        prefix: str = "brick") -> dict[str, int]:
     """Count opaque pixels (alpha > 30) for each brick — actual pixel area."""
     result = {}
     extract_path = Path(extract_dir)
     for b in bricks:
-        png_path = extract_path / f"{prefix}_{b.id:03d}.png"
+        png_path = extract_path / f"{prefix}_{b.id}.png"
         if png_path.exists():
             img = Image.open(str(png_path)).convert("RGBA")
             alpha = np.array(img.split()[3])
@@ -123,13 +123,13 @@ def compute_brick_areas(bricks: list[Brick],
 
 def compute_borders_and_areas(bricks: list[Brick],
                               extract_dir: str,
-                              prefix: str = "brick") -> tuple[dict[int, set[tuple[int, int]]], dict[int, int]]:
+                              prefix: str = "brick") -> tuple[dict[str, set[tuple[int, int]]], dict[str, int]]:
     """Compute border pixels AND pixel areas in a single pass (one PNG read per brick)."""
     borders = {}
     areas = {}
     extract_path = Path(extract_dir)
     for b in bricks:
-        png_path = extract_path / f"{prefix}_{b.id:03d}.png"
+        png_path = extract_path / f"{prefix}_{b.id}.png"
         if not png_path.exists():
             borders[b.id] = set()
             areas[b.id] = b.width * b.height
@@ -201,7 +201,7 @@ def _count_close_pixels(border_a: set, border_b: set, gap: int) -> int:
 def build_adjacency(bricks: list[Brick], gap: int = ADJACENCY_THRESHOLD,
                     min_border: int = 5,
                     border_gap: int = 2,
-                    border_pixels: dict[int, set] | None = None) -> dict[int, set[int]]:
+                    border_pixels: dict[str, set] | None = None) -> dict[str, set[str]]:
     """Build adjacency graph.
 
     When *border_pixels* is provided (dict mapping brick id to set of
@@ -256,7 +256,7 @@ def build_adjacency(bricks: list[Brick], gap: int = ADJACENCY_THRESHOLD,
     return adj
 
 
-def compute_piece_bbox(piece_brick_ids: list[int], bricks_by_id: dict[int, Brick]) -> tuple[int, int, int, int]:
+def compute_piece_bbox(piece_brick_ids: list[str], bricks_by_id: dict[str, Brick]) -> tuple[int, int, int, int]:
     """Compute bounding box for a set of bricks."""
     xs = []
     ys = []
@@ -282,8 +282,8 @@ def merge_bricks(bricks: list[Brick], target_piece_count: int | None = None,
                  seed: int = 42,
                  min_border: int = 5,
                  border_gap: int = 2,
-                 border_pixels: dict[int, set] | None = None,
-                 brick_areas: dict[int, int] | None = None) -> MergeResult:
+                 border_pixels: dict[str, set] | None = None,
+                 brick_areas: dict[str, int] | None = None) -> MergeResult:
     """
     Merge bricks into puzzle pieces using area-balanced adjacency grouping.
 
@@ -317,7 +317,7 @@ def merge_bricks(bricks: list[Brick], target_piece_count: int | None = None,
     # Any brick whose area alone >= target_area becomes a fixed solo piece.
     # Iterate until stable (excluding bricks changes target_area).
     total_area = sum(areas.get(bid, 0) for bid in all_ids)
-    fixed_ids: set[int] = set()
+    fixed_ids: set[str] = set()
     for _ in range(10):  # converge quickly
         target_area = total_area / max(1, target_count)
         new_fixed = set(bid for bid in all_ids if areas.get(bid, 0) >= target_area)
@@ -337,15 +337,15 @@ def merge_bricks(bricks: list[Brick], target_piece_count: int | None = None,
 
     # Initialize: each mergeable brick is its own piece
     piece_of = {}
-    pieces_dict: dict[int, list[int]] = {}
-    piece_area: dict[int, int] = {}
+    pieces_dict: dict[str, list[str]] = {}
+    piece_area: dict[str, int] = {}
     for bid in mergeable_ids:
         piece_of[bid] = bid
         pieces_dict[bid] = [bid]
         piece_area[bid] = areas.get(bid, 0)
 
     # Build piece-level adjacency (only among mergeable bricks)
-    piece_adj: dict[int, set[int]] = defaultdict(set)
+    piece_adj: dict[str, set[str]] = defaultdict(set)
     for bid in mergeable_ids:
         pid = piece_of[bid]
         for nbr in adj.get(bid, set()):
@@ -356,7 +356,7 @@ def merge_bricks(bricks: list[Brick], target_piece_count: int | None = None,
                 piece_adj[pid].add(npid)
                 piece_adj[npid].add(pid)
 
-    def _merge(keep_pid: int, absorb_pid: int):
+    def _merge(keep_pid: str, absorb_pid: str):
         """Merge absorb_pid into keep_pid, updating all bookkeeping."""
         pieces_dict[keep_pid] = pieces_dict[keep_pid] + pieces_dict[absorb_pid]
         piece_area[keep_pid] = piece_area[keep_pid] + piece_area[absorb_pid]
@@ -428,7 +428,7 @@ def merge_bricks(bricks: list[Brick], target_piece_count: int | None = None,
     for bid in sorted(fixed_ids):
         b = bricks_by_id[bid]
         result_pieces.append(PuzzlePiece(
-            id=len(result_pieces),
+            id=f"p{len(result_pieces)}",
             brick_ids=[bid],
             x=b.x, y=b.y, width=b.width, height=b.height,
         ))
@@ -436,18 +436,18 @@ def merge_bricks(bricks: list[Brick], target_piece_count: int | None = None,
     for pid, brick_ids in pieces_dict.items():
         x, y, w, h = compute_piece_bbox(brick_ids, bricks_by_id)
         result_pieces.append(PuzzlePiece(
-            id=len(result_pieces),
+            id=f"p{len(result_pieces)}",
             brick_ids=brick_ids,
             x=x, y=y, width=w, height=h,
         ))
 
     for i, piece in enumerate(result_pieces):
-        piece.id = i
+        piece.id = f"p{i}"
 
     return MergeResult(pieces=result_pieces)
 
 
-def pieces_to_json(pieces: list[PuzzlePiece], bricks_by_id: dict[int, Brick]) -> list[dict]:
+def pieces_to_json(pieces: list[PuzzlePiece], bricks_by_id: dict[str, Brick]) -> list[dict]:
     """Convert pieces to JSON-serializable format."""
     result = []
     for piece in pieces:

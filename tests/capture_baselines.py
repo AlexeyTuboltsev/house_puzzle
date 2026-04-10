@@ -11,7 +11,13 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from helpers import api_post, extract_load_snapshot, extract_merge_snapshot, BASELINES_DIR
+from helpers import (
+    api_post,
+    extract_load_snapshot,
+    extract_merge_snapshot,
+    BASELINES_DIR,
+    LOAD_DEFAULTS,
+)
 
 FILES = [f"_NY{i}" for i in range(1, 11)]
 MERGE_PARAMS = {"target_count": 60, "min_border": 10, "seed": 42}
@@ -25,7 +31,7 @@ def main():
         path = f"in/{name}.ai"
         print(f"  {name}: loading...", end="", flush=True)
         t0 = time.time()
-        load_resp = api_post("/api/load_pdf", {"path": path, "canvas_height": 900})
+        load_resp = api_post("/api/load_pdf", {"path": path, **LOAD_DEFAULTS})
         t1 = time.time()
         print(f" {t1 - t0:.1f}s, {len(load_resp['bricks'])} bricks", end="", flush=True)
 

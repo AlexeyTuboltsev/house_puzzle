@@ -41,19 +41,41 @@ app = Flask(
     static_folder=str(_base_dir / "static"),
 )
 
-# In-memory state
-_state = {
-    "house": None,          # HouseData
-    "bricks": [],           # list[Brick]
-    "bricks_by_id": {},     # dict[int, Brick]
-    "pieces": [],           # list[PuzzlePiece]
-    "tif_path": None,
-    "extracted_dir": None,  # temp dir with extracted PNGs
-    "border_pixels": {},    # dict[int, set[(x,y)]] per brick
-    "brick_areas": {},      # dict[int, int] pixel area per brick
-    "brick_polygons": {},   # dict[int, list[[x,y]]] traced outlines per brick
-    "canvas_height": None,  # display canvas height (pixels)
-}
+# In-memory sessions keyed by session ID
+_sessions: dict[str, dict] = {}
+
+
+def _new_session() -> dict:
+    """Create a fresh session state dict."""
+    return {
+        "house": None,          # HouseData
+        "bricks": [],           # list[Brick]
+        "bricks_by_id": {},     # dict[str, Brick]
+        "pieces": [],           # list[PuzzlePiece]
+        "tif_path": None,
+        "extracted_dir": None,  # temp dir with extracted PNGs
+        "border_pixels": {},    # dict[str, set[(x,y)]] per brick
+        "brick_areas": {},      # dict[str, int] pixel area per brick
+        "brick_polygons": {},   # dict[str, list[[x,y]]] traced outlines per brick
+        "canvas_height": None,  # display canvas height (pixels)
+        "idx_to_uuid": {},      # dict[int, str] original brick index → UUID
+    }
+
+
+def _get_session(key: str) -> dict:
+    """Get session by key or 404."""
+    s = _sessions.get(key)
+    if s is None:
+        from flask import abort
+        abort(404, f"Session {key} not found")
+    return s
+
+
+# Compatibility: _state points to the most recently loaded session.
+# During migration, old code using _state still works.
+# New keyed routes use _get_session(key) directly.
+_state = _new_session()
+_current_session_key: str = ""
 
 EXTRACT_DIR = Path(tempfile.gettempdir()) / "house_puzzle_extract"
 # Presets must be writable → use the directory the exe/script lives in
@@ -169,26 +191,39 @@ def api_upload_file():
     return jsonify({"path": str(dest)})
 
 
-def _vectorize_bricks(bricks, extract_dir: Path) -> dict:
+def _vectorize_bricks(bricks, extract_dir: Path, idx_to_uuid: dict | None = None) -> dict:
     """Read brick polygon cache (pre-populated from PDF vector layer).
 
     No raster fallback — shapes must come from the PDF outline layer.
     Missing bricks = unmatched vector paths; caller reports them to the user.
-    Returns dict[brick_id -> list[[x,y]]].
+    Returns dict[brick_id -> list[[x,y]]] keyed by UUID string IDs.
     """
     cache_path = extract_dir / "brick_polygons.json"
     if not cache_path.exists():
         return {}
     with open(cache_path) as f:
         cached = json.load(f)
+    if idx_to_uuid:
+        return {idx_to_uuid.get(int(k), k): v for k, v in cached.items()}
     return {int(k): v for k, v in cached.items()}
 
 
+@app.route("/api/s/<key>/load", methods=["POST"])
 @app.route("/api/load_pdf", methods=["POST"])
-def api_load_pdf():
+def api_load_pdf(key=None):
     """Load and parse an AI file, extract brick metadata."""
+    global _state, _current_session_key
     data = request.get_json()
     file_path = data.get("path", "")
+
+    # Create or reuse session
+    if key is None:
+        import uuid as _uuid
+        key = str(_uuid.uuid4())[:8]
+    session = _new_session()
+    _sessions[key] = session
+    _state = session  # compatibility: _state points to current session
+    _current_session_key = key
 
     if not file_path or not Path(file_path).exists():
         return jsonify({"error": f"File not found: {file_path}"}), 404
@@ -208,17 +243,29 @@ def api_load_pdf():
     seen_bbox: set[tuple] = set()
     deduped_layers: list = []
     for bl in house.bricks:
-        key = (bl.x, bl.y, bl.width, bl.height)
-        if key not in seen_bbox:
-            seen_bbox.add(key)
+        bbox_key = (bl.x, bl.y, bl.width, bl.height)
+        if bbox_key not in seen_bbox:
+            seen_bbox.add(bbox_key)
             deduped_layers.append(bl)
     house.bricks = deduped_layers
 
+    deterministic = data.get("deterministic_ids", False)
+    if deterministic:
+        import hashlib as _hl
+        def _brick_id(bl):
+            return _hl.md5(f"{int(bl.x)},{int(bl.y)},{int(bl.width)},{int(bl.height)}".encode()).hexdigest()[:8]
+    else:
+        import uuid as _uuid
+        def _brick_id(bl):
+            return str(_uuid.uuid4())[:8]
+
     bricks = [
-        Brick(id=bl.index, x=bl.x, y=bl.y,
+        Brick(id=_brick_id(bl), x=bl.x, y=bl.y,
               width=bl.width, height=bl.height, brick_type=bl.layer_type)
         for bl in house.bricks
     ]
+    # Map original index → UUID for PNG filename mapping
+    _idx_to_uuid = {bl.index: bricks[i].id for i, bl in enumerate(house.bricks)}
     bricks_by_id = {b.id: b for b in bricks}
 
     # Store state
@@ -228,10 +275,11 @@ def api_load_pdf():
     _state["tif_path"] = file_path
     _state["pieces"] = []
     _state["canvas_height"] = canvas_height
+    _state["idx_to_uuid"] = _idx_to_uuid
 
     # Extract all layers as PNGs (always regenerate, no caching)
     import shutil
-    extract_dir = EXTRACT_DIR / Path(file_path).stem.replace(" ", "_")
+    extract_dir = EXTRACT_DIR / key
     if extract_dir.exists():
         shutil.rmtree(str(extract_dir))
     extract_dir.mkdir(parents=True, exist_ok=True)
@@ -261,6 +309,13 @@ def api_load_pdf():
         with open(extract_dir / "brick_polygons.json", "w") as f:
             json.dump({str(k): v for k, v in vec_polys.items()}, f)
 
+    # Rename brick PNGs from index-based to UUID-based names
+    for bl_idx, brick_uuid in _idx_to_uuid.items():
+        old_path = extract_dir / f"brick_{bl_idx:03d}.png"
+        new_path = extract_dir / f"brick_{brick_uuid}.png"
+        if old_path.exists():
+            old_path.rename(new_path)
+
     # Compute border pixels and areas (single PNG read per brick)
     bp, ba = compute_borders_and_areas(bricks, str(extract_dir))
     _state["border_pixels"] = bp
@@ -272,7 +327,10 @@ def api_load_pdf():
     if covered_ids:
         print(f"[load] Removing {len(covered_ids)} covered bricks: {sorted(covered_ids)}", flush=True)
         bricks = [b for b in bricks if b.id not in covered_ids]
-        house.bricks = [bl for bl in house.bricks if bl.index not in covered_ids]
+        # Map UUID back to original index for filtering house.bricks
+        _uuid_to_idx = {v: k for k, v in _idx_to_uuid.items()}
+        covered_indices = {_uuid_to_idx[uid] for uid in covered_ids if uid in _uuid_to_idx}
+        house.bricks = [bl for bl in house.bricks if bl.index not in covered_indices]
         bricks_by_id = {b.id: b for b in bricks}
         _state["house"] = house
         _state["bricks"] = bricks
@@ -283,7 +341,7 @@ def api_load_pdf():
         _state["brick_areas"] = ba
 
     # Vectorize outlines — reads cache pre-populated from PDF vector layer
-    polygons = _vectorize_bricks(bricks, extract_dir)
+    polygons = _vectorize_bricks(bricks, extract_dir, _idx_to_uuid)
     _state["brick_polygons"] = polygons
 
     # Build adjacency for visualization
@@ -308,7 +366,9 @@ def api_load_pdf():
             "polygon": polygons.get(b.id, []),
         })
 
+    pfx = f"/api/s/{key}"
     return jsonify({
+        "key": key,
         "canvas": {"width": house.canvas_width, "height": house.canvas_height},
         "total_layers": house.total_layers,
         "num_bricks": len(bricks),
@@ -318,19 +378,21 @@ def api_load_pdf():
         "render_dpi": round(house.render_dpi, 2),
         "warnings": house.warnings,
         "houseUnitsHigh": round(house.canvas_height / house.screen_frame_height_px * 15.5, 4) if house.screen_frame_height_px > 0 else 15.5,
-        "composite_url": "/api/composite.png?f=" + Path(file_path).stem,
-        "outlines_url": "/api/outlines.png?f=" + Path(file_path).stem,
-        "lights_url": "/api/lights.png?f=" + Path(file_path).stem if (extract_dir / "lights.png").exists() else None,
-        "blueprint_bg_url": "/api/background.png?f=" + Path(file_path).stem if (extract_dir / "background.png").exists() else None,
+        "composite_url": f"{pfx}/composite.png",
+        "outlines_url": f"{pfx}/outlines.png",
+        "lights_url": f"{pfx}/lights.png" if (extract_dir / "lights.png").exists() else None,
+        "blueprint_bg_url": f"{pfx}/background.png" if (extract_dir / "background.png").exists() else None,
     })
 
 
+@app.route("/api/s/<key>/composite.png")
 @app.route("/api/composite.png")
-def api_composite():
+def api_composite(key=None):
     """Serve the composite image."""
-    if not _state["extracted_dir"]:
+    s = _get_session(key) if key else _state
+    if not s["extracted_dir"]:
         return "No PDF loaded", 404
-    comp_path = _state["extracted_dir"] / "composite.png"
+    comp_path = s["extracted_dir"] / "composite.png"
     if not comp_path.exists():
         return "Composite not extracted", 404
     resp = send_file(str(comp_path), mimetype="image/png")
@@ -339,12 +401,14 @@ def api_composite():
 
 
 
+@app.route("/api/s/<key>/base.png")
 @app.route("/api/base.png")
-def api_base():
+def api_base(key=None):
     """Serve the base layer image."""
-    if not _state["extracted_dir"]:
+    s = _get_session(key) if key else _state
+    if not s["extracted_dir"]:
         return "No PDF loaded", 404
-    base_path = _state["extracted_dir"] / "base.png"
+    base_path = s["extracted_dir"] / "base.png"
     if not base_path.exists():
         return "Base not extracted", 404
     resp = send_file(str(base_path), mimetype="image/png")
@@ -352,45 +416,53 @@ def api_base():
     return resp
 
 
-@app.route("/api/brick/<int:brick_id>.png")
-def api_brick_png(brick_id):
+@app.route("/api/s/<key>/brick/<brick_id>.png")
+@app.route("/api/brick/<brick_id>.png")
+def api_brick_png(brick_id, key=None):
     """Serve an individual brick layer as PNG."""
-    if not _state["extracted_dir"]:
+    s = _get_session(key) if key else _state
+    if not s["extracted_dir"]:
         return "No PDF loaded", 404
-    brick_path = _state["extracted_dir"] / f"brick_{brick_id:03d}.png"
+    brick_path = s["extracted_dir"] / f"brick_{brick_id}.png"
     if not brick_path.exists():
         return f"Brick {brick_id} not found", 404
     return send_file(str(brick_path), mimetype="image/png")
 
 
-@app.route("/api/piece/<int:piece_id>.png")
-def api_piece_png(piece_id):
+@app.route("/api/s/<key>/piece/<piece_id>.png")
+@app.route("/api/piece/<piece_id>.png")
+def api_piece_png(piece_id, key=None):
     """Serve a composited piece PNG."""
-    if not _state["extracted_dir"]:
+    s = _get_session(key) if key else _state
+    if not s["extracted_dir"]:
         return "No PDF loaded", 404
-    p = _state["extracted_dir"] / f"piece_{piece_id:03d}.png"
+    p = s["extracted_dir"] / f"piece_{piece_id}.png"
     if not p.exists():
         return "Not found", 404
     return send_file(str(p), mimetype="image/png")
 
 
-@app.route("/api/piece_outline/<int:piece_id>.png")
-def api_piece_outline_png(piece_id):
+@app.route("/api/s/<key>/piece_outline/<piece_id>.png")
+@app.route("/api/piece_outline/<piece_id>.png")
+def api_piece_outline_png(piece_id, key=None):
     """Serve a piece outline PNG."""
-    if not _state["extracted_dir"]:
+    s = _get_session(key) if key else _state
+    if not s["extracted_dir"]:
         return "No PDF loaded", 404
-    p = _state["extracted_dir"] / f"piece_outline_{piece_id:03d}.png"
+    p = s["extracted_dir"] / f"piece_outline_{piece_id}.png"
     if not p.exists():
         return "Not found", 404
     return send_file(str(p), mimetype="image/png")
 
 
+@app.route("/api/s/<key>/outlines.png")
 @app.route("/api/outlines.png")
-def api_outlines_png():
+def api_outlines_png(key=None):
     """Serve the full-house vector outline layer PNG."""
-    if not _state["extracted_dir"]:
+    s = _get_session(key) if key else _state
+    if not s["extracted_dir"]:
         return "No PDF loaded", 404
-    p = _state["extracted_dir"] / "outlines.png"
+    p = s["extracted_dir"] / "outlines.png"
     if not p.exists():
         return "Not found", 404
     resp = send_file(str(p), mimetype="image/png")
@@ -398,11 +470,13 @@ def api_outlines_png():
     return resp
 
 
+@app.route("/api/s/<key>/lights.png")
 @app.route("/api/lights.png")
-def api_lights_png():
-    if not _state["extracted_dir"]:
+def api_lights_png(key=None):
+    s = _get_session(key) if key else _state
+    if not s["extracted_dir"]:
         return "No file loaded", 404
-    p = _state["extracted_dir"] / "lights.png"
+    p = s["extracted_dir"] / "lights.png"
     if not p.exists():
         return "Not found", 404
     resp = send_file(str(p), mimetype="image/png")
@@ -410,11 +484,13 @@ def api_lights_png():
     return resp
 
 
+@app.route("/api/s/<key>/background.png")
 @app.route("/api/background.png")
-def api_background_png():
-    if not _state["extracted_dir"]:
+def api_background_png(key=None):
+    s = _get_session(key) if key else _state
+    if not s["extracted_dir"]:
         return "No file loaded", 404
-    p = _state["extracted_dir"] / "background.png"
+    p = s["extracted_dir"] / "background.png"
     if not p.exists():
         return "Not found", 404
     resp = send_file(str(p), mimetype="image/png")
@@ -505,8 +581,9 @@ def _pieces_json_with_polygons(pieces, bricks_by_id, brick_polygons):
     return pieces_json
 
 
+@app.route("/api/s/<key>/merge", methods=["POST"])
 @app.route("/api/merge", methods=["POST"])
-def api_merge():
+def api_merge(key=None):
     """Merge bricks into puzzle pieces.
 
     Two modes:
@@ -515,9 +592,10 @@ def api_merge():
       for the supplied piece definitions [{id, brick_ids}, ...].  Used after manual
       edits to restore polygon outlines via the canonical brick-vector pipeline.
     """
+    s = _get_session(key) if key else _state
     data = request.get_json()
 
-    if not _state["bricks_by_id"]:
+    if not s["bricks_by_id"]:
         return jsonify({"error": "No PDF loaded"}), 400
 
     # ── Recompute mode: pre-defined pieces supplied by caller ─────────────────
@@ -535,20 +613,20 @@ def api_merge():
                 else:
                     self.x = self.y = self.width = self.height = 0
 
-        pieces = [_P(p["id"], p.get("brick_ids", []), _state["bricks_by_id"])
+        pieces = [_P(p["id"], p.get("brick_ids", []), s["bricks_by_id"])
                   for p in data["pieces"]]
-        extract_dir = _state.get("extracted_dir")
-        if extract_dir and _state.get("tif_path") and Path(_state["tif_path"]).suffix.lower() in (".pdf", ".ai"):
+        extract_dir = s.get("extracted_dir")
+        if extract_dir and s.get("tif_path") and Path(s["tif_path"]).suffix.lower() in (".pdf", ".ai"):
             for piece in pieces:
-                _assemble_piece_png(piece, _state["bricks_by_id"], extract_dir)
-                _render_piece_outline_png(piece, _state["bricks_by_id"], extract_dir)
+                _assemble_piece_png(piece, s["bricks_by_id"], extract_dir)
+                _render_piece_outline_png(piece, s["bricks_by_id"], extract_dir)
         pieces_json = _pieces_json_with_polygons(
-            pieces, _state["bricks_by_id"], _state.get("brick_polygons", {})
+            pieces, s["bricks_by_id"], s.get("brick_polygons", {})
         )
         return jsonify({"num_pieces": len(pieces), "pieces": pieces_json})
 
     # ── Normal mode: run merge algorithm ─────────────────────────────────────
-    if not _state["bricks"]:
+    if not s["bricks"]:
         return jsonify({"error": "No PDF loaded"}), 400
 
     target_count = data.get("target_count")
@@ -557,25 +635,25 @@ def api_merge():
     border_gap = data.get("border_gap", 2)
 
     result = merge_bricks(
-        _state["bricks"],
+        s["bricks"],
         target_piece_count=target_count,
         seed=seed,
         min_border=min_border,
         border_gap=border_gap,
-        border_pixels=_state.get("border_pixels"),
-        brick_areas=_state.get("brick_areas"),
+        border_pixels=s.get("border_pixels"),
+        brick_areas=s.get("brick_areas"),
     )
 
-    _state["pieces"] = result.pieces
+    s["pieces"] = result.pieces
 
-    extract_dir = _state.get("extracted_dir")
-    if extract_dir and _state.get("tif_path") and Path(_state["tif_path"]).suffix.lower() in (".pdf", ".ai"):
+    extract_dir = s.get("extracted_dir")
+    if extract_dir and s.get("tif_path") and Path(s["tif_path"]).suffix.lower() in (".pdf", ".ai"):
         for piece in result.pieces:
-            _assemble_piece_png(piece, _state["bricks_by_id"], extract_dir)
-            _render_piece_outline_png(piece, _state["bricks_by_id"], extract_dir)
+            _assemble_piece_png(piece, s["bricks_by_id"], extract_dir)
+            _render_piece_outline_png(piece, s["bricks_by_id"], extract_dir)
 
     pieces_json = _pieces_json_with_polygons(
-        result.pieces, _state["bricks_by_id"], _state.get("brick_polygons", {})
+        result.pieces, s["bricks_by_id"], s.get("brick_polygons", {})
     )
 
     return jsonify({
@@ -584,18 +662,20 @@ def api_merge():
     })
 
 
+@app.route("/api/s/<key>/update_piece", methods=["POST"])
 @app.route("/api/update_piece", methods=["POST"])
-def api_update_piece():
+def api_update_piece(key=None):
     """Move a brick between pieces (manual correction)."""
+    s = _get_session(key) if key else _state
     data = request.get_json()
     brick_id = data.get("brick_id")
     from_piece_id = data.get("from_piece")
     to_piece_id = data.get("to_piece")
 
-    if _state["pieces"] is None:
+    if s["pieces"] is None:
         return jsonify({"error": "No pieces computed"}), 400
 
-    pieces = _state["pieces"]
+    pieces = s["pieces"]
 
     # Find source and target pieces
     src = next((p for p in pieces if p.id == from_piece_id), None)
@@ -612,25 +692,27 @@ def api_update_piece():
     dst.brick_ids.append(brick_id)
 
     # Remove empty pieces
-    _state["pieces"] = [p for p in pieces if p.brick_ids]
+    s["pieces"] = [p for p in pieces if p.brick_ids]
 
     # Recompute bboxes
-    for p in _state["pieces"]:
+    for p in s["pieces"]:
         p.x, p.y, p.width, p.height = compute_piece_bbox(
-            p.brick_ids, _state["bricks_by_id"]
+            p.brick_ids, s["bricks_by_id"]
         )
 
-    pieces_json = pieces_to_json(_state["pieces"], _state["bricks_by_id"])
-    return jsonify({"num_pieces": len(_state["pieces"]), "pieces": pieces_json})
+    pieces_json = pieces_to_json(s["pieces"], s["bricks_by_id"])
+    return jsonify({"num_pieces": len(s["pieces"]), "pieces": pieces_json})
 
 
+@app.route("/api/s/<key>/blueprint", methods=["POST"])
 @app.route("/api/blueprint", methods=["POST"])
-def api_blueprint():
+def api_blueprint(key=None):
     """Generate blueprint overlay with 4px white lines on piece boundaries."""
-    if not _state["pieces"]:
+    s = _get_session(key) if key else _state
+    if not s["pieces"]:
         return jsonify({"error": "No pieces computed"}), 400
 
-    house = _state["house"]
+    house = s["house"]
     w, h = house.canvas_width, house.canvas_height
 
     # Create transparent image
@@ -640,8 +722,8 @@ def api_blueprint():
     line_width = 4
     line_color = (255, 255, 255, 255)
 
-    for piece in _state["pieces"]:
-        bricks = [_state["bricks_by_id"][bid] for bid in piece.brick_ids]
+    for piece in s["pieces"]:
+        bricks = [s["bricks_by_id"][bid] for bid in piece.brick_ids]
         if len(bricks) <= 1:
             # Single brick = the whole piece is the boundary
             b = bricks[0]
@@ -700,18 +782,20 @@ def _draw_piece_outline(draw, bricks, color, width):
             draw.line([(x, y1), (x, y2)], fill=color, width=width)
 
 
+@app.route("/api/s/<key>/export", methods=["POST"])
 @app.route("/api/export", methods=["POST"])
-def api_export():
+def api_export(key=None):
     """Export puzzle pieces as PNG sprites + JSON manifest."""
-    if not _state["pieces"] or not _state["tif_path"]:
+    s = _get_session(key) if key else _state
+    if not s["pieces"] or not s["tif_path"]:
         return jsonify({"error": "No puzzle computed"}), 400
 
     import zipfile
 
     data = request.get_json(force=True) or {}
-    house = _state["house"]
-    tif_path = _state["tif_path"]
-    pieces = _state["pieces"]
+    house = s["house"]
+    tif_path = s["tif_path"]
+    pieces = s["pieces"]
 
     waves_data = data.get("waves", [])
 
@@ -738,6 +822,12 @@ def api_export():
         tif_path, house.bricks, str(export_dir),
         dpi=export_dpi, clip_rect=house.clip_rect, prefix="brick"
     )
+    # Rename export brick PNGs from index-based to UUID-based names
+    for bl_idx, brick_uuid in s.get("idx_to_uuid", {}).items():
+        old_p = export_dir / f"brick_{bl_idx:03d}.png"
+        new_p = export_dir / f"brick_{brick_uuid}.png"
+        if old_p.exists():
+            old_p.rename(new_p)
     export_comp_path = export_dir / "composite.png"
     compose_ai_bricks_png(tif_path, house.bricks, str(export_comp_path),
                           dpi=export_dpi, clip_rect=house.clip_rect,
@@ -759,12 +849,12 @@ def api_export():
 
             for bid in piece.brick_ids:
                 # Cached display-resolution brick (full canvas PNG)
-                disp_p = _state["extracted_dir"] / f"brick_{bid:03d}.png"
+                disp_p = s["extracted_dir"] / f"brick_{bid}.png"
                 if disp_p.exists():
                     disp_br = Image.open(str(disp_p)).convert("RGBA")
                     disp_img.paste(disp_br, (-round(piece.x), -round(piece.y)), disp_br)
                 # Export-resolution brick (full canvas PNG)
-                exp_p = export_dir / f"brick_{bid:03d}.png"
+                exp_p = export_dir / f"brick_{bid}.png"
                 if exp_p.exists():
                     exp_br = Image.open(str(exp_p)).convert("RGBA")
                     exp_img.paste(exp_br,
@@ -780,7 +870,7 @@ def api_export():
             scaled_img = exp_img.resize((new_w, new_h), Image.LANCZOS)
             piece_images[piece.id] = scaled_img
 
-            fname = f"piece_{piece.id:03d}.png"
+            fname = f"piece_{piece.id}.png"
             buf = io.BytesIO()
             scaled_img.save(buf, format="PNG")
             zf.writestr(f"pieces/{fname}", buf.getvalue())
@@ -806,7 +896,7 @@ def api_export():
         from unity_export import build_house_data
         house_data = build_house_data(
             pieces=pieces,
-            bricks_by_id=_state["bricks_by_id"],
+            bricks_by_id=s["bricks_by_id"],
             canvas_width=house.canvas_width,
             canvas_height=house.canvas_height,
             waves=waves_data,
@@ -821,13 +911,13 @@ def api_export():
         )
 
         # blue.png — AI background layer exported as "blue"
-        bg_src_path = _state["extracted_dir"] / "background.png"
+        bg_src_path = s["extracted_dir"] / "background.png"
         if bg_src_path.exists():
             bg_src = Image.open(str(bg_src_path)).convert("RGBA")
             _write_scaled(zf, "blue.png", bg_src)
 
         # lights.png — AI lights layer overlay
-        lights_src_path = _state["extracted_dir"] / "lights.png"
+        lights_src_path = s["extracted_dir"] / "lights.png"
         if lights_src_path.exists():
             lights_src = Image.open(str(lights_src_path)).convert("RGBA")
             _write_scaled(zf, "lights.png", lights_src)
@@ -842,7 +932,7 @@ def api_export():
         # light.png — outer house outline from background vector polygon
         from ai_parser import extract_ai_background_polygon
         bg_polygon = extract_ai_background_polygon(
-            _state["tif_path"], dpi=house.render_dpi, clip_rect=house.clip_rect
+            s["tif_path"], dpi=house.render_dpi, clip_rect=house.clip_rect
         )
         light = _rasterize_outline_boundary(
             bg_polygon, house.canvas_width, house.canvas_height
@@ -987,7 +1077,7 @@ def _find_covered_bricks(bricks, extract_dir):
 
     def get_alpha(bid):
         if bid not in alpha_cache:
-            p = Path(extract_dir) / f"brick_{bid:03d}.png"
+            p = Path(extract_dir) / f"brick_{bid}.png"
             if p.exists():
                 img = Image.open(str(p)).convert("RGBA")
                 alpha_cache[bid] = np.array(img.split()[3])
@@ -1209,11 +1299,11 @@ def _assemble_piece_png(piece, bricks_by_id, extract_dir: Path) -> Path:
     piece_h = max(1, int(piece.height))
     out = Image.new("RGBA", (piece_w, piece_h), (0, 0, 0, 0))
     for bid in piece.brick_ids:
-        brick_path = extract_dir / f"brick_{bid:03d}.png"
+        brick_path = extract_dir / f"brick_{bid}.png"
         if brick_path.exists():
             br = Image.open(str(brick_path)).convert("RGBA")
             out.paste(br, (-round(piece.x), -round(piece.y)), br)
-    out_path = extract_dir / f"piece_{piece.id:03d}.png"
+    out_path = extract_dir / f"piece_{piece.id}.png"
     out.save(str(out_path), "PNG")
     return out_path
 
@@ -1233,7 +1323,7 @@ def _render_piece_outline_png(piece, bricks_by_id, extract_dir: Path, stroke_wid
     piece_h = max(1, int(piece.height))
     mask = Image.new("L", (piece_w, piece_h), 0)
     for bid in piece.brick_ids:
-        brick_path = extract_dir / f"brick_{bid:03d}.png"
+        brick_path = extract_dir / f"brick_{bid}.png"
         if brick_path.exists():
             br = Image.open(str(brick_path)).convert("RGBA")
             alpha = br.split()[3]
@@ -1244,7 +1334,7 @@ def _render_piece_outline_png(piece, bricks_by_id, extract_dir: Path, stroke_wid
     ).astype(np.uint8)
     out = Image.new("RGBA", (piece_w, piece_h), (255, 255, 255, 255))
     out.putalpha(Image.fromarray(outline_arr))
-    out_path = extract_dir / f"piece_outline_{piece.id:03d}.png"
+    out_path = extract_dir / f"piece_outline_{piece.id}.png"
     out.save(str(out_path), "PNG")
     return out_path
 
