@@ -411,33 +411,36 @@ pub fn compute_piece_polygons(
             continue;
         }
 
-        // Match Python: buffer each polygon by BRIDGE px, union, erode back.
-        // Buffer bridges tiny gaps between adjacent bricks so union merges them.
-        use geo::algorithm::bool_ops::BooleanOps;
+        // Match Python's Shapely: buffer(BRIDGE) → unary_union → buffer(-BRIDGE).
+        use geo_clipper::Clipper;
         use geo::algorithm::convex_hull::ConvexHull;
-        use geo::algorithm::centroid::Centroid;
 
-        // Expand each polygon outward from its centroid by BRIDGE pixels
-        let buffered: Vec<Polygon<f64>> = polys.iter().map(|poly| {
-            let centroid = poly.centroid().unwrap_or(Coord { x: 0.0, y: 0.0 }.into());
-            let cx = centroid.x();
-            let cy = centroid.y();
-            let coords: Vec<Coord<f64>> = poly.exterior().0.iter().map(|c| {
-                let dx = c.x - cx;
-                let dy = c.y - cy;
-                let dist = (dx * dx + dy * dy).sqrt().max(0.001);
-                Coord {
-                    x: c.x + dx / dist * BRIDGE,
-                    y: c.y + dy / dist * BRIDGE,
+        let factor = 1000.0; // internal i64 precision
+
+        // Buffer each polygon by BRIDGE px, collect all expanded polygons
+        let mut buffered: Vec<Polygon<f64>> = Vec::new();
+        for poly in &polys {
+            let expanded = poly.offset(BRIDGE, geo_clipper::JoinType::Round(0.25), geo_clipper::EndType::ClosedPolygon, factor);
+            for p in expanded.0 {
+                if p.unsigned_area() > 1.0 {
+                    buffered.push(p);
                 }
-            }).collect();
-            Polygon::new(LineString::new(coords), vec![])
-        }).collect();
+            }
+        }
+
+        if buffered.is_empty() {
+            let all_points: Vec<Coord<f64>> = polys.iter()
+                .flat_map(|p| p.exterior().0.iter().cloned())
+                .collect();
+            let hull = LineString::new(all_points).convex_hull();
+            result.insert(piece.id.clone(), hull.exterior().0.iter().map(|c| [c.x, c.y]).collect());
+            continue;
+        }
 
         // Union all buffered polygons
         let mut union = buffered[0].clone();
         for poly in &buffered[1..] {
-            let multi = BooleanOps::union(&union, poly);
+            let multi = Clipper::union(&union, poly, factor);
             if let Some(largest) = multi.0.into_iter().max_by(|a, b| {
                 a.unsigned_area().partial_cmp(&b.unsigned_area()).unwrap()
             }) {
@@ -445,12 +448,20 @@ pub fn compute_piece_polygons(
             }
         }
 
-        // Extract exterior ring (skip the erode step — the BRIDGE expansion
-        // is small enough that the visual difference is negligible)
-        let coords: Vec<[f64; 2]> = union.exterior().0.iter()
+        // Erode back by BRIDGE to restore original outline
+        let eroded = union.offset(-BRIDGE, geo_clipper::JoinType::Round(0.25), geo_clipper::EndType::ClosedPolygon, factor);
+
+        let final_poly = if !eroded.0.is_empty() {
+            eroded.0.into_iter()
+                .max_by(|a, b| a.unsigned_area().partial_cmp(&b.unsigned_area()).unwrap())
+                .unwrap()
+        } else {
+            union
+        };
+
+        let coords: Vec<[f64; 2]> = final_poly.exterior().0.iter()
             .map(|c| [c.x, c.y])
             .collect();
-
         result.insert(piece.id.clone(), coords);
     }
 
