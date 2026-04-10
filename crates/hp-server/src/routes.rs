@@ -216,6 +216,9 @@ async fn do_load(sessions: SessionStore, key: String, req: LoadRequest) -> Respo
     let comp_path = extract_dir.join("composite.png");
     render::render_composite_png(raw, &render_bricks, cw, ch, &comp_path, bricks_layer_img.as_ref());
 
+    // Render brick outlines
+    render::render_outlines_png(&render_bricks, cw, ch, &extract_dir.join("outlines.png"));
+
     // Render OCG layers (lights, background)
     let clip = metadata.clip_rect;
     let pdf_offset = (0i32, 0i32); // TODO: compute pdf_offset_px

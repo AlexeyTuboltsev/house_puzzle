@@ -207,6 +207,77 @@ fn render_piece_outline(piece_img: &RgbaImage, out_path: &Path) {
     outline.save(out_path).ok();
 }
 
+/// Render brick outlines as white strokes on transparent canvas.
+/// Uses the vector polygons from parsing (brick-local coords → canvas coords).
+pub fn render_outlines_png(
+    bricks: &[(String, crate::ai_parser::BrickPlacement)],
+    canvas_width: u32,
+    canvas_height: u32,
+    out_path: &Path,
+) {
+    // 2x supersampling for smoother strokes
+    let ss = 2u32;
+    let sw = canvas_width * ss;
+    let sh = canvas_height * ss;
+    let mut canvas = RgbaImage::new(sw, sh);
+
+    for (_, bp) in bricks {
+        let poly = match &bp.polygon {
+            Some(p) if p.len() >= 3 => p,
+            _ => continue,
+        };
+
+        // Convert brick-local → canvas coords, scaled by supersampling factor
+        let points: Vec<(f64, f64)> = poly.iter()
+            .map(|pt| (
+                (pt[0] + bp.x as f64) * ss as f64,
+                (pt[1] + bp.y as f64) * ss as f64,
+            ))
+            .collect();
+
+        // Draw polygon edges as white lines (Bresenham)
+        let white = Rgba([255, 255, 255, 255]);
+        for i in 0..points.len() {
+            let (x0, y0) = points[i];
+            let (x1, y1) = points[(i + 1) % points.len()];
+            draw_line(&mut canvas, x0 as i32, y0 as i32, x1 as i32, y1 as i32, white, sw, sh);
+        }
+    }
+
+    // Downscale 2x → 1x
+    let result = image::imageops::resize(&canvas, canvas_width, canvas_height, image::imageops::Lanczos3);
+    result.save(out_path).ok();
+}
+
+/// Bresenham line drawing.
+fn draw_line(img: &mut RgbaImage, x0: i32, y0: i32, x1: i32, y1: i32, color: Rgba<u8>, w: u32, h: u32) {
+    let dx = (x1 - x0).abs();
+    let dy = -(y1 - y0).abs();
+    let sx = if x0 < x1 { 1 } else { -1 };
+    let sy = if y0 < y1 { 1 } else { -1 };
+    let mut err = dx + dy;
+    let mut x = x0;
+    let mut y = y0;
+
+    loop {
+        if x >= 0 && y >= 0 && (x as u32) < w && (y as u32) < h {
+            img.put_pixel(x as u32, y as u32, color);
+            // Thicken: draw adjacent pixels for ~2px stroke at 2x
+            for &(ox, oy) in &[(1, 0), (0, 1), (1, 1)] {
+                let nx = x + ox;
+                let ny = y + oy;
+                if nx >= 0 && ny >= 0 && (nx as u32) < w && (ny as u32) < h {
+                    img.put_pixel(nx as u32, ny as u32, color);
+                }
+            }
+        }
+        if x == x1 && y == y1 { break; }
+        let e2 = 2 * err;
+        if e2 >= dy { err += dy; x += sx; }
+        if e2 <= dx { err += dx; y += sy; }
+    }
+}
+
 /// Render a specific OCG layer to an RgbaImage (for in-memory use).
 pub fn render_ocg_layer_image(
     ai_path: &Path,
