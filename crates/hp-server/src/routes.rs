@@ -189,7 +189,7 @@ async fn do_load(sessions: SessionStore, key: String, req: LoadRequest) -> Respo
     std::fs::create_dir_all(&extract_dir).ok();
 
     // Build (id, placement) pairs for the renderer
-    let render_bricks: Vec<(String, hp_core::ai_parser::BrickPlacement)> = bricks.iter()
+    let mut render_bricks: Vec<(String, hp_core::ai_parser::BrickPlacement)> = bricks.iter()
         .zip(placements.iter())
         .map(|(b, p)| (b.id.clone(), p.clone()))
         .collect();
@@ -212,11 +212,26 @@ async fn do_load(sessions: SessionStore, key: String, req: LoadRequest) -> Respo
     // Render brick PNGs (parallelized with rayon)
     render::render_brick_pngs(raw, &render_bricks, cw, ch, &extract_dir, bricks_layer_img.as_ref());
 
-    // Render composite
+    // Filter covered bricks (decoration layers hidden under other bricks)
+    let covered_ids = render::find_covered_bricks(&bricks, &extract_dir);
+    if !covered_ids.is_empty() {
+        eprintln!("[load] Removing {} covered bricks", covered_ids.len());
+        bricks.retain(|b| !covered_ids.contains(&b.id));
+        render_bricks.retain(|(id, _)| !covered_ids.contains(id));
+        for id in &covered_ids {
+            brick_polygons.remove(id);
+        }
+    }
+
+    // Recompute adjacency and areas after filtering
+    let adj = puzzle::build_adjacency_vector(&bricks, &brick_polygons, 15.0, 5.0, 2.0);
+    let brick_areas = puzzle::compute_polygon_areas(&bricks, &brick_polygons);
+
+    // Render composite (after filtering)
     let comp_path = extract_dir.join("composite.png");
     render::render_composite_png(raw, &render_bricks, cw, ch, &comp_path, bricks_layer_img.as_ref());
 
-    // Render brick outlines
+    // Render brick outlines (after filtering)
     render::render_outlines_png(&render_bricks, cw, ch, &extract_dir.join("outlines.png"));
 
     // Render OCG layers (lights, background)

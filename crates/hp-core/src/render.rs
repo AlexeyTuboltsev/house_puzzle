@@ -2,6 +2,7 @@
 
 use image::{Rgba, RgbaImage};
 use rayon::prelude::*;
+use std::collections::HashMap;
 use std::path::Path;
 
 use crate::ai_parser::BrickPlacement;
@@ -276,6 +277,88 @@ fn draw_line(img: &mut RgbaImage, x0: i32, y0: i32, x1: i32, y1: i32, color: Rgb
         if e2 >= dy { err += dy; x += sx; }
         if e2 <= dx { err += dx; y += sy; }
     }
+}
+
+/// Find bricks whose opaque pixels are mostly covered by another brick.
+///
+/// For each pair with overlapping bboxes, loads their PNGs and checks
+/// alpha overlap. If >=80% of the smaller brick's opaque pixels are
+/// also opaque in the larger brick, the smaller is "covered".
+pub fn find_covered_bricks(
+    bricks: &[crate::types::Brick],
+    extract_dir: &Path,
+) -> std::collections::HashSet<String> {
+    let mut covered = std::collections::HashSet::new();
+
+    // Cache alpha channels (full canvas PNGs)
+    let mut alpha_cache: HashMap<String, Option<Vec<u8>>> = HashMap::new();
+    let mut canvas_dims: (u32, u32) = (0, 0);
+
+    let load_alpha = |bid: &str, cache: &mut HashMap<String, Option<Vec<u8>>>, dims: &mut (u32, u32)| -> Option<Vec<u8>> {
+        if let Some(cached) = cache.get(bid) {
+            return cached.clone();
+        }
+        let path = extract_dir.join(format!("brick_{bid}.png"));
+        let result = if path.exists() {
+            match image::open(&path) {
+                Ok(img) => {
+                    let rgba = img.to_rgba8();
+                    *dims = (rgba.width(), rgba.height());
+                    let alpha: Vec<u8> = rgba.pixels().map(|p| p[3]).collect();
+                    Some(alpha)
+                }
+                Err(_) => None,
+            }
+        } else {
+            None
+        };
+        cache.insert(bid.to_string(), result.clone());
+        result
+    };
+
+    for i in 0..bricks.len() {
+        let a = &bricks[i];
+        if covered.contains(&a.id) { continue; }
+
+        for j in (i + 1)..bricks.len() {
+            let b = &bricks[j];
+            if covered.contains(&b.id) { continue; }
+
+            // Bbox overlap check
+            if a.x >= b.right() || b.x >= a.right() || a.y >= b.bottom() || b.y >= a.bottom() {
+                continue;
+            }
+
+            let (small, big) = if a.area() <= b.area() { (a, b) } else { (b, a) };
+
+            let alpha_s = load_alpha(&small.id, &mut alpha_cache, &mut canvas_dims);
+            let alpha_b = load_alpha(&big.id, &mut alpha_cache, &mut canvas_dims);
+
+            let (alpha_s, alpha_b) = match (alpha_s, alpha_b) {
+                (Some(s), Some(b)) => (s, b),
+                _ => continue,
+            };
+
+            if alpha_s.len() != alpha_b.len() { continue; }
+
+            let mut overlap = 0u64;
+            let mut total_s = 0u64;
+            for (sa, ba) in alpha_s.iter().zip(alpha_b.iter()) {
+                if *sa > 30 {
+                    total_s += 1;
+                    if *ba > 30 {
+                        overlap += 1;
+                    }
+                }
+            }
+
+            if total_s > 0 && (overlap as f64 / total_s as f64) >= 0.8 {
+                covered.insert(small.id.clone());
+            }
+        }
+    }
+
+    covered
 }
 
 /// Render a specific OCG layer to an RgbaImage (for in-memory use).
