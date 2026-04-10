@@ -102,6 +102,77 @@ pub fn render_composite_png(
     canvas.save(out_path).ok();
 }
 
+/// Render piece PNGs by compositing brick PNGs from disk.
+/// Each piece PNG is cropped to the piece's bounding box.
+/// Parallelized with rayon.
+pub fn render_piece_pngs(
+    pieces: &[crate::types::PuzzlePiece],
+    bricks_by_id: &std::collections::HashMap<String, crate::types::Brick>,
+    extract_dir: &Path,
+) {
+    pieces.par_iter().for_each(|piece| {
+        let pw = piece.width.max(1) as u32;
+        let ph = piece.height.max(1) as u32;
+        let mut piece_img = RgbaImage::new(pw, ph);
+
+        for bid in &piece.brick_ids {
+            let brick_path = extract_dir.join(format!("brick_{bid}.png"));
+            if !brick_path.exists() {
+                continue;
+            }
+            let brick_img = match image::open(&brick_path) {
+                Ok(img) => img.to_rgba8(),
+                Err(_) => continue,
+            };
+            // Brick PNG is full-canvas — crop to piece bbox
+            image::imageops::overlay(
+                &mut piece_img,
+                &brick_img,
+                -(piece.x as i64),
+                -(piece.y as i64),
+            );
+        }
+
+        let out_path = extract_dir.join(format!("piece_{}.png", piece.id));
+        piece_img.save(&out_path).ok();
+
+        // Also render outline: 2px white stroke of non-transparent edges
+        render_piece_outline(&piece_img, &extract_dir.join(format!("piece_outline_{}.png", piece.id)));
+    });
+}
+
+/// Render a piece outline PNG: white border of opaque pixels.
+fn render_piece_outline(piece_img: &RgbaImage, out_path: &Path) {
+    let w = piece_img.width();
+    let h = piece_img.height();
+    let mut outline = RgbaImage::new(w, h);
+
+    for y in 0..h {
+        for x in 0..w {
+            let px = piece_img.get_pixel(x, y);
+            if px[3] < 30 {
+                continue;
+            }
+            // Check if any neighbor is transparent → this is a border pixel
+            let is_border = [(0i32, -1), (0, 1), (-1, 0), (1, 0)]
+                .iter()
+                .any(|&(dx, dy)| {
+                    let nx = x as i32 + dx;
+                    let ny = y as i32 + dy;
+                    if nx < 0 || ny < 0 || nx >= w as i32 || ny >= h as i32 {
+                        return true;
+                    }
+                    piece_img.get_pixel(nx as u32, ny as u32)[3] < 30
+                });
+            if is_border {
+                outline.put_pixel(x, y, Rgba([255, 255, 255, 200]));
+            }
+        }
+    }
+
+    outline.save(out_path).ok();
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

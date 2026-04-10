@@ -309,24 +309,29 @@ async fn api_merge(
 }
 
 async fn do_merge(sessions: SessionStore, key: &str, req: MergeRequest) -> Response {
-    let (bricks, polygons, areas) = {
+    let (bricks, polygons, areas, extract_dir) = {
         let store = sessions.lock().unwrap();
         let session = match store.get(key) {
             Some(s) => s,
             None => return (StatusCode::NOT_FOUND, Json(json!({"error": "Session not found"}))).into_response(),
         };
-        (session.bricks.clone(), session.brick_polygons.clone(), session.brick_areas.clone())
+        (session.bricks.clone(), session.brick_polygons.clone(),
+         session.brick_areas.clone(), session.extract_dir.clone())
     };
 
-    // Build adjacency with user's params
+    // Build adjacency with user's params and merge
     let adj = puzzle::build_adjacency_vector(&bricks, &polygons, 15.0, req.min_border, req.border_gap);
     let pieces = puzzle::merge_bricks(&bricks, req.target_count, req.seed, &adj, &areas);
 
-    let bricks_by_id: HashMap<&str, &Brick> = bricks.iter().map(|b| (b.id.as_str(), b)).collect();
+    // Render piece PNGs (composited from brick PNGs on disk)
+    let bricks_by_id: HashMap<String, Brick> = bricks.iter().map(|b| (b.id.clone(), b.clone())).collect();
+    render::render_piece_pngs(&pieces, &bricks_by_id, &extract_dir);
+
+    let bricks_by_id_ref: HashMap<&str, &Brick> = bricks.iter().map(|b| (b.id.as_str(), b)).collect();
 
     let pieces_json: Vec<serde_json::Value> = pieces.iter().map(|p| {
         let brick_refs: Vec<serde_json::Value> = p.brick_ids.iter().filter_map(|bid| {
-            bricks_by_id.get(bid.as_str()).map(|b| json!({
+            bricks_by_id_ref.get(bid.as_str()).map(|b| json!({
                 "id": b.id, "x": b.x, "y": b.y, "width": b.width, "height": b.height,
             }))
         }).collect();
