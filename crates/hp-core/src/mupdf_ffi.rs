@@ -189,13 +189,7 @@ pub fn xref_stream(doc: &mupdf::pdf::PdfDocument, num: i32) -> Option<Vec<u8>> {
 // ---------------------------------------------------------------------------
 
 /// Get the artbox of a page (in PDF points, y-down).
-pub fn page_artbox(page: &mupdf::pdf::PdfPage) -> (f32, f32, f32, f32) {
-    // mupdf-rs Page has bounds() which returns the media box.
-    // For artbox we need the PDF-level function.
-    // PdfPage derefs to Page, and Page has inner: *mut fz_page.
-    // We need pdf_bound_page or pdf_page_artbox.
-    // For now, use the safe API — Page::bounds() usually suffices for AI files.
-    // TODO: add proper artbox FFI if needed.
+pub fn page_artbox(page: &mupdf::Page) -> (f32, f32, f32, f32) {
     let bounds = page.bounds().unwrap_or_default();
     (bounds.x0, bounds.y0, bounds.x1, bounds.y1)
 }
