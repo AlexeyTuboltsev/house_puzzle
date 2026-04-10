@@ -9862,7 +9862,7 @@ var $author$project$Main$viewPieceOverlay = F9(
 		var isHov = _Utils_eq(
 			hoveredId,
 			$elm$core$Maybe$Just(piece.id));
-		var inWaveAssign = !_Utils_eq(selectedWaveId, $elm$core$Maybe$Nothing);
+		var inWaveAssign = _Utils_eq(appMode, $author$project$Main$ModeWaves) && (!_Utils_eq(selectedWaveId, $elm$core$Maybe$Nothing));
 		var inGroupAssign = _Utils_eq(appMode, $author$project$Main$ModeGroups) && (!_Utils_eq(selectedGroupId, $elm$core$Maybe$Nothing));
 		var isSel = (!inWaveAssign) && ((!inGroupAssign) && _Utils_eq(
 			selectedId,

@@ -3458,7 +3458,7 @@ viewPieceOverlay : AppMode -> Maybe String -> Maybe String -> Maybe Int -> List 
 viewPieceOverlay appMode hoveredId selectedId selectedWaveId waves groups selectedGroupId isLassoing piece =
     let
         inWaveAssign =
-            selectedWaveId /= Nothing
+            appMode == ModeWaves && selectedWaveId /= Nothing
 
         inGroupAssign =
             appMode == ModeGroups && selectedGroupId /= Nothing
