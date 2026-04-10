@@ -23,6 +23,8 @@ class BrickLayer:
     width: int
     height: int
     layer_type: str = "brick"  # brick, window, door, base, composite, tiny
+    id: str | None = None                       # assigned post-parse by server
+    polygon: list[list[float]] | None = None    # vector outline in brick-local px coords
 
 
 @dataclass
@@ -40,6 +42,7 @@ class HouseData:
     clip_rect: tuple[float, float, float, float] | None = None  # PDF page clip (x0,y0,x1,y1) in pts
     screen_frame_height_px: float = 0.0  # height of the 'screen' frame in pixels (= 15.5 game units)
     pdf_offset_px: tuple[int, int] = (0, 0)  # (dx, dy) to shift PyMuPDF renders to align with AI brick coords
+    skipped_bricks: list[str] = field(default_factory=list)  # names of bricks dropped (no vector polygon)
 
 
 # ---------------------------------------------------------------------------
