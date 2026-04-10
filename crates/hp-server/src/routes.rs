@@ -206,7 +206,7 @@ async fn do_load(sessions: SessionStore, key: String, req: LoadRequest) -> Respo
     let bricks_layer_img = if vec_count > 0 {
         render::render_ocg_layer_image(
             &file_path, "bricks", metadata.render_dpi, metadata.clip_rect,
-            cw, ch, (0, 0),
+            cw, ch, metadata.pdf_offset_px,
         )
     } else {
         None
@@ -248,7 +248,7 @@ async fn do_load(sessions: SessionStore, key: String, req: LoadRequest) -> Respo
 
     // Render OCG layers (lights, background)
     let clip = metadata.clip_rect;
-    let pdf_offset = (0i32, 0i32); // TODO: compute pdf_offset_px
+    let pdf_offset = metadata.pdf_offset_px;
     let has_lights = render::render_ocg_layer(
         &file_path, "lights", &extract_dir.join("lights.png"),
         metadata.render_dpi, clip, cw, ch, pdf_offset,

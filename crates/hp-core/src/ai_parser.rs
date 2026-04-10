@@ -534,6 +534,55 @@ pub fn parse_ai(
         }
     }
 
+    // Compute PDF offset: render bricks OCG layer, measure actual vs expected position
+    let mut pdf_offset_px = (0i32, 0i32);
+    if let Some(path_str) = ai_path.to_str() {
+        if let Some((rgba, pw, ph)) = mupdf_ffi::render_page_with_ocg(path_str, "bricks", dpi) {
+            // Crop to clip rect
+            let cx = (clip_x0 * scale).round() as usize;
+            let cy = (clip_y0 * scale).round() as usize;
+            let cw = canvas_w_px as usize;
+            let ch = canvas_h_px as usize;
+            let pw = pw as usize;
+
+            // Find first opaque column and row in the cropped region
+            let mut first_col: Option<usize> = None;
+            let mut first_row: Option<usize> = None;
+
+            for x in 0..cw.min(pw.saturating_sub(cx)) {
+                for y in 0..ch.min((ph as usize).saturating_sub(cy)) {
+                    let idx = ((cy + y) * pw + (cx + x)) * 4 + 3;
+                    if idx < rgba.len() && rgba[idx] > 30 {
+                        if first_col.is_none() { first_col = Some(x); }
+                        break;
+                    }
+                }
+                if first_col.is_some() { break; }
+            }
+            for y in 0..ch.min((ph as usize).saturating_sub(cy)) {
+                for x in 0..cw.min(pw.saturating_sub(cx)) {
+                    let idx = ((cy + y) * pw + (cx + x)) * 4 + 3;
+                    if idx < rgba.len() && rgba[idx] > 30 {
+                        if first_row.is_none() { first_row = Some(y); }
+                        break;
+                    }
+                }
+                if first_row.is_some() { break; }
+            }
+
+            if let (Some(pymupdf_x0), Some(pymupdf_y0)) = (first_col, first_row) {
+                let expected_x0 = ((all_x0.iter().cloned().fold(f64::INFINITY, f64::min) - clip_x0) * scale).round() as i32;
+                let expected_y0 = ((all_y0.iter().cloned().fold(f64::INFINITY, f64::min) - clip_y0) * scale).round() as i32;
+                let dx = expected_x0 - pymupdf_x0 as i32;
+                let dy = expected_y0 - pymupdf_y0 as i32;
+                if dx.abs() > 1 || dy.abs() > 1 {
+                    pdf_offset_px = (dx, dy);
+                }
+                eprintln!("[parse] pdf_offset_px: ({dx}, {dy}) [pymupdf=({pymupdf_x0},{pymupdf_y0}), expected=({expected_x0},{expected_y0})]");
+            }
+        }
+    }
+
     // Build BrickPlacements — deduplicate by bbox, extract polygons
     let mut seen_bbox = std::collections::HashSet::new();
     let mut results: Vec<BrickPlacement> = Vec::new();
@@ -588,6 +637,7 @@ pub fn parse_ai(
         clip_rect: (clip_x0, clip_y0, clip_x1, clip_y1),
         screen_frame_height_px,
         skipped_bricks,
+        pdf_offset_px,
     };
 
     Ok((results, metadata, ai_data))
@@ -602,6 +652,7 @@ pub struct ParsedAiMetadata {
     pub clip_rect: (f64, f64, f64, f64),
     pub screen_frame_height_px: f64,
     pub skipped_bricks: Vec<String>,
+    pub pdf_offset_px: (i32, i32),
 }
 
 #[cfg(test)]
