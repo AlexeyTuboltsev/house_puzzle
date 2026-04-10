@@ -36,30 +36,36 @@ pub unsafe fn pdf_doc_ptr(doc: &mupdf::pdf::PdfDocument) -> *mut pdf_document {
 ///
 /// Alternative: since mupdf-rs context is thread-local and set once,
 /// we can extract it by creating a Document and looking at internal state.
-/// For now, we'll create our own context for FFI calls.
-static mut FFI_CONTEXT: *mut fz_context = std::ptr::null_mut();
+/// Thread-safe FFI context — initialized once, accessed via mutex.
+use std::sync::{Once, Mutex};
 
-/// Initialize the FFI context. Must be called once before using FFI functions.
+static FFI_INIT: Once = Once::new();
+static mut FFI_CONTEXT: *mut fz_context = std::ptr::null_mut();
+static FFI_LOCK: Mutex<()> = Mutex::new(());
+
+/// Initialize the FFI context (called once).
 pub fn init_ffi_context() {
-    unsafe {
-        if FFI_CONTEXT.is_null() {
+    FFI_INIT.call_once(|| {
+        unsafe {
             FFI_CONTEXT = mupdf_new_base_context();
             if FFI_CONTEXT.is_null() {
                 panic!("Failed to create MuPDF FFI context");
             }
             fz_register_document_handlers(FFI_CONTEXT);
         }
-    }
+    });
 }
 
 /// Get the FFI context pointer.
 fn ctx() -> *mut fz_context {
-    unsafe {
-        if FFI_CONTEXT.is_null() {
-            init_ffi_context();
-        }
-        FFI_CONTEXT
-    }
+    init_ffi_context();
+    unsafe { FFI_CONTEXT }
+}
+
+/// Lock for FFI operations that must not run concurrently.
+/// MuPDF contexts are not thread-safe — all FFI calls must be serialized.
+pub fn ffi_lock() -> std::sync::MutexGuard<'static, ()> {
+    FFI_LOCK.lock().unwrap()
 }
 
 /// Helper: extract data and length from an fz_buffer.
@@ -139,6 +145,7 @@ pub fn render_page_with_ocg(
     layer_name: &str,
     dpi: f64,
 ) -> Option<(Vec<u8>, u32, u32)> {
+    let _lock = ffi_lock(); // Serialize MuPDF FFI access
     unsafe {
         use std::ffi::CString;
         let c_path = CString::new(path).ok()?;
