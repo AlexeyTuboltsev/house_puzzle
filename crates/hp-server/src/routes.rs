@@ -41,6 +41,8 @@ pub fn build_router(sessions: SessionStore) -> Router {
         .route("/api/s/{key}/brick/{*rest}", get(api_serve_brick_png))
         .route("/api/s/{key}/piece/{*rest}", get(api_serve_piece_png))
         .route("/api/s/{key}/piece_outline/{*rest}", get(api_serve_piece_png))
+        .route("/api/export", post(api_export))
+        .route("/api/s/{key}/export", post(api_export_keyed))
         .route("/static/{*path}", get(static_file))
         .with_state(sessions)
 }
@@ -409,7 +411,86 @@ async fn do_merge(sessions: SessionStore, key: &str, req: MergeRequest) -> Respo
 }
 
 // ---------------------------------------------------------------------------
-// PNG serving (stubs — will serve actual rendered PNGs later)
+// Export
+// ---------------------------------------------------------------------------
+
+#[derive(Deserialize)]
+struct ExportRequest {
+    #[serde(default)]
+    waves: Vec<serde_json::Value>,
+    #[serde(default)]
+    groups: Vec<serde_json::Value>,
+    #[serde(default)]
+    placement: serde_json::Value,
+    #[serde(default = "default_export_height")]
+    export_canvas_height: i32,
+}
+
+fn default_export_height() -> i32 { 900 }
+
+async fn api_export_keyed(
+    State(sessions): State<SessionStore>,
+    Path(key): Path<String>,
+    Json(req): Json<ExportRequest>,
+) -> Response {
+    do_export(sessions, &key, req).await
+}
+
+async fn api_export(
+    State(sessions): State<SessionStore>,
+    Json(req): Json<ExportRequest>,
+) -> Response {
+    let key = {
+        let store = sessions.lock().unwrap();
+        store.keys().last().cloned().unwrap_or_default()
+    };
+    do_export(sessions, &key, req).await
+}
+
+async fn do_export(sessions: SessionStore, key: &str, req: ExportRequest) -> Response {
+    let (pieces, bricks, metadata, extract_dir) = {
+        let store = sessions.lock().unwrap();
+        let session = match store.get(key) {
+            Some(s) => s,
+            None => return (StatusCode::NOT_FOUND, Json(json!({"error": "Session not found"}))).into_response(),
+        };
+        (session.pieces.clone(), session.bricks.clone(),
+         session.metadata.clone(), session.extract_dir.clone())
+    };
+
+    if pieces.is_empty() {
+        return (StatusCode::BAD_REQUEST, Json(json!({"error": "No puzzle computed"}))).into_response();
+    }
+
+    let bricks_by_id: HashMap<String, Brick> = bricks.iter().map(|b| (b.id.clone(), b.clone())).collect();
+
+    let placement = &req.placement;
+    let location = placement.get("location").and_then(|v| v.as_str()).unwrap_or("Rome");
+    let position = placement.get("position").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+    let house_name = placement.get("houseName").and_then(|v| v.as_str()).unwrap_or("NewHouse");
+    let spacing = placement.get("spacing").and_then(|v| v.as_f64()).unwrap_or(12.0);
+
+    let zip_data = hp_core::export::generate_export_zip(
+        &pieces, &bricks_by_id, &extract_dir,
+        metadata.canvas_width, metadata.canvas_height,
+        metadata.screen_frame_height_px,
+        &req.waves, &req.groups,
+        location, position, house_name, spacing,
+    );
+
+    match zip_data {
+        Ok(data) => (
+            StatusCode::OK,
+            [(header::CONTENT_TYPE, "application/zip".to_string()),
+             (header::CONTENT_DISPOSITION, format!("attachment; filename=\"{house_name}.zip\""))],
+            data,
+        ).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e}))).into_response(),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// PNG serving
 // ---------------------------------------------------------------------------
 
 async fn api_serve_png(

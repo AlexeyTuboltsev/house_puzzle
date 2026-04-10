@@ -1,0 +1,119 @@
+name: Build Rust Binaries
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+    paths:
+      - 'crates/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install system deps
+        run: sudo apt-get update && sudo apt-get install -y libclang-dev
+      - uses: Swatinem/rust-cache@v2
+      - name: Build release
+        run: cargo build --release --bin hp-server
+      - name: Package
+        run: |
+          mkdir -p dist
+          cp target/release/hp-server dist/
+          cp -r presets dist/ 2>/dev/null || true
+          tar -czf house-puzzle-linux-x86_64.tar.gz -C dist .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: house-puzzle-linux-x86_64
+          path: house-puzzle-linux-x86_64.tar.gz
+
+  build-macos-arm:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build release
+        run: cargo build --release --bin hp-server
+      - name: Package
+        run: |
+          mkdir -p dist
+          cp target/release/hp-server dist/
+          cp -r presets dist/ 2>/dev/null || true
+          tar -czf house-puzzle-macos-arm64.tar.gz -C dist .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: house-puzzle-macos-arm64
+          path: house-puzzle-macos-arm64.tar.gz
+
+  build-macos-intel:
+    runs-on: macos-13
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+      - name: Build release
+        run: cargo build --release --bin hp-server --target x86_64-apple-darwin
+      - name: Package
+        run: |
+          mkdir -p dist
+          cp target/x86_64-apple-darwin/release/hp-server dist/
+          cp -r presets dist/ 2>/dev/null || true
+          tar -czf house-puzzle-macos-x86_64.tar.gz -C dist .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: house-puzzle-macos-x86_64
+          path: house-puzzle-macos-x86_64.tar.gz
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install LLVM (for libclang)
+        uses: KyleMayes/install-llvm-action@v2
+        with:
+          version: "17"
+      - name: Build release
+        run: cargo build --release --bin hp-server
+      - name: Package
+        run: |
+          mkdir dist
+          copy target\release\hp-server.exe dist\
+          xcopy presets dist\presets\ /E /I 2>nul
+          Compress-Archive -Path dist\* -DestinationPath house-puzzle-windows-x86_64.zip
+        shell: pwsh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: house-puzzle-windows-x86_64
+          path: house-puzzle-windows-x86_64.zip
+
+  release:
+    needs: [build-linux, build-macos-arm, build-macos-intel, build-windows]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/house-puzzle-linux-x86_64/house-puzzle-linux-x86_64.tar.gz
+            artifacts/house-puzzle-macos-arm64/house-puzzle-macos-arm64.tar.gz
+            artifacts/house-puzzle-macos-x86_64/house-puzzle-macos-x86_64.tar.gz
+            artifacts/house-puzzle-windows-x86_64/house-puzzle-windows-x86_64.zip
