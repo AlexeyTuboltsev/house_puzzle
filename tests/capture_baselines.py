@@ -16,7 +16,7 @@ from helpers import (
     extract_load_snapshot,
     extract_merge_snapshot,
     BASELINES_DIR,
-    _brick_pos_key,
+    LOAD_DEFAULTS,
 )
 
 FILES = [f"_NY{i}" for i in range(1, 11)]
@@ -31,7 +31,7 @@ def main():
         path = f"in/{name}.ai"
         print(f"  {name}: loading...", end="", flush=True)
         t0 = time.time()
-        load_resp = api_post("/api/load_pdf", {"path": path, "canvas_height": 900})
+        load_resp = api_post("/api/load_pdf", {"path": path, **LOAD_DEFAULTS})
         t1 = time.time()
         print(f" {t1 - t0:.1f}s, {len(load_resp['bricks'])} bricks", end="", flush=True)
 
@@ -39,16 +39,13 @@ def main():
         with open(BASELINES_DIR / f"{name}_load.json", "w") as f:
             json.dump(load_snap, f, indent=2, sort_keys=True)
 
-        # Build UUID -> position-key mapping for merge snapshot
-        uuid_to_pos = {b["id"]: _brick_pos_key(b) for b in load_resp["bricks"]}
-
         print(", merging...", end="", flush=True)
         t2 = time.time()
         merge_resp = api_post("/api/merge", MERGE_PARAMS)
         t3 = time.time()
         print(f" {t3 - t2:.1f}s, {merge_resp['num_pieces']} pieces")
 
-        merge_snap = extract_merge_snapshot(merge_resp, uuid_to_pos=uuid_to_pos)
+        merge_snap = extract_merge_snapshot(merge_resp)
         with open(BASELINES_DIR / f"{name}_merge.json", "w") as f:
             json.dump(merge_snap, f, indent=2, sort_keys=True)
 

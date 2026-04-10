@@ -249,8 +249,18 @@ def api_load_pdf(key=None):
             deduped_layers.append(bl)
     house.bricks = deduped_layers
 
+    deterministic = data.get("deterministic_ids", False)
+    if deterministic:
+        import hashlib as _hl
+        def _brick_id(bl):
+            return _hl.md5(f"{int(bl.x)},{int(bl.y)},{int(bl.width)},{int(bl.height)}".encode()).hexdigest()[:8]
+    else:
+        import uuid as _uuid
+        def _brick_id(bl):
+            return str(_uuid.uuid4())[:8]
+
     bricks = [
-        Brick(id=f"b{bl.index}", x=bl.x, y=bl.y,
+        Brick(id=_brick_id(bl), x=bl.x, y=bl.y,
               width=bl.width, height=bl.height, brick_type=bl.layer_type)
         for bl in house.bricks
     ]

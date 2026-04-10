@@ -20,7 +20,7 @@ from helpers import (
     compare_load,
     compare_merge,
     BASELINES_DIR,
-    _brick_pos_key,
+    LOAD_DEFAULTS,
 )
 
 FILES = [f"_NY{i}" for i in range(1, 11)]
@@ -42,18 +42,15 @@ class TestE2E(unittest.TestCase):
         with open(merge_baseline_path) as f:
             merge_baseline = json.load(f)
 
-        # Load
-        load_resp = api_post("/api/load_pdf", {"path": f"in/{name}.ai", "canvas_height": 900})
+        # Load (deterministic IDs for reproducible comparison)
+        load_resp = api_post("/api/load_pdf", {"path": f"in/{name}.ai", **LOAD_DEFAULTS})
         load_snap = extract_load_snapshot(load_resp, file_stem=name)
         load_diffs = compare_load(load_snap, load_baseline)
         self.assertEqual(load_diffs, [], f"{name} load diffs:\n" + "\n".join(load_diffs))
 
-        # Build UUID -> position-key mapping for merge comparison
-        uuid_to_pos = {b["id"]: _brick_pos_key(b) for b in load_resp["bricks"]}
-
         # Merge
         merge_resp = api_post("/api/merge", MERGE_PARAMS)
-        merge_snap = extract_merge_snapshot(merge_resp, uuid_to_pos=uuid_to_pos)
+        merge_snap = extract_merge_snapshot(merge_resp)
         merge_diffs = compare_merge(merge_snap, merge_baseline)
         self.assertEqual(merge_diffs, [], f"{name} merge diffs:\n" + "\n".join(merge_diffs))
 

@@ -1,9 +1,7 @@
 """Shared helpers for e2e test suite.
 
-Brick IDs are random UUIDs per session, so comparisons use position-based
-matching: each brick is keyed by (x, y, width, height) which is unique.
-Piece IDs are deterministic ("p0", "p1", ...) but brick_ids within pieces
-are UUIDs, so those are also normalized to position keys.
+Tests use deterministic_ids=true so brick IDs are stable position hashes
+across runs, enabling direct ID-based comparison against baselines.
 """
 
 import hashlib
@@ -13,6 +11,9 @@ from pathlib import Path
 
 BASE_URL = "http://localhost:5050"
 BASELINES_DIR = Path(__file__).parent / "baselines"
+
+# All test loads use deterministic IDs for reproducibility
+LOAD_DEFAULTS = {"canvas_height": 900, "deterministic_ids": True}
 
 
 def api_post(path, data):
@@ -32,36 +33,21 @@ def api_get_png_hash(path):
         return hashlib.sha256(resp.read()).hexdigest()
 
 
-def _brick_pos_key(b):
-    """Position-based key for a brick dict. Unique per file."""
-    return f"{b['x']},{b['y']},{b['width']},{b['height']}"
-
-
 def extract_load_snapshot(resp, file_stem=""):
-    """Extract stable fields from load_pdf response + PNG hashes.
-
-    Brick IDs are normalized to position keys so snapshots are
-    comparable across runs (UUIDs change each time).
-    """
-    # Build UUID -> position-key mapping for this response
-    uuid_to_pos = {}
-    for b in resp["bricks"]:
-        uuid_to_pos[b["id"]] = _brick_pos_key(b)
-
+    """Extract stable fields from load_pdf response + PNG hashes."""
     bricks = []
     for b in resp["bricks"]:
         bricks.append({
-            "pos_key": _brick_pos_key(b),
+            "id": b["id"],
             "x": b["x"],
             "y": b["y"],
             "width": b["width"],
             "height": b["height"],
             "type": b.get("type", ""),
-            "neighbors": sorted(uuid_to_pos.get(n, str(n)) for n in b.get("neighbors", [])),
+            "neighbors": sorted(b.get("neighbors", [])),
         })
 
     # Capture pixel-level hashes for composite/outlines/lights/background PNGs
-    # Use the session key from the response if available, else legacy routes
     key = resp.get("key")
     pfx = f"/api/s/{key}" if key else "/api"
     png_hashes = {}
@@ -70,10 +56,9 @@ def extract_load_snapshot(resp, file_stem=""):
             png_hashes[name] = api_get_png_hash(f"{pfx}/{name}.png?f={file_stem}")
         except Exception:
             pass
-    # Brick PNGs keyed by position
     for b in resp["bricks"]:
         try:
-            png_hashes[f"brick_{_brick_pos_key(b)}"] = api_get_png_hash(f"{pfx}/brick/{b['id']}.png")
+            png_hashes[f"brick_{b['id']}"] = api_get_png_hash(f"{pfx}/brick/{b['id']}.png")
         except Exception:
             pass
 
@@ -84,31 +69,22 @@ def extract_load_snapshot(resp, file_stem=""):
         "render_dpi": resp.get("render_dpi", 0),
         "houseUnitsHigh": resp.get("houseUnitsHigh", 0),
         "has_base": resp.get("has_base", False),
-        "bricks": sorted(bricks, key=lambda b: b["pos_key"]),
+        "bricks": sorted(bricks, key=lambda b: b["id"]),
         "png_hashes": png_hashes,
     }
 
 
-def extract_merge_snapshot(resp, uuid_to_pos=None):
-    """Extract stable fields from merge response.
-
-    If uuid_to_pos is provided, brick_ids are normalized to position keys.
-    Piece IDs are deterministic ("p0", "p1", ...) so kept as-is.
-    """
+def extract_merge_snapshot(resp):
+    """Extract stable fields from merge response."""
     pieces = []
     for p in resp["pieces"]:
-        brick_ids = p["brick_ids"]
-        if uuid_to_pos:
-            brick_ids = sorted(uuid_to_pos.get(bid, bid) for bid in brick_ids)
-        else:
-            brick_ids = sorted(brick_ids)
         pieces.append({
             "id": p["id"],
             "x": p["x"],
             "y": p["y"],
             "width": p["width"],
             "height": p["height"],
-            "brick_ids": brick_ids,
+            "brick_ids": sorted(p["brick_ids"]),
             "num_bricks": p.get("num_bricks", len(p["brick_ids"])),
         })
     return {
@@ -128,17 +104,17 @@ def compare_load(actual, baseline):
     if len(actual["bricks"]) != len(baseline["bricks"]):
         diffs.append(f"brick count: {len(actual['bricks'])} != {len(baseline['bricks'])}")
     else:
-        a_map = {b["pos_key"]: b for b in actual["bricks"]}
-        b_map = {b["pos_key"]: b for b in baseline["bricks"]}
-        for pk in sorted(b_map.keys()):
-            if pk not in a_map:
-                diffs.append(f"brick at {pk} missing")
+        a_map = {b["id"]: b for b in actual["bricks"]}
+        b_map = {b["id"]: b for b in baseline["bricks"]}
+        for bid in sorted(b_map.keys()):
+            if bid not in a_map:
+                diffs.append(f"brick {bid} missing")
             else:
                 for field in ["x", "y", "width", "height", "type"]:
-                    if a_map[pk][field] != b_map[pk][field]:
-                        diffs.append(f"brick {pk}.{field}: {a_map[pk][field]} != {b_map[pk][field]}")
-                if a_map[pk].get("neighbors", []) != b_map[pk].get("neighbors", []):
-                    diffs.append(f"brick {pk} neighbors differ")
+                    if a_map[bid][field] != b_map[bid][field]:
+                        diffs.append(f"brick {bid}.{field}: {a_map[bid][field]} != {b_map[bid][field]}")
+                if set(a_map[bid].get("neighbors", [])) != set(b_map[bid].get("neighbors", [])):
+                    diffs.append(f"brick {bid} neighbors differ")
     # PNG pixel-level comparison
     a_hashes = actual.get("png_hashes", {})
     b_hashes = baseline.get("png_hashes", {})
@@ -168,6 +144,6 @@ def compare_merge(actual, baseline):
             for field in ["x", "y", "width", "height", "num_bricks"]:
                 if a_map[pid][field] != b_map[pid][field]:
                     diffs.append(f"piece {pid}.{field}: {a_map[pid][field]} != {b_map[pid][field]}")
-            if a_map[pid]["brick_ids"] != b_map[pid]["brick_ids"]:
+            if sorted(a_map[pid]["brick_ids"]) != sorted(b_map[pid]["brick_ids"]):
                 diffs.append(f"piece {pid} brick_ids differ")
     return diffs
