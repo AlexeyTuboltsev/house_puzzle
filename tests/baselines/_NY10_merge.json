@@ -25,156 +25,146 @@
     },
     {
       "brick_ids": [
-        "2889a474",
-        "84db5270",
-        "917fe5ca",
-        "9fb0b145",
-        "d94bf468",
-        "e39b97a9"
+        "da306cd0"
       ],
-      "height": 69,
+      "height": 23,
       "id": "p10",
-      "num_bricks": 6,
-      "width": 68,
-      "x": 137,
-      "y": 717
-    },
-    {
-      "brick_ids": [
-        "2102c55c",
-        "3de3095a",
-        "42c544b6",
-        "4b867c26",
-        "531f5106",
-        "6f518e34",
-        "a3c517e1",
-        "ce059525",
-        "d8d154f2",
-        "da32dd08",
-        "dca8d9d8",
-        "ddbe5657",
-        "ed37087c"
-      ],
-      "height": 114,
-      "id": "p11",
-      "num_bricks": 13,
-      "width": 159,
-      "x": 319,
-      "y": 490
+      "num_bricks": 1,
+      "width": 92,
+      "x": 364,
+      "y": 285
     },
     {
       "brick_ids": [
         "1c112f73",
         "2a9b1287",
+        "44018c2f",
+        "7ad1d943",
         "bc8da1c0",
         "ed857f36",
+        "f2c43d9f",
         "f7e09506"
       ],
-      "height": 103,
-      "id": "p12",
-      "num_bricks": 5,
+      "height": 148,
+      "id": "p11",
+      "num_bricks": 8,
       "width": 92,
       "x": 0,
       "y": 0
     },
     {
       "brick_ids": [
-        "3b70b220",
-        "455f8809",
-        "6605f1d9",
-        "66d74644",
-        "6c5473c6",
-        "db587eab",
-        "e4be6944",
-        "f87a2dbe"
-      ],
-      "height": 125,
-      "id": "p13",
-      "num_bricks": 8,
-      "width": 159,
-      "x": 23,
-      "y": 23
-    },
-    {
-      "brick_ids": [
-        "01581272",
-        "106f0e6a",
-        "2e7393a0",
-        "30601a67",
-        "45ed7def",
-        "52510af7",
-        "900d337d",
-        "9352051d",
-        "af3743c7",
-        "c22e6923",
-        "c50a7256"
+        "01535344",
+        "11d1e55e",
+        "247b4500",
+        "30705a54",
+        "6b584067",
+        "72878d25",
+        "c29ed29d",
+        "ca960e67",
+        "d829fb2c",
+        "e55fb11f",
+        "e7992b87"
       ],
       "height": 160,
-      "id": "p14",
+      "id": "p12",
       "num_bricks": 11,
       "width": 69,
       "x": 0,
-      "y": 216
+      "y": 649
     },
     {
       "brick_ids": [
-        "5c9f2a4b"
+        "3c3ef736",
+        "7d09a273"
       ],
-      "height": 160,
+      "height": 46,
+      "id": "p13",
+      "num_bricks": 2,
+      "width": 137,
+      "x": 23,
+      "y": 831
+    },
+    {
+      "brick_ids": [
+        "0f2a0cff",
+        "21d85e86",
+        "3c370f14",
+        "560a7a8f"
+      ],
+      "height": 92,
+      "id": "p14",
+      "num_bricks": 4,
+      "width": 46,
+      "x": 342,
+      "y": 421
+    },
+    {
+      "brick_ids": [
+        "afae54c3"
+      ],
+      "height": 159,
       "id": "p15",
       "num_bricks": 1,
+      "width": 114,
+      "x": 330,
+      "y": 683
+    },
+    {
+      "brick_ids": [
+        "136a2ef2",
+        "30fd7a66",
+        "34110cb9",
+        "3bf7db90",
+        "5424fcb4",
+        "ce11603f"
+      ],
+      "height": 124,
+      "id": "p16",
+      "num_bricks": 6,
+      "width": 148,
+      "x": 342,
+      "y": 366
+    },
+    {
+      "brick_ids": [
+        "99c93973",
+        "e62398a2"
+      ],
+      "height": 46,
+      "id": "p17",
+      "num_bricks": 2,
+      "width": 137,
+      "x": 68,
+      "y": 854
+    },
+    {
+      "brick_ids": [
+        "660e301a",
+        "6a78f360"
+      ],
+      "height": 182,
+      "id": "p18",
+      "num_bricks": 2,
       "width": 23,
-      "x": 205,
+      "x": 455,
       "y": 672
     },
     {
       "brick_ids": [
-        "610cf8fc",
-        "d2f8b189"
+        "3c81dd3c",
+        "44d78664",
+        "594b21f3",
+        "71e00acf",
+        "97d9ec89",
+        "e5f8b920"
       ],
-      "height": 58,
-      "id": "p16",
-      "num_bricks": 2,
-      "width": 92,
-      "x": 273,
-      "y": 0
-    },
-    {
-      "brick_ids": [
-        "8b68c189",
-        "b5113c0c",
-        "da306cd0",
-        "e1826c86",
-        "eda9052c"
-      ],
-      "height": 114,
-      "id": "p17",
-      "num_bricks": 5,
-      "width": 115,
-      "x": 364,
-      "y": 194
-    },
-    {
-      "brick_ids": [
-        "be4fd25f"
-      ],
-      "height": 46,
-      "id": "p18",
-      "num_bricks": 1,
-      "width": 141,
-      "x": 349,
-      "y": 854
-    },
-    {
-      "brick_ids": [
-        "258f9570"
-      ],
-      "height": 46,
+      "height": 68,
       "id": "p19",
-      "num_bricks": 1,
-      "width": 80,
-      "x": 296,
-      "y": 854
+      "num_bricks": 6,
+      "width": 148,
+      "x": 57,
+      "y": 285
     },
     {
       "brick_ids": [
@@ -189,6 +179,47 @@
     },
     {
       "brick_ids": [
+        "1cdee12e",
+        "4f541d2e",
+        "6416e868",
+        "6fb7fb35",
+        "74be0677",
+        "8b68c189",
+        "a084be52",
+        "a4fd1bea",
+        "aecf14c1",
+        "b5113c0c",
+        "c0bf4424",
+        "c334d808",
+        "e1826c86",
+        "eda9052c"
+      ],
+      "height": 205,
+      "id": "p20",
+      "num_bricks": 14,
+      "width": 160,
+      "x": 319,
+      "y": 194
+    },
+    {
+      "brick_ids": [
+        "34c8dd1a",
+        "562f1720",
+        "5e339732",
+        "6d2695b9",
+        "7c0c694b",
+        "e10faa65",
+        "fdbcf3d2"
+      ],
+      "height": 114,
+      "id": "p21",
+      "num_bricks": 7,
+      "width": 137,
+      "x": 342,
+      "y": 80
+    },
+    {
+      "brick_ids": [
         "4b530063",
         "5942b5ff",
         "5b8028eb",
@@ -199,7 +230,7 @@
         "ddaf35fa"
       ],
       "height": 114,
-      "id": "p20",
+      "id": "p22",
       "num_bricks": 8,
       "width": 81,
       "x": 296,
@@ -207,140 +238,122 @@
     },
     {
       "brick_ids": [
-        "537fd78e"
+        "08c3fe92",
+        "6dd3e102",
+        "7344f86c",
+        "9877b7d2",
+        "9e655610",
+        "ede7047b"
       ],
-      "height": 46,
-      "id": "p21",
-      "num_bricks": 1,
-      "width": 46,
-      "x": 239,
-      "y": 683
-    },
-    {
-      "brick_ids": [
-        "12b9e383",
-        "58f9da52",
-        "90328dc6",
-        "b99e1a0d",
-        "bc451861",
-        "d4c78a10"
-      ],
-      "height": 92,
-      "id": "p22",
-      "num_bricks": 6,
-      "width": 171,
-      "x": 137,
-      "y": 216
-    },
-    {
-      "brick_ids": [
-        "045af055",
-        "86c6694f",
-        "91d0b349",
-        "c42e1731",
-        "f77a6830"
-      ],
-      "height": 92,
+      "height": 91,
       "id": "p23",
-      "num_bricks": 5,
-      "width": 73,
-      "x": 296,
-      "y": 102
+      "num_bricks": 6,
+      "width": 92,
+      "x": 159,
+      "y": 581
     },
     {
       "brick_ids": [
-        "1cdee12e",
-        "25aac696",
-        "f48a61f2"
-      ],
-      "height": 69,
-      "id": "p24",
-      "num_bricks": 3,
-      "width": 69,
-      "x": 319,
-      "y": 307
-    },
-    {
-      "brick_ids": [
-        "a2facce4"
-      ],
-      "height": 183,
-      "id": "p25",
-      "num_bricks": 1,
-      "width": 24,
-      "x": 296,
-      "y": 672
-    },
-    {
-      "brick_ids": [
-        "17800189",
-        "4d7cd886",
-        "6398e0e1",
-        "89420a6c",
-        "af47f44b",
-        "b67b3b62"
+        "2102c55c",
+        "3de3095a",
+        "42c544b6",
+        "4b867c26",
+        "531f5106",
+        "6f518e34",
+        "9204d346",
+        "a3c517e1",
+        "ce059525",
+        "da32dd08",
+        "dca8d9d8"
       ],
       "height": 114,
-      "id": "p26",
-      "num_bricks": 6,
-      "width": 126,
-      "x": 34,
-      "y": 353
+      "id": "p24",
+      "num_bricks": 11,
+      "width": 182,
+      "x": 296,
+      "y": 490
     },
     {
       "brick_ids": [
-        "0da8e4cc",
-        "12d70d4c",
-        "2afdf67c",
-        "44018c2f",
-        "5ee4afa0",
-        "7ad1d943",
-        "cc6b500e",
-        "d2eb3646",
-        "f2c43d9f",
-        "fa0526ec"
+        "610cf8fc",
+        "d2f8b189"
       ],
-      "height": 160,
-      "id": "p27",
-      "num_bricks": 10,
-      "width": 69,
-      "x": 0,
-      "y": 102
-    },
-    {
-      "brick_ids": [
-        "0bc32d33",
-        "1ef371b1",
-        "5d7624ac",
-        "66a3ac64",
-        "69ed2fa3",
-        "80253859",
-        "8b286616"
-      ],
-      "height": 103,
-      "id": "p28",
-      "num_bricks": 7,
-      "width": 137,
-      "x": 91,
+      "height": 58,
+      "id": "p25",
+      "num_bricks": 2,
+      "width": 92,
+      "x": 273,
       "y": 0
     },
     {
       "brick_ids": [
-        "136a2ef2",
-        "30fd7a66",
-        "34110cb9",
-        "3bf7db90",
-        "6416e868",
-        "6fb7fb35",
-        "a084be52",
-        "ce11603f"
+        "0302010b",
+        "235aa3fb",
+        "4f8ab8dd",
+        "66b92af7",
+        "79e5e68f",
+        "8c39819a",
+        "998884f3",
+        "b65cb50a"
       ],
-      "height": 160,
-      "id": "p29",
+      "height": 125,
+      "id": "p26",
       "num_bricks": 8,
-      "width": 171,
-      "x": 319,
-      "y": 330
+      "width": 160,
+      "x": 182,
+      "y": 23
+    },
+    {
+      "brick_ids": [
+        "0e3f24f7",
+        "193c82d5",
+        "99eb555d",
+        "a79f31a5",
+        "b0dffcd1",
+        "ea192525"
+      ],
+      "height": 91,
+      "id": "p27",
+      "num_bricks": 6,
+      "width": 58,
+      "x": 0,
+      "y": 376
+    },
+    {
+      "brick_ids": [
+        "07a6ef24",
+        "16293a6b",
+        "330c8321",
+        "3e867913",
+        "51095d1a",
+        "674065ff",
+        "9d75d4c4",
+        "a2a9d039",
+        "b441f219"
+      ],
+      "height": 137,
+      "id": "p28",
+      "num_bricks": 9,
+      "width": 103,
+      "x": 125,
+      "y": 398
+    },
+    {
+      "brick_ids": [
+        "223bbfb5",
+        "43b734de",
+        "80e3067e",
+        "b46cda3e",
+        "cfe8eeed",
+        "e54928b1",
+        "f446410b"
+      ],
+      "height": 80,
+      "id": "p29",
+      "num_bricks": 7,
+      "width": 160,
+      "x": 273,
+      "y": 0
     },
     {
       "brick_ids": [
@@ -355,75 +368,74 @@
     },
     {
       "brick_ids": [
-        "11d1e55e",
-        "247b4500",
-        "30705a54",
-        "483b28a0",
-        "6b584067",
-        "72878d25",
-        "8936aeda",
-        "ca960e67",
-        "d829fb2c",
-        "e55fb11f",
-        "faafb9d0"
+        "11acf645",
+        "1b2a4052",
+        "aa4e062a"
       ],
-      "height": 183,
+      "height": 57,
       "id": "p30",
-      "num_bricks": 11,
+      "num_bricks": 3,
       "width": 69,
-      "x": 0,
-      "y": 603
+      "x": 46,
+      "y": 23
     },
     {
       "brick_ids": [
-        "e94db844"
+        "083b1fdb",
+        "08c4cf47",
+        "32089c5c",
+        "3667aaf9",
+        "67ef3d2b",
+        "758f3a77",
+        "bf437e2f",
+        "e226c8c2"
       ],
-      "height": 125,
+      "height": 103,
       "id": "p31",
-      "num_bricks": 1,
-      "width": 46,
-      "x": 239,
-      "y": 752
+      "num_bricks": 8,
+      "width": 115,
+      "x": 387,
+      "y": 0
     },
     {
       "brick_ids": [
-        "ab94e66e"
+        "01581272",
+        "106f0e6a",
+        "30601a67",
+        "45ed7def",
+        "52510af7",
+        "5ee4afa0",
+        "8c22eb48",
+        "900d337d",
+        "af3743c7",
+        "c50a7256",
+        "c82e792f",
+        "cc6b500e"
       ],
-      "height": 126,
+      "height": 160,
       "id": "p32",
-      "num_bricks": 1,
-      "width": 48,
-      "x": 386,
-      "y": 147
+      "num_bricks": 12,
+      "width": 92,
+      "x": 0,
+      "y": 216
     },
     {
       "brick_ids": [
-        "0ddaf1d2",
-        "1075857c",
-        "1568a8b5",
-        "9748688c",
-        "d0d2bafe",
-        "dca4cf31"
+        "17800189",
+        "4d7cd886",
+        "6398e0e1",
+        "89420a6c",
+        "9352051d",
+        "af47f44b",
+        "b67b3b62",
+        "e962cc8b"
       ],
       "height": 137,
       "id": "p33",
-      "num_bricks": 6,
-      "width": 159,
+      "num_bricks": 8,
+      "width": 137,
       "x": 23,
-      "y": 581
-    },
-    {
-      "brick_ids": [
-        "21d85e86",
-        "3e327244",
-        "5424fcb4"
-      ],
-      "height": 46,
-      "id": "p34",
-      "num_bricks": 3,
-      "width": 69,
-      "x": 319,
-      "y": 398
+      "y": 353
     },
     {
       "brick_ids": [
@@ -435,87 +447,83 @@
         "5c074341",
         "8173874c",
         "a83d4df7",
+        "b99e1a0d",
         "e303103b",
         "e4fe5a68"
       ],
       "height": 114,
-      "id": "p35",
-      "num_bricks": 10,
+      "id": "p34",
+      "num_bricks": 11,
       "width": 91,
       "x": 137,
       "y": 125
     },
     {
       "brick_ids": [
-        "0ddf1736",
-        "1b9fa681",
-        "adaade0a",
-        "c9647298",
-        "cb8bf80d",
-        "d5cd2ccc",
-        "dd9b5d0c"
+        "1075857c",
+        "12a4aea5",
+        "9748688c"
       ],
-      "height": 91,
-      "id": "p36",
-      "num_bricks": 7,
-      "width": 104,
-      "x": 273,
-      "y": 262
+      "height": 45,
+      "id": "p35",
+      "num_bricks": 3,
+      "width": 114,
+      "x": 46,
+      "y": 581
     },
     {
       "brick_ids": [
-        "0e3f24f7",
-        "1626f3b7",
-        "1a0d7d30",
-        "1b8de292",
-        "3ce3bd52",
-        "55dbf910",
-        "810c46a6",
-        "a56758da",
-        "ccc985fb",
-        "ef2db846",
-        "faacbde2"
+        "3ce3bd52"
+      ],
+      "height": 23,
+      "id": "p36",
+      "num_bricks": 1,
+      "width": 92,
+      "x": 46,
+      "y": 558
+    },
+    {
+      "brick_ids": [
+        "0bc32d33",
+        "1ef371b1",
+        "5d7624ac",
+        "66a3ac64",
+        "69ed2fa3",
+        "80253859",
+        "8b286616"
+      ],
+      "height": 103,
+      "id": "p37",
+      "num_bricks": 7,
+      "width": 137,
+      "x": 91,
+      "y": 0
+    },
+    {
+      "brick_ids": [
+        "5c9f2a4b"
       ],
       "height": 160,
-      "id": "p37",
-      "num_bricks": 11,
-      "width": 138,
-      "x": 0,
-      "y": 444
-    },
-    {
-      "brick_ids": [
-        "44d78664",
-        "71e00acf",
-        "97d9ec89",
-        "e5f8b920"
-      ],
-      "height": 46,
       "id": "p38",
-      "num_bricks": 4,
-      "width": 125,
-      "x": 80,
-      "y": 307
+      "num_bricks": 1,
+      "width": 23,
+      "x": 205,
+      "y": 672
     },
     {
       "brick_ids": [
-        "2f2fe251",
-        "594b21f3",
-        "72d806e3",
-        "735674c9",
-        "7f934252",
-        "84054b4b",
-        "8ab7be9c",
-        "bb71a9c8",
-        "c17ee9af",
-        "d174f4b7"
+        "045af055",
+        "86c6694f",
+        "91d0b349",
+        "c42e1731",
+        "f77a6830"
       ],
-      "height": 114,
+      "height": 92,
       "id": "p39",
-      "num_bricks": 10,
-      "width": 148,
-      "x": 137,
-      "y": 262
+      "num_bricks": 5,
+      "width": 73,
+      "x": 296,
+      "y": 102
     },
     {
       "brick_ids": [
@@ -530,61 +538,20 @@
     },
     {
       "brick_ids": [
-        "235aa3fb",
-        "4f8ab8dd",
-        "66b92af7",
-        "79e5e68f",
-        "8c39819a",
-        "998884f3",
-        "b65cb50a",
-        "f0be4816"
+        "0da8e4cc",
+        "12d70d4c",
+        "2afdf67c",
+        "2e7393a0",
+        "c22e6923",
+        "d2eb3646",
+        "fa0526ec"
       ],
-      "height": 125,
+      "height": 114,
       "id": "p40",
-      "num_bricks": 8,
-      "width": 160,
-      "x": 182,
-      "y": 23
-    },
-    {
-      "brick_ids": [
-        "01535344",
-        "8382623b",
-        "a850d958",
-        "c29ed29d",
-        "e7992b87",
-        "fe221616"
-      ],
-      "height": 160,
-      "id": "p41",
-      "num_bricks": 6,
+      "num_bricks": 7,
       "width": 69,
       "x": 0,
-      "y": 740
-    },
-    {
-      "brick_ids": [
-        "660e301a",
-        "6a78f360"
-      ],
-      "height": 182,
-      "id": "p42",
-      "num_bricks": 2,
-      "width": 23,
-      "x": 455,
-      "y": 672
-    },
-    {
-      "brick_ids": [
-        "3c3ef736",
-        "7d09a273"
-      ],
-      "height": 46,
-      "id": "p43",
-      "num_bricks": 2,
-      "width": 137,
-      "x": 23,
-      "y": 831
+      "y": 148
     },
     {
       "brick_ids": [
@@ -592,280 +559,38 @@
         "26aff338",
         "2b5f1e1e",
         "880be09a",
-        "9204d346",
-        "cea4def5"
+        "8869a8b2",
+        "cea4def5",
+        "ee7c3f05"
       ],
       "height": 69,
-      "id": "p44",
-      "num_bricks": 6,
+      "id": "p41",
+      "num_bricks": 7,
       "width": 137,
       "x": 205,
       "y": 535
     },
     {
       "brick_ids": [
-        "afae54c3"
+        "537fd78e"
       ],
-      "height": 159,
-      "id": "p45",
+      "height": 46,
+      "id": "p42",
       "num_bricks": 1,
-      "width": 114,
-      "x": 330,
+      "width": 46,
+      "x": 239,
       "y": 683
     },
     {
       "brick_ids": [
-        "4f541d2e",
-        "74be0677",
-        "8f9b0f0e",
-        "a4caba8b",
-        "a4fd1bea",
-        "aecf14c1",
-        "c0bf4424",
-        "c334d808"
+        "a2facce4"
       ],
-      "height": 82,
-      "id": "p46",
-      "num_bricks": 8,
-      "width": 114,
-      "x": 364,
-      "y": 285
-    },
-    {
-      "brick_ids": [
-        "3c81dd3c",
-        "8c22eb48",
-        "c82e792f"
-      ],
-      "height": 68,
-      "id": "p47",
-      "num_bricks": 3,
-      "width": 103,
-      "x": 46,
-      "y": 285
-    },
-    {
-      "brick_ids": [
-        "07a6ef24",
-        "12a4aea5",
-        "37c60bcd",
-        "3e867913",
-        "4d58d39b",
-        "57ae3f23",
-        "976bd8b2",
-        "9d141286"
-      ],
-      "height": 136,
-      "id": "p48",
-      "num_bricks": 8,
-      "width": 115,
-      "x": 68,
-      "y": 490
-    },
-    {
-      "brick_ids": [
-        "340e41ff",
-        "495c4d12",
-        "ba9a630e",
-        "ddfa4293"
-      ],
-      "height": 114,
-      "id": "p49",
-      "num_bricks": 4,
-      "width": 161,
-      "x": 68,
-      "y": 786
-    },
-    {
-      "brick_ids": [
-        "b4ec74fb"
-      ],
-      "height": 68,
-      "id": "p5",
+      "height": 183,
+      "id": "p43",
       "num_bricks": 1,
-      "width": 205,
-      "x": 319,
-      "y": 604
-    },
-    {
-      "brick_ids": [
-        "a21cde92"
-      ],
-      "height": 126,
-      "id": "p50",
-      "num_bricks": 1,
-      "width": 48,
-      "x": 68,
-      "y": 420
-    },
-    {
-      "brick_ids": [
-        "99c93973",
-        "e62398a2"
-      ],
-      "height": 46,
-      "id": "p51",
-      "num_bricks": 2,
-      "width": 137,
-      "x": 68,
-      "y": 854
-    },
-    {
-      "brick_ids": [
-        "16293a6b",
-        "330c8321",
-        "51095d1a",
-        "581503bd",
-        "674065ff",
-        "9d75d4c4",
-        "a2a9d039",
-        "b441f219",
-        "e962cc8b"
-      ],
-      "height": 137,
-      "id": "p52",
-      "num_bricks": 9,
-      "width": 103,
-      "x": 125,
-      "y": 398
-    },
-    {
-      "brick_ids": [
-        "0302010b",
-        "8ef76668"
-      ],
-      "height": 58,
-      "id": "p53",
-      "num_bricks": 2,
-      "width": 92,
-      "x": 182,
-      "y": 0
-    },
-    {
-      "brick_ids": [
-        "193c82d5",
-        "9317d77c",
-        "99eb555d",
-        "a79f31a5",
-        "b0dffcd1",
-        "b60a6cc9",
-        "e519b935",
-        "ea192525"
-      ],
-      "height": 137,
-      "id": "p54",
-      "num_bricks": 8,
-      "width": 58,
-      "x": 0,
-      "y": 376
-    },
-    {
-      "brick_ids": [
-        "d0e381a5"
-      ],
-      "height": 129,
-      "id": "p55",
-      "num_bricks": 1,
-      "width": 48,
-      "x": 79,
-      "y": 657
-    },
-    {
-      "brick_ids": [
-        "08c3fe92",
-        "0bcb0e99",
-        "6dd3e102",
-        "7344f86c",
-        "8e449780",
-        "9877b7d2",
-        "9e655610",
-        "ede7047b",
-        "faa24ce6"
-      ],
-      "height": 137,
-      "id": "p56",
-      "num_bricks": 9,
-      "width": 92,
-      "x": 159,
-      "y": 535
-    },
-    {
-      "brick_ids": [
-        "223bbfb5",
-        "43b734de",
-        "80e3067e",
-        "b46cda3e",
-        "cfe8eeed",
-        "e54928b1",
-        "f446410b"
-      ],
-      "height": 80,
-      "id": "p57",
-      "num_bricks": 7,
-      "width": 160,
-      "x": 273,
-      "y": 0
-    },
-    {
-      "brick_ids": [
-        "ae784882",
-        "b97121e9",
-        "e9d06ea5"
-      ],
-      "height": 46,
-      "id": "p58",
-      "num_bricks": 3,
-      "width": 46,
-      "x": 159,
+      "width": 24,
+      "x": 296,
       "y": 672
-    },
-    {
-      "brick_ids": [
-        "083b1fdb",
-        "08c4cf47",
-        "32089c5c",
-        "3667aaf9",
-        "67ef3d2b",
-        "758f3a77",
-        "bf437e2f",
-        "e226c8c2"
-      ],
-      "height": 103,
-      "id": "p59",
-      "num_bricks": 8,
-      "width": 115,
-      "x": 387,
-      "y": 0
-    },
-    {
-      "brick_ids": [
-        "34c8dd1a",
-        "562f1720",
-        "5e339732",
-        "6d2695b9",
-        "7c0c694b",
-        "e10faa65",
-        "fdbcf3d2"
-      ],
-      "height": 114,
-      "id": "p6",
-      "num_bricks": 7,
-      "width": 137,
-      "x": 342,
-      "y": 80
-    },
-    {
-      "brick_ids": [
-        "11acf645",
-        "1b2a4052",
-        "aa4e062a"
-      ],
-      "height": 57,
-      "id": "p7",
-      "num_bricks": 3,
-      "width": 69,
-      "x": 46,
-      "y": 23
     },
     {
       "brick_ids": [
@@ -879,7 +604,7 @@
         "ef1d3e4e"
       ],
       "height": 91,
-      "id": "p8",
+      "id": "p44",
       "num_bricks": 8,
       "width": 194,
       "x": 148,
@@ -887,22 +612,297 @@
     },
     {
       "brick_ids": [
+        "2f2fe251",
+        "72d806e3",
+        "735674c9",
+        "7f934252",
+        "84054b4b",
+        "8ab7be9c",
+        "bb71a9c8",
+        "c17ee9af",
+        "d174f4b7"
+      ],
+      "height": 114,
+      "id": "p45",
+      "num_bricks": 9,
+      "width": 148,
+      "x": 137,
+      "y": 262
+    },
+    {
+      "brick_ids": [
+        "2889a474",
+        "917fe5ca",
+        "9fb0b145",
+        "ae784882",
+        "b97121e9",
+        "d94bf468",
+        "e9d06ea5"
+      ],
+      "height": 91,
+      "id": "p46",
+      "num_bricks": 7,
+      "width": 68,
+      "x": 137,
+      "y": 672
+    },
+    {
+      "brick_ids": [
+        "1b9fa681",
+        "25aac696",
+        "8f9b0f0e",
+        "a4caba8b",
+        "adaade0a",
+        "c9647298",
+        "d5cd2ccc",
+        "dd9b5d0c",
+        "f48a61f2"
+      ],
+      "height": 91,
+      "id": "p47",
+      "num_bricks": 9,
+      "width": 114,
+      "x": 296,
+      "y": 262
+    },
+    {
+      "brick_ids": [
         "09bb45f9",
-        "0f2a0cff",
-        "3c370f14",
-        "560a7a8f",
-        "8869a8b2",
+        "3e327244",
         "b83122b1",
-        "ee7c3f05",
+        "d8d154f2",
+        "ddbe5657",
+        "ed37087c",
         "f39c173e",
         "fff0ea13"
       ],
       "height": 137,
-      "id": "p9",
-      "num_bricks": 9,
+      "id": "p48",
+      "num_bricks": 8,
       "width": 92,
       "x": 296,
+      "y": 421
+    },
+    {
+      "brick_ids": [
+        "3b70b220",
+        "455f8809",
+        "6605f1d9",
+        "66d74644",
+        "6c5473c6",
+        "db587eab",
+        "e4be6944",
+        "f87a2dbe"
+      ],
+      "height": 125,
+      "id": "p49",
+      "num_bricks": 8,
+      "width": 159,
+      "x": 23,
+      "y": 23
+    },
+    {
+      "brick_ids": [
+        "a21cde92"
+      ],
+      "height": 126,
+      "id": "p5",
+      "num_bricks": 1,
+      "width": 48,
+      "x": 68,
+      "y": 420
+    },
+    {
+      "brick_ids": [
+        "340e41ff",
+        "495c4d12",
+        "84db5270",
+        "ddfa4293",
+        "e39b97a9"
+      ],
+      "height": 137,
+      "id": "p50",
+      "num_bricks": 5,
+      "width": 92,
+      "x": 137,
+      "y": 763
+    },
+    {
+      "brick_ids": [
+        "1626f3b7",
+        "1a0d7d30",
+        "1b8de292",
+        "810c46a6",
+        "9317d77c",
+        "a56758da",
+        "b60a6cc9",
+        "e519b935",
+        "faacbde2"
+      ],
+      "height": 114,
+      "id": "p51",
+      "num_bricks": 9,
+      "width": 58,
+      "x": 0,
       "y": 444
+    },
+    {
+      "brick_ids": [
+        "0bcb0e99",
+        "37c60bcd",
+        "4d58d39b",
+        "57ae3f23",
+        "581503bd",
+        "8e449780",
+        "976bd8b2",
+        "9d141286",
+        "faa24ce6"
+      ],
+      "height": 136,
+      "id": "p52",
+      "num_bricks": 9,
+      "width": 149,
+      "x": 68,
+      "y": 490
+    },
+    {
+      "brick_ids": [
+        "be4fd25f"
+      ],
+      "height": 46,
+      "id": "p53",
+      "num_bricks": 1,
+      "width": 141,
+      "x": 349,
+      "y": 854
+    },
+    {
+      "brick_ids": [
+        "0ddaf1d2",
+        "1568a8b5",
+        "483b28a0",
+        "d0d2bafe",
+        "dca4cf31",
+        "faafb9d0"
+      ],
+      "height": 115,
+      "id": "p54",
+      "num_bricks": 6,
+      "width": 182,
+      "x": 0,
+      "y": 603
+    },
+    {
+      "brick_ids": [
+        "258f9570"
+      ],
+      "height": 46,
+      "id": "p55",
+      "num_bricks": 1,
+      "width": 80,
+      "x": 296,
+      "y": 854
+    },
+    {
+      "brick_ids": [
+        "55dbf910",
+        "ccc985fb",
+        "ef2db846"
+      ],
+      "height": 46,
+      "id": "p56",
+      "num_bricks": 3,
+      "width": 46,
+      "x": 0,
+      "y": 558
+    },
+    {
+      "brick_ids": [
+        "8ef76668",
+        "f0be4816"
+      ],
+      "height": 58,
+      "id": "p57",
+      "num_bricks": 2,
+      "width": 92,
+      "x": 182,
+      "y": 0
+    },
+    {
+      "brick_ids": [
+        "0ddf1736",
+        "12b9e383",
+        "58f9da52",
+        "90328dc6",
+        "bc451861",
+        "cb8bf80d",
+        "d4c78a10"
+      ],
+      "height": 114,
+      "id": "p58",
+      "num_bricks": 7,
+      "width": 182,
+      "x": 137,
+      "y": 239
+    },
+    {
+      "brick_ids": [
+        "8382623b",
+        "8936aeda",
+        "a850d958",
+        "ba9a630e",
+        "fe221616"
+      ],
+      "height": 137,
+      "id": "p59",
+      "num_bricks": 5,
+      "width": 137,
+      "x": 0,
+      "y": 763
+    },
+    {
+      "brick_ids": [
+        "ab94e66e"
+      ],
+      "height": 126,
+      "id": "p6",
+      "num_bricks": 1,
+      "width": 48,
+      "x": 386,
+      "y": 147
+    },
+    {
+      "brick_ids": [
+        "b4ec74fb"
+      ],
+      "height": 68,
+      "id": "p7",
+      "num_bricks": 1,
+      "width": 205,
+      "x": 319,
+      "y": 604
+    },
+    {
+      "brick_ids": [
+        "d0e381a5"
+      ],
+      "height": 129,
+      "id": "p8",
+      "num_bricks": 1,
+      "width": 48,
+      "x": 79,
+      "y": 657
+    },
+    {
+      "brick_ids": [
+        "e94db844"
+      ],
+      "height": 125,
+      "id": "p9",
+      "num_bricks": 1,
+      "width": 46,
+      "x": 239,
+      "y": 752
     }
   ]
 }

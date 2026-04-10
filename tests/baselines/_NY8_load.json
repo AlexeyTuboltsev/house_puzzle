@@ -6,6 +6,7 @@
       "neighbors": [
         "2021f0cb",
         "d094034b",
+        "d5a1bde2",
         "e816d08f"
       ],
       "type": "brick",
@@ -75,7 +76,7 @@
       "height": 6,
       "id": "040e2645",
       "neighbors": [
-        "2de896fc",
+        "051e8202",
         "71b680e6",
         "b75f51f3",
         "d60a0ac4"
@@ -117,7 +118,13 @@
       "height": 38,
       "id": "051e8202",
       "neighbors": [
-        "d60a0ac4"
+        "040e2645",
+        "2eba75b9",
+        "349aa7f9",
+        "71b680e6",
+        "bc81249a",
+        "d60a0ac4",
+        "e31ecf09"
       ],
       "type": "vector_brick",
       "width": 11,
@@ -160,6 +167,7 @@
       "id": "05d01723",
       "neighbors": [
         "247d0da3",
+        "3213a411",
         "4e6113a6",
         "5e9688d4",
         "66510ff7"
@@ -216,6 +224,7 @@
       "height": 7,
       "id": "079cba6d",
       "neighbors": [
+        "3a570526",
         "44ed51ed",
         "8273be90",
         "c45456c5",
@@ -231,10 +240,8 @@
       "id": "08655421",
       "neighbors": [
         "3e40f197",
-        "6d0ba986",
         "8204f4f1",
-        "8cf837a9",
-        "90bbff40"
+        "8cf837a9"
       ],
       "type": "vector_brick",
       "width": 21,
@@ -247,7 +254,8 @@
       "neighbors": [
         "12db92ff",
         "2e2d8c5e",
-        "7afcaebd"
+        "7afcaebd",
+        "b7365a0f"
       ],
       "type": "brick",
       "width": 7,
@@ -336,6 +344,7 @@
       "height": 7,
       "id": "0abbc053",
       "neighbors": [
+        "72726bad",
         "734d7cd1",
         "af5d9688",
         "d7b00deb"
@@ -351,8 +360,7 @@
       "neighbors": [
         "0e836450",
         "8e7e120e",
-        "949f47d6",
-        "9726652d"
+        "949f47d6"
       ],
       "type": "vector_brick",
       "width": 21,
@@ -381,7 +389,8 @@
       "neighbors": [
         "6b95d745",
         "8ffd4347",
-        "a67b7448"
+        "a67b7448",
+        "beb2fca3"
       ],
       "type": "vector_brick",
       "width": 7,
@@ -394,6 +403,7 @@
       "neighbors": [
         "12fff4b6",
         "2eb57d60",
+        "4d329461",
         "4e1329c6"
       ],
       "type": "brick",
@@ -420,7 +430,9 @@
       "id": "0d1a7577",
       "neighbors": [
         "491afabe",
+        "4d329461",
         "555fa105",
+        "72726bad",
         "c3040c9e"
       ],
       "type": "brick",
@@ -435,6 +447,7 @@
         "74be8812",
         "8de9aa6c",
         "b49f463a",
+        "d5a1bde2",
         "e7c66d39"
       ],
       "type": "brick",
@@ -447,6 +460,7 @@
       "id": "0e2c812a",
       "neighbors": [
         "1d69d48a",
+        "835da7a7",
         "940a68de",
         "faa0725a"
       ],
@@ -503,7 +517,8 @@
       "neighbors": [
         "1f1a6e32",
         "262c02a2",
-        "3081dcb3"
+        "3081dcb3",
+        "6dfa8f09"
       ],
       "type": "brick",
       "width": 7,
@@ -514,12 +529,11 @@
       "height": 7,
       "id": "0f1d2403",
       "neighbors": [
-        "19fc640c",
+        "3df8fefe",
         "63090897",
         "68ce354b",
         "8e35b247",
-        "912c02be",
-        "c36baeb7"
+        "912c02be"
       ],
       "type": "vector_brick",
       "width": 49,
@@ -558,7 +572,8 @@
       "neighbors": [
         "84ed05fa",
         "a14880f0",
-        "cf5014dc"
+        "cf5014dc",
+        "d5a1bde2"
       ],
       "type": "brick",
       "width": 7,
@@ -583,6 +598,7 @@
       "id": "1016a2ac",
       "neighbors": [
         "0cc0d3ed",
+        "3213a411",
         "4047d70d",
         "7fe56a5a",
         "b9f29bc6"
@@ -611,6 +627,7 @@
       "id": "1135dbb2",
       "neighbors": [
         "45df9f52",
+        "49c20909",
         "6dfacc77",
         "9a6d22b4",
         "b792b55f",
@@ -627,7 +644,8 @@
       "neighbors": [
         "27ab3f31",
         "65374372",
-        "9c5c442b"
+        "9c5c442b",
+        "c6a721d1"
       ],
       "type": "brick",
       "width": 7,
@@ -669,7 +687,8 @@
       "neighbors": [
         "5dd4f90d",
         "9b9df060",
-        "b62c2a7e"
+        "b62c2a7e",
+        "f47516d5"
       ],
       "type": "brick",
       "width": 7,
@@ -696,6 +715,7 @@
       "neighbors": [
         "0656133b",
         "3de60545",
+        "49c20909",
         "9eeeb136",
         "c5e554e1"
       ],
@@ -710,6 +730,7 @@
       "neighbors": [
         "0cb784bf",
         "2eb57d60",
+        "4d329461",
         "8ca475a0"
       ],
       "type": "brick",
@@ -720,7 +741,13 @@
     {
       "height": 24,
       "id": "1375a3da",
-      "neighbors": [],
+      "neighbors": [
+        "2ae5b618",
+        "2bb6bce2",
+        "89653122",
+        "aaa619e7",
+        "de03b91a"
+      ],
       "type": "vector_brick",
       "width": 23,
       "x": 17,
@@ -730,6 +757,7 @@
       "height": 7,
       "id": "1388a7c2",
       "neighbors": [
+        "49c20909",
         "9eeeb136",
         "adbcca0a",
         "b792b55f"
@@ -743,6 +771,7 @@
       "height": 7,
       "id": "1398b316",
       "neighbors": [
+        "3213a411",
         "4e6113a6",
         "66510ff7",
         "a7dacf1d",
@@ -758,6 +787,7 @@
       "id": "13a879be",
       "neighbors": [
         "a18a0617",
+        "a95cd661",
         "b9744aa6",
         "eb65db60"
       ],
@@ -770,6 +800,7 @@
       "height": 7,
       "id": "144a60d5",
       "neighbors": [
+        "be44afd3",
         "c3fb3d22",
         "c740275e",
         "c93bb2eb",
@@ -786,6 +817,7 @@
       "neighbors": [
         "11af84ee",
         "246c3094",
+        "72726bad",
         "c22b863c",
         "e4a2837c"
       ],
@@ -800,6 +832,7 @@
       "neighbors": [
         "0faf0152",
         "3081dcb3",
+        "6dfa8f09",
         "7dbd9840",
         "8ff7247e",
         "d51f0ea6"
@@ -815,6 +848,7 @@
       "neighbors": [
         "a999666c",
         "b23fbc67",
+        "b7365a0f",
         "ed96019d",
         "fb632d8a"
       ],
@@ -846,7 +880,8 @@
         "044853cd",
         "5253cb9d",
         "76ce1a5a",
-        "7ff3934a"
+        "7ff3934a",
+        "d5a1bde2"
       ],
       "type": "brick",
       "width": 14,
@@ -871,11 +906,11 @@
       "id": "1880f3a3",
       "neighbors": [
         "1e80921b",
-        "2ae5b618",
         "504352eb",
         "837d99b4",
         "8ffd4347",
         "a67b7448",
+        "beb2fca3",
         "de03b91a"
       ],
       "type": "vector_brick",
@@ -887,6 +922,7 @@
       "height": 7,
       "id": "18c62116",
       "neighbors": [
+        "afe64164",
         "d094034b",
         "d530bec1",
         "d69e6d03"
@@ -916,15 +952,15 @@
       "height": 7,
       "id": "19fc640c",
       "neighbors": [
-        "0f1d2403",
         "1f637059",
         "3c42d311",
         "42fade33",
-        "8751960f",
         "8e35b247",
         "912c02be",
         "b721de00",
-        "da5879de"
+        "bf3fcb1c",
+        "da5879de",
+        "ef848b35"
       ],
       "type": "vector_brick",
       "width": 56,
@@ -962,6 +998,7 @@
       "id": "1b797de7",
       "neighbors": [
         "42eb2c2a",
+        "4c8323d9",
         "bef2f4b1"
       ],
       "type": "vector_brick",
@@ -987,11 +1024,9 @@
       "height": 56,
       "id": "1c3f1020",
       "neighbors": [
-        "2b592cd3",
         "65e334f6",
         "a1ba2eef",
-        "da17833e",
-        "f796976b"
+        "da17833e"
       ],
       "type": "vector_brick",
       "width": 7,
@@ -1002,7 +1037,9 @@
       "height": 7,
       "id": "1c496f41",
       "neighbors": [
+        "2680441b",
         "99b5dfbe",
+        "a95cd661",
         "f970be2b"
       ],
       "type": "brick",
@@ -1017,6 +1054,7 @@
         "0e2c812a",
         "0fe7b4d5",
         "940a68de",
+        "ee7077fc",
         "faa0725a"
       ],
       "type": "vector_brick",
@@ -1030,7 +1068,8 @@
       "neighbors": [
         "43eb8876",
         "6b1683c0",
-        "99a04320"
+        "99a04320",
+        "af393169"
       ],
       "type": "brick",
       "width": 21,
@@ -1044,6 +1083,7 @@
         "5f52e21a",
         "678fa236",
         "7fc850ae",
+        "a95cd661",
         "b9744aa6"
       ],
       "type": "brick",
@@ -1087,9 +1127,6 @@
       "neighbors": [
         "1880f3a3",
         "2ae5b618",
-        "54edf041",
-        "89653122",
-        "de03b91a",
         "e8dd9762"
       ],
       "type": "vector_brick",
@@ -1103,6 +1140,7 @@
       "neighbors": [
         "87578072",
         "a6b84776",
+        "afe64164",
         "ed0287e8"
       ],
       "type": "brick",
@@ -1115,7 +1153,8 @@
       "id": "1ecb13f8",
       "neighbors": [
         "4057c7c2",
-        "95312425"
+        "95312425",
+        "e08c618d"
       ],
       "type": "brick",
       "width": 6,
@@ -1129,7 +1168,8 @@
         "0ec6686d",
         "262c02a2",
         "2aeb7764",
-        "502f4fb0"
+        "502f4fb0",
+        "6dfa8f09"
       ],
       "type": "brick",
       "width": 14,
@@ -1142,6 +1182,7 @@
       "neighbors": [
         "19fc640c",
         "da5879de",
+        "ef848b35",
         "ffcc45dd"
       ],
       "type": "brick",
@@ -1155,6 +1196,7 @@
       "neighbors": [
         "01f84e34",
         "5f1cd233",
+        "afe64164",
         "d094034b",
         "e816d08f"
       ],
@@ -1187,7 +1229,6 @@
         "5687f136",
         "ab188f8d",
         "d24363bc",
-        "ef12a37a",
         "ef42b50a"
       ],
       "type": "brick",
@@ -1199,7 +1240,9 @@
       "height": 7,
       "id": "21ad3641",
       "neighbors": [
+        "2680441b",
         "2f0e7a47",
+        "46ff4b61",
         "a6b84776",
         "d530bec1",
         "e4659274"
@@ -1230,7 +1273,8 @@
       "id": "220d15e2",
       "neighbors": [
         "391f48de",
-        "5f2b0cc8"
+        "5f2b0cc8",
+        "db7d36aa"
       ],
       "type": "brick",
       "width": 6,
@@ -1254,7 +1298,14 @@
     {
       "height": 24,
       "id": "22d0664a",
-      "neighbors": [],
+      "neighbors": [
+        "2a320971",
+        "2b592cd3",
+        "65e334f6",
+        "770be6da",
+        "f171e9d0",
+        "f796976b"
+      ],
       "type": "vector_brick",
       "width": 23,
       "x": 107,
@@ -1312,6 +1363,7 @@
       "neighbors": [
         "0241caf0",
         "3501af03",
+        "3a570526",
         "4fd5fb41",
         "8de39c47",
         "8deea243"
@@ -1354,6 +1406,7 @@
       "height": 7,
       "id": "2457a1de",
       "neighbors": [
+        "78751342",
         "a51abe0f",
         "adaea108",
         "c31be194"
@@ -1393,7 +1446,12 @@
     {
       "height": 22,
       "id": "25803a3c",
-      "neighbors": [],
+      "neighbors": [
+        "4b2db691",
+        "68ce354b",
+        "c36baeb7",
+        "e03245bb"
+      ],
       "type": "vector_brick",
       "width": 8,
       "x": 101,
@@ -1405,7 +1463,6 @@
       "neighbors": [
         "5f88660f",
         "9f545e4b",
-        "ceb4ddad",
         "e3778b9b"
       ],
       "type": "vector_brick",
@@ -1430,7 +1487,26 @@
     {
       "height": 36,
       "id": "2680441b",
-      "neighbors": [],
+      "neighbors": [
+        "1c496f41",
+        "21ad3641",
+        "678fa236",
+        "7de60fcc",
+        "7fc850ae",
+        "851f6b51",
+        "987b76e3",
+        "99b5dfbe",
+        "a0ad8ba3",
+        "a51abe0f",
+        "a6b84776",
+        "adaea108",
+        "c31be194",
+        "d530bec1",
+        "e811d4b2",
+        "ebf16587",
+        "f6757f26",
+        "f970be2b"
+      ],
       "type": "vector_brick",
       "width": 30,
       "x": 59,
@@ -1441,7 +1517,9 @@
       "id": "273d4e40",
       "neighbors": [
         "912c02be",
-        "e46595bf"
+        "99fff93c",
+        "e46595bf",
+        "f3504877"
       ],
       "type": "brick",
       "width": 7,
@@ -1454,7 +1532,8 @@
       "neighbors": [
         "114dca99",
         "45530738",
-        "65374372"
+        "65374372",
+        "c6a721d1"
       ],
       "type": "brick",
       "width": 14,
@@ -1465,6 +1544,7 @@
       "height": 7,
       "id": "27be97f9",
       "neighbors": [
+        "72726bad",
         "a06c6df9",
         "c22b863c",
         "c7b3b750",
@@ -1493,6 +1573,7 @@
       "height": 7,
       "id": "28618fba",
       "neighbors": [
+        "78751342",
         "87e783d2",
         "cfa51f6d",
         "db1e142e",
@@ -1535,7 +1616,13 @@
     {
       "height": 22,
       "id": "2a320971",
-      "neighbors": [],
+      "neighbors": [
+        "22d0664a",
+        "2b592cd3",
+        "65e334f6",
+        "770be6da",
+        "f796976b"
+      ],
       "type": "vector_brick",
       "width": 22,
       "x": 108,
@@ -1545,11 +1632,10 @@
       "height": 42,
       "id": "2ae5b618",
       "neighbors": [
-        "1880f3a3",
+        "1375a3da",
         "1e80921b",
         "89653122",
-        "de03b91a",
-        "e8dd9762"
+        "de03b91a"
       ],
       "type": "vector_brick",
       "width": 7,
@@ -1562,6 +1648,7 @@
       "neighbors": [
         "1f1a6e32",
         "502f4fb0",
+        "6dfa8f09",
         "b72dd762",
         "dffe6f73"
       ],
@@ -1574,10 +1661,10 @@
       "height": 7,
       "id": "2b592cd3",
       "neighbors": [
-        "1c3f1020",
+        "22d0664a",
+        "2a320971",
         "65e334f6",
         "770be6da",
-        "837d99b4",
         "da17833e",
         "fcbd9b26"
       ],
@@ -1590,6 +1677,7 @@
       "height": 7,
       "id": "2bb6bce2",
       "neighbors": [
+        "1375a3da",
         "89653122",
         "9e56554a",
         "aaa619e7"
@@ -1631,7 +1719,6 @@
       "height": 14,
       "id": "2de896fc",
       "neighbors": [
-        "040e2645",
         "0aa1668d",
         "d60a0ac4",
         "ef217668"
@@ -1661,6 +1748,7 @@
       "neighbors": [
         "092877ee",
         "12db92ff",
+        "b7365a0f",
         "d174aa95",
         "ebacc1e4"
       ],
@@ -1675,9 +1763,18 @@
       "neighbors": [
         "0cb784bf",
         "12fff4b6",
+        "3ec0aaa7",
+        "3fa7bd09",
+        "435673c9",
         "4e1329c6",
+        "56606d45",
+        "5ca39d1a",
         "8ca475a0",
+        "8f05b178",
         "90fc1591",
+        "ab188f8d",
+        "e02806c5",
+        "f19b7d38",
         "fa8a121b"
       ],
       "type": "vector_brick",
@@ -1689,6 +1786,8 @@
       "height": 6,
       "id": "2eba75b9",
       "neighbors": [
+        "051e8202",
+        "5319f137",
         "bc81249a",
         "e31ecf09"
       ],
@@ -1750,7 +1849,8 @@
       "neighbors": [
         "4e8f9b03",
         "4ed17cfe",
-        "bd6cee5f"
+        "bd6cee5f",
+        "f47516d5"
       ],
       "type": "brick",
       "width": 7,
@@ -1776,7 +1876,7 @@
       "neighbors": [
         "a188219a",
         "b721de00",
-        "f18b7f46"
+        "bf3fcb1c"
       ],
       "type": "brick",
       "width": 6,
@@ -1788,6 +1888,7 @@
       "id": "30358366",
       "neighbors": [
         "349aa7f9",
+        "5319f137",
         "b0c6b17c"
       ],
       "type": "brick",
@@ -1802,7 +1903,8 @@
         "0ec6686d",
         "0faf0152",
         "156b30c6",
-        "262c02a2"
+        "262c02a2",
+        "6dfa8f09"
       ],
       "type": "brick",
       "width": 21,
@@ -1815,6 +1917,7 @@
       "neighbors": [
         "372ac41b",
         "3de60545",
+        "49c20909",
         "9b9df060",
         "c5e554e1",
         "daa81e89"
@@ -1843,7 +1946,23 @@
     {
       "height": 36,
       "id": "3213a411",
-      "neighbors": [],
+      "neighbors": [
+        "05d01723",
+        "1016a2ac",
+        "1398b316",
+        "3b087ba0",
+        "3b94d9ab",
+        "4047d70d",
+        "42986565",
+        "5e9688d4",
+        "66510ff7",
+        "821cd16a",
+        "8b973ba1",
+        "9111de97",
+        "a7dacf1d",
+        "b9f29bc6",
+        "c8471a8e"
+      ],
       "type": "vector_brick",
       "width": 17,
       "x": 107,
@@ -1866,8 +1985,9 @@
       "height": 7,
       "id": "349aa7f9",
       "neighbors": [
+        "051e8202",
         "30358366",
-        "3aed3df1",
+        "5319f137",
         "68ce354b",
         "71b680e6",
         "8e35b247",
@@ -1902,6 +2022,7 @@
         "0241caf0",
         "23bf0488",
         "2454223d",
+        "3a570526",
         "e8eca851",
         "fb8beac2"
       ],
@@ -1944,7 +2065,8 @@
         "6b43ff03",
         "6d0ba986",
         "92e880e6",
-        "9c3eada6"
+        "9c3eada6",
+        "f47516d5"
       ],
       "type": "brick",
       "width": 21,
@@ -1983,6 +2105,7 @@
       "id": "386037d0",
       "neighbors": [
         "a3dd798f",
+        "be44afd3",
         "c93bb2eb",
         "ca90c4ea",
         "ddc0c929",
@@ -1996,7 +2119,11 @@
     {
       "height": 34,
       "id": "38f833af",
-      "neighbors": [],
+      "neighbors": [
+        "837d99b4",
+        "beb2fca3",
+        "de05a460"
+      ],
       "type": "vector_brick",
       "width": 17,
       "x": 55,
@@ -2008,8 +2135,8 @@
       "neighbors": [
         "220d15e2",
         "60fe2e3c",
-        "78d09c44",
-        "cef32627"
+        "cef32627",
+        "db7d36aa"
       ],
       "type": "brick",
       "width": 15,
@@ -2037,7 +2164,9 @@
       "id": "39a79217",
       "neighbors": [
         "68ef846e",
-        "cef32627"
+        "b81fb092",
+        "cef32627",
+        "db7d36aa"
       ],
       "type": "brick",
       "width": 6,
@@ -2076,7 +2205,23 @@
     {
       "height": 37,
       "id": "3a570526",
-      "neighbors": [],
+      "neighbors": [
+        "079cba6d",
+        "23bf0488",
+        "3501af03",
+        "44ed51ed",
+        "496db0f0",
+        "4fd5fb41",
+        "5da01ab0",
+        "5fbe2173",
+        "823cb24e",
+        "a1ba2eef",
+        "a3e9cab6",
+        "a78c10cc",
+        "b1a6674c",
+        "fb8beac2",
+        "fe16778d"
+      ],
       "type": "vector_brick",
       "width": 17,
       "x": 107,
@@ -2086,10 +2231,10 @@
       "height": 42,
       "id": "3aed3df1",
       "neighbors": [
-        "349aa7f9",
         "4b2db691",
-        "6703d6c7",
         "68ce354b",
+        "7b184070",
+        "dfca9870",
         "f88e66bc"
       ],
       "type": "vector_brick",
@@ -2102,6 +2247,7 @@
       "id": "3b087ba0",
       "neighbors": [
         "0cc0d3ed",
+        "3213a411",
         "7fe56a5a",
         "8b973ba1",
         "b9f29bc6"
@@ -2116,6 +2262,7 @@
       "id": "3b3d02de",
       "neighbors": [
         "99b5dfbe",
+        "a95cd661",
         "d530bec1",
         "df1be502"
       ],
@@ -2130,6 +2277,7 @@
       "neighbors": [
         "0323098f",
         "0589bb85",
+        "3213a411",
         "9e7c00a0",
         "eec18f46"
       ],
@@ -2143,7 +2291,9 @@
       "id": "3c42d311",
       "neighbors": [
         "19fc640c",
-        "9f0cfb6f"
+        "9f0cfb6f",
+        "bf3fcb1c",
+        "ef848b35"
       ],
       "type": "brick",
       "width": 6,
@@ -2156,6 +2306,7 @@
       "neighbors": [
         "42496138",
         "aecf9dd1",
+        "c6a721d1",
         "e75c920f"
       ],
       "type": "brick",
@@ -2168,6 +2319,7 @@
       "id": "3d0344f5",
       "neighbors": [
         "22d82036",
+        "78751342",
         "b84b7596",
         "ff9e24c7"
       ],
@@ -2196,6 +2348,7 @@
       "neighbors": [
         "12ff0b0e",
         "317ea28b",
+        "49c20909",
         "c5e554e1"
       ],
       "type": "brick",
@@ -2206,7 +2359,12 @@
     {
       "height": 22,
       "id": "3df8fefe",
-      "neighbors": [],
+      "neighbors": [
+        "0f1d2403",
+        "63090897",
+        "7f886b06",
+        "c36baeb7"
+      ],
       "type": "vector_brick",
       "width": 8,
       "x": 80,
@@ -2217,6 +2375,7 @@
       "id": "3dfc1b23",
       "neighbors": [
         "206d8478",
+        "4d329461",
         "5bb14bcb",
         "90fc1591",
         "ab188f8d",
@@ -2232,6 +2391,7 @@
       "id": "3e40f197",
       "neighbors": [
         "08655421",
+        "8cf837a9",
         "90bbff40",
         "ee4ea6f4",
         "f812fee5"
@@ -2247,6 +2407,7 @@
       "neighbors": [
         "0abb79dd",
         "23fa69fc",
+        "2eb57d60",
         "37a390af",
         "3fa7bd09"
       ],
@@ -2259,6 +2420,7 @@
       "height": 7,
       "id": "3fa7bd09",
       "neighbors": [
+        "2eb57d60",
         "37a390af",
         "3ec0aaa7",
         "435673c9"
@@ -2274,6 +2436,7 @@
       "neighbors": [
         "1016a2ac",
         "22cd735a",
+        "3213a411",
         "9111de97",
         "c5d09eec"
       ],
@@ -2304,7 +2467,7 @@
       "neighbors": [
         "1ecb13f8",
         "63fd822a",
-        "c0b5c418"
+        "e08c618d"
       ],
       "type": "brick",
       "width": 6,
@@ -2360,6 +2523,7 @@
         "7715c92c",
         "8f2e86e4",
         "aecf9dd1",
+        "c6a721d1",
         "fb707698"
       ],
       "type": "brick",
@@ -2371,6 +2535,7 @@
       "height": 7,
       "id": "42986565",
       "neighbors": [
+        "3213a411",
         "9e7c00a0",
         "a0061ebe",
         "a7dacf1d"
@@ -2385,6 +2550,7 @@
       "id": "42eb2c2a",
       "neighbors": [
         "1b797de7",
+        "4c8323d9",
         "78d09c44",
         "b81fb092",
         "bef2f4b1",
@@ -2401,9 +2567,7 @@
       "neighbors": [
         "19fc640c",
         "5687f136",
-        "8751960f",
-        "912c02be",
-        "e46595bf"
+        "8751960f"
       ],
       "type": "vector_brick",
       "width": 7,
@@ -2414,6 +2578,7 @@
       "height": 7,
       "id": "435673c9",
       "neighbors": [
+        "2eb57d60",
         "37a390af",
         "3fa7bd09",
         "8f05b178",
@@ -2463,9 +2628,7 @@
       "neighbors": [
         "0aa1668d",
         "21c649bc",
-        "98872f64",
-        "da5879de",
-        "ffcc45dd"
+        "98872f64"
       ],
       "type": "vector_brick",
       "width": 15,
@@ -2478,6 +2641,7 @@
       "neighbors": [
         "079cba6d",
         "2454223d",
+        "3a570526",
         "e8eca851",
         "fb8beac2"
       ],
@@ -2491,6 +2655,7 @@
       "id": "45530738",
       "neighbors": [
         "27ab3f31",
+        "c6a721d1",
         "f645ba45",
         "fa207297"
       ],
@@ -2506,7 +2671,8 @@
         "4432b8c3",
         "45d8a04e",
         "53eb5b0a",
-        "ad4ac7b2"
+        "ad4ac7b2",
+        "f47516d5"
       ],
       "type": "brick",
       "width": 14,
@@ -2602,6 +2768,7 @@
       "height": 14,
       "id": "46ff4b61",
       "neighbors": [
+        "21ad3641",
         "5a85ee12",
         "966808e4",
         "d530bec1",
@@ -2618,6 +2785,7 @@
       "neighbors": [
         "0d1a7577",
         "3972d31b",
+        "4d329461",
         "6174b855",
         "840dfb33",
         "d4a168dd"
@@ -2632,6 +2800,7 @@
       "id": "496db0f0",
       "neighbors": [
         "2848b27f",
+        "3a570526",
         "7ac5793b",
         "823cb24e",
         "a78c10cc"
@@ -2661,10 +2830,19 @@
       "id": "49c20909",
       "neighbors": [
         "04835194",
+        "1135dbb2",
+        "12ff0b0e",
+        "1388a7c2",
         "2bddce7e",
+        "317ea28b",
+        "3de60545",
+        "5f6a91a1",
+        "6dfacc77",
         "87578072",
         "951fe475",
+        "9eeeb136",
         "ac5121bd",
+        "b792b55f",
         "efe7bc01"
       ],
       "type": "vector_brick",
@@ -2676,13 +2854,14 @@
       "height": 7,
       "id": "4b2db691",
       "neighbors": [
+        "25803a3c",
         "3aed3df1",
         "6703d6c7",
+        "7b184070",
         "7f886b06",
         "c36baeb7",
-        "e03245bb",
-        "ef12a37a",
-        "f88e66bc"
+        "dfca9870",
+        "e03245bb"
       ],
       "type": "vector_brick",
       "width": 49,
@@ -2695,9 +2874,7 @@
       "neighbors": [
         "5f6a91a1",
         "9942ba67",
-        "9b9df060",
-        "cc901582",
-        "f5822fc3"
+        "cc901582"
       ],
       "type": "vector_brick",
       "width": 21,
@@ -2707,7 +2884,10 @@
     {
       "height": 14,
       "id": "4c8323d9",
-      "neighbors": [],
+      "neighbors": [
+        "1b797de7",
+        "42eb2c2a"
+      ],
       "type": "vector_brick",
       "width": 14,
       "x": 67,
@@ -2716,7 +2896,25 @@
     {
       "height": 36,
       "id": "4d329461",
-      "neighbors": [],
+      "neighbors": [
+        "0cb784bf",
+        "0d1a7577",
+        "12fff4b6",
+        "3dfc1b23",
+        "491afabe",
+        "4e1329c6",
+        "555fa105",
+        "5bb14bcb",
+        "734d7cd1",
+        "8ca475a0",
+        "90fc1591",
+        "af5d9688",
+        "b2ba703c",
+        "d4a168dd",
+        "d7b00deb",
+        "f19b7d38",
+        "fa8a121b"
+      ],
       "type": "vector_brick",
       "width": 30,
       "x": 58,
@@ -2749,6 +2947,7 @@
       "neighbors": [
         "0cb784bf",
         "2eb57d60",
+        "4d329461",
         "fa8a121b"
       ],
       "type": "brick",
@@ -2777,7 +2976,8 @@
         "2f484f89",
         "36865e5b",
         "4ed17cfe",
-        "be44afd3"
+        "be44afd3",
+        "f47516d5"
       ],
       "type": "brick",
       "width": 14,
@@ -2816,6 +3016,7 @@
       "id": "4fd5fb41",
       "neighbors": [
         "23bf0488",
+        "3a570526",
         "5d7a6afa",
         "823cb24e",
         "8de39c47",
@@ -2887,9 +3088,8 @@
       "id": "5287b036",
       "neighbors": [
         "89653122",
-        "e8dd9762",
+        "9e56554a",
         "e905ace2",
-        "f171e9d0",
         "f796976b"
       ],
       "type": "vector_brick",
@@ -2901,7 +3101,14 @@
       "height": 38,
       "id": "5319f137",
       "neighbors": [
-        "a15e4648"
+        "2eba75b9",
+        "30358366",
+        "349aa7f9",
+        "a15e4648",
+        "b0c6b17c",
+        "bc81249a",
+        "e31ecf09",
+        "f87a1e9e"
       ],
       "type": "vector_brick",
       "width": 11,
@@ -2915,7 +3122,8 @@
         "1bba7b2d",
         "4432b8c3",
         "4566ed09",
-        "6b43ff03"
+        "6b43ff03",
+        "f47516d5"
       ],
       "type": "brick",
       "width": 21,
@@ -2927,7 +3135,6 @@
       "id": "54edf041",
       "neighbors": [
         "12db92ff",
-        "1e80921b",
         "7afcaebd",
         "e8dd9762"
       ],
@@ -2981,6 +3188,7 @@
       "id": "555fa105",
       "neighbors": [
         "0d1a7577",
+        "4d329461",
         "b2ba703c",
         "c3040c9e"
       ],
@@ -2993,6 +3201,7 @@
       "height": 7,
       "id": "56606d45",
       "neighbors": [
+        "2eb57d60",
         "5ca39d1a",
         "5fd6bfd0",
         "7ee1dbea",
@@ -3011,6 +3220,7 @@
         "1032f3d2",
         "71bffe5d",
         "a4cc8ff2",
+        "a95cd661",
         "ea0d0321"
       ],
       "type": "brick",
@@ -3024,7 +3234,6 @@
       "neighbors": [
         "206d8478",
         "42fade33",
-        "8751960f",
         "9319d94d",
         "d24363bc",
         "e46595bf",
@@ -3040,6 +3249,7 @@
       "id": "5736070a",
       "neighbors": [
         "671fcfa2",
+        "72f8eb08",
         "a3c2fec9",
         "bc90ac4c",
         "da6f8832"
@@ -3056,6 +3266,7 @@
         "43eb8876",
         "6e1e0c6d",
         "aa676c8c",
+        "af393169",
         "d3795183",
         "ed96019d"
       ],
@@ -3070,9 +3281,9 @@
       "neighbors": [
         "43eb8876",
         "69536dae",
-        "6b1683c0",
         "99a04320",
-        "b64ba209"
+        "b64ba209",
+        "cc218042"
       ],
       "type": "brick",
       "width": 21,
@@ -3114,8 +3325,7 @@
       "neighbors": [
         "2f0e7a47",
         "46ff4b61",
-        "966808e4",
-        "d530bec1"
+        "966808e4"
       ],
       "type": "vector_brick",
       "width": 21,
@@ -3140,6 +3350,7 @@
         "21c649bc",
         "707e7d5d",
         "9f0cfb6f",
+        "bf3fcb1c",
         "ef848b35",
         "f18b7f46"
       ],
@@ -3153,6 +3364,7 @@
       "id": "5b432a1f",
       "neighbors": [
         "46b9c27c",
+        "72726bad",
         "ca27d466",
         "d9181339"
       ],
@@ -3167,6 +3379,7 @@
       "neighbors": [
         "1688a126",
         "3dfc1b23",
+        "4d329461",
         "a06c6df9",
         "ef42b50a"
       ],
@@ -3179,8 +3392,10 @@
       "height": 7,
       "id": "5c339516",
       "neighbors": [
+        "9f545e4b",
         "a51bc2da",
         "ceb4ddad",
+        "d5a1bde2",
         "ddc0c929",
         "e3778b9b"
       ],
@@ -3193,6 +3408,7 @@
       "height": 7,
       "id": "5ca39d1a",
       "neighbors": [
+        "2eb57d60",
         "56606d45",
         "6b8fa602",
         "d6d493cd",
@@ -3223,6 +3439,7 @@
       "height": 7,
       "id": "5da01ab0",
       "neighbors": [
+        "3a570526",
         "4142490c",
         "7ac5793b",
         "a78c10cc",
@@ -3254,7 +3471,8 @@
         "12a5cbb3",
         "4633a9e2",
         "b62c2a7e",
-        "d6a493aa"
+        "d6a493aa",
+        "f47516d5"
       ],
       "type": "brick",
       "width": 14,
@@ -3267,6 +3485,7 @@
       "neighbors": [
         "05d01723",
         "247d0da3",
+        "3213a411",
         "a06fd24c",
         "c8471a8e"
       ],
@@ -3280,6 +3499,7 @@
       "id": "5f1cd233",
       "neighbors": [
         "2021f0cb",
+        "afe64164",
         "cf5014dc",
         "e816d08f"
       ],
@@ -3293,7 +3513,8 @@
       "id": "5f2b0cc8",
       "neighbors": [
         "220d15e2",
-        "97e8e60c"
+        "97e8e60c",
+        "db7d36aa"
       ],
       "type": "brick",
       "width": 6,
@@ -3320,7 +3541,9 @@
       "height": 7,
       "id": "5f6a91a1",
       "neighbors": [
+        "49c20909",
         "4c394772",
+        "9942ba67",
         "9b9df060",
         "cc901582",
         "f5822fc3"
@@ -3335,6 +3558,7 @@
       "id": "5f88660f",
       "neighbors": [
         "260ab8ba",
+        "6dfa8f09",
         "9f545e4b",
         "ceb4ddad",
         "ddc0c929",
@@ -3349,6 +3573,7 @@
       "height": 7,
       "id": "5fbe2173",
       "neighbors": [
+        "3a570526",
         "a1ba2eef",
         "b1a6674c",
         "be1b16ab"
@@ -3377,7 +3602,6 @@
       "id": "60fe2e3c",
       "neighbors": [
         "391f48de",
-        "cef32627",
         "cfb12784"
       ],
       "type": "vector_brick",
@@ -3438,6 +3662,8 @@
       "id": "63090897",
       "neighbors": [
         "0f1d2403",
+        "3df8fefe",
+        "7430dd66",
         "7f886b06"
       ],
       "type": "brick",
@@ -3450,6 +3676,7 @@
       "id": "63fd822a",
       "neighbors": [
         "4057c7c2",
+        "a2bc9089",
         "bef2f4b1",
         "c0b5c418",
         "e08c618d"
@@ -3507,9 +3734,9 @@
       "id": "65e334f6",
       "neighbors": [
         "1c3f1020",
+        "22d0664a",
+        "2a320971",
         "2b592cd3",
-        "a1ba2eef",
-        "da17833e",
         "f796976b"
       ],
       "type": "vector_brick",
@@ -3523,6 +3750,7 @@
       "neighbors": [
         "05d01723",
         "1398b316",
+        "3213a411",
         "4e6113a6"
       ],
       "type": "brick",
@@ -3535,7 +3763,6 @@
       "id": "6703d6c7",
       "neighbors": [
         "1688a126",
-        "3aed3df1",
         "4b2db691",
         "c7b3b750",
         "ec7d45a4",
@@ -3581,6 +3808,7 @@
       "id": "678fa236",
       "neighbors": [
         "1e06b3c6",
+        "2680441b",
         "5f52e21a",
         "74cfdc3a",
         "7fc850ae",
@@ -3626,11 +3854,13 @@
       "id": "68ce354b",
       "neighbors": [
         "0f1d2403",
+        "25803a3c",
         "349aa7f9",
         "3aed3df1",
+        "7b184070",
         "c36baeb7",
-        "e03245bb",
-        "f88e66bc"
+        "dfca9870",
+        "e03245bb"
       ],
       "type": "vector_brick",
       "width": 49,
@@ -3642,7 +3872,9 @@
       "id": "68ef846e",
       "neighbors": [
         "39a79217",
-        "8b40274b"
+        "8b40274b",
+        "b81fb092",
+        "db7d36aa"
       ],
       "type": "brick",
       "width": 6,
@@ -3669,6 +3901,7 @@
         "2bddce7e",
         "525e67eb",
         "951fe475",
+        "afe64164",
         "b1582787",
         "b1762fbd",
         "e0fa7e2e"
@@ -3710,7 +3943,6 @@
       "neighbors": [
         "1d85c201",
         "43eb8876",
-        "595d69b0",
         "69536dae",
         "99a04320",
         "b64ba209"
@@ -3728,7 +3960,8 @@
         "2362bee8",
         "36865e5b",
         "53eb5b0a",
-        "9c3eada6"
+        "9c3eada6",
+        "f47516d5"
       ],
       "type": "brick",
       "width": 21,
@@ -3772,8 +4005,7 @@
       "neighbors": [
         "9942ba67",
         "a828cfd9",
-        "cc901582",
-        "f5822fc3"
+        "cc901582"
       ],
       "type": "vector_brick",
       "width": 21,
@@ -3793,12 +4025,12 @@
       "height": 28,
       "id": "6d0ba986",
       "neighbors": [
-        "08655421",
         "36865e5b",
         "8204f4f1",
         "8ae05906",
         "8cf837a9",
         "92e880e6",
+        "be44afd3",
         "e2f2f3f5",
         "f1608ecb",
         "f812fee5"
@@ -3825,7 +4057,23 @@
     {
       "height": 36,
       "id": "6dfa8f09",
-      "neighbors": [],
+      "neighbors": [
+        "0ec6686d",
+        "156b30c6",
+        "1f1a6e32",
+        "2aeb7764",
+        "3081dcb3",
+        "5f88660f",
+        "762bffdb",
+        "8e30eeb7",
+        "8ff7247e",
+        "b52e36c8",
+        "bbddc2bf",
+        "be6ae885",
+        "c963ae9d",
+        "de9f501f",
+        "dffe6f73"
+      ],
       "type": "vector_brick",
       "width": 17,
       "x": 107,
@@ -3836,6 +4084,7 @@
       "id": "6dfacc77",
       "neighbors": [
         "1135dbb2",
+        "49c20909",
         "87578072",
         "9a6d22b4",
         "bcaf66e3",
@@ -3879,6 +4128,7 @@
       "neighbors": [
         "5ad1296c",
         "a188219a",
+        "bf3fcb1c",
         "f18b7f46"
       ],
       "type": "brick",
@@ -3891,6 +4141,7 @@
       "id": "71b680e6",
       "neighbors": [
         "040e2645",
+        "051e8202",
         "349aa7f9",
         "b75f51f3"
       ],
@@ -3933,7 +4184,23 @@
     {
       "height": 36,
       "id": "72726bad",
-      "neighbors": [],
+      "neighbors": [
+        "0abbc053",
+        "0d1a7577",
+        "14dd364d",
+        "27be97f9",
+        "5b432a1f",
+        "840dfb33",
+        "a06c6df9",
+        "af5d9688",
+        "b2ba703c",
+        "b5c4f426",
+        "c22b863c",
+        "c3040c9e",
+        "d7b00deb",
+        "d9181339",
+        "e4a2837c"
+      ],
       "type": "vector_brick",
       "width": 17,
       "x": 107,
@@ -3945,6 +4212,7 @@
       "neighbors": [
         "3380b8d5",
         "4d7d2302",
+        "5736070a",
         "64908ba3",
         "a3c2fec9",
         "bc90ac4c"
@@ -3959,6 +4227,7 @@
       "id": "734d7cd1",
       "neighbors": [
         "0abbc053",
+        "4d329461",
         "af5d9688",
         "d7b00deb"
       ],
@@ -3984,7 +4253,10 @@
     {
       "height": 22,
       "id": "7430dd66",
-      "neighbors": [],
+      "neighbors": [
+        "63090897",
+        "d1defbfc"
+      ],
       "type": "vector_brick",
       "width": 8,
       "x": 59,
@@ -3996,6 +4268,7 @@
       "neighbors": [
         "8b3a5b1b",
         "95b0241d",
+        "b7365a0f",
         "f6a57402",
         "fc27cc72"
       ],
@@ -4011,6 +4284,7 @@
         "0de6dd39",
         "8de9aa6c",
         "a63c8d06",
+        "d5a1bde2",
         "ef2a872c"
       ],
       "type": "brick",
@@ -4051,6 +4325,7 @@
       "height": 7,
       "id": "762bffdb",
       "neighbors": [
+        "6dfa8f09",
         "8ff7247e",
         "be44afd3",
         "be6ae885",
@@ -4067,7 +4342,8 @@
       "neighbors": [
         "182b6a36",
         "5253cb9d",
-        "ceb4ddad"
+        "ceb4ddad",
+        "d5a1bde2"
       ],
       "type": "brick",
       "width": 7,
@@ -4078,7 +4354,10 @@
       "height": 21,
       "id": "770be6da",
       "neighbors": [
+        "22d0664a",
+        "2a320971",
         "2b592cd3",
+        "9e56554a",
         "f171e9d0"
       ],
       "type": "brick",
@@ -4093,6 +4372,7 @@
         "34a28405",
         "42496138",
         "8f2e86e4",
+        "c6a721d1",
         "d04019e6",
         "ff8603f5"
       ],
@@ -4134,7 +4414,23 @@
     {
       "height": 36,
       "id": "78751342",
-      "neighbors": [],
+      "neighbors": [
+        "2457a1de",
+        "28618fba",
+        "3d0344f5",
+        "851f6b51",
+        "86f54559",
+        "87e783d2",
+        "a0ad8ba3",
+        "a51abe0f",
+        "acde18b7",
+        "adaea108",
+        "cd866115",
+        "cfa51f6d",
+        "d6d99985",
+        "ddce5736",
+        "ff9e24c7"
+      ],
       "type": "vector_brick",
       "width": 17,
       "x": 23,
@@ -4144,9 +4440,9 @@
       "height": 18,
       "id": "78d09c44",
       "neighbors": [
-        "391f48de",
         "42eb2c2a",
-        "cef32627"
+        "cef32627",
+        "e1a92963"
       ],
       "type": "vector_brick",
       "width": 24,
@@ -4188,6 +4484,7 @@
         "092877ee",
         "12db92ff",
         "54edf041",
+        "b7365a0f",
         "e8dd9762"
       ],
       "type": "brick",
@@ -4198,7 +4495,13 @@
     {
       "height": 28,
       "id": "7b184070",
-      "neighbors": [],
+      "neighbors": [
+        "3aed3df1",
+        "4b2db691",
+        "68ce354b",
+        "dfca9870",
+        "e03245bb"
+      ],
       "type": "vector_brick",
       "width": 14,
       "x": 119,
@@ -4224,7 +4527,9 @@
       "height": 7,
       "id": "7de60fcc",
       "neighbors": [
+        "2680441b",
         "7fc850ae",
+        "a95cd661",
         "ebf16587"
       ],
       "type": "brick",
@@ -4249,6 +4554,7 @@
       "height": 7,
       "id": "7f886b06",
       "neighbors": [
+        "3df8fefe",
         "4b2db691",
         "63090897",
         "e46595bf",
@@ -4264,6 +4570,7 @@
       "id": "7fc850ae",
       "neighbors": [
         "1e06b3c6",
+        "2680441b",
         "678fa236",
         "7de60fcc"
       ],
@@ -4296,6 +4603,7 @@
         "044853cd",
         "182b6a36",
         "b49f463a",
+        "d5a1bde2",
         "e7c66d39"
       ],
       "type": "brick",
@@ -4336,6 +4644,7 @@
       "id": "816b5e6f",
       "neighbors": [
         "6e1e0c6d",
+        "b7365a0f",
         "d3795183",
         "fb632d8a"
       ],
@@ -4364,6 +4673,7 @@
       "id": "821cd16a",
       "neighbors": [
         "22cd735a",
+        "3213a411",
         "9111de97",
         "c5d09eec",
         "eec18f46"
@@ -4378,6 +4688,7 @@
       "id": "823cb24e",
       "neighbors": [
         "2848b27f",
+        "3a570526",
         "496db0f0",
         "4fd5fb41",
         "b6f37bbd"
@@ -4393,6 +4704,7 @@
       "neighbors": [
         "079cba6d",
         "a3e9cab6",
+        "af393169",
         "c45456c5",
         "e8eca851",
         "e905ace2"
@@ -4421,7 +4733,13 @@
     {
       "height": 34,
       "id": "835da7a7",
-      "neighbors": [],
+      "neighbors": [
+        "0e2c812a",
+        "837d99b4",
+        "940a68de",
+        "da17833e",
+        "de05a460"
+      ],
       "type": "vector_brick",
       "width": 17,
       "x": 97,
@@ -4432,9 +4750,11 @@
       "id": "837d99b4",
       "neighbors": [
         "1880f3a3",
-        "2b592cd3",
+        "38f833af",
+        "835da7a7",
+        "beb2fca3",
         "da17833e",
-        "de03b91a",
+        "de05a460",
         "fcbd9b26"
       ],
       "type": "vector_brick",
@@ -4449,7 +4769,8 @@
         "22dd5baa",
         "3972d31b",
         "46b9c27c",
-        "491afabe"
+        "491afabe",
+        "72726bad"
       ],
       "type": "brick",
       "width": 21,
@@ -4481,6 +4802,7 @@
         "8bc1b125",
         "a14880f0",
         "b1582787",
+        "d5a1bde2",
         "ddc0c929"
       ],
       "type": "brick",
@@ -4492,6 +4814,8 @@
       "height": 7,
       "id": "851f6b51",
       "neighbors": [
+        "2680441b",
+        "78751342",
         "acde18b7",
         "adaea108",
         "e811d4b2"
@@ -4520,6 +4844,7 @@
       "height": 7,
       "id": "86f54559",
       "neighbors": [
+        "78751342",
         "8342cf59",
         "987b76e3",
         "abaf01e4",
@@ -4534,11 +4859,10 @@
       "height": 42,
       "id": "8751960f",
       "neighbors": [
-        "19fc640c",
         "42fade33",
-        "5687f136",
         "912c02be",
-        "e46595bf"
+        "e46595bf",
+        "f3504877"
       ],
       "type": "vector_brick",
       "width": 7,
@@ -4554,6 +4878,7 @@
         "49c20909",
         "6dfacc77",
         "8921bacc",
+        "afe64164",
         "ed0287e8"
       ],
       "type": "brick",
@@ -4567,6 +4892,7 @@
       "neighbors": [
         "28618fba",
         "4054dd60",
+        "78751342",
         "c508ec32",
         "ddce5736",
         "e0f6a050"
@@ -4581,6 +4907,8 @@
       "id": "87ec0110",
       "neighbors": [
         "9017b320",
+        "b81fb092",
+        "e08c618d",
         "e0be9cf8"
       ],
       "type": "brick",
@@ -4608,7 +4936,8 @@
       "neighbors": [
         "04835194",
         "87578072",
-        "8dee5a08"
+        "8dee5a08",
+        "afe64164"
       ],
       "type": "brick",
       "width": 7,
@@ -4619,7 +4948,7 @@
       "height": 7,
       "id": "89653122",
       "neighbors": [
-        "1e80921b",
+        "1375a3da",
         "2ae5b618",
         "2bb6bce2",
         "5287b036",
@@ -4650,6 +4979,7 @@
       "id": "8b3a5b1b",
       "neighbors": [
         "74371e74",
+        "b7365a0f",
         "ebacc1e4",
         "fc27cc72"
       ],
@@ -4666,6 +4996,8 @@
         "5a32f82b",
         "68ef846e",
         "97e8e60c",
+        "b81fb092",
+        "db7d36aa",
         "e0be9cf8"
       ],
       "type": "brick",
@@ -4679,6 +5011,7 @@
       "neighbors": [
         "0f85abd9",
         "2ec36dff",
+        "3213a411",
         "3b087ba0",
         "9f451022",
         "c8471a8e"
@@ -4722,6 +5055,7 @@
       "neighbors": [
         "12fff4b6",
         "2eb57d60",
+        "4d329461",
         "90fc1591"
       ],
       "type": "brick",
@@ -4734,9 +5068,11 @@
       "id": "8cf837a9",
       "neighbors": [
         "08655421",
+        "3e40f197",
         "6d0ba986",
         "8204f4f1",
-        "90bbff40"
+        "90bbff40",
+        "be44afd3"
       ],
       "type": "brick",
       "width": 21,
@@ -4795,6 +5131,7 @@
         "04835194",
         "8921bacc",
         "ac5121bd",
+        "afe64164",
         "efe7bc01"
       ],
       "type": "brick",
@@ -4823,6 +5160,7 @@
       "neighbors": [
         "c0a5350c",
         "c3fb3d22",
+        "f47516d5",
         "f5822fc3"
       ],
       "type": "brick",
@@ -4834,6 +5172,7 @@
       "height": 7,
       "id": "8e30eeb7",
       "neighbors": [
+        "6dfa8f09",
         "80db6990",
         "ceb4ddad",
         "dffe6f73"
@@ -4849,7 +5188,8 @@
       "neighbors": [
         "0f1d2403",
         "19fc640c",
-        "349aa7f9"
+        "349aa7f9",
+        "aa9deaa4"
       ],
       "type": "vector_brick",
       "width": 49,
@@ -4872,6 +5212,7 @@
       "height": 7,
       "id": "8f05b178",
       "neighbors": [
+        "2eb57d60",
         "435673c9",
         "5fd6bfd0",
         "a4cfeb57",
@@ -4917,6 +5258,7 @@
       "id": "8fcf9a00",
       "neighbors": [
         "71bffe5d",
+        "a95cd661",
         "b1dd3417",
         "c455b181",
         "de0dd42c",
@@ -4935,6 +5277,7 @@
         "6737db86",
         "77981a3d",
         "aa676c8c",
+        "b7365a0f",
         "f6a57402"
       ],
       "type": "brick",
@@ -4947,6 +5290,7 @@
       "id": "8ff7247e",
       "neighbors": [
         "156b30c6",
+        "6dfa8f09",
         "762bffdb",
         "7dbd9840",
         "8d38b957",
@@ -4978,7 +5322,9 @@
       "id": "9017b320",
       "neighbors": [
         "87ec0110",
-        "bef2f4b1"
+        "b81fb092",
+        "bef2f4b1",
+        "e08c618d"
       ],
       "type": "brick",
       "width": 6,
@@ -4989,15 +5335,14 @@
       "height": 28,
       "id": "90bbff40",
       "neighbors": [
-        "08655421",
         "0f85abd9",
         "3e40f197",
         "8cf837a9",
         "8d38b957",
         "9f451022",
         "a9c550ba",
+        "be44afd3",
         "c489b15e",
-        "ee4ea6f4",
         "f812fee5"
       ],
       "type": "brick",
@@ -5011,6 +5356,7 @@
       "neighbors": [
         "2eb57d60",
         "3dfc1b23",
+        "4d329461",
         "8ca475a0"
       ],
       "type": "brick",
@@ -5023,6 +5369,7 @@
       "id": "9111de97",
       "neighbors": [
         "22cd735a",
+        "3213a411",
         "4047d70d",
         "821cd16a"
       ],
@@ -5038,9 +5385,10 @@
         "0f1d2403",
         "19fc640c",
         "273d4e40",
-        "42fade33",
         "8751960f",
-        "d1defbfc"
+        "99fff93c",
+        "d1defbfc",
+        "f3504877"
       ],
       "type": "vector_brick",
       "width": 49,
@@ -5081,6 +5429,7 @@
       "neighbors": [
         "078c9f57",
         "0944aec1",
+        "c6a721d1",
         "e2f2f3f5",
         "f4c5949b",
         "f645ba45"
@@ -5096,6 +5445,7 @@
       "neighbors": [
         "0e2c812a",
         "1d69d48a",
+        "835da7a7",
         "da17833e",
         "faa0725a"
       ],
@@ -5143,6 +5493,7 @@
         "1ecb13f8",
         "31a6cc1a",
         "975a5564",
+        "e08c618d",
         "e0be9cf8",
         "f18b7f46"
       ],
@@ -5172,6 +5523,7 @@
         "46ff4b61",
         "5a85ee12",
         "a6b84776",
+        "afe64164",
         "d530bec1"
       ],
       "type": "brick",
@@ -5183,7 +5535,6 @@
       "height": 42,
       "id": "9726652d",
       "neighbors": [
-        "0b5c91e4",
         "1b3bc252",
         "2a05bcb2",
         "4f045404",
@@ -5236,7 +5587,8 @@
         "5a32f82b",
         "5f2b0cc8",
         "84d275c2",
-        "8b40274b"
+        "8b40274b",
+        "db7d36aa"
       ],
       "type": "brick",
       "width": 21,
@@ -5250,7 +5602,8 @@
         "3d9c5af8",
         "bd6cee5f",
         "be44afd3",
-        "c0a5350c"
+        "c0a5350c",
+        "f47516d5"
       ],
       "type": "brick",
       "width": 14,
@@ -5261,6 +5614,7 @@
       "height": 7,
       "id": "987b76e3",
       "neighbors": [
+        "2680441b",
         "61b441a6",
         "8342cf59",
         "86f54559",
@@ -5293,6 +5647,7 @@
       "id": "9942ba67",
       "neighbors": [
         "4c394772",
+        "5f6a91a1",
         "6c70be25",
         "a828cfd9",
         "f5822fc3"
@@ -5327,7 +5682,9 @@
       "id": "99b5dfbe",
       "neighbors": [
         "1c496f41",
-        "3b3d02de"
+        "2680441b",
+        "3b3d02de",
+        "a95cd661"
       ],
       "type": "brick",
       "width": 7,
@@ -5337,7 +5694,12 @@
     {
       "height": 22,
       "id": "99fff93c",
-      "neighbors": [],
+      "neighbors": [
+        "273d4e40",
+        "912c02be",
+        "d1defbfc",
+        "e46595bf"
+      ],
       "type": "vector_brick",
       "width": 8,
       "x": 38,
@@ -5379,7 +5741,6 @@
       "neighbors": [
         "12a5cbb3",
         "317ea28b",
-        "4c394772",
         "5f6a91a1",
         "79a58f7c",
         "a828cfd9",
@@ -5429,6 +5790,7 @@
       "neighbors": [
         "114dca99",
         "65374372",
+        "c6a721d1",
         "e75c920f"
       ],
       "type": "brick",
@@ -5441,7 +5803,11 @@
       "id": "9e56554a",
       "neighbors": [
         "2bb6bce2",
-        "aaa619e7"
+        "5287b036",
+        "770be6da",
+        "aaa619e7",
+        "f171e9d0",
+        "fcbd9b26"
       ],
       "type": "vector_brick",
       "width": 46,
@@ -5470,6 +5836,7 @@
         "0656133b",
         "12ff0b0e",
         "1388a7c2",
+        "49c20909",
         "adbcca0a"
       ],
       "type": "brick",
@@ -5482,7 +5849,9 @@
       "id": "9f0cfb6f",
       "neighbors": [
         "3c42d311",
-        "5ad1296c"
+        "5ad1296c",
+        "bf3fcb1c",
+        "ef848b35"
       ],
       "type": "brick",
       "width": 6,
@@ -5508,6 +5877,7 @@
       "id": "9f545e4b",
       "neighbors": [
         "260ab8ba",
+        "5c339516",
         "5f88660f",
         "a51bc2da",
         "ceb4ddad"
@@ -5554,6 +5924,7 @@
         "1688a126",
         "27be97f9",
         "5bb14bcb",
+        "72726bad",
         "c7b3b750",
         "d7b00deb"
       ],
@@ -5580,6 +5951,8 @@
       "height": 7,
       "id": "a0ad8ba3",
       "neighbors": [
+        "2680441b",
+        "78751342",
         "987b76e3",
         "acde18b7",
         "e811d4b2"
@@ -5595,6 +5968,7 @@
       "neighbors": [
         "0fd580e6",
         "84ed05fa",
+        "afe64164",
         "b1582787",
         "cf5014dc"
       ],
@@ -5650,8 +6024,8 @@
       "id": "a1ba2eef",
       "neighbors": [
         "1c3f1020",
+        "3a570526",
         "5fbe2173",
-        "65e334f6",
         "a3e9cab6",
         "be1b16ab",
         "e905ace2",
@@ -5665,7 +6039,10 @@
     {
       "height": 14,
       "id": "a2bc9089",
-      "neighbors": [],
+      "neighbors": [
+        "63fd822a",
+        "c0b5c418"
+      ],
       "type": "vector_brick",
       "width": 14,
       "x": 43,
@@ -5718,6 +6095,7 @@
       "height": 7,
       "id": "a3e9cab6",
       "neighbors": [
+        "3a570526",
         "8273be90",
         "a1ba2eef",
         "c45456c5",
@@ -5747,6 +6125,7 @@
         "1032f3d2",
         "39ba15f1",
         "566ffbf1",
+        "a95cd661",
         "eb65db60"
       ],
       "type": "brick",
@@ -5772,6 +6151,8 @@
       "id": "a51abe0f",
       "neighbors": [
         "2457a1de",
+        "2680441b",
+        "78751342",
         "c31be194",
         "ddce5736"
       ],
@@ -5786,8 +6167,6 @@
       "neighbors": [
         "5c339516",
         "9f545e4b",
-        "ceb4ddad",
-        "ddc0c929",
         "e3778b9b"
       ],
       "type": "vector_brick",
@@ -5802,6 +6181,7 @@
         "203f073d",
         "62effa32",
         "74be8812",
+        "d5a1bde2",
         "d69e6d03",
         "ef2a872c"
       ],
@@ -5817,7 +6197,8 @@
         "0c424c73",
         "1880f3a3",
         "6b95d745",
-        "8ffd4347"
+        "8ffd4347",
+        "beb2fca3"
       ],
       "type": "brick",
       "width": 7,
@@ -5830,12 +6211,12 @@
       "neighbors": [
         "1eb72e14",
         "21ad3641",
+        "2680441b",
         "2f0e7a47",
         "5db0688a",
         "966808e4",
         "bcaf66e3",
         "ddce5736",
-        "e4659274",
         "e783d835"
       ],
       "type": "brick",
@@ -5847,6 +6228,7 @@
       "height": 7,
       "id": "a78c10cc",
       "neighbors": [
+        "3a570526",
         "496db0f0",
         "5da01ab0",
         "7ac5793b"
@@ -5861,6 +6243,7 @@
       "id": "a7dacf1d",
       "neighbors": [
         "1398b316",
+        "3213a411",
         "42986565",
         "a0061ebe",
         "fb0d03ca"
@@ -5891,6 +6274,7 @@
         "9942ba67",
         "9b9df060",
         "cc901582",
+        "f47516d5",
         "f5822fc3"
       ],
       "type": "brick",
@@ -5901,7 +6285,23 @@
     {
       "height": 37,
       "id": "a95cd661",
-      "neighbors": [],
+      "neighbors": [
+        "13a879be",
+        "1c496f41",
+        "1e06b3c6",
+        "3b3d02de",
+        "566ffbf1",
+        "7de60fcc",
+        "8fcf9a00",
+        "99b5dfbe",
+        "a4cc8ff2",
+        "de0dd42c",
+        "df1be502",
+        "ea0d0321",
+        "eb65db60",
+        "ebf16587",
+        "f970be2b"
+      ],
       "type": "vector_brick",
       "width": 17,
       "x": 100,
@@ -5913,6 +6313,7 @@
       "neighbors": [
         "167b915b",
         "b23fbc67",
+        "b7365a0f",
         "e8dd9762"
       ],
       "type": "brick",
@@ -5955,6 +6356,7 @@
       "neighbors": [
         "582b0c9f",
         "8fdcc4ff",
+        "b7365a0f",
         "d3795183"
       ],
       "type": "brick",
@@ -5980,7 +6382,11 @@
     {
       "height": 21,
       "id": "aa9deaa4",
-      "neighbors": [],
+      "neighbors": [
+        "8e35b247",
+        "b75f51f3",
+        "da5879de"
+      ],
       "type": "vector_brick",
       "width": 29,
       "x": 59,
@@ -5990,6 +6396,7 @@
       "height": 21,
       "id": "aaa619e7",
       "neighbors": [
+        "1375a3da",
         "2bb6bce2",
         "9e56554a",
         "de03b91a"
@@ -6005,6 +6412,7 @@
       "neighbors": [
         "206d8478",
         "23fa69fc",
+        "2eb57d60",
         "3dfc1b23",
         "d24363bc"
       ],
@@ -6050,6 +6458,7 @@
         "49c20909",
         "8dee5a08",
         "951fe475",
+        "afe64164",
         "e0fa7e2e",
         "efe7bc01"
       ],
@@ -6062,6 +6471,7 @@
       "height": 7,
       "id": "acde18b7",
       "neighbors": [
+        "78751342",
         "851f6b51",
         "a0ad8ba3",
         "e811d4b2"
@@ -6077,7 +6487,8 @@
       "neighbors": [
         "4566ed09",
         "45d8a04e",
-        "d6a493aa"
+        "d6a493aa",
+        "f47516d5"
       ],
       "type": "brick",
       "width": 7,
@@ -6089,6 +6500,8 @@
       "id": "adaea108",
       "neighbors": [
         "2457a1de",
+        "2680441b",
+        "78751342",
         "851f6b51",
         "c31be194"
       ],
@@ -6142,7 +6555,14 @@
     {
       "height": 37,
       "id": "af393169",
-      "neighbors": [],
+      "neighbors": [
+        "1d85c201",
+        "582b0c9f",
+        "8273be90",
+        "e8eca851",
+        "e905ace2",
+        "ed96019d"
+      ],
       "type": "vector_brick",
       "width": 17,
       "x": 65,
@@ -6166,6 +6586,8 @@
       "id": "af5d9688",
       "neighbors": [
         "0abbc053",
+        "4d329461",
+        "72726bad",
         "734d7cd1",
         "b2ba703c"
       ],
@@ -6177,7 +6599,23 @@
     {
       "height": 36,
       "id": "afe64164",
-      "neighbors": [],
+      "neighbors": [
+        "18c62116",
+        "1eb72e14",
+        "2021f0cb",
+        "5f1cd233",
+        "69bf29eb",
+        "87578072",
+        "8921bacc",
+        "8dee5a08",
+        "966808e4",
+        "a14880f0",
+        "ac5121bd",
+        "b1582787",
+        "cf5014dc",
+        "d094034b",
+        "e0fa7e2e"
+      ],
       "type": "vector_brick",
       "width": 17,
       "x": 65,
@@ -6188,6 +6626,7 @@
       "id": "b0c6b17c",
       "neighbors": [
         "30358366",
+        "5319f137",
         "f87a1e9e"
       ],
       "type": "brick",
@@ -6217,6 +6656,7 @@
         "84ed05fa",
         "8bc1b125",
         "a14880f0",
+        "afe64164",
         "b1762fbd"
       ],
       "type": "brick",
@@ -6244,6 +6684,7 @@
       "height": 7,
       "id": "b1a6674c",
       "neighbors": [
+        "3a570526",
         "4142490c",
         "5da01ab0",
         "5fbe2173",
@@ -6285,7 +6726,9 @@
       "height": 7,
       "id": "b2ba703c",
       "neighbors": [
+        "4d329461",
         "555fa105",
+        "72726bad",
         "af5d9688",
         "c3040c9e"
       ],
@@ -6312,6 +6755,7 @@
       "height": 7,
       "id": "b52e36c8",
       "neighbors": [
+        "6dfa8f09",
         "c963ae9d",
         "ddc0c929",
         "f238f735"
@@ -6340,6 +6784,7 @@
       "neighbors": [
         "246c3094",
         "6a003ebe",
+        "72726bad",
         "d9181339",
         "e4a2837c"
       ],
@@ -6406,7 +6851,8 @@
       "id": "b721de00",
       "neighbors": [
         "19fc640c",
-        "2ff88302"
+        "2ff88302",
+        "bf3fcb1c"
       ],
       "type": "brick",
       "width": 6,
@@ -6430,7 +6876,23 @@
     {
       "height": 36,
       "id": "b7365a0f",
-      "neighbors": [],
+      "neighbors": [
+        "092877ee",
+        "167b915b",
+        "2e2d8c5e",
+        "74371e74",
+        "7afcaebd",
+        "816b5e6f",
+        "8b3a5b1b",
+        "8fdcc4ff",
+        "a999666c",
+        "aa676c8c",
+        "d3795183",
+        "e8dd9762",
+        "ebacc1e4",
+        "f6a57402",
+        "fb632d8a"
+      ],
       "type": "vector_brick",
       "width": 17,
       "x": 23,
@@ -6443,7 +6905,8 @@
         "040e2645",
         "0aa1668d",
         "349aa7f9",
-        "71b680e6"
+        "71b680e6",
+        "aa9deaa4"
       ],
       "type": "brick",
       "width": 7,
@@ -6456,6 +6919,7 @@
       "neighbors": [
         "1135dbb2",
         "1388a7c2",
+        "49c20909",
         "adbcca0a",
         "b822bdc2"
       ],
@@ -6468,7 +6932,15 @@
       "height": 41,
       "id": "b81fb092",
       "neighbors": [
-        "42eb2c2a"
+        "39a79217",
+        "42eb2c2a",
+        "68ef846e",
+        "87ec0110",
+        "8b40274b",
+        "9017b320",
+        "bef2f4b1",
+        "cef32627",
+        "e0be9cf8"
       ],
       "type": "vector_brick",
       "width": 12,
@@ -6569,6 +7041,7 @@
       "neighbors": [
         "0cc0d3ed",
         "1016a2ac",
+        "3213a411",
         "3b087ba0"
       ],
       "type": "brick",
@@ -6580,6 +7053,7 @@
       "height": 7,
       "id": "bbddc2bf",
       "neighbors": [
+        "6dfa8f09",
         "974dc8fa",
         "be44afd3",
         "c963ae9d",
@@ -6607,8 +7081,10 @@
       "height": 30,
       "id": "bc81249a",
       "neighbors": [
+        "051e8202",
         "2eba75b9",
-        "349aa7f9"
+        "349aa7f9",
+        "5319f137"
       ],
       "type": "brick",
       "width": 6,
@@ -6653,7 +7129,8 @@
         "2f484f89",
         "4ed17cfe",
         "985b0378",
-        "be44afd3"
+        "be44afd3",
+        "f47516d5"
       ],
       "type": "brick",
       "width": 14,
@@ -6678,16 +7155,22 @@
       "height": 36,
       "id": "be44afd3",
       "neighbors": [
+        "144a60d5",
+        "386037d0",
         "3d9c5af8",
         "4e8f9b03",
         "4ed17cfe",
+        "6d0ba986",
         "762bffdb",
+        "8cf837a9",
+        "90bbff40",
         "974dc8fa",
         "985b0378",
         "bbddc2bf",
         "bd6cee5f",
         "be6ae885",
         "c3fb3d22",
+        "c93bb2eb",
         "c963ae9d",
         "f238f735"
       ],
@@ -6700,6 +7183,7 @@
       "height": 7,
       "id": "be6ae885",
       "neighbors": [
+        "6dfa8f09",
         "762bffdb",
         "974dc8fa",
         "be44afd3",
@@ -6713,7 +7197,13 @@
     {
       "height": 34,
       "id": "beb2fca3",
-      "neighbors": [],
+      "neighbors": [
+        "0c424c73",
+        "1880f3a3",
+        "38f833af",
+        "837d99b4",
+        "a67b7448"
+      ],
       "type": "vector_brick",
       "width": 17,
       "x": 34,
@@ -6727,6 +7217,7 @@
         "42eb2c2a",
         "63fd822a",
         "9017b320",
+        "b81fb092",
         "e08c618d"
       ],
       "type": "brick",
@@ -6749,7 +7240,14 @@
       "height": 38,
       "id": "bf3fcb1c",
       "neighbors": [
-        "a188219a"
+        "19fc640c",
+        "2ff88302",
+        "3c42d311",
+        "5ad1296c",
+        "707e7d5d",
+        "9f0cfb6f",
+        "a188219a",
+        "b721de00"
       ],
       "type": "vector_brick",
       "width": 11,
@@ -6778,7 +7276,8 @@
       "neighbors": [
         "3d9c5af8",
         "8e21fa03",
-        "985b0378"
+        "985b0378",
+        "f47516d5"
       ],
       "type": "brick",
       "width": 7,
@@ -6789,9 +7288,9 @@
       "height": 39,
       "id": "c0b5c418",
       "neighbors": [
-        "4057c7c2",
         "40e3b848",
-        "63fd822a"
+        "63fd822a",
+        "a2bc9089"
       ],
       "type": "vector_brick",
       "width": 15,
@@ -6805,6 +7304,7 @@
         "11af84ee",
         "14dd364d",
         "27be97f9",
+        "72726bad",
         "f8fec266"
       ],
       "type": "brick",
@@ -6818,6 +7318,7 @@
       "neighbors": [
         "0d1a7577",
         "555fa105",
+        "72726bad",
         "b2ba703c"
       ],
       "type": "brick",
@@ -6830,6 +7331,7 @@
       "id": "c31be194",
       "neighbors": [
         "2457a1de",
+        "2680441b",
         "a51abe0f",
         "adaea108"
       ],
@@ -6842,7 +7344,8 @@
       "height": 28,
       "id": "c36baeb7",
       "neighbors": [
-        "0f1d2403",
+        "25803a3c",
+        "3df8fefe",
         "4b2db691",
         "68ce354b"
       ],
@@ -6932,6 +7435,7 @@
         "7fe56a5a",
         "821cd16a",
         "99a04320",
+        "cc218042",
         "eec18f46"
       ],
       "type": "brick",
@@ -6970,11 +7474,21 @@
       "height": 36,
       "id": "c6a721d1",
       "neighbors": [
+        "114dca99",
+        "27ab3f31",
         "34a28405",
+        "3cd0f21d",
+        "42496138",
+        "45530738",
         "45a90044",
         "736961b4",
+        "7715c92c",
+        "932503d9",
+        "9c5c442b",
+        "e75c920f",
         "f2b42c06",
         "f4c5949b",
+        "f645ba45",
         "f8d3a4f8"
       ],
       "type": "vector_brick",
@@ -7018,6 +7532,7 @@
       "id": "c8471a8e",
       "neighbors": [
         "2ec36dff",
+        "3213a411",
         "5e9688d4",
         "720136eb",
         "8b973ba1",
@@ -7034,6 +7549,7 @@
       "neighbors": [
         "144a60d5",
         "386037d0",
+        "be44afd3",
         "c740275e",
         "ca90c4ea"
       ],
@@ -7046,6 +7562,7 @@
       "height": 7,
       "id": "c963ae9d",
       "neighbors": [
+        "6dfa8f09",
         "b52e36c8",
         "bbddc2bf",
         "be44afd3",
@@ -7120,7 +7637,11 @@
       "id": "cc218042",
       "neighbors": [
         "1e732933",
-        "7fe56a5a"
+        "595d69b0",
+        "7fe56a5a",
+        "c5d09eec",
+        "d3cb325c",
+        "f812fee5"
       ],
       "type": "vector_brick",
       "width": 15,
@@ -7175,6 +7696,7 @@
       "id": "cd866115",
       "neighbors": [
         "705a66a2",
+        "78751342",
         "ccafc768",
         "d6d99985",
         "ff9e24c7"
@@ -7203,14 +7725,12 @@
       "height": 28,
       "id": "ceb4ddad",
       "neighbors": [
-        "260ab8ba",
         "2d7f97ba",
         "5c339516",
         "5f88660f",
         "76ce1a5a",
         "8e30eeb7",
         "9f545e4b",
-        "a51bc2da",
         "cc822a22",
         "ece72f59",
         "fa7eeee4"
@@ -7227,9 +7747,10 @@
         "391f48de",
         "39a79217",
         "42eb2c2a",
-        "60fe2e3c",
         "78d09c44",
-        "db7d36aa"
+        "b81fb092",
+        "db7d36aa",
+        "e1a92963"
       ],
       "type": "brick",
       "width": 15,
@@ -7256,6 +7777,8 @@
         "0fd580e6",
         "5f1cd233",
         "a14880f0",
+        "afe64164",
+        "d5a1bde2",
         "e816d08f"
       ],
       "type": "brick",
@@ -7268,6 +7791,7 @@
       "id": "cfa51f6d",
       "neighbors": [
         "28618fba",
+        "78751342",
         "ccafc768",
         "d6d99985",
         "db1e142e"
@@ -7315,6 +7839,8 @@
         "01f84e34",
         "18c62116",
         "2021f0cb",
+        "afe64164",
+        "d5a1bde2",
         "d69e6d03"
       ],
       "type": "brick",
@@ -7339,7 +7865,9 @@
       "height": 28,
       "id": "d1defbfc",
       "neighbors": [
+        "7430dd66",
         "912c02be",
+        "99fff93c",
         "e46595bf"
       ],
       "type": "brick",
@@ -7369,7 +7897,8 @@
         "582b0c9f",
         "6e1e0c6d",
         "816b5e6f",
-        "aa676c8c"
+        "aa676c8c",
+        "b7365a0f"
       ],
       "type": "brick",
       "width": 14,
@@ -7383,6 +7912,7 @@
         "1e732933",
         "43eb8876",
         "9c2a854f",
+        "cc218042",
         "f2b42c06",
         "f8d3a4f8",
         "ff8603f5"
@@ -7397,6 +7927,7 @@
       "id": "d4a168dd",
       "neighbors": [
         "491afabe",
+        "4d329461",
         "6174b855",
         "c9f72e49",
         "f19b7d38"
@@ -7426,13 +7957,12 @@
       "neighbors": [
         "18c62116",
         "21ad3641",
+        "2680441b",
         "3b3d02de",
         "46ff4b61",
-        "5a85ee12",
         "966808e4",
         "aa7037c5",
         "df1be502",
-        "e4659274",
         "ec23a625"
       ],
       "type": "brick",
@@ -7467,7 +7997,23 @@
     {
       "height": 36,
       "id": "d5a1bde2",
-      "neighbors": [],
+      "neighbors": [
+        "01f84e34",
+        "0de6dd39",
+        "0fd580e6",
+        "182b6a36",
+        "5c339516",
+        "74be8812",
+        "76ce1a5a",
+        "7ff3934a",
+        "84ed05fa",
+        "a63c8d06",
+        "cf5014dc",
+        "d094034b",
+        "d69e6d03",
+        "e7c66d39",
+        "e816d08f"
+      ],
       "type": "vector_brick",
       "width": 17,
       "x": 107,
@@ -7497,6 +8043,7 @@
         "203f073d",
         "a63c8d06",
         "d094034b",
+        "d5a1bde2",
         "ec23a625"
       ],
       "type": "brick",
@@ -7511,7 +8058,8 @@
         "45d8a04e",
         "4633a9e2",
         "5dd4f90d",
-        "ad4ac7b2"
+        "ad4ac7b2",
+        "f47516d5"
       ],
       "type": "brick",
       "width": 21,
@@ -7538,6 +8086,7 @@
       "height": 7,
       "id": "d6d99985",
       "neighbors": [
+        "78751342",
         "ccafc768",
         "cd866115",
         "cfa51f6d"
@@ -7565,6 +8114,8 @@
       "id": "d7b00deb",
       "neighbors": [
         "0abbc053",
+        "4d329461",
+        "72726bad",
         "734d7cd1",
         "a06c6df9"
       ],
@@ -7579,6 +8130,7 @@
       "neighbors": [
         "5b432a1f",
         "6a003ebe",
+        "72726bad",
         "b5c4f426",
         "ca27d466"
       ],
@@ -7608,7 +8160,7 @@
       "neighbors": [
         "1c3f1020",
         "2b592cd3",
-        "65e334f6",
+        "835da7a7",
         "837d99b4",
         "940a68de",
         "ee7077fc",
@@ -7626,7 +8178,7 @@
         "0aa1668d",
         "19fc640c",
         "1f637059",
-        "44ba0eb7",
+        "aa9deaa4",
         "ffcc45dd"
       ],
       "type": "brick",
@@ -7696,6 +8248,13 @@
       "height": 41,
       "id": "db7d36aa",
       "neighbors": [
+        "220d15e2",
+        "391f48de",
+        "39a79217",
+        "5f2b0cc8",
+        "68ef846e",
+        "8b40274b",
+        "97e8e60c",
         "cef32627"
       ],
       "type": "vector_brick",
@@ -7741,7 +8300,6 @@
         "84ed05fa",
         "8bc1b125",
         "a3dd798f",
-        "a51bc2da",
         "b52e36c8",
         "e3778b9b"
       ],
@@ -7756,6 +8314,7 @@
       "neighbors": [
         "4054dd60",
         "5db0688a",
+        "78751342",
         "87e783d2",
         "a51abe0f",
         "a6b84776"
@@ -7769,10 +8328,9 @@
       "height": 7,
       "id": "de03b91a",
       "neighbors": [
+        "1375a3da",
         "1880f3a3",
-        "1e80921b",
         "2ae5b618",
-        "837d99b4",
         "aaa619e7",
         "fcbd9b26"
       ],
@@ -7784,7 +8342,11 @@
     {
       "height": 34,
       "id": "de05a460",
-      "neighbors": [],
+      "neighbors": [
+        "38f833af",
+        "835da7a7",
+        "837d99b4"
+      ],
       "type": "vector_brick",
       "width": 17,
       "x": 76,
@@ -7796,6 +8358,7 @@
       "neighbors": [
         "49a610c0",
         "8fcf9a00",
+        "a95cd661",
         "b8d4e6ef",
         "c455b181",
         "df1be502"
@@ -7809,6 +8372,7 @@
       "height": 7,
       "id": "de9f501f",
       "neighbors": [
+        "6dfa8f09",
         "974dc8fa",
         "bbddc2bf",
         "be6ae885"
@@ -7823,6 +8387,7 @@
       "id": "df1be502",
       "neighbors": [
         "3b3d02de",
+        "a95cd661",
         "aa7037c5",
         "b8d4e6ef",
         "d530bec1",
@@ -7864,7 +8429,13 @@
     {
       "height": 22,
       "id": "dfca9870",
-      "neighbors": [],
+      "neighbors": [
+        "3aed3df1",
+        "4b2db691",
+        "68ce354b",
+        "7b184070",
+        "e03245bb"
+      ],
       "type": "vector_brick",
       "width": 8,
       "x": 122,
@@ -7875,6 +8446,7 @@
       "id": "dffe6f73",
       "neighbors": [
         "2aeb7764",
+        "6dfa8f09",
         "8e30eeb7",
         "b72dd762"
       ],
@@ -7887,6 +8459,7 @@
       "height": 7,
       "id": "e02806c5",
       "neighbors": [
+        "2eb57d60",
         "56606d45",
         "5fd6bfd0",
         "8f05b178"
@@ -7900,8 +8473,11 @@
       "height": 28,
       "id": "e03245bb",
       "neighbors": [
+        "25803a3c",
         "4b2db691",
-        "68ce354b"
+        "68ce354b",
+        "7b184070",
+        "dfca9870"
       ],
       "type": "brick",
       "width": 7,
@@ -7925,8 +8501,14 @@
       "height": 41,
       "id": "e08c618d",
       "neighbors": [
+        "1ecb13f8",
+        "4057c7c2",
         "63fd822a",
-        "bef2f4b1"
+        "87ec0110",
+        "9017b320",
+        "95312425",
+        "bef2f4b1",
+        "e0be9cf8"
       ],
       "type": "vector_brick",
       "width": 12,
@@ -7954,7 +8536,9 @@
         "39c23ee3",
         "87ec0110",
         "8b40274b",
-        "95312425"
+        "95312425",
+        "b81fb092",
+        "e08c618d"
       ],
       "type": "brick",
       "width": 21,
@@ -7981,7 +8565,8 @@
       "neighbors": [
         "69bf29eb",
         "951fe475",
-        "ac5121bd"
+        "ac5121bd",
+        "afe64164"
       ],
       "type": "brick",
       "width": 7,
@@ -8007,7 +8592,10 @@
     {
       "height": 14,
       "id": "e1a92963",
-      "neighbors": [],
+      "neighbors": [
+        "78d09c44",
+        "cef32627"
+      ],
       "type": "vector_brick",
       "width": 14,
       "x": 90,
@@ -8033,7 +8621,9 @@
       "height": 14,
       "id": "e31ecf09",
       "neighbors": [
+        "051e8202",
         "2eba75b9",
+        "5319f137",
         "84d275c2",
         "a15e4648",
         "d60a0ac4"
@@ -8064,9 +8654,7 @@
       "neighbors": [
         "21ad3641",
         "2f0e7a47",
-        "46ff4b61",
-        "a6b84776",
-        "d530bec1"
+        "46ff4b61"
       ],
       "type": "vector_brick",
       "width": 21,
@@ -8078,12 +8666,12 @@
       "id": "e46595bf",
       "neighbors": [
         "273d4e40",
-        "42fade33",
         "5687f136",
         "7f886b06",
         "8751960f",
+        "99fff93c",
         "d1defbfc",
-        "ef12a37a"
+        "f3504877"
       ],
       "type": "vector_brick",
       "width": 49,
@@ -8096,6 +8684,7 @@
       "neighbors": [
         "14dd364d",
         "246c3094",
+        "72726bad",
         "b5c4f426"
       ],
       "type": "brick",
@@ -8135,7 +8724,8 @@
       "neighbors": [
         "3cd0f21d",
         "9c5c442b",
-        "aecf9dd1"
+        "aecf9dd1",
+        "c6a721d1"
       ],
       "type": "brick",
       "width": 14,
@@ -8163,7 +8753,8 @@
       "neighbors": [
         "0de6dd39",
         "7ff3934a",
-        "b49f463a"
+        "b49f463a",
+        "d5a1bde2"
       ],
       "type": "brick",
       "width": 7,
@@ -8174,6 +8765,7 @@
       "height": 7,
       "id": "e811d4b2",
       "neighbors": [
+        "2680441b",
         "851f6b51",
         "a0ad8ba3",
         "acde18b7"
@@ -8190,7 +8782,8 @@
         "01f84e34",
         "2021f0cb",
         "5f1cd233",
-        "cf5014dc"
+        "cf5014dc",
+        "d5a1bde2"
       ],
       "type": "brick",
       "width": 14,
@@ -8202,12 +8795,11 @@
       "id": "e8dd9762",
       "neighbors": [
         "1e80921b",
-        "2ae5b618",
-        "5287b036",
         "54edf041",
         "7afcaebd",
         "89653122",
         "a999666c",
+        "b7365a0f",
         "e905ace2"
       ],
       "type": "vector_brick",
@@ -8223,7 +8815,8 @@
         "3501af03",
         "44ed51ed",
         "8273be90",
-        "99a04320"
+        "99a04320",
+        "af393169"
       ],
       "type": "brick",
       "width": 7,
@@ -8238,6 +8831,7 @@
         "8273be90",
         "a1ba2eef",
         "a3e9cab6",
+        "af393169",
         "b23fbc67",
         "e8dd9762",
         "ed96019d"
@@ -8253,7 +8847,8 @@
       "neighbors": [
         "566ffbf1",
         "71bffe5d",
-        "8fcf9a00"
+        "8fcf9a00",
+        "a95cd661"
       ],
       "type": "brick",
       "width": 7,
@@ -8267,7 +8862,8 @@
         "13a879be",
         "39ba15f1",
         "a18a0617",
-        "a4cc8ff2"
+        "a4cc8ff2",
+        "a95cd661"
       ],
       "type": "brick",
       "width": 28,
@@ -8280,6 +8876,7 @@
       "neighbors": [
         "2e2d8c5e",
         "8b3a5b1b",
+        "b7365a0f",
         "d174aa95",
         "fc27cc72"
       ],
@@ -8308,7 +8905,9 @@
       "height": 7,
       "id": "ebf16587",
       "neighbors": [
+        "2680441b",
         "7de60fcc",
+        "a95cd661",
         "f970be2b"
       ],
       "type": "brick",
@@ -8335,7 +8934,6 @@
       "id": "ec7d45a4",
       "neighbors": [
         "6703d6c7",
-        "f88e66bc",
         "f8fec266",
         "fc69e4ce"
       ],
@@ -8378,6 +8976,7 @@
       "neighbors": [
         "167b915b",
         "582b0c9f",
+        "af393169",
         "b23fbc67",
         "e905ace2",
         "fb632d8a"
@@ -8393,7 +8992,6 @@
       "neighbors": [
         "3e40f197",
         "8204f4f1",
-        "90bbff40",
         "f812fee5"
       ],
       "type": "vector_brick",
@@ -8406,6 +9004,7 @@
       "id": "ee7077fc",
       "neighbors": [
         "0fe7b4d5",
+        "1d69d48a",
         "da17833e",
         "faa0725a"
       ],
@@ -8434,12 +9033,9 @@
       "id": "ef12a37a",
       "neighbors": [
         "1688a126",
-        "206d8478",
-        "4b2db691",
         "5687f136",
         "6703d6c7",
         "7f886b06",
-        "e46595bf",
         "ef42b50a"
       ],
       "type": "vector_brick",
@@ -8496,8 +9092,13 @@
       "height": 38,
       "id": "ef848b35",
       "neighbors": [
+        "19fc640c",
+        "1f637059",
         "21c649bc",
-        "5ad1296c"
+        "3c42d311",
+        "5ad1296c",
+        "9f0cfb6f",
+        "ffcc45dd"
       ],
       "type": "vector_brick",
       "width": 11,
@@ -8550,8 +9151,9 @@
       "height": 7,
       "id": "f171e9d0",
       "neighbors": [
-        "5287b036",
+        "22d0664a",
         "770be6da",
+        "9e56554a",
         "f796976b"
       ],
       "type": "brick",
@@ -8563,7 +9165,6 @@
       "height": 42,
       "id": "f18b7f46",
       "neighbors": [
-        "2ff88302",
         "5ad1296c",
         "707e7d5d",
         "80ec75ad",
@@ -8581,6 +9182,8 @@
       "height": 7,
       "id": "f19b7d38",
       "neighbors": [
+        "2eb57d60",
+        "4d329461",
         "5ca39d1a",
         "c9f72e49",
         "d4a168dd",
@@ -8624,7 +9227,12 @@
     {
       "height": 22,
       "id": "f3504877",
-      "neighbors": [],
+      "neighbors": [
+        "273d4e40",
+        "8751960f",
+        "912c02be",
+        "e46595bf"
+      ],
       "type": "vector_brick",
       "width": 8,
       "x": 17,
@@ -8633,7 +9241,23 @@
     {
       "height": 36,
       "id": "f47516d5",
-      "neighbors": [],
+      "neighbors": [
+        "12a5cbb3",
+        "2f484f89",
+        "36865e5b",
+        "4566ed09",
+        "4e8f9b03",
+        "53eb5b0a",
+        "5dd4f90d",
+        "6b43ff03",
+        "8e21fa03",
+        "985b0378",
+        "a828cfd9",
+        "ad4ac7b2",
+        "bd6cee5f",
+        "c0a5350c",
+        "d6a493aa"
+      ],
       "type": "vector_brick",
       "width": 17,
       "x": 23,
@@ -8673,10 +9297,8 @@
       "neighbors": [
         "144a60d5",
         "2bddce7e",
-        "4c394772",
         "525e67eb",
         "5f6a91a1",
-        "6c70be25",
         "8e21fa03",
         "9942ba67",
         "a828cfd9",
@@ -8696,6 +9318,7 @@
         "45530738",
         "932503d9",
         "b11ed70d",
+        "c6a721d1",
         "fa207297"
       ],
       "type": "brick",
@@ -8707,6 +9330,7 @@
       "height": 7,
       "id": "f6757f26",
       "neighbors": [
+        "2680441b",
         "61b441a6",
         "678fa236",
         "74cfdc3a",
@@ -8725,6 +9349,7 @@
         "77981a3d",
         "8fdcc4ff",
         "95b0241d",
+        "b7365a0f",
         "df4be6e8"
       ],
       "type": "brick",
@@ -8736,7 +9361,8 @@
       "height": 7,
       "id": "f796976b",
       "neighbors": [
-        "1c3f1020",
+        "22d0664a",
+        "2a320971",
         "5287b036",
         "65e334f6",
         "a1ba2eef",
@@ -8757,6 +9383,7 @@
         "7fe56a5a",
         "8204f4f1",
         "90bbff40",
+        "cc218042",
         "ee4ea6f4"
       ],
       "type": "brick",
@@ -8768,6 +9395,7 @@
       "height": 14,
       "id": "f87a1e9e",
       "neighbors": [
+        "5319f137",
         "84d275c2",
         "a15e4648",
         "b0c6b17c"
@@ -8783,10 +9411,7 @@
       "neighbors": [
         "349aa7f9",
         "3aed3df1",
-        "4b2db691",
-        "6703d6c7",
-        "68ce354b",
-        "ec7d45a4"
+        "6703d6c7"
       ],
       "type": "vector_brick",
       "width": 7,
@@ -8841,6 +9466,8 @@
       "id": "f970be2b",
       "neighbors": [
         "1c496f41",
+        "2680441b",
+        "a95cd661",
         "ebf16587"
       ],
       "type": "brick",
@@ -8893,6 +9520,7 @@
       "id": "fa8a121b",
       "neighbors": [
         "2eb57d60",
+        "4d329461",
         "4e1329c6",
         "f19b7d38"
       ],
@@ -8937,6 +9565,7 @@
         "167b915b",
         "6e1e0c6d",
         "816b5e6f",
+        "b7365a0f",
         "ed96019d"
       ],
       "type": "brick",
@@ -8964,6 +9593,7 @@
       "neighbors": [
         "2454223d",
         "3501af03",
+        "3a570526",
         "44ed51ed"
       ],
       "type": "brick",
@@ -9020,6 +9650,7 @@
       "neighbors": [
         "2b592cd3",
         "837d99b4",
+        "9e56554a",
         "de03b91a"
       ],
       "type": "vector_brick",
@@ -9032,6 +9663,7 @@
       "id": "fe16778d",
       "neighbors": [
         "079cba6d",
+        "3a570526",
         "a3e9cab6",
         "c45456c5"
       ],
@@ -9062,6 +9694,7 @@
         "22d82036",
         "3d0344f5",
         "705a66a2",
+        "78751342",
         "cd866115"
       ],
       "type": "brick",
@@ -9075,8 +9708,8 @@
       "neighbors": [
         "1f637059",
         "21c649bc",
-        "44ba0eb7",
-        "da5879de"
+        "da5879de",
+        "ef848b35"
       ],
       "type": "brick",
       "width": 6,

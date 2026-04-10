@@ -920,6 +920,14 @@ def parse_ai(
                 for p in poly
             ]
 
+    # Filter out bricks without vector polygons (unusable for adjacency/outlines)
+    skipped = [bl for bl in house.bricks if bl.polygon is None]
+    if skipped:
+        house.skipped_bricks = [bl.name for bl in skipped]
+        house.bricks = [bl for bl in house.bricks if bl.polygon is not None]
+        for i, bl in enumerate(house.bricks):
+            bl.index = i
+
     # Store clip_rect on house for use by extract/render functions
     house.clip_rect = (clip_x0, clip_y0, clip_x1, clip_y1)
 

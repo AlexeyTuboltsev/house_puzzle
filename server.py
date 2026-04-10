@@ -24,8 +24,8 @@ from puzzle_engine import (
     Brick,
     merge_bricks,
     pieces_to_json,
-    build_adjacency,
-    compute_borders_and_areas,
+    build_adjacency_vector,
+    compute_polygon_areas,
     compute_piece_bbox,
 )
 
@@ -54,8 +54,7 @@ def _new_session() -> dict:
         "pieces": [],           # list[PuzzlePiece]
         "tif_path": None,
         "extracted_dir": None,  # temp dir with extracted PNGs
-        "border_pixels": {},    # dict[str, set[(x,y)]] per brick
-        "brick_areas": {},      # dict[str, int] pixel area per brick
+        "brick_areas": {},      # dict[str, float] polygon area per brick
         "brick_polygons": {},   # dict[str, list[[x,y]]] traced outlines per brick
         "canvas_height": None,  # display canvas height (pixels)
     }
@@ -272,11 +271,6 @@ def api_load_pdf(key=None):
     render_ai_lights_png(file_path, str(extract_dir / "lights.png"), **_layer_kw)
     render_ai_background_png(file_path, str(extract_dir / "background.png"), **_layer_kw)
 
-    # Compute border pixels and areas (single PNG read per brick)
-    bp, ba = compute_borders_and_areas(bricks, str(extract_dir))
-    _state["border_pixels"] = bp
-    _state["brick_areas"] = ba
-
     # Filter out bricks that are covered by another brick (pixel overlap check).
     # Decoration elements sometimes appear as separate layers on top of wall bricks.
     covered_ids = _find_covered_bricks(bricks, str(extract_dir))
@@ -288,17 +282,15 @@ def api_load_pdf(key=None):
         _state["house"] = house
         _state["bricks"] = bricks
         _state["bricks_by_id"] = bricks_by_id
-        # Recompute borders without covered bricks
-        bp, ba = compute_borders_and_areas(bricks, str(extract_dir))
-        _state["border_pixels"] = bp
-        _state["brick_areas"] = ba
 
     # Polygons come from BrickLayer (populated by parse_ai)
     polygons = {bl.id: bl.polygon for bl in house.bricks if bl.polygon}
     _state["brick_polygons"] = polygons
 
-    # Build adjacency for visualization
-    adj = build_adjacency(bricks, border_pixels=bp)
+    # Vector-based adjacency and areas (no PNG reads needed)
+    adj = build_adjacency_vector(bricks, polygons)
+    brick_areas = compute_polygon_areas(bricks, polygons)
+    _state["brick_areas"] = brick_areas
 
     missing = [b for b in bricks if b.id not in polygons]
     if missing:
@@ -587,13 +579,17 @@ def api_merge(key=None):
     min_border = data.get("min_border", 5)
     border_gap = data.get("border_gap", 2)
 
+    # Build vector adjacency with user's merge params
+    polygons = s.get("brick_polygons", {})
+    adj = build_adjacency_vector(s["bricks"], polygons,
+                                 min_border=min_border, border_gap=border_gap)
     result = merge_bricks(
         s["bricks"],
         target_piece_count=target_count,
         seed=seed,
         min_border=min_border,
         border_gap=border_gap,
-        border_pixels=s.get("border_pixels"),
+        adjacency=adj,
         brick_areas=s.get("brick_areas"),
     )
 

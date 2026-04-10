@@ -256,6 +256,83 @@ def build_adjacency(bricks: list[Brick], gap: int = ADJACENCY_THRESHOLD,
     return adj
 
 
+def build_adjacency_vector(
+    bricks: list[Brick],
+    brick_polygons: dict[str, list[list[float]]],
+    gap: int = ADJACENCY_THRESHOLD,
+    min_border: int = 5,
+    border_gap: int = 2,
+) -> dict[str, set[str]]:
+    """Build adjacency graph using vector polygon proximity.
+
+    Two bricks are adjacent if their polygons, each buffered by *border_gap*,
+    overlap with an intersection area implying a shared border >= *min_border*.
+    """
+    from shapely.geometry import Polygon as ShapelyPolygon
+
+    # Build canvas-coord Shapely polygons
+    shapely_polys: dict[str, ShapelyPolygon] = {}
+    for b in bricks:
+        poly = brick_polygons.get(b.id)
+        if poly and len(poly) >= 3:
+            canvas_pts = [(p[0] + b.x, p[1] + b.y) for p in poly]
+            sp = ShapelyPolygon(canvas_pts)
+            if not sp.is_valid:
+                sp = sp.buffer(0)
+            if not sp.is_empty:
+                shapely_polys[b.id] = sp
+
+    adj: dict[str, set[str]] = defaultdict(set)
+    brick_list = list(bricks)
+    n = len(brick_list)
+
+    for i in range(n):
+        a = brick_list[i]
+        pa = shapely_polys.get(a.id)
+        if pa is None:
+            continue
+        for j in range(i + 1, n):
+            b = brick_list[j]
+            pb = shapely_polys.get(b.id)
+            if pb is None:
+                continue
+            # Bbox pre-filter
+            if not (a.x - gap < b.right and a.right + gap > b.x and
+                    a.y - gap < b.bottom and a.bottom + gap > b.y):
+                continue
+            # Buffer both polygons and intersect
+            intersection = pa.buffer(border_gap).intersection(pb.buffer(border_gap))
+            if intersection.is_empty:
+                continue
+            # Approximate shared border length from intersection area
+            border_length = intersection.area / (2 * border_gap) if border_gap > 0 else 0
+            if border_length >= min_border:
+                adj[a.id].add(b.id)
+                adj[b.id].add(a.id)
+
+    return adj
+
+
+def compute_polygon_areas(
+    bricks: list[Brick],
+    brick_polygons: dict[str, list[list[float]]],
+) -> dict[str, float]:
+    """Compute brick areas from vector polygons (Shapely)."""
+    from shapely.geometry import Polygon as ShapelyPolygon
+
+    areas: dict[str, float] = {}
+    for b in bricks:
+        poly = brick_polygons.get(b.id)
+        if poly and len(poly) >= 3:
+            sp = ShapelyPolygon(poly)
+            if not sp.is_valid:
+                sp = sp.buffer(0)
+            areas[b.id] = sp.area if not sp.is_empty else b.area
+        else:
+            areas[b.id] = b.area
+    return areas
+
+
 def compute_piece_bbox(piece_brick_ids: list[str], bricks_by_id: dict[str, Brick]) -> tuple[int, int, int, int]:
     """Compute bounding box for a set of bricks."""
     xs = []
@@ -283,13 +360,13 @@ def merge_bricks(bricks: list[Brick], target_piece_count: int | None = None,
                  min_border: int = 5,
                  border_gap: int = 2,
                  border_pixels: dict[str, set] | None = None,
-                 brick_areas: dict[str, int] | None = None) -> MergeResult:
+                 brick_areas: dict[str, int] | None = None,
+                 adjacency: dict[str, set[str]] | None = None) -> MergeResult:
     """
     Merge bricks into puzzle pieces using area-balanced adjacency grouping.
 
     Produces exactly *target_piece_count* pieces (or as close as possible
-    given connectivity constraints).  All merges require real pixel adjacency
-    — no bounding-box fallback.
+    given connectivity constraints).
 
     Algorithm:
     Phase 0 — Exclude oversized bricks whose area already exceeds the
@@ -300,10 +377,13 @@ def merge_bricks(bricks: list[Brick], target_piece_count: int | None = None,
     Phase 2 — Stop when the target count is reached.
     """
     bricks_by_id = {b.id: b for b in bricks}
-    adj = build_adjacency(bricks, min_border=min_border, border_gap=border_gap,
-                          border_pixels=border_pixels)
+    if adjacency is not None:
+        adj = adjacency
+    else:
+        adj = build_adjacency(bricks, min_border=min_border, border_gap=border_gap,
+                              border_pixels=border_pixels)
 
-    # Brick areas: use pixel areas if provided, else bounding-box area
+    # Brick areas: use provided areas (polygon or pixel), else bounding-box area
     areas = brick_areas if brick_areas else {b.id: b.area for b in bricks}
 
     all_ids = set(b.id for b in bricks)
