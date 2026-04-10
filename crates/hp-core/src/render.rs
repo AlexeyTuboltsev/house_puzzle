@@ -1,32 +1,19 @@
 //! Image rendering pipeline — brick PNG extraction and compositing.
-//!
-//! Extracts individual brick images from AI private data and composites them
-//! into full-canvas PNGs. Parallelized with rayon for per-brick rendering.
 
 use image::{Rgba, RgbaImage};
 use rayon::prelude::*;
 use std::path::Path;
 
-use crate::ai_parser::{AiPrivateData, LayerBlock};
+use crate::ai_parser::BrickPlacement;
 
-/// Extract a raster brick image from AI private data.
+/// Extract a raster brick image from a block's raw byte range.
 ///
-/// Parses the Xh matrix to find the image dimensions, reads raw RGB bytes
-/// from the %%BeginData section, and converts white pixels to transparent.
-/// Returns an RGBA image at the native resolution.
-pub fn extract_raster_image(
-    block: &LayerBlock,
-    raw: &[u8],
-) -> Option<RgbaImage> {
-    let block_data = &raw[block.begin..block.end];
-
-    // Parse Xh matrix to get image dimensions
-    let num = r"-?\d+(?:\.\d+)?";
-    let pattern = format!(
-        r"\[\s*{n}\s+{n}\s+{n}\s+{n}\s+{n}\s+{n}\s*\]\s+(\d+)\s+(\d+)\s+\d+\s+Xh",
-        n = num
-    );
-    let xh_re = regex::bytes::Regex::new(&pattern).unwrap();
+/// Parses the Xh matrix for image dimensions, reads raw RGB bytes,
+/// converts white pixels to transparent. Returns native-resolution RGBA.
+pub fn extract_raster_image(block_data: &[u8]) -> Option<RgbaImage> {
+    let xh_re = regex::bytes::Regex::new(
+        r"\[\s*-?\d+(?:\.\d+)?\s+-?\d+(?:\.\d+)?\s+-?\d+(?:\.\d+)?\s+-?\d+(?:\.\d+)?\s+-?\d+(?:\.\d+)?\s+-?\d+(?:\.\d+)?\s*\]\s+(\d+)\s+(\d+)\s+\d+\s+Xh"
+    ).unwrap();
     let caps = xh_re.captures(block_data)?;
     let img_w: usize = std::str::from_utf8(&caps[1]).ok()?.parse().ok()?;
     let img_h: usize = std::str::from_utf8(&caps[2]).ok()?.parse().ok()?;
@@ -34,7 +21,6 @@ pub fn extract_raster_image(
         return None;
     }
 
-    // Find %%BeginData marker
     let xi_re = regex::bytes::Regex::new(r"%%BeginData:\s*\d+[^\n]*XI\n").unwrap();
     let xi_m = xi_re.find(block_data)?;
     let data_start = xi_m.end();
@@ -46,7 +32,6 @@ pub fn extract_raster_image(
 
     let rgb_data = &block_data[data_start..data_start + expected];
 
-    // Build RGBA image with white-to-alpha conversion
     let mut img = RgbaImage::new(img_w as u32, img_h as u32);
     for y in 0..img_h {
         for x in 0..img_w {
@@ -62,61 +47,56 @@ pub fn extract_raster_image(
     Some(img)
 }
 
-/// Extract all brick PNGs as full-canvas images and save to disk.
-///
-/// Each brick is rendered as a canvas-sized RGBA PNG with the brick
-/// at its correct position. Raster bricks are extracted from AI data;
-/// vector/gradient bricks are stubbed as empty for now.
-pub fn extract_brick_pngs(
-    ai_data: &AiPrivateData,
-    bricks: &[(String, String, i32, i32, i32, i32, &LayerBlock)],
-    // (id, layer_type, x, y, w, h, layer_block)
+/// Render all brick PNGs to disk (full-canvas RGBA, brick at its position).
+/// Parallelized with rayon.
+pub fn render_brick_pngs(
+    raw: &[u8],
+    bricks: &[(String, BrickPlacement)], // (id, placement)
     canvas_width: u32,
     canvas_height: u32,
     out_dir: &Path,
 ) {
     std::fs::create_dir_all(out_dir).ok();
-    let raw = &ai_data.raw;
 
-    bricks.par_iter().for_each(|(id, layer_type, bx, by, bw, bh, block)| {
+    bricks.par_iter().for_each(|(id, bp)| {
         let out_path = out_dir.join(format!("brick_{id}.png"));
         let mut canvas = RgbaImage::new(canvas_width, canvas_height);
 
-        if layer_type == "brick" {
-            if let Some(raster) = extract_raster_image(block, raw) {
-                let w = (*bw).max(1) as u32;
-                let h = (*bh).max(1) as u32;
+        if bp.layer_type == "brick" || bp.layer_type == "mixed_brick" {
+            let block_data = &raw[bp.block_begin..bp.block_end];
+            if let Some(raster) = extract_raster_image(block_data) {
+                let w = bp.width.max(1) as u32;
+                let h = bp.height.max(1) as u32;
                 let resized = image::imageops::resize(&raster, w, h, image::imageops::Lanczos3);
-                image::imageops::overlay(&mut canvas, &resized, *bx as i64, *by as i64);
+                image::imageops::overlay(&mut canvas, &resized, bp.x as i64, bp.y as i64);
             }
         }
-        // TODO: vector_brick and mixed_brick rendering
+        // TODO: vector_brick rendering (gradients + compound paths)
 
         canvas.save(&out_path).ok();
     });
 }
 
-/// Composite all brick PNGs into a single canvas image.
-pub fn compose_bricks_png(
-    ai_data: &AiPrivateData,
-    bricks: &[(String, String, i32, i32, i32, i32, &LayerBlock)],
+/// Render the composite PNG (all bricks composited onto one canvas).
+pub fn render_composite_png(
+    raw: &[u8],
+    bricks: &[(String, BrickPlacement)],
     canvas_width: u32,
     canvas_height: u32,
     out_path: &Path,
 ) {
-    let raw = &ai_data.raw;
     let mut canvas = RgbaImage::new(canvas_width, canvas_height);
 
-    for (_, layer_type, bx, by, bw, bh, block) in bricks {
-        if *layer_type == "brick" {
-            if let Some(raster) = extract_raster_image(block, raw) {
-                let w = (*bw).max(1) as u32;
-                let h = (*bh).max(1) as u32;
+    for (_, bp) in bricks {
+        if bp.layer_type == "brick" || bp.layer_type == "mixed_brick" {
+            let block_data = &raw[bp.block_begin..bp.block_end];
+            if let Some(raster) = extract_raster_image(block_data) {
+                let w = bp.width.max(1) as u32;
+                let h = bp.height.max(1) as u32;
                 let resized = image::imageops::resize(&raster, w, h, image::imageops::Lanczos3);
-                image::imageops::overlay(&mut canvas, &resized, *bx as i64, *by as i64);
+                image::imageops::overlay(&mut canvas, &resized, bp.x as i64, bp.y as i64);
             }
         }
-        // TODO: vector_brick and mixed_brick rendering
     }
 
     canvas.save(out_path).ok();
@@ -139,9 +119,9 @@ mod tests {
         let roots = ai_parser::parse_layer_tree(&ai_data.raw);
         let bricks_node = roots.iter().find(|r| r.name == "bricks").unwrap();
 
-        // Try extracting the first brick child
         let first_child = &bricks_node.children[0];
-        let img = extract_raster_image(first_child, &ai_data.raw);
+        let block_data = &ai_data.raw[first_child.begin..first_child.end];
+        let img = extract_raster_image(block_data);
 
         if let Some(img) = img {
             eprintln!("First brick raster: {}x{}", img.width(), img.height());
@@ -150,9 +130,11 @@ mod tests {
             eprintln!("First brick has no raster (may be vector-only)");
         }
 
-        // Count how many bricks have rasters
         let raster_count = bricks_node.children.iter()
-            .filter(|c| extract_raster_image(c, &ai_data.raw).is_some())
+            .filter(|c| {
+                let bd = &ai_data.raw[c.begin..c.end];
+                extract_raster_image(bd).is_some()
+            })
             .count();
         eprintln!("Bricks with rasters: {}/{}", raster_count, bricks_node.children.len());
     }

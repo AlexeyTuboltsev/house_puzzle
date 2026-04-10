@@ -146,7 +146,7 @@ async fn do_load(sessions: SessionStore, key: String, req: LoadRequest) -> Respo
         ai_parser::parse_ai(&path_clone, canvas_height)
     }).await;
 
-    let (placements, metadata) = match result {
+    let (placements, metadata, ai_data) = match result {
         Ok(Ok(v)) => v,
         Ok(Err(e)) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e}))).into_response(),
         Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response(),
@@ -184,13 +184,26 @@ async fn do_load(sessions: SessionStore, key: String, req: LoadRequest) -> Respo
     let adj = puzzle::build_adjacency_vector(&bricks, &brick_polygons, 15.0, 5.0, 2.0);
     let brick_areas = puzzle::compute_polygon_areas(&bricks, &brick_polygons);
 
-    // Build extract dir for PNGs
+    // Build extract dir and render PNGs
     let extract_dir = std::env::temp_dir().join("house_puzzle_extract").join(&key);
     std::fs::create_dir_all(&extract_dir).ok();
 
-    // TODO: render brick PNGs (Phase 2 completion)
-    // For now, create empty composite
+    // Build (id, placement) pairs for the renderer
+    let render_bricks: Vec<(String, hp_core::ai_parser::BrickPlacement)> = bricks.iter()
+        .zip(placements.iter())
+        .map(|(b, p)| (b.id.clone(), p.clone()))
+        .collect();
+
+    let cw = metadata.canvas_width as u32;
+    let ch = metadata.canvas_height as u32;
+    let raw = &ai_data.raw;
+
+    // Render brick PNGs (parallelized with rayon)
+    render::render_brick_pngs(raw, &render_bricks, cw, ch, &extract_dir);
+
+    // Render composite
     let comp_path = extract_dir.join("composite.png");
+    render::render_composite_png(raw, &render_bricks, cw, ch, &comp_path);
 
     // Build brick response data
     let brick_data: Vec<serde_json::Value> = bricks.iter().map(|b| {
@@ -218,7 +231,7 @@ async fn do_load(sessions: SessionStore, key: String, req: LoadRequest) -> Respo
     };
 
     // Store session
-    let ai_data = Arc::new(ai_parser::decompress_ai_data(&file_path).unwrap());
+    let ai_data = Arc::new(ai_data);
     {
         let mut store = sessions.lock().unwrap();
         store.insert(key.clone(), Session {

@@ -409,13 +409,17 @@ pub struct BrickPlacement {
     pub height: i32,
     /// Vector polygon in brick-local pixel coords.
     pub polygon: Option<Vec<[f64; 2]>>,
+    /// Byte range in raw AI data for this brick's layer block.
+    pub block_begin: usize,
+    pub block_end: usize,
 }
 
 /// Parse an AI file: extract brick placements with positions and vector polygons.
+/// Returns (placements, metadata, raw_ai_data) — the raw data is needed by the renderer.
 pub fn parse_ai(
     ai_path: &Path,
     canvas_height: i32,
-) -> Result<(Vec<BrickPlacement>, ParsedAiMetadata), String> {
+) -> Result<(Vec<BrickPlacement>, ParsedAiMetadata, AiPrivateData), String> {
     // Step 1: decompress AI private data
     let ai_data = decompress_ai_data(ai_path)?;
     let data = &ai_data.raw;
@@ -554,6 +558,8 @@ pub fn parse_ai(
             width: pw,
             height: ph,
             polygon,
+            block_begin: p.child.begin,
+            block_end: p.child.end,
         });
     }
 
@@ -569,7 +575,7 @@ pub fn parse_ai(
         skipped_bricks,
     };
 
-    Ok((results, metadata))
+    Ok((results, metadata, ai_data))
 }
 
 /// Metadata from AI parsing (canvas geometry, DPI, etc.)
@@ -631,7 +637,7 @@ mod tests {
             None => { eprintln!("Skipping: in/_NY1.ai not found"); return; }
         };
 
-        let (bricks, meta) = parse_ai(&path, 900).unwrap();
+        let (bricks, meta, _ai_data) = parse_ai(&path, 900).unwrap();
 
         eprintln!("Canvas: {}x{}", meta.canvas_width, meta.canvas_height);
         eprintln!("DPI: {:.2}", meta.render_dpi);
