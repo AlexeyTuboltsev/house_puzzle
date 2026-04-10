@@ -211,11 +211,11 @@ async fn do_load(sessions: SessionStore, key: String, req: LoadRequest) -> Respo
         None
     };
 
-    // Render brick PNGs (parallelized with rayon)
-    render::render_brick_pngs(raw, &render_bricks, cw, ch, &extract_dir, bricks_layer_img.as_ref());
+    // Render brick images IN MEMORY (no disk I/O yet)
+    let brick_images = render::render_brick_images(raw, &render_bricks, cw, ch, bricks_layer_img.as_ref());
 
-    // Filter covered bricks (decoration layers hidden under other bricks)
-    let covered_ids = render::find_covered_bricks(&bricks, &extract_dir);
+    // Filter covered bricks using in-memory images
+    let covered_ids = render::find_covered_bricks(&bricks, &brick_images);
     if !covered_ids.is_empty() {
         eprintln!("[load] Removing {} covered bricks", covered_ids.len());
         bricks.retain(|b| !covered_ids.contains(&b.id));
@@ -229,9 +229,13 @@ async fn do_load(sessions: SessionStore, key: String, req: LoadRequest) -> Respo
     let adj = puzzle::build_adjacency_vector(&bricks, &brick_polygons, 15.0, 5.0, 2.0);
     let brick_areas = puzzle::compute_polygon_areas(&bricks, &brick_polygons);
 
-    // Render composite (after filtering)
+    // Build composite from in-memory images (before saving to disk)
     let comp_path = extract_dir.join("composite.png");
-    render::render_composite_png(raw, &render_bricks, cw, ch, &comp_path, bricks_layer_img.as_ref());
+    render::render_composite_from_images(&brick_images, &render_bricks, cw, ch, &comp_path);
+
+    // Save brick PNGs to disk (for HTTP serving + piece compositing)
+    render::save_brick_pngs(&brick_images, &extract_dir);
+    drop(brick_images);
 
     // Render brick outlines (after filtering)
     render::render_outlines_png(&render_bricks, cw, ch, &extract_dir.join("outlines.png"));
@@ -368,7 +372,7 @@ async fn do_merge(sessions: SessionStore, key: &str, req: MergeRequest) -> Respo
 
     // Render piece PNGs (composited from brick PNGs on disk)
     let bricks_by_id: HashMap<String, Brick> = bricks.iter().map(|b| (b.id.clone(), b.clone())).collect();
-    render::render_piece_pngs(&pieces, &bricks_by_id, &extract_dir);
+    render::render_piece_pngs(&pieces, &extract_dir);
 
     // Compute piece polygons (union of brick vector polygons)
     let piece_polys = puzzle::compute_piece_polygons(&pieces, &bricks_by_id, &polygons);
