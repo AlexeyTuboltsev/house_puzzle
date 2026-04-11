@@ -428,7 +428,7 @@ pub fn compute_piece_polygons(
         // Buffer each polygon by BRIDGE px, collect all expanded polygons
         let mut buffered: Vec<Polygon<f64>> = Vec::new();
         for poly in &polys {
-            let expanded = poly.offset(BRIDGE, geo_clipper::JoinType::Round(0.25), geo_clipper::EndType::ClosedPolygon, factor);
+            let expanded = poly.offset(BRIDGE, geo_clipper::JoinType::Square, geo_clipper::EndType::ClosedPolygon, factor);
             for p in expanded.0 {
                 if p.unsigned_area() > 1.0 {
                     buffered.push(p);
@@ -462,7 +462,7 @@ pub fn compute_piece_polygons(
             .max_by(|a, b| a.unsigned_area().partial_cmp(&b.unsigned_area()).unwrap())
             .unwrap();
 
-        let eroded = largest.offset(-BRIDGE, geo_clipper::JoinType::Round(0.25), geo_clipper::EndType::ClosedPolygon, factor);
+        let eroded = largest.offset(-BRIDGE, geo_clipper::JoinType::Square, geo_clipper::EndType::ClosedPolygon, factor);
         let final_poly = if !eroded.0.is_empty() {
             eroded.0.into_iter()
                 .max_by(|a, b| a.unsigned_area().partial_cmp(&b.unsigned_area()).unwrap())
