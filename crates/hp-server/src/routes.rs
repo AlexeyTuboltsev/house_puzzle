@@ -62,7 +62,9 @@ async fn index() -> Html<String> {
                 .and_then(|m| m.modified())
                 .map(|t| t.duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs())
                 .unwrap_or(0);
+            let app_version = option_env!("HP_VERSION").unwrap_or("dev");
             let html = html.replace("{{ elm_version }}", &elm_js_version.to_string());
+            let html = html.replace("{{ app_version }}", app_version);
             Html(html)
         }
         None => Html("<h1>elm.html not found</h1>".to_string()),
@@ -236,7 +238,7 @@ async fn do_load(sessions: SessionStore, key: String, req: LoadRequest) -> Respo
     let cw = metadata.canvas_width as u32;
     let ch = metadata.canvas_height as u32;
 
-    // Render bricks layer via MuPDF OCG — ONE render for probe + brick images
+    // Render bricks layer via MuPDF OCG — first at (0,0) to probe offset
     let t0 = std::time::Instant::now();
     let bricks_no_offset = match render::render_ocg_layer_image(
         &file_path, "bricks", metadata.render_dpi, metadata.clip_rect,
@@ -251,11 +253,12 @@ async fn do_load(sessions: SessionStore, key: String, req: LoadRequest) -> Respo
     let pdf_offset = render::compute_pdf_offset(
         &bricks_no_offset, metadata.expected_brick_min.0, metadata.expected_brick_min.1,
     );
-    // Apply offset by shifting the image (no re-render needed)
+    // Re-render with correct offset so content isn't clipped
     let bricks_layer_img = if pdf_offset != (0, 0) {
-        let mut shifted = image::RgbaImage::new(cw, ch);
-        image::imageops::overlay(&mut shifted, &bricks_no_offset, pdf_offset.0 as i64, pdf_offset.1 as i64);
-        shifted
+        render::render_ocg_layer_image(
+            &file_path, "bricks", metadata.render_dpi, metadata.clip_rect,
+            cw, ch, pdf_offset,
+        ).unwrap_or(bricks_no_offset)
     } else {
         bricks_no_offset
     };
@@ -423,13 +426,14 @@ async fn api_merge(
 }
 
 async fn do_merge(sessions: SessionStore, key: &str, req: serde_json::Value) -> Response {
-    let (bricks, polygons, areas, extract_dir, bricks_layer_img) = {
+    let (bricks, placements, polygons, areas, extract_dir, bricks_layer_img) = {
         let store = sessions.lock().unwrap();
         let session = match store.get(key) {
             Some(s) => s,
             None => return (StatusCode::NOT_FOUND, Json(json!({"error": "Session not found"}))).into_response(),
         };
-        (session.bricks.clone(), session.brick_polygons.clone(),
+        (session.bricks.clone(), session.brick_placements.clone(),
+         session.brick_polygons.clone(),
          session.brick_areas.clone(), session.extract_dir.clone(),
          session.bricks_layer_img.clone())
     };
@@ -474,9 +478,15 @@ async fn do_merge(sessions: SessionStore, key: &str, req: serde_json::Value) -> 
         puzzle::merge_bricks(&bricks, target, seed, &adj, &areas)
     };
 
-    // Render piece PNGs (composited from brick PNGs on disk)
+    // Build brick placement map for polygon-masked piece rendering
+    let bp_map: HashMap<String, hp_core::ai_parser::BrickPlacement> = bricks.iter()
+        .zip(placements.iter())
+        .map(|(b, p)| (b.id.clone(), p.clone()))
+        .collect();
+
+    // Render piece PNGs with polygon masking
     let bricks_by_id: HashMap<String, Brick> = bricks.iter().map(|b| (b.id.clone(), b.clone())).collect();
-    render::render_piece_pngs_from_layer(&pieces, &bricks_layer_img, &extract_dir);
+    render::render_piece_pngs_from_layer(&pieces, &bricks_layer_img, &bp_map, &extract_dir);
 
     // Compute piece polygons (union of brick vector polygons)
     let piece_polys = puzzle::compute_piece_polygons(&pieces, &bricks_by_id, &polygons);
@@ -688,7 +698,7 @@ async fn api_serve_brick_png(
                         if px[3] > 0 {
                             let in_poly = match poly {
                                 Some(pts) if pts.len() >= 3 => {
-                                    render::point_in_polygon(dx as f64, dy as f64, pts)
+                                    render::point_in_polygon(dx as f64 + 0.5, dy as f64 + 0.5, pts)
                                 }
                                 _ => true,
                             };

@@ -84,7 +84,7 @@ pub fn render_brick_images(
                         // Check if this pixel is inside the polygon
                         let in_poly = match poly {
                             Some(pts) if pts.len() >= 3 => {
-                                point_in_polygon(dx as f64, dy as f64, pts)
+                                point_in_polygon(dx as f64 + 0.5, dy as f64 + 0.5, pts)
                             }
                             _ => true, // no polygon = keep all pixels
                         };
@@ -252,13 +252,12 @@ pub fn render_piece_pngs(
     });
 }
 
-/// Render piece PNGs directly from the in-memory OCG bricks layer image.
-/// Each piece composites its bricks by overlaying the full bricks_layer_img
-/// (which already has all bricks rendered at canvas positions).
-/// The piece image is piece-sized, offset so piece.x/y maps to (0,0).
+/// Render piece PNGs from the in-memory OCG bricks layer image.
+/// For each piece, composites only pixels inside each brick's polygon mask.
 pub fn render_piece_pngs_from_layer(
     pieces: &[crate::types::PuzzlePiece],
     bricks_layer_img: &RgbaImage,
+    brick_placements: &HashMap<String, BrickPlacement>,
     extract_dir: &Path,
 ) {
     std::fs::create_dir_all(extract_dir).ok();
@@ -267,11 +266,38 @@ pub fn render_piece_pngs_from_layer(
         let ph = piece.height.max(1) as u32;
         let mut piece_img = RgbaImage::new(pw, ph);
 
-        // Copy the region of bricks_layer_img that corresponds to this piece
-        image::imageops::overlay(
-            &mut piece_img, bricks_layer_img,
-            -(piece.x as i64), -(piece.y as i64),
-        );
+        // For each brick in this piece, copy polygon-masked pixels
+        for bid in &piece.brick_ids {
+            let bp = match brick_placements.get(bid) {
+                Some(bp) => bp,
+                None => continue,
+            };
+            let poly = bp.polygon.as_ref();
+            for dy in 0..bp.height.max(0) {
+                for dx in 0..bp.width.max(0) {
+                    let sx = (bp.x + dx) as u32;
+                    let sy = (bp.y + dy) as u32;
+                    if sx < bricks_layer_img.width() && sy < bricks_layer_img.height() {
+                        let px = bricks_layer_img.get_pixel(sx, sy);
+                        if px[3] > 0 {
+                            let in_poly = match poly {
+                                Some(pts) if pts.len() >= 3 => {
+                                    point_in_polygon(dx as f64 + 0.5, dy as f64 + 0.5, pts)
+                                }
+                                _ => true,
+                            };
+                            if in_poly {
+                                let tx = sx as i32 - piece.x;
+                                let ty = sy as i32 - piece.y;
+                                if tx >= 0 && ty >= 0 && (tx as u32) < pw && (ty as u32) < ph {
+                                    piece_img.put_pixel(tx as u32, ty as u32, *px);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         piece_img.save(extract_dir.join(format!("piece_{}.png", piece.id))).ok();
         render_piece_outline(&piece_img, &extract_dir.join(format!("piece_outline_{}.png", piece.id)));
@@ -385,6 +411,9 @@ pub fn render_ocg_layer_image(
     let cy = (clip_rect.1 * scale).round() as i64;
     let dx = pdf_offset_px.0 as i64;
     let dy = pdf_offset_px.1 as i64;
+
+    eprintln!("[render_ocg] layer={layer_name} dpi={dpi:.1} rendered={pw}x{ph} canvas={canvas_width}x{canvas_height} clip_px=({cx},{cy}) offset=({dx},{dy}) overlay_at=({},{})",
+        -(cx - dx), -(cy - dy));
 
     let mut canvas = RgbaImage::new(canvas_width, canvas_height);
     image::imageops::overlay(&mut canvas, &full_img, -(cx - dx), -(cy - dy));

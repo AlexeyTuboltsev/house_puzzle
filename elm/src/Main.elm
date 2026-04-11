@@ -197,11 +197,12 @@ type alias Model =
     , zoomGridActive : Bool
     , sessionKey : String
     , nextSessionId : Int
+    , appVersion : String
     }
 
 
-init : () -> ( Model, Cmd Msg )
-init _ =
+init : { version : String } -> ( Model, Cmd Msg )
+init flags =
     ( { selectedFileName = ""
       , pdfFiles = []
       , loadState = Idle
@@ -250,6 +251,7 @@ init _ =
       , zoomGridActive = False
       , sessionKey = ""
       , nextSessionId = 1
+      , appVersion = flags.version
       }
     , Cmd.batch
         [ fetchPdfList
@@ -2005,6 +2007,7 @@ viewTitleBar model =
     in
     div [ class "left-sidebar" ]
         [ span [ class "app-title" ] [ text "House Puzzle" ]
+        , span [ class "version-tag" ] [ text model.appVersion ]
         , div [ class "sidebar-nav" ]
             [ button
                 [ classList
@@ -4009,7 +4012,7 @@ subscriptions model =
 -- ── Main ─────────────────────────────────────────────────────────────────────
 
 
-main : Program () Model Msg
+main : Program { version : String } Model Msg
 main =
     Browser.element
         { init = init

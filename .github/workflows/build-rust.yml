@@ -12,10 +12,29 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  TEST_FIXTURE_TAG: test-fixtures-v1
 
 jobs:
+  # Extract version from git tag (e.g. v0.4.0 -> 0.4.0)
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+    steps:
+      - name: Extract version
+        id: ver
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=dev" >> "$GITHUB_OUTPUT"
+          fi
+
   build-linux:
+    needs: version
     runs-on: ubuntu-22.04
+    env:
+      HP_VERSION: ${{ needs.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -27,16 +46,23 @@ jobs:
       - name: Package
         run: |
           mkdir -p dist
-          cp target/release/hp-server dist/
+          cp target/release/hp-server dist/house-puzzle
           cp -r presets dist/ 2>/dev/null || true
-          tar -czf house-puzzle-linux-x86_64.tar.gz -C dist .
+          tar -czf house-puzzle-${HP_VERSION}-linux-x86_64.tar.gz -C dist .
       - uses: actions/upload-artifact@v4
         with:
           name: house-puzzle-linux-x86_64
-          path: house-puzzle-linux-x86_64.tar.gz
+          path: house-puzzle-${{ env.HP_VERSION }}-linux-x86_64.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binary-linux
+          path: target/release/hp-server
 
   build-macos-arm:
+    needs: version
     runs-on: macos-latest
+    env:
+      HP_VERSION: ${{ needs.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -46,16 +72,23 @@ jobs:
       - name: Package
         run: |
           mkdir -p dist
-          cp target/release/hp-server dist/
+          cp target/release/hp-server dist/house-puzzle
           cp -r presets dist/ 2>/dev/null || true
-          tar -czf house-puzzle-macos-arm64.tar.gz -C dist .
+          tar -czf house-puzzle-${HP_VERSION}-macos-arm64.tar.gz -C dist .
       - uses: actions/upload-artifact@v4
         with:
           name: house-puzzle-macos-arm64
-          path: house-puzzle-macos-arm64.tar.gz
+          path: house-puzzle-${{ env.HP_VERSION }}-macos-arm64.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binary-macos-arm
+          path: target/release/hp-server
 
   build-macos-intel:
+    needs: version
     runs-on: macos-15-intel
+    env:
+      HP_VERSION: ${{ needs.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -67,16 +100,23 @@ jobs:
       - name: Package
         run: |
           mkdir -p dist
-          cp target/x86_64-apple-darwin/release/hp-server dist/
+          cp target/x86_64-apple-darwin/release/hp-server dist/house-puzzle
           cp -r presets dist/ 2>/dev/null || true
-          tar -czf house-puzzle-macos-x86_64.tar.gz -C dist .
+          tar -czf house-puzzle-${HP_VERSION}-macos-x86_64.tar.gz -C dist .
       - uses: actions/upload-artifact@v4
         with:
           name: house-puzzle-macos-x86_64
-          path: house-puzzle-macos-x86_64.tar.gz
+          path: house-puzzle-${{ env.HP_VERSION }}-macos-x86_64.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binary-macos-intel
+          path: target/x86_64-apple-darwin/release/hp-server
 
   build-windows:
+    needs: version
     runs-on: windows-latest
+    env:
+      HP_VERSION: ${{ needs.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -90,17 +130,127 @@ jobs:
       - name: Package
         run: |
           mkdir dist
-          copy target\release\hp-server.exe dist\
+          copy target\release\hp-server.exe dist\house-puzzle.exe
           xcopy presets dist\presets\ /E /I 2>nul
-          Compress-Archive -Path dist\* -DestinationPath house-puzzle-windows-x86_64.zip
+          Compress-Archive -Path dist\* -DestinationPath house-puzzle-${env:HP_VERSION}-windows-x86_64.zip
         shell: pwsh
       - uses: actions/upload-artifact@v4
         with:
           name: house-puzzle-windows-x86_64
-          path: house-puzzle-windows-x86_64.zip
+          path: house-puzzle-${{ env.HP_VERSION }}-windows-x86_64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binary-windows
+          path: target/release/hp-server.exe
+
+  # ---------------------------------------------------------------------------
+  # Canary e2e tests — run after build on each platform
+  # ---------------------------------------------------------------------------
+
+  canary-linux:
+    needs: build-linux
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: binary-linux
+          path: bin
+      - name: Download test fixture
+        run: gh release download ${{ env.TEST_FIXTURE_TAG }} -p "_NY2.ai" -D in/
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - name: Run canary
+        run: |
+          chmod +x bin/hp-server
+          python3 tests/canary.py --binary bin/hp-server --fixture in/_NY2.ai --platform linux-x86_64
+      - name: Upload baselines
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: canary-baseline-linux-x86_64
+          path: tests/baselines/canary/linux-x86_64.json
+          if-no-files-found: ignore
+
+  canary-macos-arm:
+    needs: build-macos-arm
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: binary-macos-arm
+          path: bin
+      - name: Download test fixture
+        run: gh release download ${{ env.TEST_FIXTURE_TAG }} -p "_NY2.ai" -D in/
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - name: Run canary
+        run: |
+          chmod +x bin/hp-server
+          python3 tests/canary.py --binary bin/hp-server --fixture in/_NY2.ai --platform macos-arm64
+      - name: Upload baselines
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: canary-baseline-macos-arm64
+          path: tests/baselines/canary/macos-arm64.json
+          if-no-files-found: ignore
+
+  canary-macos-intel:
+    needs: build-macos-intel
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: binary-macos-intel
+          path: bin
+      - name: Download test fixture
+        run: gh release download ${{ env.TEST_FIXTURE_TAG }} -p "_NY2.ai" -D in/
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - name: Run canary
+        run: |
+          chmod +x bin/hp-server
+          python3 tests/canary.py --binary bin/hp-server --fixture in/_NY2.ai --platform macos-x86_64
+      - name: Upload baselines
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: canary-baseline-macos-x86_64
+          path: tests/baselines/canary/macos-x86_64.json
+          if-no-files-found: ignore
+
+  canary-windows:
+    needs: build-windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: binary-windows
+          path: bin
+      - name: Download test fixture
+        run: gh release download ${{ env.TEST_FIXTURE_TAG }} -p "_NY2.ai" -D in/
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - name: Run canary
+        run: python tests/canary.py --binary bin/hp-server.exe --fixture in/_NY2.ai --platform windows-x86_64
+      - name: Upload baselines
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: canary-baseline-windows-x86_64
+          path: tests/baselines/canary/windows-x86_64.json
+          if-no-files-found: ignore
+
+  # ---------------------------------------------------------------------------
+  # Release — only on version tags, after canary passes
+  # ---------------------------------------------------------------------------
 
   release:
-    needs: [build-linux, build-macos-arm, build-macos-intel, build-windows]
+    needs: [version, canary-linux, canary-macos-arm, canary-macos-intel, canary-windows]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
@@ -113,7 +263,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            artifacts/house-puzzle-linux-x86_64/house-puzzle-linux-x86_64.tar.gz
-            artifacts/house-puzzle-macos-arm64/house-puzzle-macos-arm64.tar.gz
-            artifacts/house-puzzle-macos-x86_64/house-puzzle-macos-x86_64.tar.gz
-            artifacts/house-puzzle-windows-x86_64/house-puzzle-windows-x86_64.zip
+            artifacts/house-puzzle-linux-x86_64/house-puzzle-${{ needs.version.outputs.version }}-linux-x86_64.tar.gz
+            artifacts/house-puzzle-macos-arm64/house-puzzle-${{ needs.version.outputs.version }}-macos-arm64.tar.gz
+            artifacts/house-puzzle-macos-x86_64/house-puzzle-${{ needs.version.outputs.version }}-macos-x86_64.tar.gz
+            artifacts/house-puzzle-windows-x86_64/house-puzzle-${{ needs.version.outputs.version }}-windows-x86_64.zip
