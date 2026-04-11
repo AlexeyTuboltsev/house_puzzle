@@ -19,21 +19,25 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.ver.outputs.version }}
+      version_dash: ${{ steps.ver.outputs.version_dash }}
     steps:
       - name: Extract version
         id: ver
         run: |
           if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+            VER="${GITHUB_REF_NAME#v}"
           else
-            echo "version=dev" >> "$GITHUB_OUTPUT"
+            VER="dev"
           fi
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+          echo "version_dash=${VER//./-}" >> "$GITHUB_OUTPUT"
 
   build-linux:
     needs: version
     runs-on: ubuntu-22.04
     env:
       HP_VERSION: ${{ needs.version.outputs.version }}
+      HP_VERSION_DASH: ${{ needs.version.outputs.version_dash }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -47,7 +51,7 @@ jobs:
       - name: Package
         run: |
           mkdir -p house-puzzle-${HP_VERSION}-linux-x86_64
-          cp target/release/hp-server house-puzzle-${HP_VERSION}-linux-x86_64/house-puzzle-${HP_VERSION}
+          cp target/release/hp-server house-puzzle-${HP_VERSION}-linux-x86_64/house-puzzle-${HP_VERSION_DASH}
           cp -r presets house-puzzle-${HP_VERSION}-linux-x86_64/ 2>/dev/null || true
           tar -czf house-puzzle-${HP_VERSION}-linux-x86_64.tar.gz house-puzzle-${HP_VERSION}-linux-x86_64/
       - uses: actions/upload-artifact@v4
@@ -64,6 +68,7 @@ jobs:
     runs-on: macos-latest
     env:
       HP_VERSION: ${{ needs.version.outputs.version }}
+      HP_VERSION_DASH: ${{ needs.version.outputs.version_dash }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -73,7 +78,7 @@ jobs:
       - name: Package
         run: |
           mkdir -p house-puzzle-${HP_VERSION}-macos-arm64
-          cp target/release/hp-server house-puzzle-${HP_VERSION}-macos-arm64/house-puzzle-${HP_VERSION}
+          cp target/release/hp-server house-puzzle-${HP_VERSION}-macos-arm64/house-puzzle-${HP_VERSION_DASH}
           cp -r presets house-puzzle-${HP_VERSION}-macos-arm64/ 2>/dev/null || true
           tar -czf house-puzzle-${HP_VERSION}-macos-arm64.tar.gz house-puzzle-${HP_VERSION}-macos-arm64/
       - uses: actions/upload-artifact@v4
@@ -90,6 +95,7 @@ jobs:
     runs-on: macos-15-intel
     env:
       HP_VERSION: ${{ needs.version.outputs.version }}
+      HP_VERSION_DASH: ${{ needs.version.outputs.version_dash }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -101,7 +107,7 @@ jobs:
       - name: Package
         run: |
           mkdir -p house-puzzle-${HP_VERSION}-macos-x86_64
-          cp target/x86_64-apple-darwin/release/hp-server house-puzzle-${HP_VERSION}-macos-x86_64/house-puzzle-${HP_VERSION}
+          cp target/x86_64-apple-darwin/release/hp-server house-puzzle-${HP_VERSION}-macos-x86_64/house-puzzle-${HP_VERSION_DASH}
           cp -r presets house-puzzle-${HP_VERSION}-macos-x86_64/ 2>/dev/null || true
           tar -czf house-puzzle-${HP_VERSION}-macos-x86_64.tar.gz house-puzzle-${HP_VERSION}-macos-x86_64/
       - uses: actions/upload-artifact@v4
@@ -118,6 +124,7 @@ jobs:
     runs-on: windows-latest
     env:
       HP_VERSION: ${{ needs.version.outputs.version }}
+      HP_VERSION_DASH: ${{ needs.version.outputs.version_dash }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -132,7 +139,7 @@ jobs:
         run: |
           $dir = "house-puzzle-${env:HP_VERSION}-windows-x86_64"
           New-Item -ItemType Directory -Path $dir
-          Copy-Item target\release\hp-server.exe "$dir\house-puzzle-${env:HP_VERSION}.exe"
+          Copy-Item target\release\hp-server.exe "$dir\house-puzzle-${env:HP_VERSION_DASH}.exe"
           if (Test-Path presets) { Copy-Item -Recurse presets "$dir\presets" }
           Compress-Archive -Path "$dir" -DestinationPath "house-puzzle-${env:HP_VERSION}-windows-x86_64.zip"
         shell: pwsh
