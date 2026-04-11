@@ -44,6 +44,16 @@ jobs:
           prefix-key: ubuntu-22.04
       - name: Build release
         run: cargo build --release --bin hp-server
+      - name: Package
+        run: |
+          mkdir -p house-puzzle-${HP_VERSION}-linux-x86_64
+          cp target/release/hp-server house-puzzle-${HP_VERSION}-linux-x86_64/house-puzzle-${HP_VERSION}
+          cp -r presets house-puzzle-${HP_VERSION}-linux-x86_64/ 2>/dev/null || true
+          tar -czf house-puzzle-${HP_VERSION}-linux-x86_64.tar.gz house-puzzle-${HP_VERSION}-linux-x86_64/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: archive-linux
+          path: house-puzzle-${{ env.HP_VERSION }}-linux-x86_64.tar.gz
       - uses: actions/upload-artifact@v4
         with:
           name: binary-linux
@@ -60,6 +70,16 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Build release
         run: cargo build --release --bin hp-server
+      - name: Package
+        run: |
+          mkdir -p house-puzzle-${HP_VERSION}-macos-arm64
+          cp target/release/hp-server house-puzzle-${HP_VERSION}-macos-arm64/house-puzzle-${HP_VERSION}
+          cp -r presets house-puzzle-${HP_VERSION}-macos-arm64/ 2>/dev/null || true
+          tar -czf house-puzzle-${HP_VERSION}-macos-arm64.tar.gz house-puzzle-${HP_VERSION}-macos-arm64/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: archive-macos-arm
+          path: house-puzzle-${{ env.HP_VERSION }}-macos-arm64.tar.gz
       - uses: actions/upload-artifact@v4
         with:
           name: binary-macos-arm
@@ -78,6 +98,16 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Build release
         run: cargo build --release --bin hp-server --target x86_64-apple-darwin
+      - name: Package
+        run: |
+          mkdir -p house-puzzle-${HP_VERSION}-macos-x86_64
+          cp target/x86_64-apple-darwin/release/hp-server house-puzzle-${HP_VERSION}-macos-x86_64/house-puzzle-${HP_VERSION}
+          cp -r presets house-puzzle-${HP_VERSION}-macos-x86_64/ 2>/dev/null || true
+          tar -czf house-puzzle-${HP_VERSION}-macos-x86_64.tar.gz house-puzzle-${HP_VERSION}-macos-x86_64/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: archive-macos-intel
+          path: house-puzzle-${{ env.HP_VERSION }}-macos-x86_64.tar.gz
       - uses: actions/upload-artifact@v4
         with:
           name: binary-macos-intel
@@ -98,6 +128,18 @@ jobs:
           version: "17"
       - name: Build release
         run: cargo build --release --bin hp-server
+      - name: Package
+        run: |
+          $dir = "house-puzzle-${env:HP_VERSION}-windows-x86_64"
+          New-Item -ItemType Directory -Path $dir
+          Copy-Item target\release\hp-server.exe "$dir\house-puzzle-${env:HP_VERSION}.exe"
+          if (Test-Path presets) { Copy-Item -Recurse presets "$dir\presets" }
+          Compress-Archive -Path "$dir" -DestinationPath "house-puzzle-${env:HP_VERSION}-windows-x86_64.zip"
+        shell: pwsh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: archive-windows
+          path: house-puzzle-${{ env.HP_VERSION }}-windows-x86_64.zip
       - uses: actions/upload-artifact@v4
         with:
           name: binary-windows
@@ -206,7 +248,7 @@ jobs:
           if-no-files-found: ignore
 
   # ---------------------------------------------------------------------------
-  # Release — create archives from raw binaries, upload to GitHub release
+  # Release — attach platform-built archives to GitHub release
   # ---------------------------------------------------------------------------
 
   release:
@@ -215,48 +257,15 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: write
-    env:
-      V: ${{ needs.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          path: bins
-
-      - name: Create archives
-        run: |
-          # Linux tar.gz
-          mkdir -p house-puzzle-${V}-linux-x86_64
-          cp bins/binary-linux/hp-server house-puzzle-${V}-linux-x86_64/house-puzzle-${V}
-          chmod +x house-puzzle-${V}-linux-x86_64/house-puzzle-${V}
-          cp -r presets house-puzzle-${V}-linux-x86_64/ 2>/dev/null || true
-          tar -czf house-puzzle-${V}-linux-x86_64.tar.gz house-puzzle-${V}-linux-x86_64/
-
-          # macOS ARM tar.gz
-          mkdir -p house-puzzle-${V}-macos-arm64
-          cp bins/binary-macos-arm/hp-server house-puzzle-${V}-macos-arm64/house-puzzle-${V}
-          chmod +x house-puzzle-${V}-macos-arm64/house-puzzle-${V}
-          cp -r presets house-puzzle-${V}-macos-arm64/ 2>/dev/null || true
-          tar -czf house-puzzle-${V}-macos-arm64.tar.gz house-puzzle-${V}-macos-arm64/
-
-          # macOS Intel tar.gz
-          mkdir -p house-puzzle-${V}-macos-x86_64
-          cp bins/binary-macos-intel/hp-server house-puzzle-${V}-macos-x86_64/house-puzzle-${V}
-          chmod +x house-puzzle-${V}-macos-x86_64/house-puzzle-${V}
-          cp -r presets house-puzzle-${V}-macos-x86_64/ 2>/dev/null || true
-          tar -czf house-puzzle-${V}-macos-x86_64.tar.gz house-puzzle-${V}-macos-x86_64/
-
-          # Windows zip
-          mkdir -p house-puzzle-${V}-windows-x86_64
-          cp bins/binary-windows/hp-server.exe house-puzzle-${V}-windows-x86_64/house-puzzle-${V}.exe
-          cp -r presets house-puzzle-${V}-windows-x86_64/ 2>/dev/null || true
-          zip -r house-puzzle-${V}-windows-x86_64.zip house-puzzle-${V}-windows-x86_64/
-
+          path: archives
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            house-puzzle-${{ env.V }}-linux-x86_64.tar.gz
-            house-puzzle-${{ env.V }}-macos-arm64.tar.gz
-            house-puzzle-${{ env.V }}-macos-x86_64.tar.gz
-            house-puzzle-${{ env.V }}-windows-x86_64.zip
+            archives/archive-linux/*
+            archives/archive-macos-arm/*
+            archives/archive-macos-intel/*
+            archives/archive-windows/*
