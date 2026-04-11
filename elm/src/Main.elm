@@ -645,7 +645,7 @@ update msg model =
                         model.waves
             in
             ( { model
-                | waves = lockedWaves ++ [ newWave ]
+                | waves = [ newWave ] ++ lockedWaves
                 , nextWaveId = model.nextWaveId + 1
                 , selectedWaveId = Just newWave.id
               }
@@ -3138,8 +3138,8 @@ viewMainSvg response model =
         -- Decoder: convert offsetX/offsetY (CSS px relative to SVG element) -> SVG coords
         decodeLassoCoords toMsg =
             D.map2 toMsg
-                (D.map (\x -> x / effectiveScale - 10) (D.field "offsetX" D.float))
-                (D.map (\y -> y / effectiveScale - 10) (D.field "offsetY" D.float))
+                (D.map (\x -> x / effectiveScale - 60) (D.field "offsetX" D.float))
+                (D.map (\y -> y / effectiveScale - 60) (D.field "offsetY" D.float))
 
         -- Transparent background rect to catch lasso mousedown (only in waves mode with wave selected)
         lassoBackdrop =
@@ -3199,10 +3199,10 @@ viewMainSvg response model =
                 []
     in
     Svg.svg
-        ([ SA.viewBox ("-10 -10 " ++ String.fromFloat (cw + 20) ++ " " ++ String.fromFloat (ch + 20))
+        ([ SA.viewBox ("-60 -60 " ++ String.fromFloat (cw + 120) ++ " " ++ String.fromFloat (ch + 120))
          , SA.class "house-svg"
-         , SA.width (String.fromFloat ((cw + 20) * effectiveScale))
-         , SA.height (String.fromFloat ((ch + 20) * effectiveScale))
+         , SA.width (String.fromFloat ((cw + 120) * effectiveScale))
+         , SA.height (String.fromFloat ((ch + 120) * effectiveScale))
          ]
             ++ lassoSvgAttrs
         )
@@ -3389,11 +3389,19 @@ viewPieceOutline color piece =
 viewPieceNumberLabel : Piece -> Int -> Svg.Svg Msg
 viewPieceNumberLabel piece pos =
     let
-        cx =
-            piece.x + piece.width / 2
+        -- Use largest brick center (always inside the piece, even for concave shapes)
+        largestBrick =
+            piece.bricks
+                |> List.sortBy (\b -> -(b.width * b.height))
+                |> List.head
 
-        cy =
-            piece.y + piece.height / 2
+        ( cx, cy ) =
+            case largestBrick of
+                Just b ->
+                    ( b.x + b.width / 2, b.y + b.height / 2 )
+
+                Nothing ->
+                    ( piece.x + piece.width / 2, piece.y + piece.height / 2 )
 
         label =
             String.fromInt pos
@@ -3494,7 +3502,7 @@ viewPieceOverlay appMode hoveredId selectedId selectedWaveId waves groups select
             else if appMode == ModeWaves then
                 case maybeWave of
                     Just wv ->
-                        let eff = if isHov then Basics.min 1.0 (wv.opacity + 0.15) else wv.opacity
+                        let eff = if isHov then Basics.min 1.0 (wv.opacity + 0.3) else wv.opacity
                         in "fill: " ++ waveColor wv.hue eff ++ ";"
                     Nothing ->
                         if isHov then "fill: rgba(64,120,255,0.2);"
@@ -3562,11 +3570,12 @@ viewGrid cw ch color houseUnitsHigh =
         gridStep =
             ch / houseUnitsHigh
 
+        -- Extend 1 unit beyond each side
         numV =
-            floor (cw / gridStep)
+            floor (cw / gridStep) + 1
 
         numH =
-            floor (ch / gridStep)
+            floor (ch / gridStep) + 1
 
         vLines =
             List.map
@@ -3577,16 +3586,16 @@ viewGrid cw ch color houseUnitsHigh =
                     in
                     Svg.line
                         [ SA.x1 (String.fromFloat x)
-                        , SA.y1 "0"
+                        , SA.y1 (String.fromFloat -gridStep)
                         , SA.x2 (String.fromFloat x)
-                        , SA.y2 (String.fromFloat ch)
+                        , SA.y2 (String.fromFloat (ch + gridStep))
                         , SA.stroke color
                         , SA.strokeWidth "1"
                         , attribute "vector-effect" "non-scaling-stroke"
                         ]
                         []
                 )
-                (List.range 1 numV)
+                (List.range -1 numV)
 
         hLines =
             List.map
@@ -3596,9 +3605,9 @@ viewGrid cw ch color houseUnitsHigh =
                             ch - toFloat i * gridStep
                     in
                     Svg.line
-                        [ SA.x1 "0"
+                        [ SA.x1 (String.fromFloat -gridStep)
                         , SA.y1 (String.fromFloat y)
-                        , SA.x2 (String.fromFloat cw)
+                        , SA.x2 (String.fromFloat (cw + gridStep))
                         , SA.y2 (String.fromFloat y)
                         , SA.stroke color
                         , SA.strokeWidth "1"
@@ -3606,7 +3615,7 @@ viewGrid cw ch color houseUnitsHigh =
                         ]
                         []
                 )
-                (List.range 1 numH)
+                (List.range -1 numH)
     in
     vLines ++ hLines
 
@@ -3713,7 +3722,7 @@ viewWaveRow model allWaves wave =
             , span [ class "wave-actions" ]
                 [ button
                     [ stopPropagationOn "click" (D.succeed ( RemoveWave wave.id, True ))
-                    , disabled (wave.locked || waveCount <= 1)
+                    , disabled (waveCount <= 1)
                     , title "Delete wave"
                     ]
                     [ text "\u{2715}" ]
