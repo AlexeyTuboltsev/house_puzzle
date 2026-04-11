@@ -9,30 +9,21 @@ Needs investigation — possibly use anti-aliased mask or SVG-based piece render
 Binary name with dots (`house-puzzle-0.3.7`) breaks Finder double-click.
 Fix: use dashes (`house-puzzle-0-3-7`). PR #44 open, not merged.
 
-### Piece shape deduplication (#4 from original list)
-Detect duplicate piece shapes, name them `same_1`/`same_2`, place maximally apart.
-
-### Min/max piece size constraints (#3 from original list)
-Min 50×150 or 100×100, max 400×300. Needs merge algorithm changes.
-
-### Gravity validation (#5 from level design list)
-Highlight pieces that would fall (support piece in later wave).
-
-### Selection performance
-Lasso/click selection is laggy. Needs profiling — likely re-rendering on every mouse move.
-
-### Dragged piece z-order
-Dragged piece renders under already-placed pieces. Should be topmost.
+## Features
 
 ### Programmatic export API
 Full /api/export without browser — server-side outline path generation.
 
-### Unity export: bottom piece collider vectorization
-Clamp bottom contour to y=0 for ground-flush colliders per piece.
+### Extensive logging + remote error reporting
+Add structured logging throughout the pipeline (parse, render, merge, export).
+Eventually: opt-in home-calling that sends error logs to a remote endpoint
+so client-reported issues can be diagnosed without access to their machine.
 
-### Unity export: ScalingFactor formula
-Replace heuristic `round(220 / avg_sprite_width)` with:
-`ScalingFactor = round(refHeight / (PPU × 2 × orthoSize))`
+### Update checker
+On startup, check GitHub releases API for a newer version.
+If found, show a non-blocking banner in the UI: "Version X.Y.Z available".
 
-### Tauri desktop app (future)
+## Nice-to-have
+
+### Tauri desktop app
 Wrap existing server+webview for native app bundle, Gatekeeper signing, dock icon.
