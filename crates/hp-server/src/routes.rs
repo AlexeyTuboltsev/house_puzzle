@@ -62,7 +62,9 @@ async fn index() -> Html<String> {
                 .and_then(|m| m.modified())
                 .map(|t| t.duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs())
                 .unwrap_or(0);
+            let app_version = option_env!("HP_VERSION").unwrap_or("dev");
             let html = html.replace("{{ elm_version }}", &elm_js_version.to_string());
+            let html = html.replace("{{ app_version }}", app_version);
             Html(html)
         }
         None => Html("<h1>elm.html not found</h1>".to_string()),

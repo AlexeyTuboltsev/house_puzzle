@@ -33,8 +33,9 @@ async fn main() {
         }
     };
 
+    let version = option_env!("HP_VERSION").unwrap_or("dev");
     let url = format!("http://localhost:{bound_port}");
-    eprintln!("House Puzzle Editor listening on {url}");
+    eprintln!("House Puzzle Editor v{version} listening on {url}");
 
     // Open browser
     if let Err(e) = open::that(&url) {
