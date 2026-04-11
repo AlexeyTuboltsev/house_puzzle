@@ -14,7 +14,8 @@ body {
     overflow: hidden;
 }
 
-.app { display: flex; height: 100vh; }
+.app { display: flex; flex-direction: column; height: 100vh; }
+.app-main { display: flex; flex: 1; min-height: 0; }
 
 /* ── Left sidebar ───────────────────────────────────────────────────────────── */
 .left-sidebar {
@@ -147,7 +148,7 @@ body {
     display: flex;
     flex: 1;
     min-width: 0;
-    overflow: hidden; /* clips the extended wave tray */
+    overflow: hidden;
     position: relative;
 }
 
@@ -206,6 +207,7 @@ body {
     display: flex;
     flex-direction: column;
     padding-bottom: 16px;
+    padding-right: 44px; /* space for zoom slider so scrollbar is to its left */
 }
 .canvas-spacer {
     flex: 1;
@@ -333,28 +335,20 @@ input.zoom-slider {
 .brick-edit-out { cursor: pointer; fill: rgba(0,0,0,0.25); }
 .brick-edit-out:hover { fill: rgba(40,180,80,0.15); }
 
-/* ── Wave tray (canvas col bottom) ─────────────────────────────────────────── */
+/* ── Wave tray (full-width bottom bar) ─────────────────────────────────────── */
 .wave-tray {
-    height: calc((100vh - 48px) * 0.12);
-    min-height: 72px;
+    height: calc((100vh - 48px) * 0.14);
+    min-height: 80px;
     flex-shrink: 0;
     position: relative;
     overflow: visible;
+    width: 100%;
+    background: #e8e8e8;
+    border-top: 2px solid #bbb;
+    z-index: 30;
 }
-/* Gray background with fuzzy top edge */
-.wave-tray::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: #808080;
-    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 15%);
-    mask-image: linear-gradient(to bottom, transparent 0%, black 15%);
-    pointer-events: none;
-    z-index: 0;
-}
-.wave-tray.drag-over::before {
-    background: color-mix(in srgb, #808080, rgba(60,120,255,0.35));
-    outline: 1px dashed rgba(60,120,255,0.6);
+.wave-tray.drag-over {
+    background: color-mix(in srgb, #e8e8e8, rgba(60,120,255,0.2));
 }
 .wave-tray-bg {
     position: absolute;
@@ -372,7 +366,7 @@ input.zoom-slider {
     flex-direction: row;
     align-items: flex-end;
     gap: 4px;
-    padding: 0 50% 8px;
+    padding: 0 8px 8px 8px;
     z-index: 2;
     pointer-events: none;
 }
@@ -389,7 +383,7 @@ input.zoom-slider {
     pointer-events: auto;
 }
 .wave-tray-thumb:active { cursor: grabbing; }
-.wave-tray-thumb.hovered { border-color: rgba(40,100,220,0.6); }
+.wave-tray-thumb.hovered { border-color: rgba(40,100,220,0.8); background: rgba(40,100,220,0.25); }
 .wave-tray-thumb img {
     width: 100%;
     height: 100%;
@@ -399,8 +393,8 @@ input.zoom-slider {
     position: absolute;
     top: 2px;
     left: 3px;
-    font-size: 10px;
-    font-weight: 700;
+    font-size: 13px;
+    font-weight: 900;
     color: #fff;
     line-height: 1;
     text-shadow: 0 0 3px #000, 0 0 3px #000;
@@ -486,17 +480,17 @@ input.zoom-slider {
     font-style: italic;
 }
 .piece-num-shadow {
-    font-size: 28px;
-    font-weight: 900;
+    font-size: 25px;
+    font-weight: 500;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     fill: none;
     stroke: rgba(0,0,0,0.55);
-    stroke-width: 6px;
+    stroke-width: 5px;
     paint-order: stroke fill;
 }
 .piece-num-text {
-    font-size: 28px;
-    font-weight: 900;
+    font-size: 25px;
+    font-weight: 500;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     fill: white;
 }
@@ -556,14 +550,42 @@ input.zoom-slider {
     gap: 8px;
     font-size: 11px;
     color: #444;
+    margin: 3px 0;
 }
-.checkbox-group input[type="checkbox"] { accent-color: #2060b0; }
+.checkbox-group input[type="checkbox"] {
+    accent-color: #2060b0;
+    width: 15px;
+    height: 15px;
+    flex-shrink: 0;
+}
 .btn-row {
     display: flex;
     gap: 6px;
     margin-top: 4px;
 }
 .btn-row button { flex: 1; }
+
+/* ── Toggles box (rounded checkbox container above section title) ──────────── */
+.toggles-box {
+    background: #efefef;
+    border-radius: 6px;
+    padding: 8px 10px;
+    margin-bottom: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.section-title {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #2060b0;
+    margin: 0 0 6px 0;
+    padding: 8px 12px;
+    background: linear-gradient(135deg, #e8f0fb 0%, #f4f7fd 100%);
+    border-bottom: 1px solid #d0d8e8;
+}
 
 /* ── Stats box ─────────────────────────────────────────────────────────────── */
 .stats {
@@ -673,13 +695,6 @@ input.zoom-slider {
 .wave-row.selected .wave-row-header { background: linear-gradient(135deg, #e8f0fb 0%, #f4f7fd 100%); outline: 1px solid #b8cfe8; }
 .wave-row.drag-over { outline: 1px dashed rgba(60,120,255,0.6); background: rgba(60,120,255,0.07); }
 /* Wave-colored piece count labels */
-.wave-row.wc-0 .wave-piece-count-label { color: rgb(180,40,40); }
-.wave-row.wc-1 .wave-piece-count-label { color: rgb(30,130,30); }
-.wave-row.wc-2 .wave-piece-count-label { color: rgb(160,100,0); }
-.wave-row.wc-3 .wave-piece-count-label { color: rgb(100,20,170); }
-.wave-row.wc-4 .wave-piece-count-label { color: rgb(180,60,10); }
-.wave-row.wc-5 .wave-piece-count-label { color: rgb(0,130,130); }
-.wave-row.wc-6 .wave-piece-count-label { color: rgb(170,20,110); }
 .drag-insert-marker {
     width: 3px;
     min-width: 3px;
@@ -736,18 +751,37 @@ input.zoom-slider {
     background: #e8e8e8;
     user-select: none;
 }
+.color-picker-row {
+    display: flex;
+    gap: 0;
+    align-items: stretch;
+}
+.color-picker-bw {
+    display: flex;
+    flex-direction: row;
+    gap: 0;
+}
+.bw-swatch {
+    width: 20px;
+    cursor: pointer;
+    border: 1px solid rgba(0,0,0,0.25);
+    border-radius: 0;
+}
+.bw-swatch:hover { border-color: rgba(0,0,0,0.6); }
+.bw-black { background: #000; border-radius: 3px 0 0 3px; }
+.bw-white { background: #fff; }
 .color-picker-inner {
     position: relative;
     width: 240px;
     height: 96px;
-    border-radius: 3px;
+    border-radius: 0 3px 3px 0;
     /* Checkerboard as the base — visible through transparent regions */
     background: repeating-conic-gradient(#bbb 0% 25%, #fff 0% 50%) 0 0 / 10px 10px;
 }
 .color-picker-gradient {
     position: absolute;
     inset: 0;
-    border-radius: 3px;
+    border-radius: 0 3px 3px 0;
     background: linear-gradient(to right,
         hsl(0,100%,50%), hsl(30,100%,50%), hsl(60,100%,50%), hsl(90,100%,50%),
         hsl(120,100%,50%), hsl(150,100%,50%), hsl(180,100%,50%), hsl(210,100%,50%),
@@ -796,7 +830,7 @@ input.zoom-slider {
 .wave-piece-count-label {
     font-weight: 700;
     font-size: 13px;
-    color: rgba(0,0,0,0.75);
+    color: #000;
 }
 .wave-name-label {
     font-weight: 400;

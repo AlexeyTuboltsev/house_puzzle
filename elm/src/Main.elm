@@ -123,7 +123,7 @@ type PieceDisplay
 
 type AppMode
     = ModeInit
-    | ModePdf
+    | ModeGenerate
     | ModePieces
     | ModeBlueprint
     | ModeGroups
@@ -164,6 +164,8 @@ type alias Model =
     , showGrid : Bool
     , showNumbers : Bool
     , showLights : Bool
+    , showGroupOverlay : Bool
+    , showWaveOverlay : Bool
     , waves : List Wave
     , nextWaveId : Int
     , groups : List Group
@@ -218,6 +220,9 @@ init flags =
       , showGrid = False
       , showNumbers = True
       , showLights = False
+      , showGroupOverlay = True
+      , showWaveOverlay = True
+
       , waves = []
       , nextWaveId = 1
       , groups = []
@@ -284,6 +289,9 @@ type Msg
     | ToggleGrid Bool
     | ToggleNumbers Bool
     | ToggleLights Bool
+    | SetSpecialHue ColorPickTarget Float
+    | ToggleGroupOverlay Bool
+    | ToggleWaveOverlay Bool
     | AddWave
     | ToggleWaveVisibility Int
     | SetHoveredPiece (Maybe String)
@@ -481,7 +489,7 @@ update msg model =
                     response.bricks
                         |> List.map (\b -> ( b.id, b ))
                         |> Dict.fromList
-                , appMode = ModePdf
+                , appMode = ModeGenerate
                 , houseUnitsHigh = response.houseUnitsHigh
                 , generateState = NotGenerated
                 , pieces = []
@@ -622,6 +630,12 @@ update msg model =
         ToggleLights checked ->
             ( { model | showLights = checked }, Cmd.none )
 
+        ToggleGroupOverlay checked ->
+            ( { model | showGroupOverlay = checked }, Cmd.none )
+
+        ToggleWaveOverlay checked ->
+            ( { model | showWaveOverlay = checked }, Cmd.none )
+
         AddWave ->
             let
                 newWave =
@@ -645,7 +659,7 @@ update msg model =
                         model.waves
             in
             ( { model
-                | waves = lockedWaves ++ [ newWave ]
+                | waves = [ newWave ] ++ lockedWaves
                 , nextWaveId = model.nextWaveId + 1
                 , selectedWaveId = Just newWave.id
               }
@@ -1523,8 +1537,12 @@ update msg model =
 
                 Just cp ->
                     let
+                        -- B/W zone: first 40px (2×20, no gaps)
+                        localX = mx - cp.panelX - 10
                         newHue =
-                            clamp 0 360 ((mx - cp.panelX - 10) / 240 * 360)
+                            if localX < 20 then -2  -- black swatch
+                            else if localX < 40 then -1  -- white swatch
+                            else clamp 0 360 ((localX - 40) / 240 * 360)
 
                         newOpacity =
                             if cp.hueOnly then
@@ -1572,6 +1590,30 @@ update msg model =
 
                         OutlineColorTarget ->
                             ( { model | outlineHue = newHue }, Cmd.none )
+
+        SetSpecialHue target hue ->
+            let
+                updated =
+                    case target of
+                        GridColorTarget ->
+                            { model | gridHue = hue, colorPicking = Nothing }
+
+                        OutlineColorTarget ->
+                            { model | outlineHue = hue, colorPicking = Nothing }
+
+                        WaveColorTarget wid ->
+                            { model
+                                | waves = List.map (\w -> if w.id == wid then { w | hue = hue } else w) model.waves
+                                , colorPicking = Nothing
+                            }
+
+                        GroupColorTarget gid ->
+                            { model
+                                | groups = List.map (\g -> if g.id == gid then { g | hue = hue } else g) model.groups
+                                , colorPicking = Nothing
+                            }
+            in
+            ( updated, Cmd.none )
 
         EndColorPick ->
             ( { model | colorPicking = Nothing }, Cmd.none )
@@ -1861,10 +1903,26 @@ httpErrorToString err =
 view : Model -> Html Msg
 view model =
     div [ class "app" ]
-        [ viewTitleBar model
-        , viewBody model
-        , viewColorPickerPanel model
-        ]
+        ([ div [ class "app-main" ]
+             [ viewTitleBar model
+             , viewBody model
+             , viewColorPickerPanel model
+             ]
+         ]
+            ++ viewBottomWaveTray model
+        )
+
+
+viewBottomWaveTray : Model -> List (Html Msg)
+viewBottomWaveTray model =
+    if model.appMode /= ModeWaves then
+        []
+    else
+        case model.loadState of
+            Loaded response ->
+                [ viewWaveTray model response ]
+            _ ->
+                []
 
 
 viewColorPickerPanel : Model -> Html Msg
@@ -1879,8 +1937,14 @@ viewColorPickerPanel model =
                 , style "left" (String.fromFloat cp.panelX ++ "px")
                 , style "top" (String.fromFloat cp.panelY ++ "px")
                 ]
-                [ div [ class (if cp.hueOnly then "color-picker-inner hue-only" else "color-picker-inner") ]
-                    [ div [ class "color-picker-gradient" ] [] ]
+                [ div [ class "color-picker-row" ]
+                    [ div [ class "color-picker-bw" ]
+                        [ div [ class "bw-swatch bw-black", title "Black" ] []
+                        , div [ class "bw-swatch bw-white", title "White" ] []
+                        ]
+                    , div [ class (if cp.hueOnly then "color-picker-inner hue-only" else "color-picker-inner") ]
+                        [ div [ class "color-picker-gradient" ] [] ]
+                    ]
                 ]
 
 
@@ -2032,18 +2096,18 @@ viewTitleBar model =
             , button
                 [ classList
                     [ ( "mode-btn", True )
-                    , ( "active", model.appMode == ModePdf )
+                    , ( "active", model.appMode == ModeGenerate )
                     , ( "loading", isGenerating )
                     ]
                 , disabled (not isLoaded || isBusy || isGenerating)
-                , onClick (SetAppMode ModePdf)
+                , onClick (SetAppMode ModeGenerate)
                 ]
                 [ text
                     (if isGenerating then
-                        "Generating\u{2026}"
+                        "Importing\u{2026}"
 
                      else
-                        "Generate"
+                        "Import"
                     )
                 ]
             , span [ class "mode-sep" ] [ text "\u{2193}" ]
@@ -2152,7 +2216,7 @@ viewZoomSlider model =
 viewCanvasCol : Model -> LoadResponse -> Html Msg
 viewCanvasCol model response =
     div [ class "canvas-col" ]
-        ([ div [ class "canvas-house-wrap" ]
+        [ div [ class "canvas-house-wrap" ]
             [ div [ class "canvas-area", id "house-scroll" ]
                 [ div [ class "canvas-spacer" ] []
                 , viewMainSvg response model
@@ -2164,14 +2228,7 @@ viewCanvasCol model response =
                 ]
             , viewZoomSlider model
             ]
-         ]
-            ++ (if model.appMode == ModeWaves then
-                    [ viewWaveTray model response ]
-
-                else
-                    []
-               )
-        )
+        ]
 
 
 viewWaveTray : Model -> LoadResponse -> Html Msg
@@ -2313,8 +2370,8 @@ viewToolsCol model response =
             ModeInit ->
                 text ""
 
-            ModePdf ->
-                viewPdfTools model response
+            ModeGenerate ->
+                viewGenerateTools model response
 
             ModePieces ->
                 viewPiecesTools model
@@ -2333,8 +2390,8 @@ viewToolsCol model response =
         ]
 
 
-viewPdfTools : Model -> LoadResponse -> Html Msg
-viewPdfTools model response =
+viewGenerateTools : Model -> LoadResponse -> Html Msg
+viewGenerateTools model response =
     let
         isLoaded =
             case model.loadState of
@@ -2351,8 +2408,9 @@ viewPdfTools model response =
             response.lightsUrl /= Nothing
     in
     div [ class "tools-pane" ]
-        [ viewStatusBadge model
-        , h2 [] [ text "Puzzle Parameters" ]
+        [ viewTogglesBox [ viewCheckboxLights model, viewCheckboxGrid model ]
+        , viewStatusBadge model
+        , viewSectionTitle "Import"
         , div [ class "param-group" ]
             [ label [] [ text "Target Pieces ", span [ class "value" ] [ text (String.fromInt model.targetCount) ] ]
             , input [ type_ "range", Html.Attributes.min "5", Html.Attributes.max "181", value (String.fromInt model.targetCount), onInput SetTargetCount ] []
@@ -2361,25 +2419,10 @@ viewPdfTools model response =
             [ label [] [ text "Min. Common Border Length ", span [ class "value" ] [ text (String.fromInt model.minBorder) ], text "px" ]
             , input [ type_ "range", Html.Attributes.min "0", Html.Attributes.max "50", value (String.fromInt model.minBorder), onInput SetMinBorder ] []
             ]
-        , div [ class "param-group" ]
-            [ label [] [ text "Seed ", span [ class "value" ] [ text (String.fromInt model.seed) ] ]
-            , input [ type_ "number", value (String.fromInt model.seed), onInput SetSeed, Html.Attributes.min "0", Html.Attributes.max "99999" ] []
-            ]
-        , h2 [] [ text "Stats" ]
+        , h2 [] [ text "Import" ]
+        , viewImportStats response
+        , h2 [] [ text "Puzzle" ]
         , viewStats model
-        , if hasLights then
-            div [ class "checkbox-group" ]
-                [ input [ type_ "checkbox", id "showLights", checked model.showLights, onCheck ToggleLights ] []
-                , label [ for "showLights" ] [ text "Show lights" ]
-                ]
-
-          else
-            text ""
-        , div [ class "checkbox-group" ]
-            [ input [ type_ "checkbox", id "showGrid", checked model.showGrid, onCheck ToggleGrid ] []
-            , label [ for "showGrid" ] [ text "Show grid" ]
-            , viewGridColorSwatch model
-            ]
         , div [ class "tools-divider" ] []
         , button
             [ class "primary"
@@ -2394,21 +2437,6 @@ viewPdfTools model response =
                     "Generate Puzzle"
                 )
             ]
-        , if List.isEmpty response.warnings then
-            text ""
-          else
-            div
-                [ style "margin-top" "10px"
-                , style "padding" "8px"
-                , style "background" "#fff3cd"
-                , style "border" "1px solid #ffc107"
-                , style "border-radius" "4px"
-                , style "font-size" "11px"
-                , style "color" "#856404"
-                , style "max-height" "120px"
-                , style "overflow-y" "auto"
-                ]
-                (List.map (\w -> div [ style "margin-bottom" "2px" ] [ text w ]) response.warnings)
         ]
 
 
@@ -2424,26 +2452,8 @@ viewPiecesTools model =
                     model.selectedPieceId
                         |> Maybe.andThen (\pid -> model.pieces |> List.filter (\p -> p.id == pid) |> List.head)
             in
-            [ div [ class "checkbox-group" ]
-                [ input [ type_ "checkbox", id "showOutlines", checked model.showOutlines, onCheck ToggleOutlines ] []
-                , label [ for "showOutlines" ] [ text "Show piece outlines" ]
-                , span
-                    [ class "wave-swatch wave-swatch-sm"
-                    , style "background-color" (waveColor model.outlineHue 1.0)
-                    , stopPropagationOn "mousedown"
-                        (D.map2 (\mx my -> ( StartColorPick OutlineColorTarget mx my, True ))
-                            (D.field "clientX" D.float)
-                            (D.field "clientY" D.float)
-                        )
-                    , title "Pick outline color"
-                    ]
-                    []
-                ]
-            , div [ class "checkbox-group" ]
-                [ input [ type_ "checkbox", id "showGrid", checked model.showGrid, onCheck ToggleGrid ] []
-                , label [ for "showGrid" ] [ text "Show grid" ]
-                , viewGridColorSwatch model
-                ]
+            [ viewTogglesBox [ viewCheckboxLights model, viewCheckboxGrid model, viewCheckboxOutlines model ]
+            , viewSectionTitle "Edit Pieces"
             , case selectedPiece of
                 Just piece ->
                     div [ class "piece-info" ]
@@ -2547,6 +2557,76 @@ viewWavePieceInfoBox model =
                 ]
 
 
+viewTogglesBox : List (Html Msg) -> Html Msg
+viewTogglesBox children =
+    div [ class "toggles-box" ] children
+
+
+viewSectionTitle : String -> Html Msg
+viewSectionTitle title =
+    h3 [ class "section-title" ] [ text title ]
+
+
+viewCheckboxLights : Model -> Html Msg
+viewCheckboxLights model =
+    div [ class "checkbox-group" ]
+        [ input [ type_ "checkbox", id "cbLights", checked model.showLights, onCheck ToggleLights ] []
+        , label [ for "cbLights" ] [ text "Show lights" ]
+        ]
+
+
+viewCheckboxGrid : Model -> Html Msg
+viewCheckboxGrid model =
+    div [ class "checkbox-group" ]
+        [ input [ type_ "checkbox", id "cbGrid", checked model.showGrid, onCheck ToggleGrid ] []
+        , label [ for "cbGrid" ] [ text "Show grid" ]
+        , viewGridColorSwatch model
+        ]
+
+
+viewCheckboxOutlines : Model -> Html Msg
+viewCheckboxOutlines model =
+    div [ class "checkbox-group" ]
+        [ input [ type_ "checkbox", id "cbOutlines", checked model.showOutlines, onCheck ToggleOutlines ] []
+        , label [ for "cbOutlines" ] [ text "Show piece outlines" ]
+        , span
+            [ class "wave-swatch wave-swatch-sm"
+            , style "background-color" (waveColor model.outlineHue 1.0)
+            , stopPropagationOn "mousedown"
+                (D.map2 (\mx my -> ( StartColorPick OutlineColorTarget mx my, True ))
+                    (D.field "clientX" D.float)
+                    (D.field "clientY" D.float)
+                )
+            , title "Pick outline color"
+            ]
+            []
+        ]
+
+
+viewCheckboxNumbers : Model -> Html Msg
+viewCheckboxNumbers model =
+    div [ class "checkbox-group" ]
+        [ input [ type_ "checkbox", id "cbNumbers", checked model.showNumbers, onCheck ToggleNumbers ] []
+        , label [ for "cbNumbers" ] [ text "Show position numbers" ]
+        ]
+
+
+viewCheckboxGroupOverlay : Model -> Html Msg
+viewCheckboxGroupOverlay model =
+    div [ class "checkbox-group" ]
+        [ input [ type_ "checkbox", id "cbGroupOverlay", checked model.showGroupOverlay, onCheck ToggleGroupOverlay ] []
+        , label [ for "cbGroupOverlay" ] [ text "Show overlay" ]
+        ]
+
+
+viewCheckboxWaveOverlay : Model -> Html Msg
+viewCheckboxWaveOverlay model =
+    div [ class "checkbox-group" ]
+        [ input [ type_ "checkbox", id "cbWaveOverlay", checked model.showWaveOverlay, onCheck ToggleWaveOverlay ] []
+        , label [ for "cbWaveOverlay" ] [ text "Show wave overlays" ]
+        ]
+
+
 viewGridColorSwatch : Model -> Html Msg
 viewGridColorSwatch model =
     span
@@ -2565,11 +2645,8 @@ viewGridColorSwatch model =
 viewBlueprintTools : Model -> Html Msg
 viewBlueprintTools model =
     div [ class "tools-pane" ]
-        [ div [ class "checkbox-group" ]
-            [ input [ type_ "checkbox", id "showGrid", checked model.showGrid, onCheck ToggleGrid ] []
-            , label [ for "showGrid" ] [ text "Show grid" ]
-            , viewGridColorSwatch model
-            ]
+        [ viewTogglesBox [ viewCheckboxLights model, viewCheckboxGrid model ]
+        , viewSectionTitle "Blueprint"
         ]
 
 
@@ -2618,8 +2695,9 @@ viewGroupsTools model =
             List.filter (\p -> not (List.member p.id assignedIds)) model.pieces
     in
     div [ class "tools-pane waves-tools" ]
-        [ div [ class "waves-header" ]
-            [ h2 [] [ text "Groups" ]
+        [ viewTogglesBox [ viewCheckboxLights model, viewCheckboxGrid model, viewCheckboxOutlines model, viewCheckboxGroupOverlay model ]
+        , div [ class "waves-header" ]
+            [ viewSectionTitle "Groups"
             , span [ class "wave-count" ]
                 [ text
                     (if totalPieces > 0 then
@@ -2628,21 +2706,6 @@ viewGroupsTools model =
                         ""
                     )
                 ]
-            ]
-        , div [ class "checkbox-group" ]
-            [ input [ type_ "checkbox", id "showOutlinesGroups", checked model.showOutlines, onCheck ToggleOutlines ] []
-            , label [ for "showOutlinesGroups" ] [ text "Show piece outlines" ]
-            , span
-                [ class "wave-swatch wave-swatch-sm"
-                , style "background-color" (waveColor model.outlineHue 1.0)
-                , stopPropagationOn "mousedown"
-                    (D.map2 (\mx my -> ( StartColorPick OutlineColorTarget mx my, True ))
-                        (D.field "clientX" D.float)
-                        (D.field "clientY" D.float)
-                    )
-                , title "Pick outline color"
-                ]
-                []
             ]
         , div [ class "wave-toolbar" ]
             [ button [ onClick AddGroup ] [ text "New group" ]
@@ -2775,8 +2838,9 @@ viewWavesTools model =
             List.filter (\p -> not (List.member p.id assignedIds)) model.pieces
     in
     div [ class "tools-pane waves-tools" ]
-        [ div [ class "waves-header" ]
-            [ h2 [] [ text "Waves" ]
+        [ viewTogglesBox [ viewCheckboxLights model, viewCheckboxGrid model, viewCheckboxOutlines model, viewCheckboxWaveOverlay model, viewCheckboxNumbers model ]
+        , div [ class "waves-header" ]
+            [ viewSectionTitle "Waves"
             , span [ class "wave-count" ]
                 [ text
                     (if totalPieces > 0 then
@@ -2786,30 +2850,6 @@ viewWavesTools model =
                         ""
                     )
                 ]
-            ]
-        , div [ class "checkbox-group" ]
-            [ input [ type_ "checkbox", id "showOutlinesWaves", checked model.showOutlines, onCheck ToggleOutlines ] []
-            , label [ for "showOutlinesWaves" ] [ text "Show piece outlines" ]
-            , span
-                [ class "wave-swatch wave-swatch-sm"
-                , style "background-color" (waveColor model.outlineHue 1.0)
-                , stopPropagationOn "mousedown"
-                    (D.map2 (\mx my -> ( StartColorPick OutlineColorTarget mx my, True ))
-                        (D.field "clientX" D.float)
-                        (D.field "clientY" D.float)
-                    )
-                , title "Pick outline color"
-                ]
-                []
-            ]
-        , div [ class "checkbox-group" ]
-            [ input [ type_ "checkbox", id "showGrid", checked model.showGrid, onCheck ToggleGrid ] []
-            , label [ for "showGrid" ] [ text "Show grid" ]
-            , viewGridColorSwatch model
-            ]
-        , div [ class "checkbox-group" ]
-            [ input [ type_ "checkbox", id "showNumbers", checked model.showNumbers, onCheck ToggleNumbers ] []
-            , label [ for "showNumbers" ] [ text "Show position numbers" ]
             ]
         , div [ class "wave-toolbar" ]
             [ button [ onClick AddWave ] [ text "New wave" ]
@@ -2838,7 +2878,9 @@ viewExportTools model =
             List.any (\p -> not (List.member p.id assignedIds)) model.pieces
     in
     div [ class "tools-pane" ]
-        [ div [ class "field-row" ]
+        [ viewTogglesBox [ viewCheckboxLights model, viewCheckboxGrid model, viewCheckboxOutlines model, viewCheckboxWaveOverlay model, viewCheckboxNumbers model ]
+        , viewSectionTitle "Export"
+        , div [ class "field-row" ]
             [ label [] [ text "Location" ]
             , Html.select
                 [ onInput SetExportLocation ]
@@ -2926,16 +2968,19 @@ viewMainSvg response model =
             model.generateState == Generated
 
         showPieceImages =
-            (model.appMode == ModePieces || model.appMode == ModeGroups || model.appMode == ModeWaves) && isGenerated && not (List.isEmpty model.pieces)
+            (model.appMode == ModePieces || model.appMode == ModeGroups || model.appMode == ModeWaves || model.appMode == ModeExport) && isGenerated && not (List.isEmpty model.pieces)
 
         showComposite =
-            not isGenerated && response.hasComposite
+            response.hasComposite && (not isGenerated || model.appMode == ModeGenerate)
 
-        -- Pieces hidden by invisible waves
+        -- Pieces hidden by invisible waves (only in Waves section)
         hiddenPieceIds =
-            model.waves
-                |> List.filter (\wv -> not wv.visible)
-                |> List.concatMap .pieceIds
+            if model.appMode == ModeWaves then
+                model.waves
+                    |> List.filter (\wv -> not wv.visible)
+                    |> List.concatMap .pieceIds
+            else
+                []
 
         visiblePieces =
             let
@@ -3097,9 +3142,14 @@ viewMainSvg response model =
         isLassoing =
             model.lasso /= Nothing
 
+        showOverlayFill =
+            (model.appMode == ModeGroups && model.showGroupOverlay)
+                || (model.appMode == ModeWaves && model.showWaveOverlay)
+                || (model.appMode == ModeExport && model.showWaveOverlay)
+
         pieceOverlays =
             if (not model.editMode) && isGenerated then
-                List.map (viewPieceOverlay model.appMode effectiveHoverId model.selectedPieceId model.selectedWaveId model.waves model.groups model.selectedGroupId isLassoing) visiblePieces
+                List.map (viewPieceOverlay model.appMode effectiveHoverId model.selectedPieceId model.selectedWaveId model.waves model.groups model.selectedGroupId isLassoing showOverlayFill) visiblePieces
 
             else
                 []
@@ -3138,16 +3188,16 @@ viewMainSvg response model =
         -- Decoder: convert offsetX/offsetY (CSS px relative to SVG element) -> SVG coords
         decodeLassoCoords toMsg =
             D.map2 toMsg
-                (D.map (\x -> x / effectiveScale - 10) (D.field "offsetX" D.float))
+                (D.map (\x -> x / effectiveScale - 200) (D.field "offsetX" D.float))
                 (D.map (\y -> y / effectiveScale - 10) (D.field "offsetY" D.float))
 
         -- Transparent background rect to catch lasso mousedown (only in waves mode with wave selected)
         lassoBackdrop =
             if (not model.editMode) && isGenerated && model.selectedWaveId /= Nothing then
                 [ Svg.rect
-                    [ SA.x "-10"
+                    [ SA.x "-200"
                     , SA.y "-10"
-                    , SA.width (String.fromFloat (cw + 20))
+                    , SA.width (String.fromFloat (cw + 400))
                     , SA.height (String.fromFloat (ch + 20))
                     , SA.fill "transparent"
                     , SA.style "cursor: crosshair;"
@@ -3199,9 +3249,9 @@ viewMainSvg response model =
                 []
     in
     Svg.svg
-        ([ SA.viewBox ("-10 -10 " ++ String.fromFloat (cw + 20) ++ " " ++ String.fromFloat (ch + 20))
+        ([ SA.viewBox ("-200 -10 " ++ String.fromFloat (cw + 400) ++ " " ++ String.fromFloat (ch + 20))
          , SA.class "house-svg"
-         , SA.width (String.fromFloat ((cw + 20) * effectiveScale))
+         , SA.width (String.fromFloat ((cw + 400) * effectiveScale))
          , SA.height (String.fromFloat ((ch + 20) * effectiveScale))
          ]
             ++ lassoSvgAttrs
@@ -3217,10 +3267,10 @@ viewMainSvg response model =
             , Svg.g [] baseLayer
             , Svg.g [] lightsLayer
             , Svg.g [] compositeOverlays
-            , Svg.g [] outlineLayer
             , Svg.g [] gridLayer
             , Svg.g [] lassoBackdrop
             , Svg.g [] pieceOverlays
+            , Svg.g [] outlineLayer
             , Svg.g [] outlinesPngLayer
             , Svg.g [] numberLabels
             , Svg.g [] lassoRect
@@ -3378,10 +3428,11 @@ viewPieceOutline color piece =
             [ SA.points pointsAttr
             , SA.fill "transparent"
             , SA.stroke color
-            , SA.strokeWidth "1"
+            , SA.strokeWidth "3"
             , SA.strokeLinejoin "round"
             , attribute "vector-effect" "non-scaling-stroke"
             , SA.class "piece-outline"
+            , attribute "pointer-events" "none"
             ]
             []
 
@@ -3389,11 +3440,43 @@ viewPieceOutline color piece =
 viewPieceNumberLabel : Piece -> Int -> Svg.Svg Msg
 viewPieceNumberLabel piece pos =
     let
-        cx =
-            piece.x + piece.width / 2
+        -- Pick brick whose center is most interior to the piece bbox
+        -- (largest min-distance to any piece edge)
+        brickScore b =
+            let
+                bcx = b.x + b.width / 2
+                bcy = b.y + b.height / 2
+                dl = bcx - piece.x
+                dr = (piece.x + piece.width) - bcx
+                dt = bcy - piece.y
+                db = (piece.y + piece.height) - bcy
+            in
+            Basics.min (Basics.min dl dr) (Basics.min dt db)
 
-        cy =
-            piece.y + piece.height / 2
+        bestBrick =
+            piece.bricks
+                |> List.sortBy (\b -> -(brickScore b))
+                |> List.head
+
+        ( rawCx, rawCy ) =
+            case bestBrick of
+                Just b ->
+                    ( b.x + b.width / 2, b.y + b.height / 2 )
+
+                Nothing ->
+                    ( piece.x + piece.width / 2, piece.y + piece.height / 2 )
+
+        -- Smaller font for small pieces
+        minDim = Basics.min piece.width piece.height
+        ( fontSizeNum, fontSizeStr ) =
+            if minDim < 20 then ( 14, "14" )
+            else if minDim < 35 then ( 18, "18" )
+            else ( 25, "25" )
+
+        -- Clamp to piece bbox — half font size margin so text never overhangs
+        halfFont = fontSizeNum / 2 + 2
+        cx = Basics.max (piece.x + halfFont) (Basics.min (piece.x + piece.width - halfFont) rawCx)
+        cy = Basics.max (piece.y + halfFont) (Basics.min (piece.y + piece.height - halfFont) rawCy)
 
         label =
             String.fromInt pos
@@ -3405,6 +3488,7 @@ viewPieceNumberLabel piece pos =
             , SA.textAnchor "middle"
             , SA.dominantBaseline "central"
             , SA.class "piece-num-shadow"
+            , SA.fontSize fontSizeStr
             ]
             [ Svg.text label ]
         , Svg.text_
@@ -3413,6 +3497,7 @@ viewPieceNumberLabel piece pos =
             , SA.textAnchor "middle"
             , SA.dominantBaseline "central"
             , SA.class "piece-num-text"
+            , SA.fontSize fontSizeStr
             ]
             [ Svg.text label ]
         ]
@@ -3450,14 +3535,21 @@ hslToRgb hue =
 
 waveColor : Float -> Float -> String
 waveColor hue opacity =
-    let
-        ( r, g, b ) = hslToRgb hue
-    in
-    "rgba(" ++ String.fromInt r ++ "," ++ String.fromInt g ++ "," ++ String.fromInt b ++ "," ++ String.fromFloat opacity ++ ")"
+    if hue < -1.5 then
+        -- Special: black
+        "rgba(0,0,0," ++ String.fromFloat opacity ++ ")"
+    else if hue < -0.5 then
+        -- Special: white
+        "rgba(255,255,255," ++ String.fromFloat opacity ++ ")"
+    else
+        let
+            ( r, g, b ) = hslToRgb hue
+        in
+        "rgba(" ++ String.fromInt r ++ "," ++ String.fromInt g ++ "," ++ String.fromInt b ++ "," ++ String.fromFloat opacity ++ ")"
 
 
-viewPieceOverlay : AppMode -> Maybe String -> Maybe String -> Maybe Int -> List Wave -> List Group -> Maybe Int -> Bool -> Piece -> Svg.Svg Msg
-viewPieceOverlay appMode hoveredId selectedId selectedWaveId waves groups selectedGroupId isLassoing piece =
+viewPieceOverlay : AppMode -> Maybe String -> Maybe String -> Maybe Int -> List Wave -> List Group -> Maybe Int -> Bool -> Bool -> Piece -> Svg.Svg Msg
+viewPieceOverlay appMode hoveredId selectedId selectedWaveId waves groups selectedGroupId isLassoing showOverlayFill piece =
     let
         inWaveAssign =
             appMode == ModeWaves && selectedWaveId /= Nothing
@@ -3485,17 +3577,23 @@ viewPieceOverlay appMode hoveredId selectedId selectedWaveId waves groups select
             if appMode == ModeGroups then
                 case maybeGroup of
                     Just g ->
-                        let eff = if isHov then Basics.min 1.0 (0.35 + 0.15) else 0.35
-                        in "fill: " ++ waveColor g.hue eff ++ ";"
+                        if showOverlayFill then
+                            let eff = if isHov then Basics.min 1.0 (0.35 + 0.15) else 0.35
+                            in "fill: " ++ waveColor g.hue eff ++ ";"
+                        else if isHov then "fill: rgba(64,120,255,0.2);"
+                        else "fill: transparent;"
                     Nothing ->
                         if isHov then "fill: rgba(64,120,255,0.2);"
                         else "fill: transparent;"
 
-            else if appMode == ModeWaves then
+            else if appMode == ModeWaves || appMode == ModeExport then
                 case maybeWave of
                     Just wv ->
-                        let eff = if isHov then Basics.min 1.0 (wv.opacity + 0.15) else wv.opacity
-                        in "fill: " ++ waveColor wv.hue eff ++ ";"
+                        if showOverlayFill then
+                            let eff = if isHov then Basics.min 1.0 (wv.opacity + 0.3) else wv.opacity
+                            in "fill: " ++ waveColor wv.hue eff ++ ";"
+                        else if isHov then "fill: rgba(64,120,255,0.2);"
+                        else "fill: transparent;"
                     Nothing ->
                         if isHov then "fill: rgba(64,120,255,0.2);"
                         else if isSel then "fill: rgba(64,120,255,0.45);"
@@ -3562,11 +3660,12 @@ viewGrid cw ch color houseUnitsHigh =
         gridStep =
             ch / houseUnitsHigh
 
+        -- Extend 1 unit beyond each side
         numV =
-            floor (cw / gridStep)
+            floor (cw / gridStep) + 1
 
         numH =
-            floor (ch / gridStep)
+            floor (ch / gridStep) + 1
 
         vLines =
             List.map
@@ -3577,16 +3676,16 @@ viewGrid cw ch color houseUnitsHigh =
                     in
                     Svg.line
                         [ SA.x1 (String.fromFloat x)
-                        , SA.y1 "0"
+                        , SA.y1 (String.fromFloat -gridStep)
                         , SA.x2 (String.fromFloat x)
-                        , SA.y2 (String.fromFloat ch)
+                        , SA.y2 (String.fromFloat (ch + gridStep))
                         , SA.stroke color
                         , SA.strokeWidth "1"
                         , attribute "vector-effect" "non-scaling-stroke"
                         ]
                         []
                 )
-                (List.range 1 numV)
+                (List.range -1 numV)
 
         hLines =
             List.map
@@ -3596,9 +3695,9 @@ viewGrid cw ch color houseUnitsHigh =
                             ch - toFloat i * gridStep
                     in
                     Svg.line
-                        [ SA.x1 "0"
+                        [ SA.x1 (String.fromFloat -gridStep)
                         , SA.y1 (String.fromFloat y)
-                        , SA.x2 (String.fromFloat cw)
+                        , SA.x2 (String.fromFloat (cw + gridStep))
                         , SA.y2 (String.fromFloat y)
                         , SA.stroke color
                         , SA.strokeWidth "1"
@@ -3606,7 +3705,7 @@ viewGrid cw ch color houseUnitsHigh =
                         ]
                         []
                 )
-                (List.range 1 numH)
+                (List.range -1 numH)
     in
     vLines ++ hLines
 
@@ -3651,9 +3750,6 @@ viewWaveRow model allWaves wave =
 
         swatchColor =
             waveColor wave.hue 0.85
-
-        countColor =
-            waveColor wave.hue 1.0
     in
     div
         [ classList
@@ -3705,15 +3801,13 @@ viewWaveRow model allWaves wave =
                 , title "Pick color"
                 ]
                 []
-            , span [ class "wave-piece-count-label", style "color" countColor ]
+            , span [ class "wave-piece-count-label" ]
                 [ text (String.fromInt (List.length wave.pieceIds) ++ " pcs") ]
-            , span [ class "wave-name-label" ]
-                [ text wave.name ]
             , span [ class "wave-row-spacer" ] []
             , span [ class "wave-actions" ]
                 [ button
                     [ stopPropagationOn "click" (D.succeed ( RemoveWave wave.id, True ))
-                    , disabled (wave.locked || waveCount <= 1)
+                    , disabled (waveCount <= 1)
                     , title "Delete wave"
                     ]
                     [ text "\u{2715}" ]
@@ -3939,6 +4033,46 @@ viewStatusBadge model =
 
         LoadError err ->
             span [ class "status error" ] [ text ("Error: " ++ err) ]
+
+
+viewImportStats : LoadResponse -> Html Msg
+viewImportStats response =
+    let
+        totalBricks =
+            List.length response.bricks
+
+        skipped =
+            List.filter (String.startsWith "SKIPPED:") response.warnings |> List.length
+
+        covered =
+            List.filter (String.startsWith "COVERED:") response.warnings |> List.length
+
+        -- Show MULTI_OBJECT warnings (layers with separate bricks)
+        realWarnings =
+            response.warnings
+                |> List.filter (String.startsWith "MULTI_OBJECT:")
+                |> List.map (String.replace "MULTI_OBJECT: " "")
+    in
+    div [ class "stats" ]
+        ([ div [ class "row" ] [ text "Bricks imported", span [ class "val" ] [ text (String.fromInt totalBricks) ] ]
+         ]
+            ++ (if skipped > 0 then
+                    [ div [ class "row" ] [ text "Skipped (no polygon)", span [ class "val" ] [ text (String.fromInt skipped) ] ] ]
+                else
+                    []
+               )
+            ++ (if covered > 0 then
+                    [ div [ class "row" ] [ text "Covered (hidden)", span [ class "val" ] [ text (String.fromInt covered) ] ] ]
+                else
+                    []
+               )
+            ++ (if not (List.isEmpty realWarnings) then
+                    [ div [ class "row", style "margin-top" "4px" ] [ text "Warnings:" ] ]
+                        ++ List.map (\w -> div [ class "row", style "color" "#b04020", style "font-size" "10px" ] [ text w ]) realWarnings
+                else
+                    []
+               )
+        )
 
 
 viewStats : Model -> Html Msg

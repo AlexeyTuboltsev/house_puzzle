@@ -28,6 +28,8 @@
   `git ls-remote --heads origin <branch>`. If the remote branch is gone, the PR
   was merged and deleted — create a new branch from origin/main instead.
   Do this IMMEDIATELY before every push to an existing branch.
+- NEVER force-push (`--force`, `--force-with-lease`) unless the user explicitly allows it.
+  Always make new commits instead of amending/rebasing pushed branches.
 
 ### Bash Commands
 - NEVER chain multiple commands with `&&`, `||`, or `;` in a single Bash tool call.

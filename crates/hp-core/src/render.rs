@@ -352,7 +352,7 @@ pub fn render_outlines_png(
     canvas_height: u32,
     out_path: &Path,
 ) {
-    let ss = 2u32;
+    let ss = 4u32;
     let sw = canvas_width * ss;
     let sh = canvas_height * ss;
     let mut canvas = RgbaImage::new(sw, sh);
@@ -388,11 +388,14 @@ fn draw_line(img: &mut RgbaImage, x0: i32, y0: i32, x1: i32, y1: i32, color: Rgb
     loop {
         if x >= 0 && y >= 0 && (x as u32) < w && (y as u32) < h {
             img.put_pixel(x as u32, y as u32, color);
-            for &(ox, oy) in &[(1, 0), (0, 1), (1, 1)] {
-                let nx = x + ox;
-                let ny = y + oy;
-                if nx >= 0 && ny >= 0 && (nx as u32) < w && (ny as u32) < h {
-                    img.put_pixel(nx as u32, ny as u32, color);
+            for ox in -6i32..=6 {
+                for oy in -6i32..=6 {
+                    if ox == 0 && oy == 0 { continue; }
+                    let nx = x + ox;
+                    let ny = y + oy;
+                    if nx >= 0 && ny >= 0 && (nx as u32) < w && (ny as u32) < h {
+                        img.put_pixel(nx as u32, ny as u32, color);
+                    }
                 }
             }
         }
