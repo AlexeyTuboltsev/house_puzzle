@@ -33,7 +33,13 @@ async fn main() {
         }
     };
 
-    eprintln!("House Puzzle Editor listening on http://localhost:{bound_port}");
+    let url = format!("http://localhost:{bound_port}");
+    eprintln!("House Puzzle Editor listening on {url}");
+
+    // Open browser
+    if let Err(e) = open::that(&url) {
+        eprintln!("Could not open browser: {e}");
+    }
 
     if let Err(e) = axum::serve(listener, app).await {
         eprintln!("Server error: {e}");
