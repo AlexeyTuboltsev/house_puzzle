@@ -39,40 +39,29 @@ pub fn extract_raster_image(block_data: &[u8]) -> Option<RgbaImage> {
     Some(img)
 }
 
-/// Render all brick images IN MEMORY. Returns HashMap<brick_id, canvas-sized RGBA>.
-/// Parallelized with rayon.
+/// Render all brick images from the OCG bricks layer render.
+/// For each brick: crop the layer image to the brick's polygon bbox,
+/// then mask to the polygon outline. Unified pipeline for all brick types.
 pub fn render_brick_images(
-    raw: &[u8],
     bricks: &[(String, BrickPlacement)],
     canvas_width: u32,
     canvas_height: u32,
-    bricks_layer_img: Option<&RgbaImage>,
+    bricks_layer_img: &RgbaImage,
 ) -> HashMap<String, RgbaImage> {
     let result = Mutex::new(HashMap::new());
 
     bricks.par_iter().for_each(|(id, bp)| {
         let mut canvas = RgbaImage::new(canvas_width, canvas_height);
 
-        if bp.layer_type == "brick" || bp.layer_type == "mixed_brick" {
-            let block_data = &raw[bp.block_begin..bp.block_end];
-            if let Some(raster) = extract_raster_image(block_data) {
-                let w = bp.width.max(1) as u32;
-                let h = bp.height.max(1) as u32;
-                let resized = image::imageops::resize(&raster, w, h, image::imageops::Lanczos3);
-                image::imageops::overlay(&mut canvas, &resized, bp.x as i64, bp.y as i64);
-            }
-        } else if bp.layer_type == "vector_brick" {
-            if let Some(layer_img) = bricks_layer_img {
-                for dy in 0..bp.height.max(0) {
-                    for dx in 0..bp.width.max(0) {
-                        let sx = (bp.x + dx) as u32;
-                        let sy = (bp.y + dy) as u32;
-                        if sx < layer_img.width() && sy < layer_img.height() {
-                            let px = layer_img.get_pixel(sx, sy);
-                            if px[3] > 0 {
-                                canvas.put_pixel(sx, sy, *px);
-                            }
-                        }
+        // Copy pixels from the OCG layer render within the brick's bbox
+        for dy in 0..bp.height.max(0) {
+            for dx in 0..bp.width.max(0) {
+                let sx = (bp.x + dx) as u32;
+                let sy = (bp.y + dy) as u32;
+                if sx < bricks_layer_img.width() && sy < bricks_layer_img.height() {
+                    let px = bricks_layer_img.get_pixel(sx, sy);
+                    if px[3] > 0 {
+                        canvas.put_pixel(sx, sy, *px);
                     }
                 }
             }
@@ -92,21 +81,9 @@ pub fn save_brick_pngs(brick_images: &HashMap<String, RgbaImage>, out_dir: &Path
     });
 }
 
-/// Render composite from in-memory brick images.
-pub fn render_composite_from_images(
-    brick_images: &HashMap<String, RgbaImage>,
-    bricks: &[(String, BrickPlacement)],
-    canvas_width: u32,
-    canvas_height: u32,
-    out_path: &Path,
-) {
-    let mut canvas = RgbaImage::new(canvas_width, canvas_height);
-    for (id, _) in bricks {
-        if let Some(brick_img) = brick_images.get(id) {
-            image::imageops::overlay(&mut canvas, brick_img, 0, 0);
-        }
-    }
-    canvas.save(out_path).ok();
+/// Save the OCG bricks layer render directly as the composite.
+pub fn save_composite(bricks_layer_img: &RgbaImage, out_path: &Path) {
+    bricks_layer_img.save(out_path).ok();
 }
 
 /// Find covered bricks using in-memory images (no disk I/O).
