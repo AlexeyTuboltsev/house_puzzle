@@ -2,6 +2,7 @@
 
 use hp_core::ai_parser::{AiPrivateData, BrickPlacement, LayerBlock, ParsedAiMetadata};
 use hp_core::types::{Brick, PuzzlePiece};
+use image::RgbaImage;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -17,6 +18,10 @@ pub struct Session {
     pub extract_dir: PathBuf,
     pub ai_data: Arc<AiPrivateData>,
     pub layer_blocks: HashMap<String, LayerBlock>,
+    /// OCG bricks layer render — shared for brick/piece image serving.
+    pub bricks_layer_img: Arc<RgbaImage>,
+    /// Per-brick images (canvas-sized, polygon-masked). Lazy-populated.
+    pub brick_images: HashMap<String, Arc<Vec<u8>>>,  // PNG bytes
 }
 
 /// Thread-safe session store.

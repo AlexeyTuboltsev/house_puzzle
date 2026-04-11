@@ -1,6 +1,6 @@
 use axum::{
     Router,
-    extract::{Path, State},
+    extract::{DefaultBodyLimit, Path, State},
     http::{StatusCode, header},
     response::{Html, IntoResponse, Response},
     routing::{get, post},
@@ -30,6 +30,7 @@ pub fn build_router(sessions: SessionStore) -> Router {
     Router::new()
         .route("/", get(index))
         .route("/api/list_pdfs", get(api_list_pdfs))
+        .route("/api/upload_file", post(api_upload_file).layer(DefaultBodyLimit::max(200 * 1024 * 1024)))
         .route("/api/load_pdf", post(api_load_pdf))
         .route("/api/s/{key}/load", post(api_load_pdf_keyed))
         .route("/api/merge", post(api_merge))
@@ -103,6 +104,39 @@ async fn api_list_pdfs() -> Json<serde_json::Value> {
 }
 
 // ---------------------------------------------------------------------------
+// Upload
+// ---------------------------------------------------------------------------
+
+async fn api_upload_file(mut multipart: axum::extract::Multipart) -> Response {
+    while let Ok(Some(field)) = multipart.next_field().await {
+        if field.name() == Some("file") {
+            let file_name = field.file_name().unwrap_or("upload.ai").to_string();
+            let safe_name = std::path::Path::new(&file_name)
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
+
+            let data = match field.bytes().await {
+                Ok(d) => d,
+                Err(e) => return (StatusCode::BAD_REQUEST, Json(json!({"error": e.to_string()}))).into_response(),
+            };
+
+            let in_dir = PathBuf::from("in");
+            std::fs::create_dir_all(&in_dir).ok();
+            let dest = in_dir.join(&safe_name);
+            if let Err(e) = std::fs::write(&dest, &data) {
+                return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response();
+            }
+
+            return Json(json!({"path": dest.to_string_lossy()})).into_response();
+        }
+    }
+
+    (StatusCode::BAD_REQUEST, Json(json!({"error": "no file"}))).into_response()
+}
+
+// ---------------------------------------------------------------------------
 // Load
 // ---------------------------------------------------------------------------
 
@@ -160,10 +194,10 @@ async fn do_load(sessions: SessionStore, key: String, req: LoadRequest) -> Respo
     // Assign brick IDs
     let mut bricks: Vec<Brick> = Vec::new();
     let mut brick_polygons: HashMap<String, Vec<[f64; 2]>> = HashMap::new();
-    let mut layer_blocks: HashMap<String, ai_parser::LayerBlock> = HashMap::new();
+    let layer_blocks: HashMap<String, ai_parser::LayerBlock> = HashMap::new();
     let mut brick_layer_names: HashMap<String, String> = HashMap::new();
 
-    for (i, p) in placements.iter().enumerate() {
+    for p in placements.iter() {
         let id = if deterministic {
             use std::hash::{Hash, Hasher};
             let mut hasher = std::collections::hash_map::DefaultHasher::new();
@@ -187,11 +221,7 @@ async fn do_load(sessions: SessionStore, key: String, req: LoadRequest) -> Respo
         brick_layer_names.insert(id, p.name.clone());
     }
 
-    // Compute adjacency and areas
-    let t0 = std::time::Instant::now();
-    let adj = puzzle::build_adjacency_vector(&bricks, &brick_polygons, 15.0, 5.0, 2.0);
-    let brick_areas = puzzle::compute_polygon_areas(&bricks, &brick_polygons);
-    eprintln!("[profile] adjacency+areas: {:?}", t0.elapsed());
+    // Note: adjacency+areas computed after covered-brick filtering below
 
     // Build extract dir and render PNGs
     let extract_dir = std::env::temp_dir().join("house_puzzle_extract").join(&key);
@@ -205,20 +235,31 @@ async fn do_load(sessions: SessionStore, key: String, req: LoadRequest) -> Respo
 
     let cw = metadata.canvas_width as u32;
     let ch = metadata.canvas_height as u32;
-    let raw = &ai_data.raw;
 
-    // Render bricks layer via MuPDF OCG — single render for ALL bricks
+    // Render bricks layer via MuPDF OCG — ONE render for probe + brick images
     let t0 = std::time::Instant::now();
-    let bricks_layer_img = match render::render_ocg_layer_image(
+    let bricks_no_offset = match render::render_ocg_layer_image(
         &file_path, "bricks", metadata.render_dpi, metadata.clip_rect,
-        cw, ch, metadata.pdf_offset_px,
+        cw, ch, (0, 0),
     ) {
         Some(img) => img,
         None => {
             return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "Failed to render bricks layer"}))).into_response();
         }
     };
-    eprintln!("[profile] OCG bricks layer: {:?} ({}x{})", t0.elapsed(), bricks_layer_img.width(), bricks_layer_img.height());
+    // Compute pdf_offset from first opaque pixel vs expected position
+    let pdf_offset = render::compute_pdf_offset(
+        &bricks_no_offset, metadata.expected_brick_min.0, metadata.expected_brick_min.1,
+    );
+    // Apply offset by shifting the image (no re-render needed)
+    let bricks_layer_img = if pdf_offset != (0, 0) {
+        let mut shifted = image::RgbaImage::new(cw, ch);
+        image::imageops::overlay(&mut shifted, &bricks_no_offset, pdf_offset.0 as i64, pdf_offset.1 as i64);
+        shifted
+    } else {
+        bricks_no_offset
+    };
+    eprintln!("[profile] OCG bricks (render+offset): {:?} ({}x{}, offset={:?})", t0.elapsed(), bricks_layer_img.width(), bricks_layer_img.height(), pdf_offset);
 
     // Crop OCG render per brick — unified pipeline for all brick types
     let t0 = std::time::Instant::now();
@@ -256,36 +297,40 @@ async fn do_load(sessions: SessionStore, key: String, req: LoadRequest) -> Respo
     let adj = puzzle::build_adjacency_vector(&bricks, &brick_polygons, 15.0, 5.0, 2.0);
     let brick_areas = puzzle::compute_polygon_areas(&bricks, &brick_polygons);
 
-    // Save composite — the OCG bricks layer IS the composite
-    let t0 = std::time::Instant::now();
-    let comp_path = extract_dir.join("composite.png");
-    render::save_composite(&bricks_layer_img, &comp_path);
-    eprintln!("[profile] composite: {:?}", t0.elapsed());
+    let bricks_layer_arc = std::sync::Arc::new(bricks_layer_img);
 
-    // Save brick PNGs to disk (for HTTP serving + piece compositing)
-    let t0 = std::time::Instant::now();
-    render::save_brick_pngs(&brick_images, &extract_dir);
+    // Skip disk save — brick images served from memory via session.
     drop(brick_images);
-    eprintln!("[profile] save_brick_pngs: {:?}", t0.elapsed());
 
-    // Render brick outlines (after filtering)
-    let t0 = std::time::Instant::now();
-    render::render_outlines_png(&render_bricks, cw, ch, &extract_dir.join("outlines.png"));
-    eprintln!("[profile] outlines: {:?}", t0.elapsed());
-
-    // Render OCG layers (lights, background)
+    // Save composite + render outlines + OCG layers — all in parallel
     let t0 = std::time::Instant::now();
     let clip = metadata.clip_rect;
-    let pdf_offset = metadata.pdf_offset_px;
-    let has_lights = render::render_ocg_layer(
-        &file_path, "lights", &extract_dir.join("lights.png"),
-        metadata.render_dpi, clip, cw, ch, pdf_offset,
+    let dpi = metadata.render_dpi;
+    let fp1 = file_path.clone();
+    let fp2 = file_path.clone();
+    let ed1 = extract_dir.clone();
+    let ed2 = extract_dir.clone();
+    let ed3 = extract_dir.clone();
+    let ed4 = extract_dir.clone();
+    let rb = render_bricks.clone();
+    let bla = bricks_layer_arc.clone();
+    let (_, _, has_lights, has_background) = tokio::join!(
+        tokio::task::spawn_blocking(move || {
+            render::save_composite(&bla, &ed4.join("composite.png"));
+        }),
+        tokio::task::spawn_blocking(move || {
+            render::render_outlines_png(&rb, cw, ch, &ed3.join("outlines.png"));
+        }),
+        tokio::task::spawn_blocking(move || {
+            render::render_ocg_layer(&fp1, "lights", &ed1.join("lights.png"), dpi, clip, cw, ch, pdf_offset)
+        }),
+        tokio::task::spawn_blocking(move || {
+            render::render_ocg_layer(&fp2, "background", &ed2.join("background.png"), dpi, clip, cw, ch, pdf_offset)
+        }),
     );
-    let has_background = render::render_ocg_layer(
-        &file_path, "background", &extract_dir.join("background.png"),
-        metadata.render_dpi, clip, cw, ch, pdf_offset,
-    );
-    eprintln!("[profile] OCG lights+bg: {:?}", t0.elapsed());
+    let has_lights = has_lights.unwrap_or(false);
+    let has_background = has_background.unwrap_or(false);
+    eprintln!("[profile] composite+outlines+lights+bg (parallel): {:?}", t0.elapsed());
 
     // Build brick response data
     let brick_data: Vec<serde_json::Value> = bricks.iter().map(|b| {
@@ -328,6 +373,8 @@ async fn do_load(sessions: SessionStore, key: String, req: LoadRequest) -> Respo
             extract_dir,
             ai_data,
             layer_blocks,
+            bricks_layer_img: bricks_layer_arc,
+            brick_images: HashMap::new(),
         });
     }
 
@@ -337,7 +384,7 @@ async fn do_load(sessions: SessionStore, key: String, req: LoadRequest) -> Respo
         "total_layers": 0,
         "num_bricks": brick_data.len(),
         "bricks": brick_data,
-        "has_composite": comp_path.exists(),
+        "has_composite": true,
         "has_base": false,
         "render_dpi": (metadata.render_dpi * 100.0).round() / 100.0,
         "warnings": all_warnings,
@@ -376,14 +423,15 @@ async fn api_merge(
 }
 
 async fn do_merge(sessions: SessionStore, key: &str, req: serde_json::Value) -> Response {
-    let (bricks, polygons, areas, extract_dir) = {
+    let (bricks, polygons, areas, extract_dir, bricks_layer_img) = {
         let store = sessions.lock().unwrap();
         let session = match store.get(key) {
             Some(s) => s,
             None => return (StatusCode::NOT_FOUND, Json(json!({"error": "Session not found"}))).into_response(),
         };
         (session.bricks.clone(), session.brick_polygons.clone(),
-         session.brick_areas.clone(), session.extract_dir.clone())
+         session.brick_areas.clone(), session.extract_dir.clone(),
+         session.bricks_layer_img.clone())
     };
 
     let bricks_by_id: HashMap<String, Brick> = bricks.iter().map(|b| (b.id.clone(), b.clone())).collect();
@@ -428,7 +476,7 @@ async fn do_merge(sessions: SessionStore, key: &str, req: serde_json::Value) -> 
 
     // Render piece PNGs (composited from brick PNGs on disk)
     let bricks_by_id: HashMap<String, Brick> = bricks.iter().map(|b| (b.id.clone(), b.clone())).collect();
-    render::render_piece_pngs(&pieces, &extract_dir);
+    render::render_piece_pngs_from_layer(&pieces, &bricks_layer_img, &extract_dir);
 
     // Compute piece polygons (union of brick vector polygons)
     let piece_polys = puzzle::compute_piece_polygons(&pieces, &bricks_by_id, &polygons);
@@ -594,25 +642,83 @@ async fn api_serve_brick_png(
     Path((key, rest)): Path<(String, String)>,
 ) -> Response {
     let brick_id = rest.trim_end_matches(".png");
-    let extract_dir = {
+
+    // Try serving from session cache first, then generate on demand
+    let png_bytes = {
         let store = sessions.lock().unwrap();
-        match store.get(&key) {
-            Some(s) => s.extract_dir.clone(),
+        let session = match store.get(&key) {
+            Some(s) => s,
             None => return StatusCode::NOT_FOUND.into_response(),
+        };
+
+        if let Some(cached) = session.brick_images.get(brick_id) {
+            Some(cached.clone())
+        } else {
+            None
         }
     };
 
-    let file_path = extract_dir.join(format!("brick_{brick_id}.png"));
-    if !file_path.exists() {
-        return (
+    if let Some(bytes) = png_bytes {
+        return (StatusCode::OK, [(header::CONTENT_TYPE, "image/png".to_string())], bytes.as_ref().clone()).into_response();
+    }
+
+    // Generate on demand from bricks_layer_img
+    let generated = {
+        let mut store = sessions.lock().unwrap();
+        let session = match store.get_mut(&key) {
+            Some(s) => s,
+            None => return StatusCode::NOT_FOUND.into_response(),
+        };
+
+        // Find the brick placement
+        let bp_idx = session.bricks.iter().position(|b| b.id == brick_id);
+        if let Some(idx) = bp_idx {
+            let bp = &session.brick_placements[idx];
+            let cw = session.metadata.canvas_width as u32;
+            let ch = session.metadata.canvas_height as u32;
+            let mut canvas = image::RgbaImage::new(cw, ch);
+
+            let poly = bp.polygon.as_ref();
+            for dy in 0..bp.height.max(0) {
+                for dx in 0..bp.width.max(0) {
+                    let sx = (bp.x + dx) as u32;
+                    let sy = (bp.y + dy) as u32;
+                    if sx < session.bricks_layer_img.width() && sy < session.bricks_layer_img.height() {
+                        let px = session.bricks_layer_img.get_pixel(sx, sy);
+                        if px[3] > 0 {
+                            let in_poly = match poly {
+                                Some(pts) if pts.len() >= 3 => {
+                                    render::point_in_polygon(dx as f64, dy as f64, pts)
+                                }
+                                _ => true,
+                            };
+                            if in_poly {
+                                canvas.put_pixel(sx, sy, *px);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Encode to PNG bytes
+            let mut buf = std::io::Cursor::new(Vec::new());
+            canvas.write_to(&mut buf, image::ImageOutputFormat::Png).ok();
+            let bytes = Arc::new(buf.into_inner());
+            session.brick_images.insert(brick_id.to_string(), bytes.clone());
+            Some(bytes)
+        } else {
+            None
+        }
+    };
+
+    match generated {
+        Some(bytes) => (StatusCode::OK, [(header::CONTENT_TYPE, "image/png".to_string())], bytes.as_ref().clone()).into_response(),
+        None => (
             StatusCode::OK,
             [(header::CONTENT_TYPE, "image/png".to_string())],
             include_bytes!("../assets/transparent_1x1.png").to_vec(),
-        ).into_response();
+        ).into_response(),
     }
-
-    let data = std::fs::read(&file_path).unwrap_or_default();
-    (StatusCode::OK, [(header::CONTENT_TYPE, "image/png".to_string())], data).into_response()
 }
 
 async fn api_serve_piece_png(
