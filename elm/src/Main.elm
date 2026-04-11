@@ -2007,7 +2007,6 @@ viewTitleBar model =
     in
     div [ class "left-sidebar" ]
         [ span [ class "app-title" ] [ text "House Puzzle" ]
-        , span [ class "version-tag" ] [ text model.appVersion ]
         , div [ class "sidebar-nav" ]
             [ button
                 [ classList
@@ -2108,7 +2107,7 @@ viewTitleBar model =
                 ]
                 [ text "Export" ]
             ]
-        , span [ class "version-tag" ] [ text "v0.2" ]
+        , span [ class "version-tag" ] [ text model.appVersion ]
         ]
 
 
