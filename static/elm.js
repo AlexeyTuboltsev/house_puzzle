@@ -4249,10 +4249,10 @@ function _Browser_getViewport()
 	return {
 		by: _Browser_getScene(),
 		bG: {
-			i: _Browser_window.pageXOffset,
-			j: _Browser_window.pageYOffset,
-			n: _Browser_doc.documentElement.clientWidth,
-			l: _Browser_doc.documentElement.clientHeight
+			h: _Browser_window.pageXOffset,
+			i: _Browser_window.pageYOffset,
+			l: _Browser_doc.documentElement.clientWidth,
+			j: _Browser_doc.documentElement.clientHeight
 		}
 	};
 }
@@ -4262,8 +4262,8 @@ function _Browser_getScene()
 	var body = _Browser_doc.body;
 	var elem = _Browser_doc.documentElement;
 	return {
-		n: Math.max(body.scrollWidth, body.offsetWidth, elem.scrollWidth, elem.offsetWidth, elem.clientWidth),
-		l: Math.max(body.scrollHeight, body.offsetHeight, elem.scrollHeight, elem.offsetHeight, elem.clientHeight)
+		l: Math.max(body.scrollWidth, body.offsetWidth, elem.scrollWidth, elem.offsetWidth, elem.clientWidth),
+		j: Math.max(body.scrollHeight, body.offsetHeight, elem.scrollHeight, elem.offsetHeight, elem.clientHeight)
 	};
 }
 
@@ -4287,14 +4287,14 @@ function _Browser_getViewportOf(id)
 	{
 		return {
 			by: {
-				n: node.scrollWidth,
-				l: node.scrollHeight
+				l: node.scrollWidth,
+				j: node.scrollHeight
 			},
 			bG: {
-				i: node.scrollLeft,
-				j: node.scrollTop,
-				n: node.clientWidth,
-				l: node.clientHeight
+				h: node.scrollLeft,
+				i: node.scrollTop,
+				l: node.clientWidth,
+				j: node.clientHeight
 			}
 		};
 	});
@@ -4326,16 +4326,16 @@ function _Browser_getElement(id)
 		return {
 			by: _Browser_getScene(),
 			bG: {
-				i: x,
-				j: y,
-				n: _Browser_doc.documentElement.clientWidth,
-				l: _Browser_doc.documentElement.clientHeight
+				h: x,
+				i: y,
+				l: _Browser_doc.documentElement.clientWidth,
+				j: _Browser_doc.documentElement.clientHeight
 			},
 			bN: {
-				i: x + rect.left,
-				j: y + rect.top,
-				n: rect.width,
-				l: rect.height
+				h: x + rect.left,
+				i: y + rect.top,
+				l: rect.width,
+				j: rect.height
 			}
 		};
 	});
@@ -6329,7 +6329,7 @@ var $author$project$Main$fetchPdfList = $elm$http$Http$get(
 var $elm$browser$Browser$Dom$getViewport = _Browser_withWindow(_Browser_getViewport);
 var $author$project$Main$init = function (flags) {
 	return _Utils_Tuple2(
-		{f: 0, aX: flags.bF, aq: 900.0, aJ: $elm$core$Dict$empty, af: $elm$core$Maybe$Nothing, P: $elm$core$Maybe$Nothing, ag: $elm$core$Maybe$Nothing, Q: $elm$core$Maybe$Nothing, E: $elm$core$Maybe$Nothing, m: _List_Nil, k: false, J: _List_Nil, aV: '900', ah: 'NewHouse', aK: 'Rome', aL: '0', aM: '12.0', R: false, x: 0, au: 35.0, e: _List_Nil, Z: 15.5, M: $elm$core$Maybe$Nothing, V: $elm$core$Maybe$Nothing, o: $author$project$Main$Idle, av: 10, H: 1, aa: 1, u: 1, ab: 210.0, aO: _List_Nil, r: 0, d: _List_Nil, w: false, ax: 42, ay: '', C: $elm$core$Maybe$Nothing, A: $elm$core$Maybe$Nothing, h: $elm$core$Maybe$Nothing, D: '', ad: false, aP: false, az: true, am: true, aQ: 1.0, aB: 60, c: _List_Nil, aW: false, aG: 1.0},
+		{f: 0, aX: flags.bF, aq: 900.0, aJ: $elm$core$Dict$empty, af: $elm$core$Maybe$Nothing, P: $elm$core$Maybe$Nothing, ag: $elm$core$Maybe$Nothing, Q: $elm$core$Maybe$Nothing, E: $elm$core$Maybe$Nothing, n: _List_Nil, m: false, J: _List_Nil, aV: '900', ah: 'NewHouse', aK: 'Rome', aL: '0', aM: '12.0', R: false, x: 0, au: 35.0, e: _List_Nil, Z: 15.5, M: $elm$core$Maybe$Nothing, V: $elm$core$Maybe$Nothing, o: $author$project$Main$Idle, av: 10, H: 1, aa: 1, u: 1, ab: 210.0, aO: _List_Nil, r: 0, d: _List_Nil, w: false, ax: 42, ay: '', C: $elm$core$Maybe$Nothing, A: $elm$core$Maybe$Nothing, k: $elm$core$Maybe$Nothing, D: '', ad: false, aP: false, az: true, am: true, aQ: 1.0, aB: 60, c: _List_Nil, aW: false, aG: 1.0},
 		$elm$core$Platform$Cmd$batch(
 			_List_fromArray(
 				[
@@ -6640,7 +6640,7 @@ var $author$project$Main$subscriptions = function (model) {
 };
 var $author$project$Main$BrickRef = F5(
 	function (id, x, y, width, height) {
-		return {l: height, a: id, n: width, i: x, j: y};
+		return {j: height, a: id, l: width, h: x, i: y};
 	});
 var $author$project$Main$Compositing = 1;
 var $author$project$Main$FileSelected = function (a) {
@@ -6903,7 +6903,7 @@ var $author$project$Main$LoadResponse = function (canvas) {
 var $elm$json$Json$Decode$bool = _Json_decodeBool;
 var $author$project$Main$Brick = F8(
 	function (id, x, y, width, height, brickType, neighbors, polygon) {
-		return {bK: brickType, l: height, a: id, bT: neighbors, z: polygon, n: width, i: x, j: y};
+		return {bK: brickType, j: height, a: id, bT: neighbors, z: polygon, l: width, h: x, i: y};
 	});
 var $elm$json$Json$Decode$index = _Json_decodeIndex;
 var $elm$core$Tuple$pair = F2(
@@ -6935,7 +6935,7 @@ var $author$project$Main$decodeBrick = A9(
 		$elm$json$Json$Decode$list($author$project$Main$decodePoint)));
 var $author$project$Main$Canvas = F2(
 	function (width, height) {
-		return {l: height, n: width};
+		return {j: height, l: width};
 	});
 var $author$project$Main$decodeCanvas = A3(
 	$elm$json$Json$Decode$map2,
@@ -7115,7 +7115,7 @@ var $author$project$Main$decodePiece = A9(
 	$elm$json$Json$Decode$map8,
 	F8(
 		function (id_, x_, y_, w_, h_, brickIds_, bricks_, polygon_) {
-			return {t: brickIds_, I: bricks_, l: h_, a: id_, F: '', aw: '', z: polygon_, n: w_, i: x_, j: y_};
+			return {t: brickIds_, I: bricks_, j: h_, a: id_, F: '', aw: '', z: polygon_, l: w_, h: x_, i: y_};
 		}),
 	A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$string),
 	A2($elm$json$Json$Decode$field, 'x', $elm$json$Json$Decode$float),
@@ -7206,31 +7206,31 @@ var $author$project$Main$recalcPieceBbox = F3(
 		var newBrickRefs = A2(
 			$elm$core$List$map,
 			function (b) {
-				return A5($author$project$Main$BrickRef, b.a, b.i, b.j, b.n, b.l);
+				return A5($author$project$Main$BrickRef, b.a, b.h, b.i, b.l, b.j);
 			},
 			bricks);
 		var x2s = A2(
 			$elm$core$List$map,
 			function (b) {
-				return b.i + b.n;
+				return b.h + b.l;
 			},
 			bricks);
 		var xs = A2(
 			$elm$core$List$map,
 			function ($) {
-				return $.i;
+				return $.h;
 			},
 			bricks);
 		var y2s = A2(
 			$elm$core$List$map,
 			function (b) {
-				return b.j + b.l;
+				return b.i + b.j;
 			},
 			bricks);
 		var ys = A2(
 			$elm$core$List$map,
 			function ($) {
-				return $.j;
+				return $.i;
 			},
 			bricks);
 		var _v0 = $elm$core$List$minimum(xs);
@@ -7248,7 +7248,7 @@ var $author$project$Main$recalcPieceBbox = F3(
 				var y2 = _v1.c.a;
 				return _Utils_update(
 					piece,
-					{I: newBrickRefs, l: y2 - y, F: '/api/s/' + (sessionKey + ('/piece/' + (piece.a + '.png'))), aw: '/api/s/' + (sessionKey + ('/piece_outline/' + (piece.a + '.png'))), z: _List_Nil, n: x2 - x, i: x, j: y});
+					{I: newBrickRefs, j: y2 - y, F: '/api/s/' + (sessionKey + ('/piece/' + (piece.a + '.png'))), aw: '/api/s/' + (sessionKey + ('/piece_outline/' + (piece.a + '.png'))), z: _List_Nil, l: x2 - x, h: x, i: y});
 			} else {
 				return piece;
 			}
@@ -7518,8 +7518,8 @@ var $author$project$Main$update = F2(
 						model,
 						{
 							f: 0,
-							m: _List_Nil,
-							k: false,
+							n: _List_Nil,
+							m: false,
 							J: _List_Nil,
 							x: 0,
 							o: $author$project$Main$Loading,
@@ -7529,7 +7529,7 @@ var $author$project$Main$update = F2(
 							w: false,
 							ay: $elm$file$File$name(file),
 							A: $elm$core$Maybe$Nothing,
-							h: $elm$core$Maybe$Nothing,
+							k: $elm$core$Maybe$Nothing,
 							c: _List_Nil
 						}),
 					$author$project$Main$uploadFile(file));
@@ -7553,7 +7553,7 @@ var $author$project$Main$update = F2(
 				return _Utils_Tuple2(
 					_Utils_update(
 						model,
-						{f: 0, m: _List_Nil, k: false, J: _List_Nil, x: 0, o: $author$project$Main$Idle, u: 1, r: 0, d: _List_Nil, w: false, ay: '', A: $elm$core$Maybe$Nothing, h: $elm$core$Maybe$Nothing, D: '', c: _List_Nil}),
+						{f: 0, n: _List_Nil, m: false, J: _List_Nil, x: 0, o: $author$project$Main$Idle, u: 1, r: 0, d: _List_Nil, w: false, ay: '', A: $elm$core$Maybe$Nothing, k: $elm$core$Maybe$Nothing, D: '', c: _List_Nil}),
 					$author$project$Main$fetchPdfList);
 			case 4:
 				var path = msg.a;
@@ -7576,7 +7576,7 @@ var $author$project$Main$update = F2(
 				return _Utils_Tuple2(
 					_Utils_update(
 						model,
-						{f: 0, m: _List_Nil, k: false, J: _List_Nil, ah: houseName, x: 0, o: $author$project$Main$Loading, aa: model.aa + 1, u: 1, r: 0, d: _List_Nil, w: false, ay: path, A: $elm$core$Maybe$Nothing, h: $elm$core$Maybe$Nothing, D: key, c: _List_Nil}),
+						{f: 0, n: _List_Nil, m: false, J: _List_Nil, ah: houseName, x: 0, o: $author$project$Main$Loading, aa: model.aa + 1, u: 1, r: 0, d: _List_Nil, w: false, ay: path, A: $elm$core$Maybe$Nothing, k: $elm$core$Maybe$Nothing, D: key, c: _List_Nil}),
 					A3($author$project$Main$loadPdf, key, path, model.aq));
 			case 6:
 				if (!msg.a.$) {
@@ -7603,7 +7603,7 @@ var $author$project$Main$update = F2(
 								d: _List_Nil,
 								C: $elm$core$Maybe$Nothing,
 								A: $elm$core$Maybe$Nothing,
-								h: $elm$core$Maybe$Nothing,
+								k: $elm$core$Maybe$Nothing,
 								D: response.bi,
 								c: _List_Nil
 							}),
@@ -7670,7 +7670,7 @@ var $author$project$Main$update = F2(
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
-							{m: _List_Nil, k: false, J: _List_Nil, x: 1, u: 1, d: _List_Nil, w: false, A: $elm$core$Maybe$Nothing, h: $elm$core$Maybe$Nothing, c: _List_Nil}),
+							{n: _List_Nil, m: false, J: _List_Nil, x: 1, u: 1, d: _List_Nil, w: false, A: $elm$core$Maybe$Nothing, k: $elm$core$Maybe$Nothing, c: _List_Nil}),
 						A4($author$project$Main$mergeBricks, model.D, model.aB, model.av, model.ax));
 				} else {
 					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
@@ -7704,7 +7704,7 @@ var $author$project$Main$update = F2(
 				var recomputeViewport = A2($elm$core$Task$perform, $author$project$Main$GotViewport, $elm$browser$Browser$Dom$getViewport);
 				var baseModel = _Utils_update(
 					model,
-					{f: mode, m: _List_Nil, k: false, J: _List_Nil});
+					{f: mode, n: _List_Nil, m: false, J: _List_Nil});
 				if (mode === 5) {
 					var _v5 = model.c;
 					if (!_v5.b) {
@@ -7722,7 +7722,7 @@ var $author$project$Main$update = F2(
 								baseModel,
 								{
 									u: model.u + 1,
-									h: $elm$core$Maybe$Just(newWave.a),
+									k: $elm$core$Maybe$Just(newWave.a),
 									c: _List_fromArray(
 										[newWave])
 								}),
@@ -7733,7 +7733,7 @@ var $author$project$Main$update = F2(
 							_Utils_update(
 								baseModel,
 								{
-									h: _Utils_eq(baseModel.h, $elm$core$Maybe$Nothing) ? $elm$core$Maybe$Just(first.a) : baseModel.h
+									k: _Utils_eq(baseModel.k, $elm$core$Maybe$Nothing) ? $elm$core$Maybe$Just(first.a) : baseModel.k
 								}),
 							recomputeViewport);
 					}
@@ -7815,7 +7815,7 @@ var $author$project$Main$update = F2(
 					function (w) {
 						return _Utils_eq(
 							$elm$core$Maybe$Just(w.a),
-							model.h) ? _Utils_update(
+							model.k) ? _Utils_update(
 							w,
 							{g: true}) : w;
 					},
@@ -7825,7 +7825,7 @@ var $author$project$Main$update = F2(
 						model,
 						{
 							u: model.u + 1,
-							h: $elm$core$Maybe$Just(newWave.a),
+							k: $elm$core$Maybe$Just(newWave.a),
 							c: _Utils_ap(
 								_List_fromArray(
 									[newWave]),
@@ -7871,11 +7871,11 @@ var $author$project$Main$update = F2(
 				return _Utils_Tuple2(
 					_Utils_update(
 						model,
-						{h: mwid}),
+						{k: mwid}),
 					$elm$core$Platform$Cmd$none);
 			case 23:
 				var pid = msg.a;
-				var _v7 = model.h;
+				var _v7 = model.k;
 				if (_v7.$ === 1) {
 					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 				} else {
@@ -8037,8 +8037,8 @@ var $author$project$Main$update = F2(
 			case 26:
 				var wid = msg.a;
 				var newSelectedWaveId = _Utils_eq(
-					model.h,
-					$elm$core$Maybe$Just(wid)) ? $elm$core$Maybe$Nothing : model.h;
+					model.k,
+					$elm$core$Maybe$Just(wid)) ? $elm$core$Maybe$Nothing : model.k;
 				var filtered = A2(
 					$elm$core$List$filter,
 					function (w) {
@@ -8059,7 +8059,7 @@ var $author$project$Main$update = F2(
 				return _Utils_Tuple2(
 					_Utils_update(
 						model,
-						{h: newSelectedWaveId, c: renumbered}),
+						{k: newSelectedWaveId, c: renumbered}),
 					$elm$core$Platform$Cmd$none);
 			case 27:
 				var _v10 = model.A;
@@ -8081,25 +8081,25 @@ var $author$project$Main$update = F2(
 						return _Utils_Tuple2(
 							_Utils_update(
 								model,
-								{m: piece.t, k: true, J: piece.t}),
+								{n: piece.t, m: true, J: piece.t}),
 							$elm$core$Platform$Cmd$none);
 					}
 				}
 			case 28:
 				var bid = msg.a;
-				var newList = A2($elm$core$List$member, bid, model.m) ? (($elm$core$List$length(model.m) <= 1) ? model.m : A2(
+				var newList = A2($elm$core$List$member, bid, model.n) ? (($elm$core$List$length(model.n) <= 1) ? model.n : A2(
 					$elm$core$List$filter,
 					function (b) {
 						return !_Utils_eq(b, bid);
 					},
-					model.m)) : _Utils_ap(
-					model.m,
+					model.n)) : _Utils_ap(
+					model.n,
 					_List_fromArray(
 						[bid]));
 				return _Utils_Tuple2(
 					_Utils_update(
 						model,
-						{m: newList}),
+						{n: newList}),
 					$elm$core$Platform$Cmd$none);
 			case 29:
 				var _v12 = model.A;
@@ -8107,11 +8107,11 @@ var $author$project$Main$update = F2(
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
-							{m: _List_Nil, k: false, J: _List_Nil}),
+							{n: _List_Nil, m: false, J: _List_Nil}),
 						$elm$core$Platform$Cmd$none);
 				} else {
 					var editedPieceId = _v12.a;
-					var newBrickIds = model.m;
+					var newBrickIds = model.n;
 					var removedBrickIds = A2(
 						$elm$core$Maybe$withDefault,
 						_List_Nil,
@@ -8177,30 +8177,30 @@ var $author$project$Main$update = F2(
 											[bid]),
 										I: _List_fromArray(
 											[
-												A5($author$project$Main$BrickRef, bid, brick.i, brick.j, brick.n, brick.l)
+												A5($author$project$Main$BrickRef, bid, brick.h, brick.i, brick.l, brick.j)
 											]),
-										l: brick.l,
+										j: brick.j,
 										a: newId,
 										F: '/api/s/' + (model.D + ('/piece/' + (newId + '.png'))),
 										aw: '/api/s/' + (model.D + ('/piece_outline/' + (newId + '.png'))),
 										z: _List_Nil,
-										n: brick.n,
-										i: brick.i,
-										j: brick.j
+										l: brick.l,
+										h: brick.h,
+										i: brick.i
 									};
 								} else {
 									return {
 										t: _List_fromArray(
 											[bid]),
 										I: _List_Nil,
-										l: 0,
+										j: 0,
 										a: newId,
 										F: '/api/s/' + (model.D + ('/piece/' + (newId + '.png'))),
 										aw: '/api/s/' + (model.D + ('/piece_outline/' + (newId + '.png'))),
 										z: _List_Nil,
-										n: 0,
-										i: 0,
-										j: 0
+										l: 0,
+										h: 0,
+										i: 0
 									};
 								}
 							}),
@@ -8239,8 +8239,8 @@ var $author$project$Main$update = F2(
 						_Utils_update(
 							model,
 							{
-								m: _List_Nil,
-								k: false,
+								n: _List_Nil,
+								m: false,
 								J: _List_Nil,
 								x: 2,
 								d: allPieces,
@@ -8254,7 +8254,7 @@ var $author$project$Main$update = F2(
 				return _Utils_Tuple2(
 					_Utils_update(
 						model,
-						{m: _List_Nil, k: false, J: _List_Nil}),
+						{n: _List_Nil, m: false, J: _List_Nil}),
 					$elm$core$Platform$Cmd$none);
 			case 31:
 				if (!msg.a.$) {
@@ -8939,14 +8939,14 @@ var $author$project$Main$update = F2(
 			case 12:
 				var viewport = msg.a;
 				var waveTrayOffset = 48;
-				var vh = viewport.bG.l;
+				var vh = viewport.bG.j;
 				var waveTrayHeight = (vh - waveTrayOffset) * 0.12;
 				var bottomPadding = 16;
 				var availableH = (model.f === 5) ? ((vh - waveTrayHeight) - bottomPadding) : (vh - bottomPadding);
 				var _v29 = model.o;
 				if (_v29.$ === 2) {
 					var response = _v29.a;
-					var svgH = response.ar.l + 20;
+					var svgH = response.ar.j + 20;
 					var scale = (availableH * model.Z) / (svgH * 15.5);
 					return _Utils_Tuple2(
 						_Utils_update(
@@ -8963,7 +8963,7 @@ var $author$project$Main$update = F2(
 			case 55:
 				var x = msg.a;
 				var y = msg.b;
-				return (!_Utils_eq(model.h, $elm$core$Maybe$Nothing)) ? _Utils_Tuple2(
+				return (!_Utils_eq(model.k, $elm$core$Maybe$Nothing)) ? _Utils_Tuple2(
 					_Utils_update(
 						model,
 						{
@@ -9003,7 +9003,7 @@ var $author$project$Main$update = F2(
 					if (!isDrag) {
 						return _Utils_Tuple2(cleared, $elm$core$Platform$Cmd$none);
 					} else {
-						var _v32 = model.h;
+						var _v32 = model.k;
 						if (_v32.$ === 1) {
 							return _Utils_Tuple2(cleared, $elm$core$Platform$Cmd$none);
 						} else {
@@ -9020,7 +9020,7 @@ var $author$project$Main$update = F2(
 								A2(
 									$elm$core$List$filter,
 									function (p) {
-										return (_Utils_cmp(p.i, lx1) < 0) && ((_Utils_cmp(p.i + p.n, lx0) > 0) && ((_Utils_cmp(p.j, ly1) < 0) && (_Utils_cmp(p.j + p.l, ly0) > 0)));
+										return (_Utils_cmp(p.h, lx1) < 0) && ((_Utils_cmp(p.h + p.l, lx0) > 0) && ((_Utils_cmp(p.i, ly1) < 0) && (_Utils_cmp(p.i + p.j, ly0) > 0)));
 									},
 									model.d));
 							var updatedWaves = A3(
@@ -9259,7 +9259,7 @@ var $author$project$Main$update = F2(
 						A2(
 							$elm$core$Task$andThen,
 							function (vp) {
-								return A3($elm$browser$Browser$Dom$setViewportOf, 'wave-tray-scroll', vp.bG.i + delta, 0);
+								return A3($elm$browser$Browser$Dom$setViewportOf, 'wave-tray-scroll', vp.bG.h + delta, 0);
 							},
 							$elm$browser$Browser$Dom$getViewportOf('wave-tray-scroll'))));
 			default:
@@ -9454,7 +9454,7 @@ var $author$project$Main$viewBrickEditOverlay = F2(
 			function (_v1) {
 				var x = _v1.a;
 				var y = _v1.b;
-				return _Utils_Tuple2(x + brick.i, y + brick.j);
+				return _Utils_Tuple2(x + brick.h, y + brick.i);
 			},
 			brick.z);
 		var pointsAttr = A2(
@@ -9478,9 +9478,9 @@ var $author$project$Main$viewBrickEditOverlay = F2(
 					_List_fromArray(
 						[
 							$elm$svg$Svg$Attributes$x(
-							$elm$core$String$fromFloat(brick.i)),
+							$elm$core$String$fromFloat(brick.h)),
 							$elm$svg$Svg$Attributes$y(
-							$elm$core$String$fromFloat(brick.j)),
+							$elm$core$String$fromFloat(brick.i)),
 							$elm$svg$Svg$Attributes$width('20'),
 							$elm$svg$Svg$Attributes$height('20'),
 							$elm$svg$Svg$Attributes$fill('red'),
@@ -9492,9 +9492,9 @@ var $author$project$Main$viewBrickEditOverlay = F2(
 					_List_fromArray(
 						[
 							$elm$svg$Svg$Attributes$x(
-							$elm$core$String$fromFloat(brick.i + 2)),
+							$elm$core$String$fromFloat(brick.h + 2)),
 							$elm$svg$Svg$Attributes$y(
-							$elm$core$String$fromFloat(brick.j + 14)),
+							$elm$core$String$fromFloat(brick.i + 14)),
 							$elm$svg$Svg$Attributes$fontSize('12'),
 							$elm$svg$Svg$Attributes$fill('white'),
 							$elm$svg$Svg$Attributes$fontWeight('bold')
@@ -9524,7 +9524,7 @@ var $author$project$Main$viewBrickOverlay = function (brick) {
 		function (_v1) {
 			var x = _v1.a;
 			var y = _v1.b;
-			return _Utils_Tuple2(x + brick.i, y + brick.j);
+			return _Utils_Tuple2(x + brick.h, y + brick.i);
 		},
 		brick.z);
 	var pointsAttr = A2(
@@ -9548,9 +9548,9 @@ var $author$project$Main$viewBrickOverlay = function (brick) {
 				_List_fromArray(
 					[
 						$elm$svg$Svg$Attributes$x(
-						$elm$core$String$fromFloat(brick.i)),
+						$elm$core$String$fromFloat(brick.h)),
 						$elm$svg$Svg$Attributes$y(
-						$elm$core$String$fromFloat(brick.j)),
+						$elm$core$String$fromFloat(brick.i)),
 						$elm$svg$Svg$Attributes$width('20'),
 						$elm$svg$Svg$Attributes$height('20'),
 						$elm$svg$Svg$Attributes$fill('red'),
@@ -9562,9 +9562,9 @@ var $author$project$Main$viewBrickOverlay = function (brick) {
 				_List_fromArray(
 					[
 						$elm$svg$Svg$Attributes$x(
-						$elm$core$String$fromFloat(brick.i + 2)),
+						$elm$core$String$fromFloat(brick.h + 2)),
 						$elm$svg$Svg$Attributes$y(
-						$elm$core$String$fromFloat(brick.j + 14)),
+						$elm$core$String$fromFloat(brick.i + 14)),
 						$elm$svg$Svg$Attributes$fontSize('12'),
 						$elm$svg$Svg$Attributes$fill('white'),
 						$elm$svg$Svg$Attributes$fontWeight('bold')
@@ -9683,13 +9683,13 @@ var $author$project$Main$viewPieceImage = F2(
 			_List_fromArray(
 				[
 					$elm$svg$Svg$Attributes$x(
-					$elm$core$String$fromFloat(piece.i)),
+					$elm$core$String$fromFloat(piece.h)),
 					$elm$svg$Svg$Attributes$y(
-					$elm$core$String$fromFloat(piece.j)),
+					$elm$core$String$fromFloat(piece.i)),
 					$elm$svg$Svg$Attributes$width(
-					$elm$core$String$fromFloat(piece.n)),
-					$elm$svg$Svg$Attributes$height(
 					$elm$core$String$fromFloat(piece.l)),
+					$elm$svg$Svg$Attributes$height(
+					$elm$core$String$fromFloat(piece.j)),
 					A2(
 					$elm$html$Html$Attributes$attribute,
 					'href',
@@ -9702,24 +9702,49 @@ var $elm$core$List$sortBy = _List_sortBy;
 var $elm$svg$Svg$Attributes$textAnchor = _VirtualDom_attribute('text-anchor');
 var $author$project$Main$viewPieceNumberLabel = F2(
 	function (piece, pos) {
-		var largestBrick = $elm$core$List$head(
+		var minDim = A2($elm$core$Basics$min, piece.l, piece.j);
+		var label = $elm$core$String$fromInt(pos);
+		var brickScore = function (b) {
+			var bcy = b.i + (b.j / 2);
+			var db = (piece.i + piece.j) - bcy;
+			var dt = bcy - piece.i;
+			var bcx = b.h + (b.l / 2);
+			var dl = bcx - piece.h;
+			var dr = (piece.h + piece.l) - bcx;
+			return A2(
+				$elm$core$Basics$min,
+				A2($elm$core$Basics$min, dl, dr),
+				A2($elm$core$Basics$min, dt, db));
+		};
+		var bestBrick = $elm$core$List$head(
 			A2(
 				$elm$core$List$sortBy,
 				function (b) {
-					return -(b.n * b.l);
+					return -brickScore(b);
 				},
 				piece.I));
-		var label = $elm$core$String$fromInt(pos);
 		var _v0 = function () {
-			if (!largestBrick.$) {
-				var b = largestBrick.a;
-				return _Utils_Tuple2(b.i + (b.n / 2), b.j + (b.l / 2));
+			if (!bestBrick.$) {
+				var b = bestBrick.a;
+				return _Utils_Tuple2(b.h + (b.l / 2), b.i + (b.j / 2));
 			} else {
-				return _Utils_Tuple2(piece.i + (piece.n / 2), piece.j + (piece.l / 2));
+				return _Utils_Tuple2(piece.h + (piece.l / 2), piece.i + (piece.j / 2));
 			}
 		}();
-		var cx = _v0.a;
-		var cy = _v0.b;
+		var rawCx = _v0.a;
+		var rawCy = _v0.b;
+		var _v2 = (minDim < 20) ? _Utils_Tuple2(14, '14') : ((minDim < 35) ? _Utils_Tuple2(18, '18') : _Utils_Tuple2(25, '25'));
+		var fontSizeNum = _v2.a;
+		var fontSizeStr = _v2.b;
+		var halfFont = (fontSizeNum / 2) + 2;
+		var cx = A2(
+			$elm$core$Basics$max,
+			piece.h + halfFont,
+			A2($elm$core$Basics$min, (piece.h + piece.l) - halfFont, rawCx));
+		var cy = A2(
+			$elm$core$Basics$max,
+			piece.i + halfFont,
+			A2($elm$core$Basics$min, (piece.i + piece.j) - halfFont, rawCy));
 		return A2(
 			$elm$svg$Svg$g,
 			_List_fromArray(
@@ -9739,7 +9764,8 @@ var $author$project$Main$viewPieceNumberLabel = F2(
 							$elm$core$String$fromFloat(cy)),
 							$elm$svg$Svg$Attributes$textAnchor('middle'),
 							$elm$svg$Svg$Attributes$dominantBaseline('central'),
-							$elm$svg$Svg$Attributes$class('piece-num-shadow')
+							$elm$svg$Svg$Attributes$class('piece-num-shadow'),
+							$elm$svg$Svg$Attributes$fontSize(fontSizeStr)
 						]),
 					_List_fromArray(
 						[
@@ -9755,7 +9781,8 @@ var $author$project$Main$viewPieceNumberLabel = F2(
 							$elm$core$String$fromFloat(cy)),
 							$elm$svg$Svg$Attributes$textAnchor('middle'),
 							$elm$svg$Svg$Attributes$dominantBaseline('central'),
-							$elm$svg$Svg$Attributes$class('piece-num-text')
+							$elm$svg$Svg$Attributes$class('piece-num-text'),
+							$elm$svg$Svg$Attributes$fontSize(fontSizeStr)
 						]),
 					_List_fromArray(
 						[
@@ -9786,7 +9813,7 @@ var $author$project$Main$viewPieceOutline = F2(
 						$elm$svg$Svg$Attributes$points(pointsAttr),
 						$elm$svg$Svg$Attributes$fill('transparent'),
 						$elm$svg$Svg$Attributes$stroke(color),
-						$elm$svg$Svg$Attributes$strokeWidth('1'),
+						$elm$svg$Svg$Attributes$strokeWidth('3'),
 						$elm$svg$Svg$Attributes$strokeLinejoin('round'),
 						A2($elm$html$Html$Attributes$attribute, 'vector-effect', 'non-scaling-stroke'),
 						$elm$svg$Svg$Attributes$class('piece-outline')
@@ -10080,7 +10107,7 @@ var $author$project$Main$viewMainSvg = F2(
 				return filtered;
 			}
 		}();
-		var numberLabels = ((!model.k) && (isGenerated && (model.az && ((model.f === 2) || ((model.f === 5) || (model.f === 6)))))) ? A2(
+		var numberLabels = ((!model.m) && (isGenerated && (model.az && ((model.f === 2) || ((model.f === 5) || (model.f === 6)))))) ? A2(
 			$elm$core$List$filterMap,
 			function (piece) {
 				return A2(
@@ -10089,20 +10116,20 @@ var $author$project$Main$viewMainSvg = F2(
 					A2($elm$core$Dict$get, piece.a, piecePositions));
 			},
 			visiblePieces) : _List_Nil;
-		var outlineLayer = ((!model.k) && (isGenerated && (model.am && ((model.f === 2) || ((model.f === 4) || ((model.f === 5) || (model.f === 6))))))) ? A2(
+		var outlineLayer = ((!model.m) && (isGenerated && (model.am && ((model.f === 2) || ((model.f === 4) || ((model.f === 5) || (model.f === 6))))))) ? A2(
 			$elm$core$List$map,
 			$author$project$Main$viewPieceOutline(
 				A2($author$project$Main$waveColor, model.ab, 1.0)),
 			visiblePieces) : _List_Nil;
 		var effectiveScale = model.aQ * model.aG;
 		var effectiveHoverId = (!_Utils_eq(model.E, $elm$core$Maybe$Nothing)) ? model.E : model.M;
-		var pieceOverlays = ((!model.k) && isGenerated) ? A2(
+		var pieceOverlays = ((!model.m) && isGenerated) ? A2(
 			$elm$core$List$map,
-			A8($author$project$Main$viewPieceOverlay, model.f, effectiveHoverId, model.A, model.h, model.c, model.e, model.C, isLassoing),
+			A8($author$project$Main$viewPieceOverlay, model.f, effectiveHoverId, model.A, model.k, model.c, model.e, model.C, isLassoing),
 			visiblePieces) : _List_Nil;
-		var editOverlays = model.k ? A2(
+		var editOverlays = model.m ? A2(
 			$elm$core$List$map,
-			$author$project$Main$viewBrickEditOverlay(model.m),
+			$author$project$Main$viewBrickEditOverlay(model.n),
 			response.I) : _List_Nil;
 		var decodeLassoCoords = function (toMsg) {
 			return A3(
@@ -10111,13 +10138,13 @@ var $author$project$Main$viewMainSvg = F2(
 				A2(
 					$elm$json$Json$Decode$map,
 					function (x) {
-						return (x / effectiveScale) - 60;
+						return (x / effectiveScale) - 200;
 					},
 					A2($elm$json$Json$Decode$field, 'offsetX', $elm$json$Json$Decode$float)),
 				A2(
 					$elm$json$Json$Decode$map,
 					function (y) {
-						return (y / effectiveScale) - 60;
+						return (y / effectiveScale) - 10;
 					},
 					A2($elm$json$Json$Decode$field, 'offsetY', $elm$json$Json$Decode$float)));
 		};
@@ -10136,11 +10163,11 @@ var $author$project$Main$viewMainSvg = F2(
 				'mouseleave',
 				$elm$json$Json$Decode$succeed($author$project$Main$LassoEnd))
 			]) : _List_Nil;
-		var cw = response.ar.n;
+		var cw = response.ar.l;
 		var w = $elm$core$String$fromFloat(cw);
 		var compositeOverlays = showComposite ? A2($elm$core$List$map, $author$project$Main$viewBrickOverlay, response.I) : _List_Nil;
-		var ch = response.ar.l;
-		var gridLayer = ((!model.k) && (model.ad || model.aW)) ? A4(
+		var ch = response.ar.j;
+		var gridLayer = ((!model.m) && (model.ad || model.aW)) ? A4(
 			$author$project$Main$viewGrid,
 			cw,
 			ch,
@@ -10170,7 +10197,7 @@ var $author$project$Main$viewMainSvg = F2(
 				return _List_Nil;
 			}
 		}();
-		var outlinesPngLayer = ((!model.k) && (!isGenerated)) ? _List_fromArray(
+		var outlinesPngLayer = ((!model.m) && (!isGenerated)) ? _List_fromArray(
 			[
 				A2(
 				$elm$svg$Svg$image,
@@ -10185,16 +10212,16 @@ var $author$project$Main$viewMainSvg = F2(
 					]),
 				_List_Nil)
 			]) : _List_Nil;
-		var lassoBackdrop = ((!model.k) && (isGenerated && (!_Utils_eq(model.h, $elm$core$Maybe$Nothing)))) ? _List_fromArray(
+		var lassoBackdrop = ((!model.m) && (isGenerated && (!_Utils_eq(model.k, $elm$core$Maybe$Nothing)))) ? _List_fromArray(
 			[
 				A2(
 				$elm$svg$Svg$rect,
 				_List_fromArray(
 					[
-						$elm$svg$Svg$Attributes$x('-10'),
+						$elm$svg$Svg$Attributes$x('-200'),
 						$elm$svg$Svg$Attributes$y('-10'),
 						$elm$svg$Svg$Attributes$width(
-						$elm$core$String$fromFloat(cw + 20)),
+						$elm$core$String$fromFloat(cw + 400)),
 						$elm$svg$Svg$Attributes$height(
 						$elm$core$String$fromFloat(ch + 20)),
 						$elm$svg$Svg$Attributes$fill('transparent'),
@@ -10206,7 +10233,7 @@ var $author$project$Main$viewMainSvg = F2(
 					]),
 				_List_Nil)
 			]) : _List_Nil;
-		var blueprintLayer = ((!model.k) && isGenerated) ? A2($elm$core$List$map, $author$project$Main$viewPieceBlueprintPath, model.d) : _List_Nil;
+		var blueprintLayer = ((!model.m) && isGenerated) ? A2($elm$core$List$map, $author$project$Main$viewPieceBlueprintPath, model.d) : _List_Nil;
 		var bgImageLayer = function () {
 			var _v0 = response.ba;
 			if (!_v0.$) {
@@ -10230,7 +10257,7 @@ var $author$project$Main$viewMainSvg = F2(
 				return _List_Nil;
 			}
 		}();
-		var baseLayer = model.k ? (response.aZ ? _List_fromArray(
+		var baseLayer = model.m ? (response.aZ ? _List_fromArray(
 			[
 				A2(
 				$elm$svg$Svg$image,
@@ -10266,15 +10293,15 @@ var $author$project$Main$viewMainSvg = F2(
 				_List_fromArray(
 					[
 						$elm$svg$Svg$Attributes$viewBox(
-						'-60 -60 ' + ($elm$core$String$fromFloat(cw + 120) + (' ' + $elm$core$String$fromFloat(ch + 120)))),
+						'-200 -10 ' + ($elm$core$String$fromFloat(cw + 400) + (' ' + $elm$core$String$fromFloat(ch + 20)))),
 						$elm$svg$Svg$Attributes$class('house-svg'),
 						$elm$svg$Svg$Attributes$width(
-						$elm$core$String$fromFloat((cw + 120) * effectiveScale)),
+						$elm$core$String$fromFloat((cw + 400) * effectiveScale)),
 						$elm$svg$Svg$Attributes$height(
-						$elm$core$String$fromFloat((ch + 120) * effectiveScale))
+						$elm$core$String$fromFloat((ch + 20) * effectiveScale))
 					]),
 				lassoSvgAttrs),
-			model.k ? _List_fromArray(
+			model.m ? _List_fromArray(
 				[
 					A2($elm$svg$Svg$g, _List_Nil, baseLayer),
 					A2($elm$svg$Svg$g, _List_Nil, editOverlays)
@@ -10355,7 +10382,7 @@ var $elm$virtual_dom$VirtualDom$style = _VirtualDom_style;
 var $elm$html$Html$Attributes$style = $elm$virtual_dom$VirtualDom$style;
 var $author$project$Main$viewWaveTrayThumb = F8(
 	function (piece, isLocked, scale, hoveredId, generation, showNum, pos, maybeGroupN) {
-		var widthCss = $elm$core$String$fromFloat(piece.n * scale) + 'px';
+		var widthCss = $elm$core$String$fromFloat(piece.l * scale) + 'px';
 		var isHovered = _Utils_eq(
 			hoveredId,
 			$elm$core$Maybe$Just(piece.a));
@@ -10394,7 +10421,7 @@ var $author$project$Main$viewWaveTrayThumb = F8(
 						A2(
 						$elm$html$Html$Attributes$style,
 						'aspect-ratio',
-						$elm$core$String$fromFloat(piece.n / piece.l)),
+						$elm$core$String$fromFloat(piece.l / piece.j)),
 						$elm$html$Html$Events$onMouseEnter(
 						$author$project$Main$SetHoveredPiece(
 							$elm$core$Maybe$Just(piece.a))),
@@ -10445,7 +10472,7 @@ var $author$project$Main$viewWaveTrayThumb = F8(
 	});
 var $author$project$Main$viewWaveTray = F2(
 	function (model, _v0) {
-		var activeWaveId = model.h;
+		var activeWaveId = model.k;
 		var activeWave = $elm$core$List$head(
 			A2(
 				$elm$core$List$filter,
@@ -11776,7 +11803,7 @@ var $author$project$Main$viewStats = function (model) {
 		var _v1 = model.o;
 		if (_v1.$ === 2) {
 			var r = _v1.a;
-			return $elm$core$String$fromFloat(r.ar.n) + ('\u00D7' + $elm$core$String$fromFloat(r.ar.l));
+			return $elm$core$String$fromFloat(r.ar.l) + ('\u00D7' + $elm$core$String$fromFloat(r.ar.j));
 		} else {
 			return '-';
 		}
@@ -12194,7 +12221,7 @@ var $elm$core$List$sort = function (xs) {
 };
 var $author$project$Main$editHasChanges = function (model) {
 	return !_Utils_eq(
-		$elm$core$List$sort(model.m),
+		$elm$core$List$sort(model.n),
 		$elm$core$List$sort(model.J));
 };
 var $author$project$Main$viewEditControls = function (model) {
@@ -12208,7 +12235,7 @@ var $author$project$Main$viewEditControls = function (model) {
 		}
 	}();
 	var changed = $author$project$Main$editHasChanges(model);
-	var brickCount = $elm$core$List$length(model.m);
+	var brickCount = $elm$core$List$length(model.n);
 	return _List_fromArray(
 		[
 			A2(
@@ -12275,7 +12302,7 @@ var $author$project$Main$viewPiecesTools = function (model) {
 				$elm$html$Html$Attributes$class('tools-pane')
 			]),
 		function () {
-			if (model.k) {
+			if (model.m) {
 				return $author$project$Main$viewEditControls(model);
 			} else {
 				var selectedPiece = A2(
@@ -12656,7 +12683,7 @@ var $author$project$Main$viewUnassignedRow = F2(
 									function (p) {
 										return A8(
 											$author$project$Main$viewGroupThumb,
-											model.h,
+											model.k,
 											model.M,
 											$elm$core$List$head(
 												A2(
@@ -13031,7 +13058,7 @@ var $author$project$Main$viewWaveRow = F3(
 		var waveCount = $elm$core$List$length(allWaves);
 		var swatchColor = A2($author$project$Main$waveColor, wave.y, 0.85);
 		var isSelected = _Utils_eq(
-			model.h,
+			model.k,
 			$elm$core$Maybe$Just(wave.a));
 		var countColor = A2($author$project$Main$waveColor, wave.y, 1.0);
 		return A2(

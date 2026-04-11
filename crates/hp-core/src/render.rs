@@ -388,8 +388,8 @@ fn draw_line(img: &mut RgbaImage, x0: i32, y0: i32, x1: i32, y1: i32, color: Rgb
     loop {
         if x >= 0 && y >= 0 && (x as u32) < w && (y as u32) < h {
             img.put_pixel(x as u32, y as u32, color);
-            for ox in -3i32..=3 {
-                for oy in -3i32..=3 {
+            for ox in -6i32..=6 {
+                for oy in -6i32..=6 {
                     if ox == 0 && oy == 0 { continue; }
                     let nx = x + ox;
                     let ny = y + oy;

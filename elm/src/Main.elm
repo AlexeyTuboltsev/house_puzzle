@@ -3138,16 +3138,16 @@ viewMainSvg response model =
         -- Decoder: convert offsetX/offsetY (CSS px relative to SVG element) -> SVG coords
         decodeLassoCoords toMsg =
             D.map2 toMsg
-                (D.map (\x -> x / effectiveScale - 60) (D.field "offsetX" D.float))
-                (D.map (\y -> y / effectiveScale - 60) (D.field "offsetY" D.float))
+                (D.map (\x -> x / effectiveScale - 200) (D.field "offsetX" D.float))
+                (D.map (\y -> y / effectiveScale - 10) (D.field "offsetY" D.float))
 
         -- Transparent background rect to catch lasso mousedown (only in waves mode with wave selected)
         lassoBackdrop =
             if (not model.editMode) && isGenerated && model.selectedWaveId /= Nothing then
                 [ Svg.rect
-                    [ SA.x "-10"
+                    [ SA.x "-200"
                     , SA.y "-10"
-                    , SA.width (String.fromFloat (cw + 20))
+                    , SA.width (String.fromFloat (cw + 400))
                     , SA.height (String.fromFloat (ch + 20))
                     , SA.fill "transparent"
                     , SA.style "cursor: crosshair;"
@@ -3199,10 +3199,10 @@ viewMainSvg response model =
                 []
     in
     Svg.svg
-        ([ SA.viewBox ("-60 -60 " ++ String.fromFloat (cw + 120) ++ " " ++ String.fromFloat (ch + 120))
+        ([ SA.viewBox ("-200 -10 " ++ String.fromFloat (cw + 400) ++ " " ++ String.fromFloat (ch + 20))
          , SA.class "house-svg"
-         , SA.width (String.fromFloat ((cw + 120) * effectiveScale))
-         , SA.height (String.fromFloat ((ch + 120) * effectiveScale))
+         , SA.width (String.fromFloat ((cw + 400) * effectiveScale))
+         , SA.height (String.fromFloat ((ch + 20) * effectiveScale))
          ]
             ++ lassoSvgAttrs
         )
@@ -3378,7 +3378,7 @@ viewPieceOutline color piece =
             [ SA.points pointsAttr
             , SA.fill "transparent"
             , SA.stroke color
-            , SA.strokeWidth "1"
+            , SA.strokeWidth "3"
             , SA.strokeLinejoin "round"
             , attribute "vector-effect" "non-scaling-stroke"
             , SA.class "piece-outline"
@@ -3389,19 +3389,43 @@ viewPieceOutline color piece =
 viewPieceNumberLabel : Piece -> Int -> Svg.Svg Msg
 viewPieceNumberLabel piece pos =
     let
-        -- Use largest brick center (always inside the piece, even for concave shapes)
-        largestBrick =
+        -- Pick brick whose center is most interior to the piece bbox
+        -- (largest min-distance to any piece edge)
+        brickScore b =
+            let
+                bcx = b.x + b.width / 2
+                bcy = b.y + b.height / 2
+                dl = bcx - piece.x
+                dr = (piece.x + piece.width) - bcx
+                dt = bcy - piece.y
+                db = (piece.y + piece.height) - bcy
+            in
+            Basics.min (Basics.min dl dr) (Basics.min dt db)
+
+        bestBrick =
             piece.bricks
-                |> List.sortBy (\b -> -(b.width * b.height))
+                |> List.sortBy (\b -> -(brickScore b))
                 |> List.head
 
-        ( cx, cy ) =
-            case largestBrick of
+        ( rawCx, rawCy ) =
+            case bestBrick of
                 Just b ->
                     ( b.x + b.width / 2, b.y + b.height / 2 )
 
                 Nothing ->
                     ( piece.x + piece.width / 2, piece.y + piece.height / 2 )
+
+        -- Smaller font for small pieces
+        minDim = Basics.min piece.width piece.height
+        ( fontSizeNum, fontSizeStr ) =
+            if minDim < 20 then ( 14, "14" )
+            else if minDim < 35 then ( 18, "18" )
+            else ( 25, "25" )
+
+        -- Clamp to piece bbox — half font size margin so text never overhangs
+        halfFont = fontSizeNum / 2 + 2
+        cx = Basics.max (piece.x + halfFont) (Basics.min (piece.x + piece.width - halfFont) rawCx)
+        cy = Basics.max (piece.y + halfFont) (Basics.min (piece.y + piece.height - halfFont) rawCy)
 
         label =
             String.fromInt pos
@@ -3413,6 +3437,7 @@ viewPieceNumberLabel piece pos =
             , SA.textAnchor "middle"
             , SA.dominantBaseline "central"
             , SA.class "piece-num-shadow"
+            , SA.fontSize fontSizeStr
             ]
             [ Svg.text label ]
         , Svg.text_
@@ -3421,6 +3446,7 @@ viewPieceNumberLabel piece pos =
             , SA.textAnchor "middle"
             , SA.dominantBaseline "central"
             , SA.class "piece-num-text"
+            , SA.fontSize fontSizeStr
             ]
             [ Svg.text label ]
         ]
