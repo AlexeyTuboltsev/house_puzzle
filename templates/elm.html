@@ -14,7 +14,8 @@ body {
     overflow: hidden;
 }
 
-.app { display: flex; height: 100vh; }
+.app { display: flex; flex-direction: column; height: 100vh; }
+.app-main { display: flex; flex: 1; min-height: 0; }
 
 /* ── Left sidebar ───────────────────────────────────────────────────────────── */
 .left-sidebar {
@@ -147,7 +148,7 @@ body {
     display: flex;
     flex: 1;
     min-width: 0;
-    overflow: hidden; /* clips the extended wave tray */
+    overflow: hidden;
     position: relative;
 }
 
@@ -333,28 +334,19 @@ input.zoom-slider {
 .brick-edit-out { cursor: pointer; fill: rgba(0,0,0,0.25); }
 .brick-edit-out:hover { fill: rgba(40,180,80,0.15); }
 
-/* ── Wave tray (canvas col bottom) ─────────────────────────────────────────── */
+/* ── Wave tray (full-width bottom bar) ─────────────────────────────────────── */
 .wave-tray {
-    height: calc((100vh - 48px) * 0.12);
-    min-height: 72px;
+    height: calc((100vh - 48px) * 0.14);
+    min-height: 80px;
     flex-shrink: 0;
     position: relative;
     overflow: visible;
+    width: 100%;
+    background: #e8e8e8;
+    border-top: 2px solid #bbb;
 }
-/* Gray background with fuzzy top edge */
-.wave-tray::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: #808080;
-    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 15%);
-    mask-image: linear-gradient(to bottom, transparent 0%, black 15%);
-    pointer-events: none;
-    z-index: 0;
-}
-.wave-tray.drag-over::before {
-    background: color-mix(in srgb, #808080, rgba(60,120,255,0.35));
-    outline: 1px dashed rgba(60,120,255,0.6);
+.wave-tray.drag-over {
+    background: color-mix(in srgb, #e8e8e8, rgba(60,120,255,0.2));
 }
 .wave-tray-bg {
     position: absolute;
@@ -372,7 +364,7 @@ input.zoom-slider {
     flex-direction: row;
     align-items: flex-end;
     gap: 4px;
-    padding: 0 50% 8px;
+    padding: 0 8px 8px 8px;
     z-index: 2;
     pointer-events: none;
 }
@@ -564,6 +556,28 @@ input.zoom-slider {
     margin-top: 4px;
 }
 .btn-row button { flex: 1; }
+
+/* ── Toggles box (rounded checkbox container above section title) ──────────── */
+.toggles-box {
+    background: #efefef;
+    border-radius: 6px;
+    padding: 6px 8px;
+    margin-bottom: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+.section-title {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #2060b0;
+    margin: 0 0 6px 0;
+    padding: 8px 12px;
+    background: linear-gradient(135deg, #e8f0fb 0%, #f4f7fd 100%);
+    border-bottom: 1px solid #d0d8e8;
+}
 
 /* ── Stats box ─────────────────────────────────────────────────────────────── */
 .stats {
