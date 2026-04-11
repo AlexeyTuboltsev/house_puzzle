@@ -207,6 +207,7 @@ body {
     display: flex;
     flex-direction: column;
     padding-bottom: 16px;
+    padding-right: 44px; /* space for zoom slider so scrollbar is to its left */
 }
 .canvas-spacer {
     flex: 1;
@@ -344,6 +345,7 @@ input.zoom-slider {
     width: 100%;
     background: #e8e8e8;
     border-top: 2px solid #bbb;
+    z-index: 30;
 }
 .wave-tray.drag-over {
     background: color-mix(in srgb, #e8e8e8, rgba(60,120,255,0.2));
@@ -548,8 +550,14 @@ input.zoom-slider {
     gap: 8px;
     font-size: 11px;
     color: #444;
+    margin: 3px 0;
 }
-.checkbox-group input[type="checkbox"] { accent-color: #2060b0; }
+.checkbox-group input[type="checkbox"] {
+    accent-color: #2060b0;
+    width: 15px;
+    height: 15px;
+    flex-shrink: 0;
+}
 .btn-row {
     display: flex;
     gap: 6px;
@@ -561,11 +569,11 @@ input.zoom-slider {
 .toggles-box {
     background: #efefef;
     border-radius: 6px;
-    padding: 6px 8px;
+    padding: 8px 10px;
     margin-bottom: 8px;
     display: flex;
     flex-direction: column;
-    gap: 3px;
+    gap: 2px;
 }
 .section-title {
     font-size: 12px;
@@ -687,13 +695,6 @@ input.zoom-slider {
 .wave-row.selected .wave-row-header { background: linear-gradient(135deg, #e8f0fb 0%, #f4f7fd 100%); outline: 1px solid #b8cfe8; }
 .wave-row.drag-over { outline: 1px dashed rgba(60,120,255,0.6); background: rgba(60,120,255,0.07); }
 /* Wave-colored piece count labels */
-.wave-row.wc-0 .wave-piece-count-label { color: rgb(180,40,40); }
-.wave-row.wc-1 .wave-piece-count-label { color: rgb(30,130,30); }
-.wave-row.wc-2 .wave-piece-count-label { color: rgb(160,100,0); }
-.wave-row.wc-3 .wave-piece-count-label { color: rgb(100,20,170); }
-.wave-row.wc-4 .wave-piece-count-label { color: rgb(180,60,10); }
-.wave-row.wc-5 .wave-piece-count-label { color: rgb(0,130,130); }
-.wave-row.wc-6 .wave-piece-count-label { color: rgb(170,20,110); }
 .drag-insert-marker {
     width: 3px;
     min-width: 3px;
@@ -829,7 +830,7 @@ input.zoom-slider {
 .wave-piece-count-label {
     font-weight: 700;
     font-size: 13px;
-    color: rgba(0,0,0,0.75);
+    color: #000;
 }
 .wave-name-label {
     font-weight: 400;

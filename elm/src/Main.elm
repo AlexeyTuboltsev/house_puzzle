@@ -3750,9 +3750,6 @@ viewWaveRow model allWaves wave =
 
         swatchColor =
             waveColor wave.hue 0.85
-
-        countColor =
-            waveColor wave.hue 1.0
     in
     div
         [ classList
@@ -3804,10 +3801,8 @@ viewWaveRow model allWaves wave =
                 , title "Pick color"
                 ]
                 []
-            , span [ class "wave-piece-count-label", style "color" countColor ]
+            , span [ class "wave-piece-count-label" ]
                 [ text (String.fromInt (List.length wave.pieceIds) ++ " pcs") ]
-            , span [ class "wave-name-label" ]
-                [ text wave.name ]
             , span [ class "wave-row-spacer" ] []
             , span [ class "wave-actions" ]
                 [ button
