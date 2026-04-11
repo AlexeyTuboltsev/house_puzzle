@@ -9,7 +9,7 @@ use std::sync::Mutex;
 use crate::ai_parser::BrickPlacement;
 
 /// Ray casting point-in-polygon test.
-fn point_in_polygon(x: f64, y: f64, polygon: &[[f64; 2]]) -> bool {
+pub fn point_in_polygon(x: f64, y: f64, polygon: &[[f64; 2]]) -> bool {
     let n = polygon.len();
     if n < 3 { return false; }
     let mut inside = false;
@@ -110,6 +110,52 @@ pub fn save_brick_pngs(brick_images: &HashMap<String, RgbaImage>, out_dir: &Path
     });
 }
 
+/// Compute pdf_offset from an already-rendered bricks layer image.
+/// Finds the first opaque pixel and compares to expected position.
+pub fn compute_pdf_offset(
+    bricks_layer: &RgbaImage,
+    expected_min_x: i32,
+    expected_min_y: i32,
+) -> (i32, i32) {
+    let w = bricks_layer.width();
+    let h = bricks_layer.height();
+
+    // Find first opaque column
+    let mut first_col: Option<u32> = None;
+    'outer_x: for x in 0..w {
+        for y in 0..h {
+            if bricks_layer.get_pixel(x, y)[3] > 30 {
+                first_col = Some(x);
+                break 'outer_x;
+            }
+        }
+    }
+
+    // Find first opaque row
+    let mut first_row: Option<u32> = None;
+    'outer_y: for y in 0..h {
+        for x in 0..w {
+            if bricks_layer.get_pixel(x, y)[3] > 30 {
+                first_row = Some(y);
+                break 'outer_y;
+            }
+        }
+    }
+
+    match (first_col, first_row) {
+        (Some(col), Some(row)) => {
+            let dx = expected_min_x - col as i32;
+            let dy = expected_min_y - row as i32;
+            if dx.abs() > 1 || dy.abs() > 1 {
+                (dx, dy)
+            } else {
+                (0, 0)
+            }
+        }
+        _ => (0, 0),
+    }
+}
+
 /// Save the OCG bricks layer render directly as the composite.
 pub fn save_composite(bricks_layer_img: &RgbaImage, out_path: &Path) {
     bricks_layer_img.save(out_path).ok();
@@ -200,6 +246,32 @@ pub fn render_piece_pngs(
                 );
             }
         }
+
+        piece_img.save(extract_dir.join(format!("piece_{}.png", piece.id))).ok();
+        render_piece_outline(&piece_img, &extract_dir.join(format!("piece_outline_{}.png", piece.id)));
+    });
+}
+
+/// Render piece PNGs directly from the in-memory OCG bricks layer image.
+/// Each piece composites its bricks by overlaying the full bricks_layer_img
+/// (which already has all bricks rendered at canvas positions).
+/// The piece image is piece-sized, offset so piece.x/y maps to (0,0).
+pub fn render_piece_pngs_from_layer(
+    pieces: &[crate::types::PuzzlePiece],
+    bricks_layer_img: &RgbaImage,
+    extract_dir: &Path,
+) {
+    std::fs::create_dir_all(extract_dir).ok();
+    pieces.par_iter().for_each(|piece| {
+        let pw = piece.width.max(1) as u32;
+        let ph = piece.height.max(1) as u32;
+        let mut piece_img = RgbaImage::new(pw, ph);
+
+        // Copy the region of bricks_layer_img that corresponds to this piece
+        image::imageops::overlay(
+            &mut piece_img, bricks_layer_img,
+            -(piece.x as i64), -(piece.y as i64),
+        );
 
         piece_img.save(extract_dir.join(format!("piece_{}.png", piece.id))).ok();
         render_piece_outline(&piece_img, &extract_dir.join(format!("piece_outline_{}.png", piece.id)));

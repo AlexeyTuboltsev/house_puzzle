@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 hp-core = { path = "../hp-core" }
-axum = "0.8"
+axum = { version = "0.8", features = ["multipart"] }
 tokio = { version = "1", features = ["full"] }
 tower-http = { version = "0.6", features = ["cors", "fs"] }
 serde = { version = "1", features = ["derive"] }
@@ -14,3 +14,4 @@ rust-embed = "8"
 mime_guess = "2"
 uuid = { version = "1", features = ["v4"] }
 open = "5"
+image = "0.24"
