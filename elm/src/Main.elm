@@ -2069,10 +2069,10 @@ viewTitleBar model =
                 ]
                 [ text
                     (if isGenerating then
-                        "Generating\u{2026}"
+                        "Importing\u{2026}"
 
                      else
-                        "Generate"
+                        "Import"
                     )
                 ]
             , span [ class "mode-sep" ] [ text "\u{2193}" ]
@@ -2375,7 +2375,7 @@ viewGenerateTools model response =
     div [ class "tools-pane" ]
         [ viewTogglesBox [ viewCheckboxLights model, viewCheckboxGrid model ]
         , viewStatusBadge model
-        , viewSectionTitle "Generate"
+        , viewSectionTitle "Import"
         , div [ class "param-group" ]
             [ label [] [ text "Target Pieces ", span [ class "value" ] [ text (String.fromInt model.targetCount) ] ]
             , input [ type_ "range", Html.Attributes.min "5", Html.Attributes.max "181", value (String.fromInt model.targetCount), onInput SetTargetCount ] []

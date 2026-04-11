@@ -11433,7 +11433,7 @@ var $author$project$Main$viewGenerateTools = F2(
 							$author$project$Main$viewCheckboxGrid(model)
 						])),
 					$author$project$Main$viewStatusBadge(model),
-					$author$project$Main$viewSectionTitle('Generate'),
+					$author$project$Main$viewSectionTitle('Import'),
 					A2(
 					$elm$html$Html$div,
 					_List_fromArray(
@@ -13876,7 +13876,7 @@ var $author$project$Main$viewTitleBar = function (model) {
 						_List_fromArray(
 							[
 								$elm$html$Html$text(
-								isGenerating ? 'Generating\u2026' : 'Generate')
+								isGenerating ? 'Importing\u2026' : 'Import')
 							])),
 						A2(
 						$elm$html$Html$span,
