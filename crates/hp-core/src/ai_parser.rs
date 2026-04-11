@@ -654,16 +654,62 @@ pub fn parse_ai(
             ])
         };
 
-        // Detect multi-object layers (multiple %_ moveto commands)
-        let block_data = &data[p.child.begin..p.child.end];
-        let moveto_count = block_data.split(|&b| b == b'\r')
-            .filter(|line| {
-                let s = bstr(line).trim();
-                s.starts_with("%_") && s.ends_with(" m")
-            })
-            .count();
-        if moveto_count > 1 {
-            warnings.push(format!("MULTI_OBJECT: layer '{}' contains {} objects — split in Illustrator", p.child.name, moveto_count));
+        // Detect multi-object layers using actual parsed vector polygons.
+        // If the layer produces multiple disjoint polygons, it has separate bricks.
+        {
+            let block_data_ref = &data[p.child.begin..p.child.end];
+            let lines: Vec<String> = block_data_ref.split(|&b| b == b'\r')
+                .map(|l| bstr(l).trim().to_string())
+                .collect();
+            let mut parsed_lines: Vec<Vec<String>> = Vec::new();
+            for line in &lines {
+                if !line.starts_with("%_") { continue; }
+                let parts: Vec<String> = line[2..].split_whitespace().map(|s| s.to_string()).collect();
+                if !parts.is_empty() && PATH_OPS.contains(&parts.last().unwrap().as_str()) {
+                    parsed_lines.push(parts);
+                }
+            }
+            let refs: Vec<Vec<&str>> = parsed_lines.iter()
+                .map(|parts| parts.iter().map(|s| s.as_str()).collect())
+                .collect();
+            let all_polys = parse_path_lines(&refs, offset_x, y_base);
+            // Only consider polygons with meaningful area
+            let significant: Vec<_> = all_polys.iter()
+                .filter(|poly| poly.len() >= 3 && polygon_area(poly).abs() > 10.0)
+                .collect();
+            if significant.len() > 1 {
+                // Compute bboxes for each polygon
+                let bboxes: Vec<_> = significant.iter().map(|poly| {
+                    let xs: Vec<f64> = poly.iter().map(|p| p[0]).collect();
+                    let ys: Vec<f64> = poly.iter().map(|p| p[1]).collect();
+                    (xs.iter().cloned().fold(f64::INFINITY, f64::min),
+                     ys.iter().cloned().fold(f64::INFINITY, f64::min),
+                     xs.iter().cloned().fold(f64::NEG_INFINITY, f64::max),
+                     ys.iter().cloned().fold(f64::NEG_INFINITY, f64::max))
+                }).collect();
+                // Find the largest polygon bbox
+                let largest_idx = bboxes.iter().enumerate()
+                    .max_by(|(_, a), (_, b)| {
+                        let area_a = (a.2 - a.0) * (a.3 - a.1);
+                        let area_b = (b.2 - b.0) * (b.3 - b.1);
+                        area_a.partial_cmp(&area_b).unwrap_or(std::cmp::Ordering::Equal)
+                    })
+                    .map(|(i, _)| i)
+                    .unwrap_or(0);
+                let (lx0, ly0, lx1, ly1) = bboxes[largest_idx];
+                // Check if any other polygon falls OUTSIDE the largest bbox
+                // If yes, they're truly separate bricks (not decorative sub-paths)
+                let has_outside = bboxes.iter().enumerate().any(|(i, &(bx0, by0, bx1, by1))| {
+                    if i == largest_idx { return false; }
+                    // "Outside" = bbox center is outside the largest bbox
+                    let cx = (bx0 + bx1) / 2.0;
+                    let cy = (by0 + by1) / 2.0;
+                    cx < lx0 || cx > lx1 || cy < ly0 || cy > ly1
+                });
+                if has_outside {
+                    warnings.push(format!("MULTI_OBJECT: layer '{}' has {} separate outlines", p.child.name, significant.len()));
+                }
+            }
         }
 
         // Use polygon bounding box as the brick's true extent.

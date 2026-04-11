@@ -750,18 +750,37 @@ input.zoom-slider {
     background: #e8e8e8;
     user-select: none;
 }
+.color-picker-row {
+    display: flex;
+    gap: 0;
+    align-items: stretch;
+}
+.color-picker-bw {
+    display: flex;
+    flex-direction: row;
+    gap: 0;
+}
+.bw-swatch {
+    width: 20px;
+    cursor: pointer;
+    border: 1px solid rgba(0,0,0,0.25);
+    border-radius: 0;
+}
+.bw-swatch:hover { border-color: rgba(0,0,0,0.6); }
+.bw-black { background: #000; border-radius: 3px 0 0 3px; }
+.bw-white { background: #fff; }
 .color-picker-inner {
     position: relative;
     width: 240px;
     height: 96px;
-    border-radius: 3px;
+    border-radius: 0 3px 3px 0;
     /* Checkerboard as the base — visible through transparent regions */
     background: repeating-conic-gradient(#bbb 0% 25%, #fff 0% 50%) 0 0 / 10px 10px;
 }
 .color-picker-gradient {
     position: absolute;
     inset: 0;
-    border-radius: 3px;
+    border-radius: 0 3px 3px 0;
     background: linear-gradient(to right,
         hsl(0,100%,50%), hsl(30,100%,50%), hsl(60,100%,50%), hsl(90,100%,50%),
         hsl(120,100%,50%), hsl(150,100%,50%), hsl(180,100%,50%), hsl(210,100%,50%),

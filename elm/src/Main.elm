@@ -289,6 +289,7 @@ type Msg
     | ToggleGrid Bool
     | ToggleNumbers Bool
     | ToggleLights Bool
+    | SetSpecialHue ColorPickTarget Float
     | ToggleGroupOverlay Bool
     | ToggleWaveOverlay Bool
     | AddWave
@@ -1536,8 +1537,12 @@ update msg model =
 
                 Just cp ->
                     let
+                        -- B/W zone: first 40px (2×20, no gaps)
+                        localX = mx - cp.panelX - 10
                         newHue =
-                            clamp 0 360 ((mx - cp.panelX - 10) / 240 * 360)
+                            if localX < 20 then -2  -- black swatch
+                            else if localX < 40 then -1  -- white swatch
+                            else clamp 0 360 ((localX - 40) / 240 * 360)
 
                         newOpacity =
                             if cp.hueOnly then
@@ -1585,6 +1590,30 @@ update msg model =
 
                         OutlineColorTarget ->
                             ( { model | outlineHue = newHue }, Cmd.none )
+
+        SetSpecialHue target hue ->
+            let
+                updated =
+                    case target of
+                        GridColorTarget ->
+                            { model | gridHue = hue, colorPicking = Nothing }
+
+                        OutlineColorTarget ->
+                            { model | outlineHue = hue, colorPicking = Nothing }
+
+                        WaveColorTarget wid ->
+                            { model
+                                | waves = List.map (\w -> if w.id == wid then { w | hue = hue } else w) model.waves
+                                , colorPicking = Nothing
+                            }
+
+                        GroupColorTarget gid ->
+                            { model
+                                | groups = List.map (\g -> if g.id == gid then { g | hue = hue } else g) model.groups
+                                , colorPicking = Nothing
+                            }
+            in
+            ( updated, Cmd.none )
 
         EndColorPick ->
             ( { model | colorPicking = Nothing }, Cmd.none )
@@ -1908,8 +1937,14 @@ viewColorPickerPanel model =
                 , style "left" (String.fromFloat cp.panelX ++ "px")
                 , style "top" (String.fromFloat cp.panelY ++ "px")
                 ]
-                [ div [ class (if cp.hueOnly then "color-picker-inner hue-only" else "color-picker-inner") ]
-                    [ div [ class "color-picker-gradient" ] [] ]
+                [ div [ class "color-picker-row" ]
+                    [ div [ class "color-picker-bw" ]
+                        [ div [ class "bw-swatch bw-black", title "Black" ] []
+                        , div [ class "bw-swatch bw-white", title "White" ] []
+                        ]
+                    , div [ class (if cp.hueOnly then "color-picker-inner hue-only" else "color-picker-inner") ]
+                        [ div [ class "color-picker-gradient" ] [] ]
+                    ]
                 ]
 
 
@@ -2402,21 +2437,6 @@ viewGenerateTools model response =
                     "Generate Puzzle"
                 )
             ]
-        , if List.isEmpty response.warnings then
-            text ""
-          else
-            div
-                [ style "margin-top" "10px"
-                , style "padding" "8px"
-                , style "background" "#fff3cd"
-                , style "border" "1px solid #ffc107"
-                , style "border-radius" "4px"
-                , style "font-size" "11px"
-                , style "color" "#856404"
-                , style "max-height" "120px"
-                , style "overflow-y" "auto"
-                ]
-                (List.map (\w -> div [ style "margin-bottom" "2px" ] [ text w ]) response.warnings)
         ]
 
 
@@ -3515,10 +3535,17 @@ hslToRgb hue =
 
 waveColor : Float -> Float -> String
 waveColor hue opacity =
-    let
-        ( r, g, b ) = hslToRgb hue
-    in
-    "rgba(" ++ String.fromInt r ++ "," ++ String.fromInt g ++ "," ++ String.fromInt b ++ "," ++ String.fromFloat opacity ++ ")"
+    if hue < -1.5 then
+        -- Special: black
+        "rgba(0,0,0," ++ String.fromFloat opacity ++ ")"
+    else if hue < -0.5 then
+        -- Special: white
+        "rgba(255,255,255," ++ String.fromFloat opacity ++ ")"
+    else
+        let
+            ( r, g, b ) = hslToRgb hue
+        in
+        "rgba(" ++ String.fromInt r ++ "," ++ String.fromInt g ++ "," ++ String.fromInt b ++ "," ++ String.fromFloat opacity ++ ")"
 
 
 viewPieceOverlay : AppMode -> Maybe String -> Maybe String -> Maybe Int -> List Wave -> List Group -> Maybe Int -> Bool -> Bool -> Piece -> Svg.Svg Msg
@@ -4025,12 +4052,11 @@ viewImportStats response =
         covered =
             List.filter (String.startsWith "COVERED:") response.warnings |> List.length
 
-        -- Only show duplicate warnings (more than one brick on a layer)
-        duplicates =
-            List.filter (String.startsWith "DUPLICATE:") response.warnings
-
+        -- Show MULTI_OBJECT warnings (layers with separate bricks)
         realWarnings =
-            duplicates
+            response.warnings
+                |> List.filter (String.startsWith "MULTI_OBJECT:")
+                |> List.map (String.replace "MULTI_OBJECT: " "")
     in
     div [ class "stats" ]
         ([ div [ class "row" ] [ text "Bricks imported", span [ class "val" ] [ text (String.fromInt totalBricks) ] ]
