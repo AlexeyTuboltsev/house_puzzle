@@ -134,6 +134,7 @@ async fn api_load_pdf(
 }
 
 async fn do_load(sessions: SessionStore, key: String, req: LoadRequest) -> Response {
+    let t_total = std::time::Instant::now();
     let file_path = PathBuf::from(&req.path);
     if !file_path.exists() {
         return (StatusCode::NOT_FOUND, Json(json!({"error": format!("File not found: {}", req.path)}))).into_response();
@@ -144,9 +145,11 @@ async fn do_load(sessions: SessionStore, key: String, req: LoadRequest) -> Respo
     let deterministic = req.deterministic_ids;
     let path_clone = file_path.clone();
 
+    let t0 = std::time::Instant::now();
     let result = tokio::task::spawn_blocking(move || {
         ai_parser::parse_ai(&path_clone, canvas_height)
     }).await;
+    eprintln!("[profile] parse_ai: {:?}", t0.elapsed());
 
     let (placements, metadata, ai_data) = match result {
         Ok(Ok(v)) => v,
@@ -185,8 +188,10 @@ async fn do_load(sessions: SessionStore, key: String, req: LoadRequest) -> Respo
     }
 
     // Compute adjacency and areas
+    let t0 = std::time::Instant::now();
     let adj = puzzle::build_adjacency_vector(&bricks, &brick_polygons, 15.0, 5.0, 2.0);
     let brick_areas = puzzle::compute_polygon_areas(&bricks, &brick_polygons);
+    eprintln!("[profile] adjacency+areas: {:?}", t0.elapsed());
 
     // Build extract dir and render PNGs
     let extract_dir = std::env::temp_dir().join("house_puzzle_extract").join(&key);
@@ -202,25 +207,23 @@ async fn do_load(sessions: SessionStore, key: String, req: LoadRequest) -> Respo
     let ch = metadata.canvas_height as u32;
     let raw = &ai_data.raw;
 
-    // Render bricks layer via MuPDF OCG (needed for vector brick fallback)
-    let vec_count = render_bricks.iter().filter(|(_, bp)| bp.layer_type == "vector_brick").count();
-    eprintln!("[load] Vector bricks: {vec_count}");
-    let bricks_layer_img = if vec_count > 0 {
-        render::render_ocg_layer_image(
-            &file_path, "bricks", metadata.render_dpi, metadata.clip_rect,
-            cw, ch, metadata.pdf_offset_px,
-        )
-    } else {
-        None
+    // Render bricks layer via MuPDF OCG — single render for ALL bricks
+    let t0 = std::time::Instant::now();
+    let bricks_layer_img = match render::render_ocg_layer_image(
+        &file_path, "bricks", metadata.render_dpi, metadata.clip_rect,
+        cw, ch, metadata.pdf_offset_px,
+    ) {
+        Some(img) => img,
+        None => {
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "Failed to render bricks layer"}))).into_response();
+        }
     };
-    eprintln!("[load] Bricks layer image: {:?}", bricks_layer_img.as_ref().map(|i| format!("{}x{}", i.width(), i.height())));
-    if let Some(ref img) = bricks_layer_img {
-        img.save(extract_dir.join("_debug_bricks_layer.png")).ok();
-        eprintln!("[load] Saved debug bricks layer to extract dir");
-    }
+    eprintln!("[profile] OCG bricks layer: {:?} ({}x{})", t0.elapsed(), bricks_layer_img.width(), bricks_layer_img.height());
 
-    // Render brick images IN MEMORY (no disk I/O yet)
-    let brick_images = render::render_brick_images(raw, &render_bricks, cw, ch, bricks_layer_img.as_ref());
+    // Crop OCG render per brick — unified pipeline for all brick types
+    let t0 = std::time::Instant::now();
+    let brick_images = render::render_brick_images(&render_bricks, cw, ch, &bricks_layer_img);
+    eprintln!("[profile] render_brick_images: {:?}", t0.elapsed());
 
     // Filter covered bricks using in-memory images
     // Collect warnings
@@ -232,7 +235,9 @@ async fn do_load(sessions: SessionStore, key: String, req: LoadRequest) -> Respo
         .filter(|(_, bp)| bp.layer_type == "vector_brick")
         .map(|(id, _)| id.clone())
         .collect();
+    let t0 = std::time::Instant::now();
     let covered_ids = render::find_covered_bricks(&bricks, &brick_images, &protected);
+    eprintln!("[profile] covered_bricks: {:?}", t0.elapsed());
     if !covered_ids.is_empty() {
         eprintln!("[load] Removing {} covered bricks", covered_ids.len());
         // Add warnings for removed bricks
@@ -251,18 +256,25 @@ async fn do_load(sessions: SessionStore, key: String, req: LoadRequest) -> Respo
     let adj = puzzle::build_adjacency_vector(&bricks, &brick_polygons, 15.0, 5.0, 2.0);
     let brick_areas = puzzle::compute_polygon_areas(&bricks, &brick_polygons);
 
-    // Build composite from in-memory images (before saving to disk)
+    // Save composite — the OCG bricks layer IS the composite
+    let t0 = std::time::Instant::now();
     let comp_path = extract_dir.join("composite.png");
-    render::render_composite_from_images(&brick_images, &render_bricks, cw, ch, &comp_path);
+    render::save_composite(&bricks_layer_img, &comp_path);
+    eprintln!("[profile] composite: {:?}", t0.elapsed());
 
     // Save brick PNGs to disk (for HTTP serving + piece compositing)
+    let t0 = std::time::Instant::now();
     render::save_brick_pngs(&brick_images, &extract_dir);
     drop(brick_images);
+    eprintln!("[profile] save_brick_pngs: {:?}", t0.elapsed());
 
     // Render brick outlines (after filtering)
+    let t0 = std::time::Instant::now();
     render::render_outlines_png(&render_bricks, cw, ch, &extract_dir.join("outlines.png"));
+    eprintln!("[profile] outlines: {:?}", t0.elapsed());
 
     // Render OCG layers (lights, background)
+    let t0 = std::time::Instant::now();
     let clip = metadata.clip_rect;
     let pdf_offset = metadata.pdf_offset_px;
     let has_lights = render::render_ocg_layer(
@@ -273,6 +285,7 @@ async fn do_load(sessions: SessionStore, key: String, req: LoadRequest) -> Respo
         &file_path, "background", &extract_dir.join("background.png"),
         metadata.render_dpi, clip, cw, ch, pdf_offset,
     );
+    eprintln!("[profile] OCG lights+bg: {:?}", t0.elapsed());
 
     // Build brick response data
     let brick_data: Vec<serde_json::Value> = bricks.iter().map(|b| {
@@ -335,6 +348,7 @@ async fn do_load(sessions: SessionStore, key: String, req: LoadRequest) -> Respo
         "blueprint_bg_url": if has_background { Some(format!("{pfx}/background.png")) } else { None },
     });
 
+    eprintln!("[profile] TOTAL load: {:?}", t_total.elapsed());
     Json(response).into_response()
 }
 

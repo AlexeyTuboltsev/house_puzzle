@@ -481,11 +481,15 @@ pub fn parse_ai(
     canvas_height: i32,
 ) -> Result<(Vec<BrickPlacement>, ParsedAiMetadata, AiPrivateData), String> {
     // Step 1: decompress AI private data
+    let t0 = std::time::Instant::now();
     let ai_data = decompress_ai_data(ai_path)?;
+    eprintln!("[parse_ai] decompress: {:?}", t0.elapsed());
     let data = &ai_data.raw;
 
     // Step 2: parse layer tree
+    let t0 = std::time::Instant::now();
     let roots = parse_layer_tree(data);
+    eprintln!("[parse_ai] layer_tree: {:?}", t0.elapsed());
     let bg = roots.iter().find(|r| r.name == "background")
         .ok_or("No 'background' layer found")?;
     let bricks_node = roots.iter().find(|r| r.name == "bricks")
@@ -502,10 +506,12 @@ pub fn parse_ai(
     eprintln!("[parse] artbox via FFI: {:?}", artbox);
     eprintln!("[parse] page.bounds(): {:?}", page.bounds());
 
+    let t0 = std::time::Instant::now();
     let (offset_x, y_base) = compute_ai_transform(bg, data, &page, artbox);
-    eprintln!("[parse] offset_x={:.4}, y_base={:.4}", offset_x, y_base);
+    eprintln!("[parse_ai] transform: {:?}", t0.elapsed());
 
     // Step 4: collect brick placements (PyMuPDF y-down coords)
+    let t0 = std::time::Instant::now();
     struct RawPlacement<'a> {
         child: &'a LayerBlock,
         pymu_bbox: (f64, f64, f64, f64), // x0, y_top, x1, y_bottom
@@ -555,6 +561,8 @@ pub fn parse_ai(
         return Err("No brick rasters found in 'bricks' layer".to_string());
     }
 
+    eprintln!("[parse_ai] placements: {:?} ({} bricks)", t0.elapsed(), placements.len());
+
     // Compute clip rect and scale
     let all_x0: Vec<f64> = placements.iter().map(|p| p.pymu_bbox.0).collect();
     let all_y0: Vec<f64> = placements.iter().map(|p| p.pymu_bbox.1).collect();
@@ -592,6 +600,7 @@ pub fn parse_ai(
     }
 
     // Compute PDF offset: render bricks OCG layer, measure actual vs expected position
+    let t0 = std::time::Instant::now();
     let mut pdf_offset_px = (0i32, 0i32);
     if let Some(path_str) = ai_path.to_str() {
         if let Some((rgba, pw, ph)) = mupdf_ffi::render_page_with_ocg(path_str, "bricks", dpi) {
@@ -640,7 +649,10 @@ pub fn parse_ai(
         }
     }
 
+    eprintln!("[parse_ai] pdf_offset_probe: {:?}", t0.elapsed());
+
     // Build BrickPlacements — deduplicate by bbox, extract polygons
+    let t0 = std::time::Instant::now();
     let mut seen_bbox = std::collections::HashSet::new();
     let mut results: Vec<BrickPlacement> = Vec::new();
     let mut skipped_bricks: Vec<String> = Vec::new();
@@ -689,18 +701,52 @@ pub fn parse_ai(
             warnings.push(format!("MULTI_OBJECT: layer '{}' contains {} objects — split in Illustrator", p.child.name, moveto_count));
         }
 
+        // Use polygon bounding box as the brick's true extent.
+        // The initial px/py/pw/ph came from raster matrix or plain path bbox,
+        // but the polygon is the authoritative shape for ALL bricks.
+        let (fx, fy, fw, fh) = if let Some(ref poly) = polygon {
+            if poly.len() >= 3 {
+                let min_x = poly.iter().map(|p| p[0]).fold(f64::INFINITY, f64::min);
+                let min_y = poly.iter().map(|p| p[1]).fold(f64::INFINITY, f64::min);
+                let max_x = poly.iter().map(|p| p[0]).fold(f64::NEG_INFINITY, f64::max);
+                let max_y = poly.iter().map(|p| p[1]).fold(f64::NEG_INFINITY, f64::max);
+                let new_x = px + min_x.floor() as i32;
+                let new_y = py + min_y.floor() as i32;
+                let new_w = (max_x - min_x).ceil() as i32;
+                let new_h = (max_y - min_y).ceil() as i32;
+                (new_x, new_y, new_w.max(1), new_h.max(1))
+            } else {
+                (px, py, pw, ph)
+            }
+        } else {
+            (px, py, pw, ph)
+        };
+
+        // Shift polygon to new origin
+        let polygon = if fx != px || fy != py {
+            polygon.map(|poly| {
+                let sx = (px - fx) as f64;
+                let sy = (py - fy) as f64;
+                poly.iter().map(|p| [p[0] + sx, p[1] + sy]).collect()
+            })
+        } else {
+            polygon
+        };
+
         results.push(BrickPlacement {
             name: p.child.name.clone(),
             layer_type: p.layer_type.clone(),
-            x: px,
-            y: py,
-            width: pw,
-            height: ph,
+            x: fx,
+            y: fy,
+            width: fw,
+            height: fh,
             polygon,
             block_begin: p.child.begin,
             block_end: p.child.end,
         });
     }
+
+    eprintln!("[parse_ai] build_placements+polygons: {:?} ({} results)", t0.elapsed(), results.len());
 
     // Filter out bricks without polygons
     results.retain(|b| b.polygon.is_some());

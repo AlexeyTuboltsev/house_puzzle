@@ -953,6 +953,40 @@ window.addEventListener('error', function(e) {
 <script src="/static/elm.js?v={{ elm_version }}" onerror="document.getElementById('not-built').style.display='block'"></script>
 <script>
 if (window.Elm && window.Elm.Main) {
+  // Performance timing for API calls + render detection
+  (function() {
+    let loadResponseTime = null;
+    const observer = new MutationObserver(function() {
+      if (loadResponseTime && document.querySelector('.house-svg')) {
+        console.log('[FE] response\u2192render: ' + (performance.now() - loadResponseTime).toFixed(0) + 'ms');
+        loadResponseTime = null;
+        observer.disconnect();
+      }
+    });
+    const origOpen = XMLHttpRequest.prototype.open;
+    const origSend = XMLHttpRequest.prototype.send;
+    XMLHttpRequest.prototype.open = function(method, url) {
+      this._perfUrl = url;
+      return origOpen.apply(this, arguments);
+    };
+    XMLHttpRequest.prototype.send = function() {
+      if (this._perfUrl && this._perfUrl.includes('/api/')) {
+        this._perfStart = performance.now();
+        const url = this._perfUrl;
+        this.addEventListener('loadend', function() {
+          const elapsed = (performance.now() - this._perfStart).toFixed(0);
+          const size = this.response ? this.response.length || 0 : 0;
+          console.log('[FE] ' + url + ': ' + elapsed + 'ms (' + (size/1024).toFixed(0) + 'KB)');
+          if (url.includes('load')) {
+            loadResponseTime = performance.now();
+            observer.observe(document.body, { childList: true, subtree: true });
+          }
+        });
+      }
+      return origSend.apply(this, arguments);
+    };
+  })();
+
   const app = window.Elm.Main.init({ node: document.getElementById('elm-root') });
 
   app.ports.setTitle.subscribe(function(title) { document.title = title; });
