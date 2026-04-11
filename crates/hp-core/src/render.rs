@@ -252,12 +252,33 @@ pub fn render_piece_pngs(
     });
 }
 
+/// Expand a polygon by `amount` pixels using geo-clipper offset.
+/// Returns expanded points, or the original if offset fails.
+fn expand_polygon(pts: &[[f64; 2]], amount: f64) -> Vec<[f64; 2]> {
+    use geo::{Coord, LineString, Polygon};
+    use geo::algorithm::area::Area;
+    use geo_clipper::Clipper;
+
+    let mut coords: Vec<Coord<f64>> = pts.iter().map(|p| Coord { x: p[0], y: p[1] }).collect();
+    if coords.first() != coords.last() {
+        coords.push(coords[0]);
+    }
+    let poly = Polygon::new(LineString::new(coords), vec![]);
+    let expanded = poly.offset(amount, geo_clipper::JoinType::Square, geo_clipper::EndType::ClosedPolygon, 1000.0);
+    // Take the largest polygon from result
+    expanded.0.iter()
+        .max_by(|a, b| a.unsigned_area().partial_cmp(&b.unsigned_area()).unwrap_or(std::cmp::Ordering::Equal))
+        .map(|p| p.exterior().0.iter().map(|c| [c.x, c.y]).collect())
+        .unwrap_or_else(|| pts.to_vec())
+}
+
 /// Render piece PNGs from the in-memory OCG bricks layer image.
-/// For each piece, composites only pixels inside each brick's polygon mask.
+/// Each piece is masked to its piece polygon (expanded by 0.5px to
+/// ensure boundary pixels are included — eliminates gaps between pieces).
 pub fn render_piece_pngs_from_layer(
     pieces: &[crate::types::PuzzlePiece],
     bricks_layer_img: &RgbaImage,
-    brick_placements: &HashMap<String, BrickPlacement>,
+    piece_polygons: &HashMap<String, Vec<[f64; 2]>>,
     extract_dir: &Path,
 ) {
     std::fs::create_dir_all(extract_dir).ok();
@@ -266,35 +287,30 @@ pub fn render_piece_pngs_from_layer(
         let ph = piece.height.max(1) as u32;
         let mut piece_img = RgbaImage::new(pw, ph);
 
-        // For each brick in this piece, copy polygon-masked pixels
-        for bid in &piece.brick_ids {
-            let bp = match brick_placements.get(bid) {
-                Some(bp) => bp,
-                None => continue,
-            };
-            let poly = bp.polygon.as_ref();
-            for dy in 0..bp.height.max(0) {
-                for dx in 0..bp.width.max(0) {
-                    let sx = (bp.x + dx) as u32;
-                    let sy = (bp.y + dy) as u32;
-                    if sx < bricks_layer_img.width() && sy < bricks_layer_img.height() {
-                        let px = bricks_layer_img.get_pixel(sx, sy);
-                        if px[3] > 0 {
-                            let in_poly = match poly {
-                                Some(pts) if pts.len() >= 3 => {
-                                    point_in_polygon(dx as f64 + 0.5, dy as f64 + 0.5, pts)
-                                }
-                                _ => true,
-                            };
-                            if in_poly {
-                                let tx = sx as i32 - piece.x;
-                                let ty = sy as i32 - piece.y;
-                                if tx >= 0 && ty >= 0 && (tx as u32) < pw && (ty as u32) < ph {
-                                    piece_img.put_pixel(tx as u32, ty as u32, *px);
-                                }
-                            }
-                        }
-                    }
+        let poly = piece_polygons.get(&piece.id);
+        // Expand by 0.5px so boundary pixels are included by both adjacent pieces
+        let expanded = poly.and_then(|pts| {
+            if pts.len() >= 3 { Some(expand_polygon(pts, 0.5)) } else { None }
+        });
+
+        // Iterate pixels in piece bbox, mask to expanded piece polygon
+        for dy in 0..ph {
+            for dx in 0..pw {
+                let cx = piece.x + dx as i32;
+                let cy = piece.y + dy as i32;
+                if cx < 0 || cy < 0 { continue; }
+                let sx = cx as u32;
+                let sy = cy as u32;
+                if sx >= bricks_layer_img.width() || sy >= bricks_layer_img.height() { continue; }
+                let px = bricks_layer_img.get_pixel(sx, sy);
+                if px[3] == 0 { continue; }
+
+                let in_poly = match &expanded {
+                    Some(pts) => point_in_polygon(cx as f64 + 0.5, cy as f64 + 0.5, pts),
+                    None => true,
+                };
+                if in_poly {
+                    piece_img.put_pixel(dx, dy, *px);
                 }
             }
         }

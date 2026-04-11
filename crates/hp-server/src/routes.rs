@@ -478,18 +478,12 @@ async fn do_merge(sessions: SessionStore, key: &str, req: serde_json::Value) -> 
         puzzle::merge_bricks(&bricks, target, seed, &adj, &areas)
     };
 
-    // Build brick placement map for polygon-masked piece rendering
-    let bp_map: HashMap<String, hp_core::ai_parser::BrickPlacement> = bricks.iter()
-        .zip(placements.iter())
-        .map(|(b, p)| (b.id.clone(), p.clone()))
-        .collect();
-
-    // Render piece PNGs with polygon masking
+    // Compute piece polygons first (union of brick vector polygons)
     let bricks_by_id: HashMap<String, Brick> = bricks.iter().map(|b| (b.id.clone(), b.clone())).collect();
-    render::render_piece_pngs_from_layer(&pieces, &bricks_layer_img, &bp_map, &extract_dir);
-
-    // Compute piece polygons (union of brick vector polygons)
     let piece_polys = puzzle::compute_piece_polygons(&pieces, &bricks_by_id, &polygons);
+
+    // Render piece PNGs masked to piece polygon (not per-brick)
+    render::render_piece_pngs_from_layer(&pieces, &bricks_layer_img, &piece_polys, &extract_dir);
 
     let bricks_by_id_ref: HashMap<&str, &Brick> = bricks.iter().map(|b| (b.id.as_str(), b)).collect();
 

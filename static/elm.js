@@ -13691,16 +13691,6 @@ var $author$project$Main$viewTitleBar = function (model) {
 						$elm$html$Html$text('House Puzzle')
 					])),
 				A2(
-				$elm$html$Html$span,
-				_List_fromArray(
-					[
-						$elm$html$Html$Attributes$class('version-tag')
-					]),
-				_List_fromArray(
-					[
-						$elm$html$Html$text(model.aX)
-					])),
-				A2(
 				$elm$html$Html$div,
 				_List_fromArray(
 					[
@@ -13911,7 +13901,7 @@ var $author$project$Main$viewTitleBar = function (model) {
 					]),
 				_List_fromArray(
 					[
-						$elm$html$Html$text('v0.2')
+						$elm$html$Html$text(model.aX)
 					]))
 			]));
 };
