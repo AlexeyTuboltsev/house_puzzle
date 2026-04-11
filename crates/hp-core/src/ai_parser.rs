@@ -577,27 +577,39 @@ pub fn parse_ai(
 
     let clip_h_pts = clip_y1 - clip_y0;
     let clip_w_pts = clip_x1 - clip_x0;
-    let dpi = if clip_h_pts > 0.0 { canvas_height as f64 / clip_h_pts * 72.0 } else { 72.0 };
-    let scale = dpi / 72.0;
-    eprintln!("[parse] clip_rect: ({:.1}, {:.1}, {:.1}, {:.1})", clip_x0, clip_y0, clip_x1, clip_y1);
-    eprintln!("[parse] clip_size: {:.1} x {:.1} pts, DPI={:.2}, scale={:.4}", clip_w_pts, clip_h_pts, dpi, scale);
-    eprintln!("[parse] page_rect: {:?}", page_rect);
-    let canvas_w_px = (clip_w_pts * scale).round() as i32;
-    let canvas_h_px = (clip_h_pts * scale).round() as i32;
 
-    // Screen frame height
+    // Screen frame height in PDF points — determines the rendering scale.
+    // 15.5 Unity units = screen frame height. 1 unit = PIXELS_PER_UNIT pixels.
+    const PIXELS_PER_UNIT: f64 = 900.0 / 15.5; // ~58.06 px per unit
     let screen_node = roots.iter().find(|r| r.name.eq_ignore_ascii_case("screen"));
-    let mut screen_frame_height_px: f64 = 0.0;
+    let mut screen_frame_h_pts: f64 = 0.0;
     if let Some(sn) = screen_node {
         let targets = if sn.children.is_empty() { vec![sn] } else { sn.children.iter().collect() };
         for t in targets {
             if let Some((_, ai_ymin, _, ai_ymax)) = extract_plain_path_bbox(t, data) {
-                let screen_h_pts = (y_base - ai_ymin) - (y_base - ai_ymax);
-                screen_frame_height_px = screen_h_pts * scale;
+                screen_frame_h_pts = (y_base - ai_ymin) - (y_base - ai_ymax);
                 break;
             }
         }
     }
+
+    // DPI from screen frame: 15.5 units = screen_frame_h_pts PDF points = 15.5 * PIXELS_PER_UNIT pixels
+    let dpi = if screen_frame_h_pts > 0.0 {
+        PIXELS_PER_UNIT * 15.5 / screen_frame_h_pts * 72.0
+    } else if clip_h_pts > 0.0 {
+        // Fallback: fit canvas_height
+        canvas_height as f64 / clip_h_pts * 72.0
+    } else {
+        72.0
+    };
+    let scale = dpi / 72.0;
+
+    let canvas_w_px = (clip_w_pts * scale).round() as i32;
+    let canvas_h_px = (clip_h_pts * scale).round() as i32;
+    let screen_frame_height_px = screen_frame_h_pts * scale;
+
+    eprintln!("[parse] clip: {:.0}x{:.0} pts, screen_frame: {:.0} pts", clip_w_pts, clip_h_pts, screen_frame_h_pts);
+    eprintln!("[parse] DPI={:.2}, scale={:.4}, canvas={}x{}", dpi, scale, canvas_w_px, canvas_h_px);
 
     // Compute PDF offset: render bricks OCG layer, measure actual vs expected position
     let t0 = std::time::Instant::now();
