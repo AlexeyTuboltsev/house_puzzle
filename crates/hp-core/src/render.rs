@@ -84,7 +84,7 @@ pub fn render_brick_images(
                         // Check if this pixel is inside the polygon
                         let in_poly = match poly {
                             Some(pts) if pts.len() >= 3 => {
-                                point_in_polygon(dx as f64, dy as f64, pts)
+                                point_in_polygon(dx as f64 + 0.5, dy as f64 + 0.5, pts)
                             }
                             _ => true, // no polygon = keep all pixels
                         };
@@ -282,7 +282,7 @@ pub fn render_piece_pngs_from_layer(
                         if px[3] > 0 {
                             let in_poly = match poly {
                                 Some(pts) if pts.len() >= 3 => {
-                                    point_in_polygon(dx as f64, dy as f64, pts)
+                                    point_in_polygon(dx as f64 + 0.5, dy as f64 + 0.5, pts)
                                 }
                                 _ => true,
                             };

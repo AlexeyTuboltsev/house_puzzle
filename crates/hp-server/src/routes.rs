@@ -696,7 +696,7 @@ async fn api_serve_brick_png(
                         if px[3] > 0 {
                             let in_poly = match poly {
                                 Some(pts) if pts.len() >= 3 => {
-                                    render::point_in_polygon(dx as f64, dy as f64, pts)
+                                    render::point_in_polygon(dx as f64 + 0.5, dy as f64 + 0.5, pts)
                                 }
                                 _ => true,
                             };
