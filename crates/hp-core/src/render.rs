@@ -8,6 +8,25 @@ use std::sync::Mutex;
 
 use crate::ai_parser::BrickPlacement;
 
+/// Ray casting point-in-polygon test.
+fn point_in_polygon(x: f64, y: f64, polygon: &[[f64; 2]]) -> bool {
+    let n = polygon.len();
+    if n < 3 { return false; }
+    let mut inside = false;
+    let mut j = n - 1;
+    for i in 0..n {
+        let yi = polygon[i][1];
+        let yj = polygon[j][1];
+        let xi = polygon[i][0];
+        let xj = polygon[j][0];
+        if ((yi > y) != (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi) {
+            inside = !inside;
+        }
+        j = i;
+    }
+    inside
+}
+
 /// Extract a raster brick image from a block's raw byte range.
 pub fn extract_raster_image(block_data: &[u8]) -> Option<RgbaImage> {
     let xh_re = regex::bytes::Regex::new(
@@ -53,7 +72,8 @@ pub fn render_brick_images(
     bricks.par_iter().for_each(|(id, bp)| {
         let mut canvas = RgbaImage::new(canvas_width, canvas_height);
 
-        // Copy pixels from the OCG layer render within the brick's bbox
+        // Copy pixels from OCG render, masked to the polygon shape
+        let poly = bp.polygon.as_ref();
         for dy in 0..bp.height.max(0) {
             for dx in 0..bp.width.max(0) {
                 let sx = (bp.x + dx) as u32;
@@ -61,7 +81,16 @@ pub fn render_brick_images(
                 if sx < bricks_layer_img.width() && sy < bricks_layer_img.height() {
                     let px = bricks_layer_img.get_pixel(sx, sy);
                     if px[3] > 0 {
-                        canvas.put_pixel(sx, sy, *px);
+                        // Check if this pixel is inside the polygon
+                        let in_poly = match poly {
+                            Some(pts) if pts.len() >= 3 => {
+                                point_in_polygon(dx as f64, dy as f64, pts)
+                            }
+                            _ => true, // no polygon = keep all pixels
+                        };
+                        if in_poly {
+                            canvas.put_pixel(sx, sy, *px);
+                        }
                     }
                 }
             }
