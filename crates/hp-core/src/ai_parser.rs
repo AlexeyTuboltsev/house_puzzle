@@ -12,6 +12,31 @@ use std::path::Path;
 use crate::mupdf_ffi;
 
 /// Helper: convert a byte slice to &str (ASCII portion).
+/// Split bytes into lines, handling \r, \n, and \r\n.
+/// Returns (line_bytes, line_start_offset) pairs.
+fn split_lines(data: &[u8]) -> Vec<(&[u8], usize)> {
+    let mut result = Vec::new();
+    let mut start = 0;
+    let mut i = 0;
+    while i < data.len() {
+        if data[i] == b'\r' {
+            result.push((&data[start..i], start));
+            if i + 1 < data.len() && data[i + 1] == b'\n' {
+                i += 1; // skip \n in \r\n
+            }
+            start = i + 1;
+        } else if data[i] == b'\n' {
+            result.push((&data[start..i], start));
+            start = i + 1;
+        }
+        i += 1;
+    }
+    if start < data.len() {
+        result.push((&data[start..], start));
+    }
+    result
+}
+
 fn bstr(b: &[u8]) -> &str {
     std::str::from_utf8(b).unwrap_or("")
 }
@@ -89,7 +114,7 @@ pub fn decompress_ai_data(ai_path: &Path) -> Result<AiPrivateData, String> {
 pub fn parse_layer_tree(data: &[u8]) -> Vec<LayerBlock> {
     let begin_re = Regex::new(r"%AI5_BeginLayer").unwrap();
     let end_re = Regex::new(r"%AI5_EndLayer").unwrap();
-    let name_re = Regex::new(r"Lb\r\(([^)]*)\)").unwrap();
+    let name_re = Regex::new(r"Lb[\r\n]+\(([^)]*)\)").unwrap();
 
     let mut events: Vec<(char, usize)> = Vec::new();
     for m in begin_re.find_iter(data) {
@@ -187,8 +212,8 @@ fn has_gradient(block_data: &[u8]) -> bool {
     if !block_data.windows(2).any(|w| w == b"Bg") {
         return false;
     }
-    for line in block_data.split(|&b| b == b'\r') {
-        let s = bstr(line).trim();
+    for (line_bytes, _) in split_lines(block_data) {
+        let s = bstr(line_bytes).trim();
         if s.ends_with("Bg") && s.contains('(') {
             return true;
         }
@@ -259,14 +284,11 @@ fn extract_plain_path_bbox(block: &LayerBlock, data: &[u8]) -> Option<(f64, f64,
         skip_ranges.iter().any(|&(s, e)| byte_offset >= s && byte_offset < e)
     };
 
-    let mut offset = 0usize;
-    for line in block_data.split(|&b| b == b'\r') {
-        let line_start = offset;
-        offset += line.len() + 1; // +1 for the \r delimiter
+    for (line_bytes, line_start) in split_lines(block_data) {
         if in_skip_range(line_start) {
             continue;
         }
-        let line = bstr(line).trim().to_string();
+        let line = bstr(line_bytes).trim().to_string();
         if line.starts_with('%') {
             continue;
         }
@@ -402,9 +424,10 @@ fn extract_vector_path(
 ) -> Vec<[f64; 2]> {
     let block_data = &data[block.begin..block.end];
 
-    // Parse all lines into owned strings
-    let lines: Vec<String> = block_data.split(|&b| b == b'\r')
-        .map(|l| bstr(l).trim().to_string())
+    // Parse all lines into owned strings (handles \r, \n, \r\n)
+    let lines: Vec<String> = split_lines(block_data)
+        .iter()
+        .map(|(l, _)| bstr(l).trim().to_string())
         .collect();
 
     // Primary: %_ prefixed lines
@@ -489,7 +512,7 @@ pub fn parse_ai(
     // Step 2: parse layer tree
     let t0 = std::time::Instant::now();
     let roots = parse_layer_tree(data);
-    eprintln!("[parse_ai] layer_tree: {:?}", t0.elapsed());
+    eprintln!("[parse_ai] layer_tree: {:?} — roots: {:?}", t0.elapsed(), roots.iter().map(|r| &r.name).collect::<Vec<_>>());
     let bg = roots.iter().find(|r| r.name == "background")
         .ok_or("No 'background' layer found")?;
     let bricks_node = roots.iter().find(|r| r.name == "bricks")
@@ -658,8 +681,9 @@ pub fn parse_ai(
         // If the layer produces multiple disjoint polygons, it has separate bricks.
         {
             let block_data_ref = &data[p.child.begin..p.child.end];
-            let lines: Vec<String> = block_data_ref.split(|&b| b == b'\r')
-                .map(|l| bstr(l).trim().to_string())
+            let lines: Vec<String> = split_lines(block_data_ref)
+                .iter()
+                .map(|(l, _)| bstr(l).trim().to_string())
                 .collect();
             let mut parsed_lines: Vec<Vec<String>> = Vec::new();
             for line in &lines {
