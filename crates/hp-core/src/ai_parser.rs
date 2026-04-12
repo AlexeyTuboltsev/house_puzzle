@@ -89,7 +89,7 @@ pub fn decompress_ai_data(ai_path: &Path) -> Result<AiPrivateData, String> {
 pub fn parse_layer_tree(data: &[u8]) -> Vec<LayerBlock> {
     let begin_re = Regex::new(r"%AI5_BeginLayer").unwrap();
     let end_re = Regex::new(r"%AI5_EndLayer").unwrap();
-    let name_re = Regex::new(r"Lb\r\(([^)]*)\)").unwrap();
+    let name_re = Regex::new(r"Lb[\r\n]+\(([^)]*)\)").unwrap();
 
     let mut events: Vec<(char, usize)> = Vec::new();
     for m in begin_re.find_iter(data) {
@@ -489,7 +489,7 @@ pub fn parse_ai(
     // Step 2: parse layer tree
     let t0 = std::time::Instant::now();
     let roots = parse_layer_tree(data);
-    eprintln!("[parse_ai] layer_tree: {:?}", t0.elapsed());
+    eprintln!("[parse_ai] layer_tree: {:?} — roots: {:?}", t0.elapsed(), roots.iter().map(|r| &r.name).collect::<Vec<_>>());
     let bg = roots.iter().find(|r| r.name == "background")
         .ok_or("No 'background' layer found")?;
     let bricks_node = roots.iter().find(|r| r.name == "bricks")
