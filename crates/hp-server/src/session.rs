@@ -20,8 +20,10 @@ pub struct Session {
     pub layer_blocks: HashMap<String, LayerBlock>,
     /// OCG bricks layer render — shared for brick/piece image serving.
     pub bricks_layer_img: Arc<RgbaImage>,
-    /// Per-brick images (canvas-sized, polygon-masked). Lazy-populated.
+    /// Per-brick images (canvas-sized, polygon-masked). Lazy-populated as PNG bytes.
     pub brick_images: HashMap<String, Arc<Vec<u8>>>,  // PNG bytes
+    /// Per-brick RGBA images for piece composition (not PNG-encoded).
+    pub brick_rgba: HashMap<String, Arc<RgbaImage>>,
 }
 
 /// Thread-safe session store.

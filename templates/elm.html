@@ -1026,7 +1026,7 @@ if (window.Elm && window.Elm.Main) {
   app.ports.setTitle.subscribe(function(title) { document.title = title; });
 
   app.ports.logBrick.subscribe(function(data) {
-    console.log('[brick click] id=' + data.brickId + '  piece=' + data.pieceId);
+    console.log('[brick click] id=' + data.brickId + '  layer=' + data.layerName + '  piece=' + data.pieceId);
   });
 
 }
