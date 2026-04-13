@@ -1,11 +1,14 @@
+# Build artifacts
+target/
+dist/
+builds/
+
+# Elm
+elm/elm-stuff/
+elm/node_modules/
+
 # Dependencies
 node_modules/
-.venv/
-__pycache__/
-
-# Environment
-.env
-.env.local
 
 # IDE
 .idea/
@@ -17,23 +20,17 @@ __pycache__/
 .DS_Store
 Thumbs.db
 
-# Build
-dist/
-build/
-builds/
-*.egg-info/
-elm/elm-stuff/
-elm/package.json
-elm/package-lock.json
-
-# Firecrawl
-.firecrawl/
-
 # Data files
 in/
 
-# Playwright MCP
-.playwright-mcp/
-
-# Screenshots (debug/test artifacts)
+# Debug/test artifacts
 *.png
+
+# Environment
+.env
+.env.local
+
+# Tool caches
+.firecrawl/
+.playwright-mcp/
+.claude/
