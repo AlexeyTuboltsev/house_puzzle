@@ -35,6 +35,7 @@ type alias Brick =
     , brickType : String
     , neighbors : List String
     , polygon : List Point
+    , layerName : String
     }
 
 
@@ -1090,10 +1091,17 @@ update msg model =
             ( { model | exporting = False }, Cmd.none )
 
         LogBrickClick brickId ->
+            let
+                maybeBrick =
+                    case model.loadState of
+                        Loaded r -> List.filter (\b -> b.id == brickId) r.bricks |> List.head
+                        _ -> Nothing
+            in
             ( model
             , logBrick
                 (E.object
                     [ ( "brickId", E.string brickId )
+                    , ( "layerName", maybeBrick |> Maybe.map (.layerName >> E.string) |> Maybe.withDefault E.null )
                     , ( "pieceId"
                       , model.pieces
                             |> List.filter (\p -> List.any (\br -> br.id == brickId) p.bricks)
@@ -1813,7 +1821,7 @@ decodeCanvas =
 
 decodeBrick : D.Decoder Brick
 decodeBrick =
-    D.map8 Brick
+    D.map8 (\id x y w h t n p -> Brick id x y w h t n p "")
         (D.field "id" D.string)
         (D.field "x" D.float)
         (D.field "y" D.float)
@@ -1822,6 +1830,10 @@ decodeBrick =
         (D.field "type" D.string)
         (D.field "neighbors" (D.list D.string))
         (D.field "polygon" (D.list decodePoint))
+        |> D.andThen (\brick ->
+            D.map (\ln -> { brick | layerName = ln })
+                (D.oneOf [ D.field "layer_name" D.string, D.succeed "" ])
+        )
 
 
 decodePoint : D.Decoder Point

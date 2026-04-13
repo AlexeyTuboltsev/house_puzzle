@@ -27,6 +27,55 @@ pub fn point_in_polygon(x: f64, y: f64, polygon: &[[f64; 2]]) -> bool {
     inside
 }
 
+/// Extract a raster brick's embedded image and place it at the correct
+/// canvas position with polygon masking. Returns a canvas-sized RGBA image.
+/// This bypasses MuPDF entirely for raster bricks — uses the original
+/// resolution embedded pixel data.
+pub fn render_raster_brick_direct(
+    bp: &BrickPlacement,
+    ai_data: &[u8],
+    canvas_width: u32,
+    canvas_height: u32,
+) -> Option<RgbaImage> {
+    let block_data = &ai_data[bp.block_begin..bp.block_end];
+    let src_img = extract_raster_image(block_data)?;
+
+    let src_w = src_img.width();
+    let src_h = src_img.height();
+    if src_w == 0 || src_h == 0 { return None; }
+
+    let dst_w = bp.width as u32;
+    let dst_h = bp.height as u32;
+    if dst_w == 0 || dst_h == 0 { return None; }
+
+    // Scale from source resolution to canvas pixel size
+    let sx = src_w as f64 / dst_w as f64;
+    let sy = src_h as f64 / dst_h as f64;
+
+    let mut canvas = RgbaImage::new(canvas_width, canvas_height);
+
+    // For raster bricks: no polygon masking — the embedded image IS the shape.
+    // The polygon is slightly inset (~0.8px) from the bbox, causing gaps.
+    // The raster image with white-to-alpha is the true authority.
+    for dy in 0..dst_h {
+        for dx in 0..dst_w {
+            let src_x = ((dx as f64 + 0.5) * sx) as u32;
+            let src_y = ((dy as f64 + 0.5) * sy) as u32;
+            if src_x >= src_w || src_y >= src_h { continue; }
+
+            let px = src_img.get_pixel(src_x, src_y);
+            if px[3] == 0 { continue; }
+
+            let cx = bp.x as u32 + dx;
+            let cy = bp.y as u32 + dy;
+            if cx < canvas_width && cy < canvas_height {
+                canvas.put_pixel(cx, cy, *px);
+            }
+        }
+    }
+    Some(canvas)
+}
+
 /// Extract a raster brick image from a block's raw byte range.
 pub fn extract_raster_image(block_data: &[u8]) -> Option<RgbaImage> {
     let xh_re = regex::bytes::Regex::new(
@@ -37,7 +86,7 @@ pub fn extract_raster_image(block_data: &[u8]) -> Option<RgbaImage> {
     let img_h: usize = std::str::from_utf8(&caps[2]).ok()?.parse().ok()?;
     if img_w == 0 || img_h == 0 { return None; }
 
-    let xi_re = regex::bytes::Regex::new(r"%%BeginData:\s*\d+[^\n]*XI\n").unwrap();
+    let xi_re = regex::bytes::Regex::new(r"%%BeginData:\s*\d+[^\r\n]*XI[\r\n]+").unwrap();
     let xi_m = xi_re.find(block_data)?;
     let data_start = xi_m.end();
     let expected = img_w * img_h * 3;
@@ -154,6 +203,75 @@ pub fn compute_pdf_offset(
         }
         _ => (0, 0),
     }
+}
+
+/// Render all brick images using the hybrid approach:
+/// - Raster bricks: extract embedded pixel data directly (original resolution)
+/// - Vector bricks: crop from MuPDF OCG render (fallback)
+/// Returns per-brick canvas-sized images.
+pub fn render_brick_images_hybrid(
+    bricks: &[(String, BrickPlacement)],
+    ai_data: &[u8],
+    canvas_width: u32,
+    canvas_height: u32,
+    ocg_fallback: &RgbaImage,
+) -> HashMap<String, RgbaImage> {
+    let result = Mutex::new(HashMap::new());
+    let mut raster_count = 0u32;
+    let mut vector_count = 0u32;
+
+    bricks.par_iter().for_each(|(id, bp)| {
+        // Try direct raster extraction first
+        if bp.layer_type == "brick" || bp.layer_type == "mixed_brick" {
+            if let Some(img) = render_raster_brick_direct(bp, ai_data, canvas_width, canvas_height) {
+                result.lock().unwrap().insert(id.clone(), img);
+                return;
+            }
+        }
+
+        // Fallback: crop from OCG render (vector/gradient bricks)
+        let mut canvas = RgbaImage::new(canvas_width, canvas_height);
+        let poly = bp.polygon.as_ref();
+        for dy in 0..bp.height.max(0) {
+            for dx in 0..bp.width.max(0) {
+                let sx = (bp.x + dx) as u32;
+                let sy = (bp.y + dy) as u32;
+                if sx < ocg_fallback.width() && sy < ocg_fallback.height() {
+                    let px = ocg_fallback.get_pixel(sx, sy);
+                    if px[3] > 0 {
+                        let in_poly = match poly {
+                            Some(pts) if pts.len() >= 3 => {
+                                point_in_polygon(dx as f64 + 0.5, dy as f64 + 0.5, pts)
+                            }
+                            _ => true,
+                        };
+                        if in_poly {
+                            canvas.put_pixel(sx, sy, *px);
+                        }
+                    }
+                }
+            }
+        }
+        result.lock().unwrap().insert(id.clone(), canvas);
+    });
+
+    let r = result.into_inner().unwrap();
+    let rc = r.values().filter(|_| true).count(); // just to count
+    eprintln!("[hybrid] {} bricks total ({} would be raster-direct)", r.len(), r.len());
+    r
+}
+
+/// Build a composite image from individual brick images.
+pub fn composite_from_brick_images(
+    brick_images: &HashMap<String, RgbaImage>,
+    canvas_width: u32,
+    canvas_height: u32,
+) -> RgbaImage {
+    let mut composite = RgbaImage::new(canvas_width, canvas_height);
+    for img in brick_images.values() {
+        image::imageops::overlay(&mut composite, img, 0, 0);
+    }
+    composite
 }
 
 /// Save the OCG bricks layer render directly as the composite.
@@ -311,6 +429,134 @@ pub fn render_piece_pngs_from_layer(
                 };
                 if in_poly {
                     piece_img.put_pixel(dx, dy, *px);
+                }
+            }
+        }
+
+        piece_img.save(extract_dir.join(format!("piece_{}.png", piece.id))).ok();
+        render_piece_outline(&piece_img, &extract_dir.join(format!("piece_outline_{}.png", piece.id)));
+    });
+}
+
+/// Render piece PNGs by compositing pre-masked brick images.
+/// No polygon clipping needed — each brick image is already shaped.
+/// Eliminates gaps between pieces caused by mask edge misalignment.
+pub fn render_piece_pngs_from_bricks(
+    pieces: &[crate::types::PuzzlePiece],
+    brick_rgba: &HashMap<String, std::sync::Arc<RgbaImage>>,
+    extract_dir: &Path,
+) {
+    std::fs::create_dir_all(extract_dir).ok();
+    pieces.par_iter().for_each(|piece| {
+        let pw = piece.width.max(1) as u32;
+        let ph = piece.height.max(1) as u32;
+        let mut piece_img = RgbaImage::new(pw, ph);
+
+        // Overlay each brick's pre-masked image onto the piece canvas
+        for bid in &piece.brick_ids {
+            if let Some(brick_img) = brick_rgba.get(bid) {
+                // brick_img is canvas-sized; offset by -piece.x/-piece.y
+                image::imageops::overlay(
+                    &mut piece_img, brick_img.as_ref(),
+                    -(piece.x as i64), -(piece.y as i64),
+                );
+            }
+        }
+
+        piece_img.save(extract_dir.join(format!("piece_{}.png", piece.id))).ok();
+        render_piece_outline(&piece_img, &extract_dir.join(format!("piece_outline_{}.png", piece.id)));
+    });
+}
+
+/// Rasterize a polygon into a scanline mask (piece-local coordinates).
+/// Uses even-odd rule with consistent edge handling.
+fn rasterize_polygon_mask(
+    polygon: &[[f64; 2]],
+    width: u32,
+    height: u32,
+    offset_x: f64,
+    offset_y: f64,
+) -> Vec<bool> {
+    let mut mask = vec![false; (width * height) as usize];
+    let n = polygon.len();
+    if n < 3 { return mask; }
+
+    for y in 0..height {
+        let py = y as f64 + 0.5 + offset_y;
+        let mut intersections: Vec<f64> = Vec::new();
+        for i in 0..n {
+            let j = (i + 1) % n;
+            let y0 = polygon[i][1];
+            let y1 = polygon[j][1];
+            if (y0 <= py && y1 > py) || (y1 <= py && y0 > py) {
+                let t = (py - y0) / (y1 - y0);
+                intersections.push(polygon[i][0] + t * (polygon[j][0] - polygon[i][0]));
+            }
+        }
+        intersections.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+        for pair in intersections.chunks(2) {
+            if pair.len() == 2 {
+                let x_start = (pair[0] - offset_x).max(0.0) as u32;
+                let x_end = ((pair[1] - offset_x).ceil() as u32).min(width);
+                for x in x_start..x_end {
+                    mask[(y * width + x) as usize] = true;
+                }
+            }
+        }
+    }
+    mask
+}
+
+/// Render piece PNGs by cropping the MuPDF composite with brick polygon masks.
+/// The composite is seamless (no internal gaps). We mask using the union of
+/// brick polygons per piece — internal brick boundaries are untouched,
+/// only the outer piece edge is clipped.
+pub fn render_piece_pngs_from_composite(
+    pieces: &[crate::types::PuzzlePiece],
+    composite: &RgbaImage,
+    bricks: &HashMap<String, crate::types::Brick>,
+    brick_polygons: &HashMap<String, Vec<[f64; 2]>>,
+    extract_dir: &Path,
+) {
+    std::fs::create_dir_all(extract_dir).ok();
+    pieces.par_iter().for_each(|piece| {
+        let pw = piece.width.max(1) as u32;
+        let ph = piece.height.max(1) as u32;
+
+        // Build combined mask from brick bounding boxes.
+        // Using bbox (not polygon) because the polygon has a ~0.8px inset
+        // that creates gaps between adjacent pieces. The MuPDF composite
+        // has correct content filling the full bbox, so bbox masking is safe.
+        let mut mask = vec![false; (pw * ph) as usize];
+        for bid in &piece.brick_ids {
+            let brick = match bricks.get(bid) {
+                Some(b) => b,
+                None => continue,
+            };
+            for dy in 0..brick.height.max(0) {
+                for dx in 0..brick.width.max(0) {
+                    let lx = (brick.x + dx - piece.x) as u32;
+                    let ly = (brick.y + dy - piece.y) as u32;
+                    if lx < pw && ly < ph {
+                        mask[(ly * pw + lx) as usize] = true;
+                    }
+                }
+            }
+        }
+
+        // Crop composite through the combined mask
+        let mut piece_img = RgbaImage::new(pw, ph);
+        for dy in 0..ph {
+            for dx in 0..pw {
+                if !mask[(dy * pw + dx) as usize] { continue; }
+                let sx = (piece.x + dx as i32) as u32;
+                let sy = (piece.y + dy as i32) as u32;
+                if sx < composite.width() && sy < composite.height() {
+                    let px = composite.get_pixel(sx, sy);
+                    if px[3] > 0 {
+                        piece_img.put_pixel(dx, dy, *px);
+                    }
                 }
             }
         }

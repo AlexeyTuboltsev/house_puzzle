@@ -264,10 +264,16 @@ async fn do_load(sessions: SessionStore, key: String, req: LoadRequest) -> Respo
     };
     eprintln!("[profile] OCG bricks (render+offset): {:?} ({}x{}, offset={:?})", t0.elapsed(), bricks_layer_img.width(), bricks_layer_img.height(), pdf_offset);
 
-    // Crop OCG render per brick — unified pipeline for all brick types
+    // Hybrid brick rendering: raster bricks from embedded data, vector from OCG
+    // Hybrid brick rendering: raster bricks from embedded data, vector from OCG
+    // Used for piece composition (no polygon mask gaps). MuPDF composite stays for display.
     let t0 = std::time::Instant::now();
-    let brick_images = render::render_brick_images(&render_bricks, cw, ch, &bricks_layer_img);
-    eprintln!("[profile] render_brick_images: {:?}", t0.elapsed());
+    let bp_vec: Vec<(String, hp_core::ai_parser::BrickPlacement)> = render_bricks.clone();
+    let brick_images = render::render_brick_images_hybrid(
+        &bp_vec, &ai_data.raw, cw, ch, &bricks_layer_img,
+    );
+    eprintln!("[profile] hybrid render_brick_images: {:?}", t0.elapsed());
+    // bricks_layer_img stays as the MuPDF OCG render (seamless composite for display)
 
     // Filter covered bricks using in-memory images
     // Collect warnings
@@ -302,8 +308,11 @@ async fn do_load(sessions: SessionStore, key: String, req: LoadRequest) -> Respo
 
     let bricks_layer_arc = std::sync::Arc::new(bricks_layer_img);
 
-    // Skip disk save — brick images served from memory via session.
-    drop(brick_images);
+    // Store brick RGBA images for piece composition (remove covered ones)
+    let mut brick_rgba: HashMap<String, Arc<image::RgbaImage>> = brick_images.into_iter()
+        .filter(|(id, _)| !covered_ids.contains(id))
+        .map(|(id, img)| (id, Arc::new(img)))
+        .collect();
 
     // Save composite + render outlines + OCG layers — all in parallel
     let t0 = std::time::Instant::now();
@@ -378,6 +387,7 @@ async fn do_load(sessions: SessionStore, key: String, req: LoadRequest) -> Respo
             layer_blocks,
             bricks_layer_img: bricks_layer_arc,
             brick_images: HashMap::new(),
+            brick_rgba,
         });
     }
 
@@ -426,7 +436,7 @@ async fn api_merge(
 }
 
 async fn do_merge(sessions: SessionStore, key: &str, req: serde_json::Value) -> Response {
-    let (bricks, placements, polygons, areas, extract_dir, bricks_layer_img) = {
+    let (bricks, placements, polygons, areas, extract_dir, bricks_layer_img, brick_rgba) = {
         let store = sessions.lock().unwrap();
         let session = match store.get(key) {
             Some(s) => s,
@@ -435,7 +445,7 @@ async fn do_merge(sessions: SessionStore, key: &str, req: serde_json::Value) -> 
         (session.bricks.clone(), session.brick_placements.clone(),
          session.brick_polygons.clone(),
          session.brick_areas.clone(), session.extract_dir.clone(),
-         session.bricks_layer_img.clone())
+         session.bricks_layer_img.clone(), session.brick_rgba.clone())
     };
 
     let bricks_by_id: HashMap<String, Brick> = bricks.iter().map(|b| (b.id.clone(), b.clone())).collect();
@@ -482,8 +492,9 @@ async fn do_merge(sessions: SessionStore, key: &str, req: serde_json::Value) -> 
     let bricks_by_id: HashMap<String, Brick> = bricks.iter().map(|b| (b.id.clone(), b.clone())).collect();
     let piece_polys = puzzle::compute_piece_polygons(&pieces, &bricks_by_id, &polygons);
 
-    // Render piece PNGs masked to piece polygon (not per-brick)
-    render::render_piece_pngs_from_layer(&pieces, &bricks_layer_img, &piece_polys, &extract_dir);
+    // Compose piece PNGs by cropping the MuPDF composite with brick polygon masks
+    // Composite is seamless internally; mask only clips the outer piece boundary
+    render::render_piece_pngs_from_composite(&pieces, &bricks_layer_img, &bricks_by_id, &polygons, &extract_dir);
 
     let bricks_by_id_ref: HashMap<&str, &Brick> = bricks.iter().map(|b| (b.id.as_str(), b)).collect();
 
