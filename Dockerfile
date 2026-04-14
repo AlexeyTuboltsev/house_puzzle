@@ -22,7 +22,8 @@ RUN cargo build --release 2>&1 || true
 
 # Copy real source
 COPY crates/ crates/
-RUN cargo build --release
+# Force cargo to detect source changes by cleaning the local crate artifacts
+RUN cargo clean -p hp-server -p hp-core && cargo build --release
 
 EXPOSE 5050
 CMD ["target/release/hp-server"]
