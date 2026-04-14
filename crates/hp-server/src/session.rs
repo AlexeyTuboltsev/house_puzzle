@@ -3,9 +3,10 @@
 use hp_core::ai_parser::{AiPrivateData, BrickPlacement, LayerBlock, ParsedAiMetadata};
 use hp_core::types::{Brick, PuzzlePiece};
 use image::RgbaImage;
+use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 /// Per-session state for a loaded AI file.
 pub struct Session {

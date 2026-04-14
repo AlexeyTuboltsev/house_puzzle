@@ -6,6 +6,7 @@
 //! 2. Parses the PostScript layer tree
 //! 3. (TODO) Extracts brick placement and vector polygon data
 
+use anyhow::{Context, Result, bail};
 use regex::bytes::Regex;
 use std::path::Path;
 
@@ -71,14 +72,14 @@ impl AiPrivateData {
 ///
 /// AI files are PDFs with `/AIPrivateData1`, `/AIPrivateData2`, ... entries
 /// pointing to streams containing zstd-compressed PostScript data.
-pub fn decompress_ai_data(ai_path: &Path) -> Result<AiPrivateData, String> {
+pub fn decompress_ai_data(ai_path: &Path) -> Result<AiPrivateData> {
     let doc = mupdf::pdf::PdfDocument::open(ai_path.to_str().unwrap_or(""))
-        .map_err(|e| format!("Failed to open AI file: {e}"))?;
+        .context("opening AI file as PDF")?;
 
     // Find AIPrivateData references using dictionary-level access
     let pairs = mupdf_ffi::find_ai_private_data(&doc);
     if pairs.is_empty() {
-        return Err("No AIPrivateData found in .ai file".to_string());
+        bail!("No AIPrivateData found in .ai file");
     }
 
     // Concatenate all stream data
@@ -90,19 +91,19 @@ pub fn decompress_ai_data(ai_path: &Path) -> Result<AiPrivateData, String> {
     }
 
     if raw.is_empty() {
-        return Err("AIPrivateData streams are empty".to_string());
+        bail!("AIPrivateData streams are empty");
     }
 
     // Find ZStandard frame magic: 0x28 0xB5 0x2F 0xFD
     let magic = [0x28u8, 0xB5, 0x2F, 0xFD];
     let pos = raw.windows(4)
         .position(|w| w == magic)
-        .ok_or("ZStandard magic not found in AIPrivateData")?;
+        .context("ZStandard magic not found in AIPrivateData")?;
 
     // Decompress
     let compressed = &raw[pos..];
     let decompressed = zstd::decode_all(std::io::Cursor::new(compressed))
-        .map_err(|e| format!("ZStd decompression failed: {e}"))?;
+        .context("ZStd decompression failed")?;
 
     Ok(AiPrivateData {
         raw: decompressed,
@@ -112,9 +113,9 @@ pub fn decompress_ai_data(ai_path: &Path) -> Result<AiPrivateData, String> {
 /// Parse `%AI5_BeginLayer` / `%AI5_EndLayer` pairs into a nested tree.
 /// Operates on raw bytes — all offsets are byte positions.
 pub fn parse_layer_tree(data: &[u8]) -> Vec<LayerBlock> {
-    let begin_re = Regex::new(r"%AI5_BeginLayer").unwrap();
-    let end_re = Regex::new(r"%AI5_EndLayer").unwrap();
-    let name_re = Regex::new(r"Lb[\r\n]+\(([^)]*)\)").unwrap();
+    let begin_re = Regex::new(r"%AI5_BeginLayer").expect("static regex pattern is valid");
+    let end_re = Regex::new(r"%AI5_EndLayer").expect("static regex pattern is valid");
+    let name_re = Regex::new(r"Lb[\r\n]+\(([^)]*)\)").expect("static regex pattern is valid");
 
     let mut events: Vec<(char, usize)> = Vec::new();
     for m in begin_re.find_iter(data) {
@@ -172,7 +173,8 @@ pub fn compute_ai_transform(
     artbox: Option<(f64, f64, f64, f64)>,
 ) -> (f64, f64) {
     let block_data = &data[background.begin..background.end];
-    let coord_re = Regex::new(r"(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+[mLCl]\b").unwrap();
+    let coord_re = Regex::new(r"(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+[mLCl]\b")
+        .expect("static regex pattern is valid");
 
     let mut xs: Vec<f64> = Vec::new();
     let mut ys: Vec<f64> = Vec::new();
@@ -229,7 +231,7 @@ fn extract_raster_matrix(block_data: &[u8]) -> Option<(f64, f64, f64, f64)> {
         r"\[\s*({n})\s+{n}\s+{n}\s+({n})\s+({n})\s+({n})\s*\]\s+(\d+)\s+(\d+)\s+\d+\s+Xh",
         n = num
     );
-    let re = Regex::new(&pattern).unwrap();
+    let re = Regex::new(&pattern).expect("static regex pattern is valid");
     let m = re.captures(block_data)?;
 
     let a: f64 = bstr(&m[1]).parse().ok()?;
@@ -296,7 +298,7 @@ fn extract_plain_path_bbox(block: &LayerBlock, data: &[u8]) -> Option<(f64, f64,
         if parts.is_empty() {
             continue;
         }
-        let op = *parts.last().unwrap();
+        let op = *parts.last().expect("guarded by parts.is_empty() check");
         match op {
             "m" | "L" | "l" if parts.len() >= 3 => {
                 if let (Ok(x), Ok(y)) = (parts[0].parse::<f64>(), parts[1].parse::<f64>()) {
@@ -363,7 +365,7 @@ fn parse_path_lines(
         if parts.is_empty() {
             continue;
         }
-        let op = *parts.last().unwrap();
+        let op = *parts.last().expect("guarded by parts.is_empty() check");
 
         match op {
             "m" if parts.len() >= 3 => {
@@ -383,7 +385,7 @@ fn parse_path_lines(
                 if pts.is_empty() {
                     continue;
                 }
-                let p1 = *pts.last().unwrap();
+                let p1 = *pts.last().expect("guarded by pts.is_empty() check");
                 let cp1 = to_pymu(parts[0].parse().unwrap_or(0.0), parts[1].parse().unwrap_or(0.0));
                 let cp2 = to_pymu(parts[2].parse().unwrap_or(0.0), parts[3].parse().unwrap_or(0.0));
                 let p4 = to_pymu(parts[4].parse().unwrap_or(0.0), parts[5].parse().unwrap_or(0.0));
@@ -437,7 +439,7 @@ fn extract_vector_path(
             continue;
         }
         let parts: Vec<String> = line[2..].split_whitespace().map(|s| s.to_string()).collect();
-        if !parts.is_empty() && PATH_OPS.contains(&parts.last().unwrap().as_str()) {
+        if !parts.is_empty() && PATH_OPS.contains(&parts.last().expect("guarded by parts.is_empty() check").as_str()) {
             parsed_lines.push(parts);
         }
     }
@@ -449,7 +451,7 @@ fn extract_vector_path(
             }
             let parts: Vec<String> = line.split_whitespace().map(|s| s.to_string()).collect();
             if !parts.is_empty()
-                && PATH_OPS.contains(&parts.last().unwrap().as_str())
+                && PATH_OPS.contains(&parts.last().expect("guarded by parts.is_empty() check").as_str())
                 && (parts.len() == 3 || parts.len() == 7)
             {
                 let all_numeric = parts[..parts.len() - 1]
@@ -502,7 +504,7 @@ pub struct BrickPlacement {
 pub fn parse_ai(
     ai_path: &Path,
     canvas_height: i32,
-) -> Result<(Vec<BrickPlacement>, ParsedAiMetadata, AiPrivateData), String> {
+) -> Result<(Vec<BrickPlacement>, ParsedAiMetadata, AiPrivateData)> {
     // Step 1: decompress AI private data
     let t0 = std::time::Instant::now();
     let ai_data = decompress_ai_data(ai_path)?;
@@ -514,15 +516,15 @@ pub fn parse_ai(
     let roots = parse_layer_tree(data);
     eprintln!("[parse_ai] layer_tree: {:?} — roots: {:?}", t0.elapsed(), roots.iter().map(|r| &r.name).collect::<Vec<_>>());
     let bg = roots.iter().find(|r| r.name == "background")
-        .ok_or("No 'background' layer found")?;
+        .context("No 'background' layer found")?;
     let bricks_node = roots.iter().find(|r| r.name == "bricks")
-        .ok_or("No 'bricks' layer found")?;
+        .context("No 'bricks' layer found")?;
 
     // Step 3: open as PDF for page geometry
     let doc = mupdf::pdf::PdfDocument::open(ai_path.to_str().unwrap_or(""))
-        .map_err(|e| format!("Failed to open AI as PDF: {e}"))?;
+        .context("opening AI file as PDF for page geometry")?;
     let page = doc.load_page(0)
-        .map_err(|e| format!("Failed to load page: {e}"))?;
+        .context("loading page 0 of AI file")?;
 
     // Get artbox via FFI (more accurate than page.bounds() which returns mediabox)
     let artbox = mupdf_ffi::pdf_page_artbox(ai_path.to_str().unwrap_or(""));
@@ -581,7 +583,7 @@ pub fn parse_ai(
     }
 
     if placements.is_empty() {
-        return Err("No brick rasters found in 'bricks' layer".to_string());
+        bail!("No brick rasters found in 'bricks' layer");
     }
 
     eprintln!("[parse_ai] placements: {:?} ({} bricks)", t0.elapsed(), placements.len());
@@ -689,7 +691,7 @@ pub fn parse_ai(
             for line in &lines {
                 if !line.starts_with("%_") { continue; }
                 let parts: Vec<String> = line[2..].split_whitespace().map(|s| s.to_string()).collect();
-                if !parts.is_empty() && PATH_OPS.contains(&parts.last().unwrap().as_str()) {
+                if !parts.is_empty() && PATH_OPS.contains(&parts.last().expect("guarded by parts.is_empty() check").as_str()) {
                     parsed_lines.push(parts);
                 }
             }

@@ -1,5 +1,6 @@
 //! Unity export — generates house_data.json + piece sprite PNGs in a ZIP.
 
+use anyhow::{Context, Result};
 use serde_json::json;
 use std::collections::HashMap;
 use std::io::Write;
@@ -141,7 +142,7 @@ pub fn generate_export_zip(
     position: i32,
     house_name: &str,
     spacing: f64,
-) -> Result<Vec<u8>, String> {
+) -> Result<Vec<u8>> {
     let target_ppu = 50.0;
     let scale = if screen_frame_height_px > 0.0 {
         target_ppu * 15.5 / screen_frame_height_px
@@ -162,9 +163,9 @@ pub fn generate_export_zip(
         .compression_method(zip::CompressionMethod::Deflated);
 
     // Write house_data.json
-    zip.start_file("house_data.json", options).map_err(|e| e.to_string())?;
-    let json_bytes = serde_json::to_string_pretty(&house_data).map_err(|e| e.to_string())?;
-    zip.write_all(json_bytes.as_bytes()).map_err(|e| e.to_string())?;
+    zip.start_file("house_data.json", options).context("starting house_data.json in ZIP")?;
+    let json_bytes = serde_json::to_string_pretty(&house_data).context("serialising house_data to JSON")?;
+    zip.write_all(json_bytes.as_bytes()).context("writing house_data.json bytes")?;
 
     // Write piece PNGs (read from extract_dir, scale for Unity PPU)
     for piece in pieces {
@@ -186,14 +187,14 @@ pub fn generate_export_zip(
         {
             let mut cursor = std::io::Cursor::new(&mut png_buf);
             scaled.write_to(&mut cursor, image::ImageOutputFormat::Png)
-                .map_err(|e| e.to_string())?;
+                .context("encoding piece PNG")?;
         }
 
         let fname = format!("pieces/piece_{}.png", piece.id);
-        zip.start_file(&fname, options).map_err(|e| e.to_string())?;
-        zip.write_all(&png_buf).map_err(|e| e.to_string())?;
+        zip.start_file(&fname, options).context("starting piece PNG in ZIP")?;
+        zip.write_all(&png_buf).context("writing piece PNG bytes")?;
     }
 
-    let cursor = zip.finish().map_err(|e| e.to_string())?;
+    let cursor = zip.finish().context("finalising ZIP archive")?;
     Ok(cursor.into_inner())
 }
