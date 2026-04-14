@@ -494,7 +494,7 @@ async fn do_merge(sessions: SessionStore, key: &str, req: serde_json::Value) -> 
 
     // Compose piece PNGs by cropping the MuPDF composite with brick polygon masks
     // Composite is seamless internally; mask only clips the outer piece boundary
-    render::render_piece_pngs_from_composite(&pieces, &bricks_layer_img, &bricks_by_id, &polygons, &extract_dir);
+    render::render_piece_pngs_from_composite(&pieces, &bricks_layer_img, &piece_polys, &extract_dir);
 
     let bricks_by_id_ref: HashMap<&str, &Brick> = bricks.iter().map(|b| (b.id.as_str(), b)).collect();
 
@@ -689,10 +689,12 @@ async fn api_serve_brick_png(
         let bp_idx = session.bricks.iter().position(|b| b.id == brick_id);
         if let Some(idx) = bp_idx {
             let bp = &session.brick_placements[idx];
-            let cw = session.metadata.canvas_width as u32;
-            let ch = session.metadata.canvas_height as u32;
-            let mut canvas = image::RgbaImage::new(cw, ch);
+            let bw = bp.width.max(0) as u32;
+            let bh = bp.height.max(0) as u32;
+            let mut brick_img = image::RgbaImage::new(bw, bh);
 
+            // Mask to brick polygon shape — vector shapes are the source of truth,
+            // never use bbox for display.
             let poly = bp.polygon.as_ref();
             for dy in 0..bp.height.max(0) {
                 for dx in 0..bp.width.max(0) {
@@ -708,7 +710,7 @@ async fn api_serve_brick_png(
                                 _ => true,
                             };
                             if in_poly {
-                                canvas.put_pixel(sx, sy, *px);
+                                brick_img.put_pixel(dx as u32, dy as u32, *px);
                             }
                         }
                     }
@@ -717,7 +719,7 @@ async fn api_serve_brick_png(
 
             // Encode to PNG bytes
             let mut buf = std::io::Cursor::new(Vec::new());
-            canvas.write_to(&mut buf, image::ImageOutputFormat::Png).ok();
+            brick_img.write_to(&mut buf, image::ImageOutputFormat::Png).ok();
             let bytes = Arc::new(buf.into_inner());
             session.brick_images.insert(brick_id.to_string(), bytes.clone());
             Some(bytes)

@@ -281,55 +281,75 @@ pub fn find_covered_bricks(
     covered
 }
 
-/// Render piece PNGs by cropping the MuPDF composite with brick polygon masks.
-/// The composite is seamless (no internal gaps). We mask using the union of
-/// brick polygons per piece — internal brick boundaries are untouched,
-/// only the outer piece edge is clipped.
+
+/// Expand a polygon by `amount` pixels using geo-clipper offset.
+/// Returns expanded points, or the original if offset fails.
+fn expand_polygon(pts: &[[f64; 2]], amount: f64) -> Vec<[f64; 2]> {
+    use geo::{Coord, LineString, Polygon};
+    use geo::algorithm::area::Area;
+    use geo_clipper::Clipper;
+
+    let mut coords: Vec<Coord<f64>> = pts.iter().map(|p| Coord { x: p[0], y: p[1] }).collect();
+    if coords.first() != coords.last() {
+        coords.push(coords[0]);
+    }
+    let poly = Polygon::new(LineString::new(coords), vec![]);
+    let expanded = poly.offset(amount, geo_clipper::JoinType::Square, geo_clipper::EndType::ClosedPolygon, 1000.0);
+    // Take the largest polygon from result
+    expanded.0.iter()
+        .max_by(|a, b| a.unsigned_area().partial_cmp(&b.unsigned_area()).unwrap_or(std::cmp::Ordering::Equal))
+        .map(|p| p.exterior().0.iter().map(|c| [c.x, c.y]).collect())
+        .unwrap_or_else(|| pts.to_vec())
+}
+
+/// Render piece PNGs by cropping the MuPDF composite through piece polygon masks.
+///
+/// ARCHITECTURE NOTE: Vector brick and piece shapes are the source of truth.
+/// Bounding boxes must NEVER be used for display or masking — only for bounds
+/// checking. Users must see the actual polygon shapes of bricks and pieces.
+///
+/// The composite is seamless (no internal gaps). We mask each piece using its
+/// union polygon (expanded 0.5px to ensure boundary pixels are included by
+/// both adjacent pieces). This preserves the true shape of vector bricks
+/// like arched windows.
 pub fn render_piece_pngs_from_composite(
     pieces: &[crate::types::PuzzlePiece],
     composite: &RgbaImage,
-    bricks: &HashMap<String, crate::types::Brick>,
-    brick_polygons: &HashMap<String, Vec<[f64; 2]>>,
+    piece_polygons: &HashMap<String, Vec<[f64; 2]>>,
     extract_dir: &Path,
 ) {
     std::fs::create_dir_all(extract_dir).ok();
     pieces.par_iter().for_each(|piece| {
         let pw = piece.width.max(1) as u32;
         let ph = piece.height.max(1) as u32;
-
-        // Build combined mask from brick bounding boxes.
-        // Using bbox (not polygon) because the polygon has a ~0.8px inset
-        // that creates gaps between adjacent pieces. The MuPDF composite
-        // has correct content filling the full bbox, so bbox masking is safe.
-        let mut mask = vec![false; (pw * ph) as usize];
-        for bid in &piece.brick_ids {
-            let brick = match bricks.get(bid) {
-                Some(b) => b,
-                None => continue,
-            };
-            for dy in 0..brick.height.max(0) {
-                for dx in 0..brick.width.max(0) {
-                    let lx = (brick.x + dx - piece.x) as u32;
-                    let ly = (brick.y + dy - piece.y) as u32;
-                    if lx < pw && ly < ph {
-                        mask[(ly * pw + lx) as usize] = true;
-                    }
-                }
-            }
-        }
-
-        // Crop composite through the combined mask
         let mut piece_img = RgbaImage::new(pw, ph);
+
+        // Get piece polygon (union of brick polygons) and expand by 0.5px
+        // so boundary pixels are included by both adjacent pieces.
+        let poly = piece_polygons.get(&piece.id);
+        let expanded = poly.and_then(|pts| {
+            if pts.len() >= 3 { Some(expand_polygon(pts, 0.5)) } else { None }
+        });
+
+        // Crop composite through the piece polygon mask
         for dy in 0..ph {
             for dx in 0..pw {
-                if !mask[(dy * pw + dx) as usize] { continue; }
-                let sx = (piece.x + dx as i32) as u32;
-                let sy = (piece.y + dy as i32) as u32;
-                if sx < composite.width() && sy < composite.height() {
-                    let px = composite.get_pixel(sx, sy);
-                    if px[3] > 0 {
-                        piece_img.put_pixel(dx, dy, *px);
-                    }
+                let cx = piece.x + dx as i32;
+                let cy = piece.y + dy as i32;
+                if cx < 0 || cy < 0 { continue; }
+                let sx = cx as u32;
+                let sy = cy as u32;
+                if sx >= composite.width() || sy >= composite.height() { continue; }
+
+                let in_poly = match &expanded {
+                    Some(pts) => point_in_polygon(cx as f64 + 0.5, cy as f64 + 0.5, pts),
+                    None => true,
+                };
+                if !in_poly { continue; }
+
+                let px = composite.get_pixel(sx, sy);
+                if px[3] > 0 {
+                    piece_img.put_pixel(dx, dy, *px);
                 }
             }
         }
