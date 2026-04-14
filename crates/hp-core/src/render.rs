@@ -1,10 +1,10 @@
 //! Image rendering pipeline — brick PNG extraction and compositing.
 
 use image::{Rgba, RgbaImage};
+use std::sync::Mutex;
 use rayon::prelude::*;
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::Mutex;
 
 use crate::ai_parser::BrickPlacement;
 
@@ -80,13 +80,14 @@ pub fn render_raster_brick_direct(
 pub fn extract_raster_image(block_data: &[u8]) -> Option<RgbaImage> {
     let xh_re = regex::bytes::Regex::new(
         r"\[\s*-?\d+(?:\.\d+)?\s+-?\d+(?:\.\d+)?\s+-?\d+(?:\.\d+)?\s+-?\d+(?:\.\d+)?\s+-?\d+(?:\.\d+)?\s+-?\d+(?:\.\d+)?\s*\]\s+(\d+)\s+(\d+)\s+\d+\s+Xh"
-    ).unwrap();
+    ).expect("static regex pattern is valid");
     let caps = xh_re.captures(block_data)?;
     let img_w: usize = std::str::from_utf8(&caps[1]).ok()?.parse().ok()?;
     let img_h: usize = std::str::from_utf8(&caps[2]).ok()?.parse().ok()?;
     if img_w == 0 || img_h == 0 { return None; }
 
-    let xi_re = regex::bytes::Regex::new(r"%%BeginData:\s*\d+[^\r\n]*XI[\r\n]+").unwrap();
+    let xi_re = regex::bytes::Regex::new(r"%%BeginData:\s*\d+[^\r\n]*XI[\r\n]+")
+        .expect("static regex pattern is valid");
     let xi_m = xi_re.find(block_data)?;
     let data_start = xi_m.end();
     let expected = img_w * img_h * 3;
@@ -105,58 +106,6 @@ pub fn extract_raster_image(block_data: &[u8]) -> Option<RgbaImage> {
         }
     }
     Some(img)
-}
-
-/// Render all brick images from the OCG bricks layer render.
-/// For each brick: crop the layer image to the brick's polygon bbox,
-/// then mask to the polygon outline. Unified pipeline for all brick types.
-pub fn render_brick_images(
-    bricks: &[(String, BrickPlacement)],
-    canvas_width: u32,
-    canvas_height: u32,
-    bricks_layer_img: &RgbaImage,
-) -> HashMap<String, RgbaImage> {
-    let result = Mutex::new(HashMap::new());
-
-    bricks.par_iter().for_each(|(id, bp)| {
-        let mut canvas = RgbaImage::new(canvas_width, canvas_height);
-
-        // Copy pixels from OCG render, masked to the polygon shape
-        let poly = bp.polygon.as_ref();
-        for dy in 0..bp.height.max(0) {
-            for dx in 0..bp.width.max(0) {
-                let sx = (bp.x + dx) as u32;
-                let sy = (bp.y + dy) as u32;
-                if sx < bricks_layer_img.width() && sy < bricks_layer_img.height() {
-                    let px = bricks_layer_img.get_pixel(sx, sy);
-                    if px[3] > 0 {
-                        // Check if this pixel is inside the polygon
-                        let in_poly = match poly {
-                            Some(pts) if pts.len() >= 3 => {
-                                point_in_polygon(dx as f64 + 0.5, dy as f64 + 0.5, pts)
-                            }
-                            _ => true, // no polygon = keep all pixels
-                        };
-                        if in_poly {
-                            canvas.put_pixel(sx, sy, *px);
-                        }
-                    }
-                }
-            }
-        }
-
-        result.lock().unwrap().insert(id.clone(), canvas);
-    });
-
-    result.into_inner().unwrap()
-}
-
-/// Save brick images to disk as PNGs (for HTTP serving).
-pub fn save_brick_pngs(brick_images: &HashMap<String, RgbaImage>, out_dir: &Path) {
-    std::fs::create_dir_all(out_dir).ok();
-    brick_images.par_iter().for_each(|(id, img)| {
-        img.save(out_dir.join(format!("brick_{id}.png"))).ok();
-    });
 }
 
 /// Compute pdf_offset from an already-rendered bricks layer image.
@@ -261,19 +210,6 @@ pub fn render_brick_images_hybrid(
     r
 }
 
-/// Build a composite image from individual brick images.
-pub fn composite_from_brick_images(
-    brick_images: &HashMap<String, RgbaImage>,
-    canvas_width: u32,
-    canvas_height: u32,
-) -> RgbaImage {
-    let mut composite = RgbaImage::new(canvas_width, canvas_height);
-    for img in brick_images.values() {
-        image::imageops::overlay(&mut composite, img, 0, 0);
-    }
-    composite
-}
-
 /// Save the OCG bricks layer render directly as the composite.
 pub fn save_composite(bricks_layer_img: &RgbaImage, out_path: &Path) {
     bricks_layer_img.save(out_path).ok();
@@ -343,169 +279,6 @@ pub fn find_covered_bricks(
     }
 
     covered
-}
-
-/// Render piece PNGs by reading brick PNGs from disk.
-pub fn render_piece_pngs(
-    pieces: &[crate::types::PuzzlePiece],
-    extract_dir: &Path,
-) {
-    pieces.par_iter().for_each(|piece| {
-        let pw = piece.width.max(1) as u32;
-        let ph = piece.height.max(1) as u32;
-        let mut piece_img = RgbaImage::new(pw, ph);
-
-        for bid in &piece.brick_ids {
-            let brick_path = extract_dir.join(format!("brick_{bid}.png"));
-            if let Ok(brick_img) = image::open(&brick_path) {
-                image::imageops::overlay(
-                    &mut piece_img, &brick_img.to_rgba8(),
-                    -(piece.x as i64), -(piece.y as i64),
-                );
-            }
-        }
-
-        piece_img.save(extract_dir.join(format!("piece_{}.png", piece.id))).ok();
-        render_piece_outline(&piece_img, &extract_dir.join(format!("piece_outline_{}.png", piece.id)));
-    });
-}
-
-/// Expand a polygon by `amount` pixels using geo-clipper offset.
-/// Returns expanded points, or the original if offset fails.
-fn expand_polygon(pts: &[[f64; 2]], amount: f64) -> Vec<[f64; 2]> {
-    use geo::{Coord, LineString, Polygon};
-    use geo::algorithm::area::Area;
-    use geo_clipper::Clipper;
-
-    let mut coords: Vec<Coord<f64>> = pts.iter().map(|p| Coord { x: p[0], y: p[1] }).collect();
-    if coords.first() != coords.last() {
-        coords.push(coords[0]);
-    }
-    let poly = Polygon::new(LineString::new(coords), vec![]);
-    let expanded = poly.offset(amount, geo_clipper::JoinType::Square, geo_clipper::EndType::ClosedPolygon, 1000.0);
-    // Take the largest polygon from result
-    expanded.0.iter()
-        .max_by(|a, b| a.unsigned_area().partial_cmp(&b.unsigned_area()).unwrap_or(std::cmp::Ordering::Equal))
-        .map(|p| p.exterior().0.iter().map(|c| [c.x, c.y]).collect())
-        .unwrap_or_else(|| pts.to_vec())
-}
-
-/// Render piece PNGs from the in-memory OCG bricks layer image.
-/// Each piece is masked to its piece polygon (expanded by 0.5px to
-/// ensure boundary pixels are included — eliminates gaps between pieces).
-pub fn render_piece_pngs_from_layer(
-    pieces: &[crate::types::PuzzlePiece],
-    bricks_layer_img: &RgbaImage,
-    piece_polygons: &HashMap<String, Vec<[f64; 2]>>,
-    extract_dir: &Path,
-) {
-    std::fs::create_dir_all(extract_dir).ok();
-    pieces.par_iter().for_each(|piece| {
-        let pw = piece.width.max(1) as u32;
-        let ph = piece.height.max(1) as u32;
-        let mut piece_img = RgbaImage::new(pw, ph);
-
-        let poly = piece_polygons.get(&piece.id);
-        // Expand by 0.5px so boundary pixels are included by both adjacent pieces
-        let expanded = poly.and_then(|pts| {
-            if pts.len() >= 3 { Some(expand_polygon(pts, 0.5)) } else { None }
-        });
-
-        // Iterate pixels in piece bbox, mask to expanded piece polygon
-        for dy in 0..ph {
-            for dx in 0..pw {
-                let cx = piece.x + dx as i32;
-                let cy = piece.y + dy as i32;
-                if cx < 0 || cy < 0 { continue; }
-                let sx = cx as u32;
-                let sy = cy as u32;
-                if sx >= bricks_layer_img.width() || sy >= bricks_layer_img.height() { continue; }
-                let px = bricks_layer_img.get_pixel(sx, sy);
-                if px[3] == 0 { continue; }
-
-                let in_poly = match &expanded {
-                    Some(pts) => point_in_polygon(cx as f64 + 0.5, cy as f64 + 0.5, pts),
-                    None => true,
-                };
-                if in_poly {
-                    piece_img.put_pixel(dx, dy, *px);
-                }
-            }
-        }
-
-        piece_img.save(extract_dir.join(format!("piece_{}.png", piece.id))).ok();
-        render_piece_outline(&piece_img, &extract_dir.join(format!("piece_outline_{}.png", piece.id)));
-    });
-}
-
-/// Render piece PNGs by compositing pre-masked brick images.
-/// No polygon clipping needed — each brick image is already shaped.
-/// Eliminates gaps between pieces caused by mask edge misalignment.
-pub fn render_piece_pngs_from_bricks(
-    pieces: &[crate::types::PuzzlePiece],
-    brick_rgba: &HashMap<String, std::sync::Arc<RgbaImage>>,
-    extract_dir: &Path,
-) {
-    std::fs::create_dir_all(extract_dir).ok();
-    pieces.par_iter().for_each(|piece| {
-        let pw = piece.width.max(1) as u32;
-        let ph = piece.height.max(1) as u32;
-        let mut piece_img = RgbaImage::new(pw, ph);
-
-        // Overlay each brick's pre-masked image onto the piece canvas
-        for bid in &piece.brick_ids {
-            if let Some(brick_img) = brick_rgba.get(bid) {
-                // brick_img is canvas-sized; offset by -piece.x/-piece.y
-                image::imageops::overlay(
-                    &mut piece_img, brick_img.as_ref(),
-                    -(piece.x as i64), -(piece.y as i64),
-                );
-            }
-        }
-
-        piece_img.save(extract_dir.join(format!("piece_{}.png", piece.id))).ok();
-        render_piece_outline(&piece_img, &extract_dir.join(format!("piece_outline_{}.png", piece.id)));
-    });
-}
-
-/// Rasterize a polygon into a scanline mask (piece-local coordinates).
-/// Uses even-odd rule with consistent edge handling.
-fn rasterize_polygon_mask(
-    polygon: &[[f64; 2]],
-    width: u32,
-    height: u32,
-    offset_x: f64,
-    offset_y: f64,
-) -> Vec<bool> {
-    let mut mask = vec![false; (width * height) as usize];
-    let n = polygon.len();
-    if n < 3 { return mask; }
-
-    for y in 0..height {
-        let py = y as f64 + 0.5 + offset_y;
-        let mut intersections: Vec<f64> = Vec::new();
-        for i in 0..n {
-            let j = (i + 1) % n;
-            let y0 = polygon[i][1];
-            let y1 = polygon[j][1];
-            if (y0 <= py && y1 > py) || (y1 <= py && y0 > py) {
-                let t = (py - y0) / (y1 - y0);
-                intersections.push(polygon[i][0] + t * (polygon[j][0] - polygon[i][0]));
-            }
-        }
-        intersections.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-
-        for pair in intersections.chunks(2) {
-            if pair.len() == 2 {
-                let x_start = (pair[0] - offset_x).max(0.0) as u32;
-                let x_end = ((pair[1] - offset_x).ceil() as u32).min(width);
-                for x in x_start..x_end {
-                    mask[(y * width + x) as usize] = true;
-                }
-            }
-        }
-    }
-    mask
 }
 
 /// Render piece PNGs by cropping the MuPDF composite with brick polygon masks.
