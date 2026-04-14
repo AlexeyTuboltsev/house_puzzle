@@ -1,4 +1,4 @@
-FROM rust:1.87-bookworm
+FROM rust:1.88-bookworm
 
 # System deps: libclang for bindgen (mupdf-sys), C build tools for mupdf
 RUN apt-get update && apt-get install -y libclang-dev && rm -rf /var/lib/apt/lists/*
