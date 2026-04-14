@@ -189,7 +189,7 @@ async fn do_load(sessions: SessionStore, key: String, req: LoadRequest) -> Respo
 
     let (placements, metadata, ai_data) = match result {
         Ok(Ok(v)) => v,
-        Ok(Err(e)) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e}))).into_response(),
+        Ok(Err(e)) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response(),
         Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response(),
     };
 
@@ -374,7 +374,7 @@ async fn do_load(sessions: SessionStore, key: String, req: LoadRequest) -> Respo
     // Store session
     let ai_data = Arc::new(ai_data);
     {
-        let mut store = sessions.lock().unwrap();
+        let mut store = sessions.lock();
         store.insert(key.clone(), Session {
             bricks,
             brick_placements: placements,
@@ -429,7 +429,7 @@ async fn api_merge(
     Json(req): Json<serde_json::Value>,
 ) -> Response {
     let key = {
-        let store = sessions.lock().unwrap();
+        let store = sessions.lock();
         store.keys().last().cloned().unwrap_or_default()
     };
     do_merge(sessions, &key, req).await
@@ -437,7 +437,7 @@ async fn api_merge(
 
 async fn do_merge(sessions: SessionStore, key: &str, req: serde_json::Value) -> Response {
     let (bricks, placements, polygons, areas, extract_dir, bricks_layer_img, brick_rgba) = {
-        let store = sessions.lock().unwrap();
+        let store = sessions.lock();
         let session = match store.get(key) {
             Some(s) => s,
             None => return (StatusCode::NOT_FOUND, Json(json!({"error": "Session not found"}))).into_response(),
@@ -521,7 +521,7 @@ async fn do_merge(sessions: SessionStore, key: &str, req: serde_json::Value) -> 
 
     // Store pieces in session
     {
-        let mut store = sessions.lock().unwrap();
+        let mut store = sessions.lock();
         if let Some(session) = store.get_mut(key) {
             session.pieces = pieces;
         }
@@ -564,7 +564,7 @@ async fn api_export(
     Json(req): Json<ExportRequest>,
 ) -> Response {
     let key = {
-        let store = sessions.lock().unwrap();
+        let store = sessions.lock();
         store.keys().last().cloned().unwrap_or_default()
     };
     do_export(sessions, &key, req).await
@@ -572,7 +572,7 @@ async fn api_export(
 
 async fn do_export(sessions: SessionStore, key: &str, req: ExportRequest) -> Response {
     let (pieces, bricks, metadata, extract_dir) = {
-        let store = sessions.lock().unwrap();
+        let store = sessions.lock();
         let session = match store.get(key) {
             Some(s) => s,
             None => return (StatusCode::NOT_FOUND, Json(json!({"error": "Session not found"}))).into_response(),
@@ -608,7 +608,7 @@ async fn do_export(sessions: SessionStore, key: &str, req: ExportRequest) -> Res
              (header::CONTENT_DISPOSITION, format!("attachment; filename=\"{house_name}.zip\""))],
             data,
         ).into_response(),
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e}))).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response(),
     }
 }
 
@@ -625,7 +625,7 @@ async fn api_serve_png(
     let filename = uri.rsplit('/').next().unwrap_or("").split('?').next().unwrap_or("");
 
     let extract_dir = {
-        let store = sessions.lock().unwrap();
+        let store = sessions.lock();
         match store.get(&key) {
             Some(s) => s.extract_dir.clone(),
             None => return StatusCode::NOT_FOUND.into_response(),
@@ -660,7 +660,7 @@ async fn api_serve_brick_png(
 
     // Try serving from session cache first, then generate on demand
     let png_bytes = {
-        let store = sessions.lock().unwrap();
+        let store = sessions.lock();
         let session = match store.get(&key) {
             Some(s) => s,
             None => return StatusCode::NOT_FOUND.into_response(),
@@ -679,7 +679,7 @@ async fn api_serve_brick_png(
 
     // Generate on demand from bricks_layer_img
     let generated = {
-        let mut store = sessions.lock().unwrap();
+        let mut store = sessions.lock();
         let session = match store.get_mut(&key) {
             Some(s) => s,
             None => return StatusCode::NOT_FOUND.into_response(),
@@ -747,7 +747,7 @@ async fn api_serve_piece_png(
     let prefix = if is_outline { "piece_outline" } else { "piece" };
 
     let extract_dir = {
-        let store = sessions.lock().unwrap();
+        let store = sessions.lock();
         match store.get(&key) {
             Some(s) => s.extract_dir.clone(),
             None => return StatusCode::NOT_FOUND.into_response(),

@@ -37,7 +37,8 @@ pub unsafe fn pdf_doc_ptr(doc: &mupdf::pdf::PdfDocument) -> *mut pdf_document {
 /// Alternative: since mupdf-rs context is thread-local and set once,
 /// we can extract it by creating a Document and looking at internal state.
 /// Thread-safe FFI context — initialized once, accessed via mutex.
-use std::sync::{Once, Mutex};
+use std::sync::Once;
+use parking_lot::Mutex;
 
 static FFI_INIT: Once = Once::new();
 static mut FFI_CONTEXT: *mut fz_context = std::ptr::null_mut();
@@ -64,8 +65,8 @@ fn ctx() -> *mut fz_context {
 
 /// Lock for FFI operations that must not run concurrently.
 /// MuPDF contexts are not thread-safe — all FFI calls must be serialized.
-pub fn ffi_lock() -> std::sync::MutexGuard<'static, ()> {
-    FFI_LOCK.lock().unwrap()
+pub fn ffi_lock() -> parking_lot::MutexGuard<'static, ()> {
+    FFI_LOCK.lock()
 }
 
 /// Helper: extract data and length from an fz_buffer.

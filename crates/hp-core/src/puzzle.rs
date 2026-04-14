@@ -227,7 +227,7 @@ pub fn merge_bricks(
                 .get(a)
                 .unwrap_or(&0.0)
                 .partial_cmp(piece_area.get(b).unwrap_or(&0.0))
-                .unwrap()
+                .unwrap_or(std::cmp::Ordering::Equal)
         });
 
         let mut merged = false;
@@ -272,9 +272,13 @@ pub fn merge_bricks(
             if let Some(absorb_pid) = best_nbr {
                 let keep_pid = smallest_pid.clone();
                 // Merge absorb into keep
-                let absorbed_bricks = pieces_dict.remove(&absorb_pid).unwrap();
-                pieces_dict.get_mut(&keep_pid).unwrap().extend(absorbed_bricks.iter().cloned());
-                *piece_area.get_mut(&keep_pid).unwrap() +=
+                let absorbed_bricks = pieces_dict.remove(&absorb_pid)
+                    .expect("absorb_pid must exist in pieces_dict during merge");
+                pieces_dict.get_mut(&keep_pid)
+                    .expect("keep_pid must exist in pieces_dict during merge")
+                    .extend(absorbed_bricks.iter().cloned());
+                *piece_area.get_mut(&keep_pid)
+                    .expect("keep_pid must exist in piece_area during merge") +=
                     piece_area.remove(&absorb_pid).unwrap_or(0.0);
                 for bid in &absorbed_bricks {
                     piece_of.insert(bid.clone(), keep_pid.clone());
@@ -459,14 +463,16 @@ pub fn compute_piece_polygons(
         }
 
         let largest = union.0.into_iter()
-            .max_by(|a, b| a.unsigned_area().partial_cmp(&b.unsigned_area()).unwrap())
-            .unwrap();
+            .max_by(|a, b| a.unsigned_area().partial_cmp(&b.unsigned_area())
+                .unwrap_or(std::cmp::Ordering::Equal))
+            .expect("union is non-empty (checked above)");
 
         let eroded = largest.offset(-BRIDGE, geo_clipper::JoinType::Square, geo_clipper::EndType::ClosedPolygon, factor);
         let final_poly = if !eroded.0.is_empty() {
             eroded.0.into_iter()
-                .max_by(|a, b| a.unsigned_area().partial_cmp(&b.unsigned_area()).unwrap())
-                .unwrap()
+                .max_by(|a, b| a.unsigned_area().partial_cmp(&b.unsigned_area())
+                    .unwrap_or(std::cmp::Ordering::Equal))
+                .expect("eroded is non-empty (checked above)")
         } else {
             largest
         };

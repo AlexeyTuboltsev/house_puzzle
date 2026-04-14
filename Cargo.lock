@@ -854,11 +854,13 @@ dependencies = [
 name = "hp-core"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "geo",
  "geo-clipper",
  "image",
  "mupdf",
  "mupdf-sys",
+ "parking_lot",
  "rand",
  "rand_chacha",
  "rayon",
@@ -874,11 +876,13 @@ dependencies = [
 name = "hp-server"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "axum",
  "hp-core",
  "image",
  "mime_guess",
  "open",
+ "parking_lot",
  "rust-embed",
  "serde",
  "serde_json",
