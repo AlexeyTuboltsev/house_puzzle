@@ -189,7 +189,7 @@ pub fn compute_ai_transform(
 
     // Use artbox if available, else fall back to page bounds (mediabox)
     let (art_x0, _art_y0, _art_x1, art_y1) = artbox.unwrap_or_else(|| {
-        let b = mupdf_ffi::page_artbox(page);
+        let b = mupdf_ffi::page_mediabox(page);
         (b.0 as f64, b.1 as f64, b.2 as f64, b.3 as f64)
     });
 
@@ -594,11 +594,11 @@ pub fn parse_ai(
     let all_x1: Vec<f64> = placements.iter().map(|p| p.pymu_bbox.2).collect();
     let all_y1: Vec<f64> = placements.iter().map(|p| p.pymu_bbox.3).collect();
 
-    let page_rect = mupdf_ffi::page_artbox(&page);
+    let page_rect = mupdf_ffi::page_mediabox(&page);
     let clip_x0 = all_x0.iter().cloned().fold(f64::INFINITY, f64::min).max(0.0);
     let clip_y0 = all_y0.iter().cloned().fold(f64::INFINITY, f64::min).max(0.0);
     let clip_x1 = all_x1.iter().cloned().fold(f64::NEG_INFINITY, f64::max).min(page_rect.2 as f64);
-    let clip_y1 = all_y1.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    let clip_y1 = all_y1.iter().cloned().fold(f64::NEG_INFINITY, f64::max).min(page_rect.3 as f64);
 
     let clip_h_pts = clip_y1 - clip_y0;
     let clip_w_pts = clip_x1 - clip_x0;

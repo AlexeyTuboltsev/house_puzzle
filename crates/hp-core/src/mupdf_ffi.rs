@@ -296,8 +296,8 @@ pub fn xref_stream(doc: &mupdf::pdf::PdfDocument, num: i32) -> Option<Vec<u8>> {
 // Page geometry
 // ---------------------------------------------------------------------------
 
-/// Get the artbox of a page (in PDF points, y-down).
-pub fn page_artbox(page: &mupdf::Page) -> (f32, f32, f32, f32) {
+/// Get the mediabox of a page (in PDF points, y-down).
+pub fn page_mediabox(page: &mupdf::Page) -> (f32, f32, f32, f32) {
     let bounds = page.bounds().unwrap_or_default();
     (bounds.x0, bounds.y0, bounds.x1, bounds.y1)
 }

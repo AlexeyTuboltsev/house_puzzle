@@ -147,8 +147,8 @@ pub fn generate_export_zip(
     let scale = if screen_frame_height_px > 0.0 {
         target_ppu * 15.5 / screen_frame_height_px
     } else {
-        let target_canvas_w = target_ppu * 11.4;
-        target_canvas_w / canvas_width as f64
+        let target_canvas_h = target_ppu * 15.5;
+        target_canvas_h / canvas_height as f64
     };
 
     let house_data = build_house_data(
