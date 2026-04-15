@@ -6335,7 +6335,7 @@ var $author$project$Main$fetchPdfList = $elm$http$Http$get(
 var $elm$browser$Browser$Dom$getViewport = _Browser_withWindow(_Browser_getViewport);
 var $author$project$Main$init = function (flags) {
 	return _Utils_Tuple2(
-		{appMode: $author$project$Main$ModeInit, appVersion: flags.version, availableH: 900.0, bricksById: $elm$core$Dict$empty, colorPicking: $elm$core$Maybe$Nothing, dragInsertBeforeId: $elm$core$Maybe$Nothing, dragOverGroupId: $elm$core$Maybe$Nothing, dragOverWaveId: $elm$core$Maybe$Nothing, draggingPieceId: $elm$core$Maybe$Nothing, editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, editOriginalGroups: _List_Nil, editOriginalPieces: _List_Nil, editOriginalWaves: _List_Nil, exportCanvasHeight: '900', exportHouseName: 'NewHouse', exportLocation: 'Rome', exportPosition: '0', exportSpacing: '12.0', exporting: false, generateState: $author$project$Main$NotGenerated, gridHue: 35.0, groups: _List_Nil, houseUnitsHigh: 15.5, hoveredPieceId: $elm$core$Maybe$Nothing, lasso: $elm$core$Maybe$Nothing, loadState: $author$project$Main$Idle, minBorder: 10, nextGroupId: 1, nextSessionId: 1, nextWaveId: 1, outlineHue: 210.0, pdfFiles: _List_Nil, pieceGeneration: 0, pieces: _List_Nil, recomputing: false, seed: 42, selectedFileName: '', selectedGroupId: $elm$core$Maybe$Nothing, selectedPieceId: $elm$core$Maybe$Nothing, selectedWaveId: $elm$core$Maybe$Nothing, sessionKey: '', showGrid: false, showGroupOverlay: true, showLights: false, showNumbers: true, showOutlines: true, showWaveOverlay: true, svgScale: 1.0, targetCount: 60, waves: _List_Nil, zoomGridActive: false, zoomLevel: 1.0},
+		{appMode: $author$project$Main$ModeInit, appVersion: flags.version, availableH: 900.0, bricksById: $elm$core$Dict$empty, colorPicking: $elm$core$Maybe$Nothing, dragInsertBeforeId: $elm$core$Maybe$Nothing, dragOverGroupId: $elm$core$Maybe$Nothing, dragOverWaveId: $elm$core$Maybe$Nothing, draggingPieceId: $elm$core$Maybe$Nothing, editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, editOriginalGroups: _List_Nil, editOriginalPieces: _List_Nil, editOriginalWaves: _List_Nil, exportCanvasHeight: '900', exportHouseName: 'NewHouse', exportLocation: 'Rome', exportPosition: '0', exportSpacing: '12.0', exporting: false, generateState: $author$project$Main$NotGenerated, gridHue: 35.0, groups: _List_Nil, houseUnitsHigh: 15.5, hoveredPieceId: $elm$core$Maybe$Nothing, lasso: $elm$core$Maybe$Nothing, loadState: $author$project$Main$Idle, minBorder: 10, nextGroupId: 1, nextSessionId: 1, nextWaveId: 1, outlineHue: 210.0, pdfFiles: _List_Nil, pieceGeneration: 0, pieces: _List_Nil, recomputing: false, redoHistory: _List_Nil, seed: 42, selectedFileName: '', selectedGroupId: $elm$core$Maybe$Nothing, selectedPieceId: $elm$core$Maybe$Nothing, selectedWaveId: $elm$core$Maybe$Nothing, sessionKey: '', showGrid: false, showGroupOverlay: true, showLights: false, showNumbers: true, showOutlines: true, showWaveOverlay: true, svgScale: 1.0, targetCount: 60, undoHistory: _List_Nil, waves: _List_Nil, zoomGridActive: false, zoomLevel: 1.0},
 		$elm$core$Platform$Cmd$batch(
 			_List_fromArray(
 				[
@@ -6350,6 +6350,21 @@ var $author$project$Main$ColorPickMove = F2(
 var $author$project$Main$EndColorPick = {$: 'EndColorPick'};
 var $elm$core$Platform$Sub$batch = _Platform_batch;
 var $elm$json$Json$Decode$float = _Json_decodeFloat;
+var $author$project$Main$NoOp = {$: 'NoOp'};
+var $author$project$Main$Redo = {$: 'Redo'};
+var $author$project$Main$Undo = {$: 'Undo'};
+var $elm$json$Json$Decode$bool = _Json_decodeBool;
+var $elm$json$Json$Decode$map3 = _Json_map3;
+var $elm$core$Basics$not = _Basics_not;
+var $author$project$Main$keyDecoder = A4(
+	$elm$json$Json$Decode$map3,
+	F3(
+		function (key, ctrl, shift) {
+			return (ctrl && ((key === 'z') && (!shift))) ? $author$project$Main$Undo : ((ctrl && ((key === 'z') && shift)) ? $author$project$Main$Redo : $author$project$Main$NoOp);
+		}),
+	A2($elm$json$Json$Decode$field, 'key', $elm$json$Json$Decode$string),
+	A2($elm$json$Json$Decode$field, 'ctrlKey', $elm$json$Json$Decode$bool),
+	A2($elm$json$Json$Decode$field, 'shiftKey', $elm$json$Json$Decode$bool));
 var $elm$browser$Browser$Events$Document = {$: 'Document'};
 var $elm$browser$Browser$Events$MySub = F3(
 	function (a, b, c) {
@@ -6619,12 +6634,16 @@ var $elm$browser$Browser$Events$on = F3(
 		return $elm$browser$Browser$Events$subscription(
 			A3($elm$browser$Browser$Events$MySub, node, name, decoder));
 	});
+var $elm$browser$Browser$Events$onKeyDown = A2($elm$browser$Browser$Events$on, $elm$browser$Browser$Events$Document, 'keydown');
 var $elm$browser$Browser$Events$onMouseMove = A2($elm$browser$Browser$Events$on, $elm$browser$Browser$Events$Document, 'mousemove');
 var $elm$browser$Browser$Events$onMouseUp = A2($elm$browser$Browser$Events$on, $elm$browser$Browser$Events$Document, 'mouseup');
 var $author$project$Main$subscriptions = function (model) {
 	return $elm$core$Platform$Sub$batch(
 		_Utils_ap(
-			_List_Nil,
+			_List_fromArray(
+				[
+					$elm$browser$Browser$Events$onKeyDown($author$project$Main$keyDecoder)
+				]),
 			function () {
 				var _v0 = model.colorPicking;
 				if (_v0.$ === 'Just') {
@@ -6668,7 +6687,6 @@ var $author$project$Main$ModeGenerate = {$: 'ModeGenerate'};
 var $author$project$Main$ModeGroups = {$: 'ModeGroups'};
 var $author$project$Main$ModePieces = {$: 'ModePieces'};
 var $author$project$Main$ModeWaves = {$: 'ModeWaves'};
-var $author$project$Main$NoOp = {$: 'NoOp'};
 var $author$project$Main$OutlineColorTarget = {$: 'OutlineColorTarget'};
 var $elm$core$Basics$negate = function (n) {
 	return -n;
@@ -6702,13 +6720,18 @@ var $elm$core$Basics$composeL = F3(
 		return g(
 			f(x));
 	});
-var $elm$core$Basics$not = _Basics_not;
 var $elm$core$List$all = F2(
 	function (isOkay, list) {
 		return !A2(
 			$elm$core$List$any,
 			A2($elm$core$Basics$composeL, $elm$core$Basics$not, isOkay),
 			list);
+	});
+var $author$project$Main$applySnapshot = F2(
+	function (snap, model) {
+		return _Utils_update(
+			model,
+			{gridHue: snap.gridHue, groups: snap.groups, nextGroupId: snap.nextGroupId, nextWaveId: snap.nextWaveId, outlineHue: snap.outlineHue, pieces: snap.pieces, waves: snap.waves});
 	});
 var $elm$core$Task$onError = _Scheduler_onError;
 var $elm$core$Task$attempt = F2(
@@ -6909,7 +6932,6 @@ var $author$project$Main$LoadResponse = function (canvas) {
 		};
 	};
 };
-var $elm$json$Json$Decode$bool = _Json_decodeBool;
 var $author$project$Main$Brick = F9(
 	function (id, x, y, width, height, brickType, neighbors, polygon, layerName) {
 		return {brickType: brickType, height: height, id: id, layerName: layerName, neighbors: neighbors, polygon: polygon, width: width, x: x, y: y};
@@ -7486,6 +7508,9 @@ var $elm$core$List$take = F2(
 	function (n, list) {
 		return A3($elm$core$List$takeFast, 0, n, list);
 	});
+var $author$project$Main$takeSnapshot = function (model) {
+	return {gridHue: model.gridHue, groups: model.groups, nextGroupId: model.nextGroupId, nextWaveId: model.nextWaveId, outlineHue: model.outlineHue, pieces: model.pieces, waves: model.waves};
+};
 var $elm$core$String$toFloat = _String_toFloat;
 var $author$project$Main$FileUploaded = function (a) {
 	return {$: 'FileUploaded', a: a};
@@ -7517,6 +7542,25 @@ var $author$project$Main$withPieceUrls = F2(
 		return _Utils_update(
 			p,
 			{imgUrl: '/api/s/' + (key + ('/piece/' + (p.id + '.png'))), outlineUrl: '/api/s/' + (key + ('/piece_outline/' + (p.id + '.png')))});
+	});
+var $author$project$Main$withUndo = F2(
+	function (oldModel, _v0) {
+		var newModel = _v0.a;
+		var cmd = _v0.b;
+		return _Utils_Tuple2(
+			_Utils_update(
+				newModel,
+				{
+					redoHistory: _List_Nil,
+					undoHistory: A2(
+						$elm$core$List$take,
+						50,
+						A2(
+							$elm$core$List$cons,
+							$author$project$Main$takeSnapshot(oldModel),
+							oldModel.undoHistory))
+				}),
+			cmd);
 	});
 var $author$project$Main$update = F2(
 	function (msg, model) {
@@ -7866,34 +7910,40 @@ var $author$project$Main$update = F2(
 							{locked: true}) : w;
 					},
 					model.waves);
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{
-							nextWaveId: model.nextWaveId + 1,
-							selectedWaveId: $elm$core$Maybe$Just(newWave.id),
-							waves: _Utils_ap(
-								_List_fromArray(
-									[newWave]),
-								lockedWaves)
-						}),
-					$elm$core$Platform$Cmd$none);
+				return A2(
+					$author$project$Main$withUndo,
+					model,
+					_Utils_Tuple2(
+						_Utils_update(
+							model,
+							{
+								nextWaveId: model.nextWaveId + 1,
+								selectedWaveId: $elm$core$Maybe$Just(newWave.id),
+								waves: _Utils_ap(
+									_List_fromArray(
+										[newWave]),
+									lockedWaves)
+							}),
+						$elm$core$Platform$Cmd$none));
 			case 'ToggleWaveVisibility':
 				var waveId = msg.a;
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{
-							waves: A2(
-								$elm$core$List$map,
-								function (w) {
-									return _Utils_eq(w.id, waveId) ? _Utils_update(
-										w,
-										{visible: !w.visible}) : w;
-								},
-								model.waves)
-						}),
-					$elm$core$Platform$Cmd$none);
+				return A2(
+					$author$project$Main$withUndo,
+					model,
+					_Utils_Tuple2(
+						_Utils_update(
+							model,
+							{
+								waves: A2(
+									$elm$core$List$map,
+									function (w) {
+										return _Utils_eq(w.id, waveId) ? _Utils_update(
+											w,
+											{visible: !w.visible}) : w;
+									},
+									model.waves)
+							}),
+						$elm$core$Platform$Cmd$none));
 			case 'SetHoveredPiece':
 				var mid = msg.a;
 				return _Utils_Tuple2(
@@ -7989,11 +8039,14 @@ var $author$project$Main$update = F2(
 								}) : w);
 						},
 						model.waves);
-					return _Utils_Tuple2(
-						_Utils_update(
-							model,
-							{waves: updatedWaves}),
-						didAdd ? $author$project$Main$scrollTrayToEnd : $elm$core$Platform$Cmd$none);
+					return A2(
+						$author$project$Main$withUndo,
+						model,
+						_Utils_Tuple2(
+							_Utils_update(
+								model,
+								{waves: updatedWaves}),
+							didAdd ? $author$project$Main$scrollTrayToEnd : $elm$core$Platform$Cmd$none));
 				}
 			case 'RemovePieceFromWave':
 				var wid = msg.a;
@@ -8004,27 +8057,30 @@ var $author$project$Main$update = F2(
 						return _Utils_eq(w.id, wid) && w.locked;
 					},
 					model.waves);
-				return waveLocked ? _Utils_Tuple2(model, $elm$core$Platform$Cmd$none) : _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{
-							waves: A2(
-								$elm$core$List$map,
-								function (w) {
-									return _Utils_eq(w.id, wid) ? _Utils_update(
-										w,
-										{
-											pieceIds: A2(
-												$elm$core$List$filter,
-												function (p) {
-													return !_Utils_eq(p, pid);
-												},
-												w.pieceIds)
-										}) : w;
-								},
-								model.waves)
-						}),
-					$elm$core$Platform$Cmd$none);
+				return waveLocked ? _Utils_Tuple2(model, $elm$core$Platform$Cmd$none) : A2(
+					$author$project$Main$withUndo,
+					model,
+					_Utils_Tuple2(
+						_Utils_update(
+							model,
+							{
+								waves: A2(
+									$elm$core$List$map,
+									function (w) {
+										return _Utils_eq(w.id, wid) ? _Utils_update(
+											w,
+											{
+												pieceIds: A2(
+													$elm$core$List$filter,
+													function (p) {
+														return !_Utils_eq(p, pid);
+													},
+													w.pieceIds)
+											}) : w;
+									},
+									model.waves)
+							}),
+						$elm$core$Platform$Cmd$none));
 			case 'MoveWave':
 				var wid = msg.a;
 				var dir = msg.b;
@@ -8075,11 +8131,14 @@ var $author$project$Main$update = F2(
 								});
 						}),
 					swapped);
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{waves: renumbered}),
-					$elm$core$Platform$Cmd$none);
+				return A2(
+					$author$project$Main$withUndo,
+					model,
+					_Utils_Tuple2(
+						_Utils_update(
+							model,
+							{waves: renumbered}),
+						$elm$core$Platform$Cmd$none));
 			case 'RemoveWave':
 				var wid = msg.a;
 				var newSelectedWaveId = _Utils_eq(
@@ -8102,11 +8161,14 @@ var $author$project$Main$update = F2(
 								});
 						}),
 					filtered);
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{selectedWaveId: newSelectedWaveId, waves: renumbered}),
-					$elm$core$Platform$Cmd$none);
+				return A2(
+					$author$project$Main$withUndo,
+					model,
+					_Utils_Tuple2(
+						_Utils_update(
+							model,
+							{selectedWaveId: newSelectedWaveId, waves: renumbered}),
+						$elm$core$Platform$Cmd$none));
 			case 'StartEdit':
 				var _v10 = model.selectedPieceId;
 				if (_v10.$ === 'Nothing') {
@@ -8341,11 +8403,14 @@ var $author$project$Main$update = F2(
 							});
 					},
 					model.waves);
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, editOriginalGroups: _List_Nil, editOriginalPieces: _List_Nil, editOriginalWaves: _List_Nil, generateState: $author$project$Main$Generated, groups: updatedGroups, pieces: allPieces, recomputing: true, waves: updatedWaves}),
-					A2($author$project$Main$recomputePiecePolygons, model.sessionKey, allPieces));
+				return A2(
+					$author$project$Main$withUndo,
+					model,
+					_Utils_Tuple2(
+						_Utils_update(
+							model,
+							{editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, editOriginalGroups: _List_Nil, editOriginalPieces: _List_Nil, editOriginalWaves: _List_Nil, generateState: $author$project$Main$Generated, groups: updatedGroups, pieces: allPieces, recomputing: true, waves: updatedWaves}),
+						A2($author$project$Main$recomputePiecePolygons, model.sessionKey, allPieces)));
 			case 'CancelEdit':
 				return _Utils_Tuple2(
 					_Utils_update(
@@ -8734,44 +8799,53 @@ var $author$project$Main$update = F2(
 									});
 							},
 							model.waves));
-					return _Utils_Tuple2(
-						_Utils_update(
-							model,
-							{dragInsertBeforeId: $elm$core$Maybe$Nothing, dragOverWaveId: $elm$core$Maybe$Nothing, draggingPieceId: $elm$core$Maybe$Nothing, waves: newWaves}),
-						$elm$core$Platform$Cmd$none);
+					return A2(
+						$author$project$Main$withUndo,
+						model,
+						_Utils_Tuple2(
+							_Utils_update(
+								model,
+								{dragInsertBeforeId: $elm$core$Maybe$Nothing, dragOverWaveId: $elm$core$Maybe$Nothing, draggingPieceId: $elm$core$Maybe$Nothing, waves: newWaves}),
+							$elm$core$Platform$Cmd$none));
 				}
 			case 'ToggleWaveLock':
 				var wid = msg.a;
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{
-							waves: A2(
-								$elm$core$List$map,
-								function (w) {
-									return _Utils_eq(w.id, wid) ? _Utils_update(
-										w,
-										{locked: !w.locked}) : w;
-								},
-								model.waves)
-						}),
-					$elm$core$Platform$Cmd$none);
+				return A2(
+					$author$project$Main$withUndo,
+					model,
+					_Utils_Tuple2(
+						_Utils_update(
+							model,
+							{
+								waves: A2(
+									$elm$core$List$map,
+									function (w) {
+										return _Utils_eq(w.id, wid) ? _Utils_update(
+											w,
+											{locked: !w.locked}) : w;
+									},
+									model.waves)
+							}),
+						$elm$core$Platform$Cmd$none));
 			case 'ToggleGroupLock':
 				var gid = msg.a;
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{
-							groups: A2(
-								$elm$core$List$map,
-								function (g) {
-									return _Utils_eq(g.id, gid) ? _Utils_update(
-										g,
-										{locked: !g.locked}) : g;
-								},
-								model.groups)
-						}),
-					$elm$core$Platform$Cmd$none);
+				return A2(
+					$author$project$Main$withUndo,
+					model,
+					_Utils_Tuple2(
+						_Utils_update(
+							model,
+							{
+								groups: A2(
+									$elm$core$List$map,
+									function (g) {
+										return _Utils_eq(g.id, gid) ? _Utils_update(
+											g,
+											{locked: !g.locked}) : g;
+									},
+									model.groups)
+							}),
+						$elm$core$Platform$Cmd$none));
 			case 'AddGroup':
 				var newGroup = {
 					hue: $author$project$Main$defaultHue(model.nextGroupId - 1),
@@ -8780,18 +8854,21 @@ var $author$project$Main$update = F2(
 					name: 'Group ' + $elm$core$String$fromInt(model.nextGroupId),
 					pieceIds: _List_Nil
 				};
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{
-							groups: _Utils_ap(
-								model.groups,
-								_List_fromArray(
-									[newGroup])),
-							nextGroupId: model.nextGroupId + 1,
-							selectedGroupId: $elm$core$Maybe$Just(newGroup.id)
-						}),
-					$elm$core$Platform$Cmd$none);
+				return A2(
+					$author$project$Main$withUndo,
+					model,
+					_Utils_Tuple2(
+						_Utils_update(
+							model,
+							{
+								groups: _Utils_ap(
+									model.groups,
+									_List_fromArray(
+										[newGroup])),
+								nextGroupId: model.nextGroupId + 1,
+								selectedGroupId: $elm$core$Maybe$Just(newGroup.id)
+							}),
+						$elm$core$Platform$Cmd$none));
 			case 'SelectGroup':
 				var mgid = msg.a;
 				return _Utils_Tuple2(
@@ -8815,11 +8892,14 @@ var $author$project$Main$update = F2(
 						return $.id;
 					},
 					$elm$core$List$head(newGroups)) : model.selectedGroupId;
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{groups: newGroups, selectedGroupId: newSelectedGroupId}),
-					$elm$core$Platform$Cmd$none);
+				return A2(
+					$author$project$Main$withUndo,
+					model,
+					_Utils_Tuple2(
+						_Utils_update(
+							model,
+							{groups: newGroups, selectedGroupId: newSelectedGroupId}),
+						$elm$core$Platform$Cmd$none));
 			case 'MoveGroup':
 				var gid = msg.a;
 				var dir = msg.b;
@@ -8863,13 +8943,16 @@ var $author$project$Main$update = F2(
 						return lst;
 					}
 				};
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{
-							groups: moveItem(model.groups)
-						}),
-					$elm$core$Platform$Cmd$none);
+				return A2(
+					$author$project$Main$withUndo,
+					model,
+					_Utils_Tuple2(
+						_Utils_update(
+							model,
+							{
+								groups: moveItem(model.groups)
+							}),
+						$elm$core$Platform$Cmd$none));
 			case 'AssignPieceToGroup':
 				var pid = msg.a;
 				var _v28 = model.selectedGroupId;
@@ -8914,11 +8997,14 @@ var $author$project$Main$update = F2(
 								}) : g);
 						},
 						model.groups);
-					return _Utils_Tuple2(
-						_Utils_update(
-							model,
-							{groups: updatedGroups}),
-						$elm$core$Platform$Cmd$none);
+					return A2(
+						$author$project$Main$withUndo,
+						model,
+						_Utils_Tuple2(
+							_Utils_update(
+								model,
+								{groups: updatedGroups}),
+							$elm$core$Platform$Cmd$none));
 				}
 			case 'DragEnterGroup':
 				var mgid = msg.a;
@@ -8979,11 +9065,14 @@ var $author$project$Main$update = F2(
 								model.groups);
 						}
 					}();
-					return _Utils_Tuple2(
-						_Utils_update(
-							model,
-							{dragOverGroupId: $elm$core$Maybe$Nothing, draggingPieceId: $elm$core$Maybe$Nothing, groups: updatedGroups}),
-						$elm$core$Platform$Cmd$none);
+					return A2(
+						$author$project$Main$withUndo,
+						model,
+						_Utils_Tuple2(
+							_Utils_update(
+								model,
+								{dragOverGroupId: $elm$core$Maybe$Nothing, draggingPieceId: $elm$core$Maybe$Nothing, groups: updatedGroups}),
+							$elm$core$Platform$Cmd$none));
 				}
 			case 'AssignGroupToWave':
 				var gid = msg.a;
@@ -9055,11 +9144,14 @@ var $author$project$Main$update = F2(
 									});
 							},
 							model.waves)));
-					return _Utils_Tuple2(
-						_Utils_update(
-							model,
-							{waves: updatedWaves}),
-						targetLocked ? $elm$core$Platform$Cmd$none : $author$project$Main$scrollTrayToEnd);
+					return A2(
+						$author$project$Main$withUndo,
+						model,
+						_Utils_Tuple2(
+							_Utils_update(
+								model,
+								{waves: updatedWaves}),
+							targetLocked ? $elm$core$Platform$Cmd$none : $author$project$Main$scrollTrayToEnd));
 				}
 			case 'GotViewport':
 				var viewport = msg.a;
@@ -9213,11 +9305,14 @@ var $author$project$Main$update = F2(
 									}),
 								model.waves,
 								selectedIds);
-							return _Utils_Tuple2(
-								_Utils_update(
-									cleared,
-									{waves: updatedWaves}),
-								$elm$core$Platform$Cmd$none);
+							return A2(
+								$author$project$Main$withUndo,
+								model,
+								_Utils_Tuple2(
+									_Utils_update(
+										cleared,
+										{waves: updatedWaves}),
+									$elm$core$Platform$Cmd$none));
 						}
 					}
 				}
@@ -9412,7 +9507,10 @@ var $author$project$Main$update = F2(
 								});
 					}
 				}();
-				return _Utils_Tuple2(updated, $elm$core$Platform$Cmd$none);
+				return A2(
+					$author$project$Main$withUndo,
+					model,
+					_Utils_Tuple2(updated, $elm$core$Platform$Cmd$none));
 			case 'EndColorPick':
 				return _Utils_Tuple2(
 					_Utils_update(
@@ -9434,6 +9532,48 @@ var $author$project$Main$update = F2(
 								return A3($elm$browser$Browser$Dom$setViewportOf, 'wave-tray-scroll', vp.viewport.x + delta, 0);
 							},
 							$elm$browser$Browser$Dom$getViewportOf('wave-tray-scroll'))));
+			case 'Undo':
+				var _v43 = model.undoHistory;
+				if (!_v43.b) {
+					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
+				} else {
+					var top = _v43.a;
+					var rest = _v43.b;
+					var restored = A2($author$project$Main$applySnapshot, top, model);
+					var currentSnap = $author$project$Main$takeSnapshot(model);
+					return _Utils_Tuple2(
+						_Utils_update(
+							restored,
+							{
+								redoHistory: A2(
+									$elm$core$List$take,
+									50,
+									A2($elm$core$List$cons, currentSnap, model.redoHistory)),
+								undoHistory: rest
+							}),
+						$elm$core$Platform$Cmd$none);
+				}
+			case 'Redo':
+				var _v44 = model.redoHistory;
+				if (!_v44.b) {
+					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
+				} else {
+					var top = _v44.a;
+					var rest = _v44.b;
+					var restored = A2($author$project$Main$applySnapshot, top, model);
+					var currentSnap = $author$project$Main$takeSnapshot(model);
+					return _Utils_Tuple2(
+						_Utils_update(
+							restored,
+							{
+								redoHistory: rest,
+								undoHistory: A2(
+									$elm$core$List$take,
+									50,
+									A2($elm$core$List$cons, currentSnap, model.undoHistory))
+							}),
+						$elm$core$Platform$Cmd$none);
+				}
 			default:
 				return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 		}
@@ -9610,6 +9750,9 @@ var $author$project$Main$MergePieceIntoEdit = function (a) {
 var $author$project$Main$RemoveBrickFromEdit = function (a) {
 	return {$: 'RemoveBrickFromEdit', a: a};
 };
+var $author$project$Main$SetHoveredPiece = function (a) {
+	return {$: 'SetHoveredPiece', a: a};
+};
 var $elm$svg$Svg$Attributes$fontSize = _VirtualDom_attribute('font-size');
 var $elm$svg$Svg$Attributes$fontWeight = _VirtualDom_attribute('font-weight');
 var $elm$html$Html$Events$onClick = function (msg) {
@@ -9618,15 +9761,58 @@ var $elm$html$Html$Events$onClick = function (msg) {
 		'click',
 		$elm$json$Json$Decode$succeed(msg));
 };
+var $elm$html$Html$Events$onMouseEnter = function (msg) {
+	return A2(
+		$elm$html$Html$Events$on,
+		'mouseenter',
+		$elm$json$Json$Decode$succeed(msg));
+};
+var $elm$html$Html$Events$onMouseLeave = function (msg) {
+	return A2(
+		$elm$html$Html$Events$on,
+		'mouseleave',
+		$elm$json$Json$Decode$succeed(msg));
+};
 var $elm$svg$Svg$Attributes$opacity = _VirtualDom_attribute('opacity');
 var $elm$svg$Svg$text = $elm$virtual_dom$VirtualDom$text;
 var $elm$svg$Svg$text_ = $elm$svg$Svg$trustedNode('text');
 var $elm$svg$Svg$Attributes$width = _VirtualDom_attribute('width');
 var $elm$svg$Svg$Attributes$x = _VirtualDom_attribute('x');
 var $elm$svg$Svg$Attributes$y = _VirtualDom_attribute('y');
-var $author$project$Main$viewBrickEditOverlay = F3(
-	function (editBrickIds, brickToPiece, brick) {
+var $author$project$Main$viewBrickEditOverlay = F4(
+	function (editBrickIds, brickToPiece, hoveredPieceId, brick) {
 		var inEdit = A2($elm$core$List$member, brick.id, editBrickIds);
+		var outBrickPieceId = inEdit ? $elm$core$Maybe$Nothing : A2($elm$core$Dict$get, brick.id, brickToPiece);
+		var outPieceHovered = function () {
+			var _v4 = _Utils_Tuple2(outBrickPieceId, hoveredPieceId);
+			if ((_v4.a.$ === 'Just') && (_v4.b.$ === 'Just')) {
+				var pid = _v4.a.a;
+				var hid = _v4.b.a;
+				return _Utils_eq(pid, hid);
+			} else {
+				return false;
+			}
+		}();
+		var pieceHoverStyle = outPieceHovered ? 'fill: rgba(64,120,255,0.3); stroke: rgba(64,120,255,0.8); stroke-width: 3; vector-effect: non-scaling-stroke;' : '';
+		var hoverAttrs = function () {
+			if (inEdit) {
+				return _List_Nil;
+			} else {
+				if (outBrickPieceId.$ === 'Just') {
+					var pid = outBrickPieceId.a;
+					return _List_fromArray(
+						[
+							$elm$html$Html$Events$onMouseEnter(
+							$author$project$Main$SetHoveredPiece(
+								$elm$core$Maybe$Just(pid))),
+							$elm$html$Html$Events$onMouseLeave(
+							$author$project$Main$SetHoveredPiece($elm$core$Maybe$Nothing))
+						]);
+				} else {
+					return _List_Nil;
+				}
+			}
+		}();
 		var cls = inEdit ? 'brick-edit-in' : 'brick-edit-out';
 		var clickMsg = function () {
 			if (inEdit) {
@@ -9697,13 +9883,20 @@ var $author$project$Main$viewBrickEditOverlay = F3(
 						]))
 				])) : A2(
 			$elm$svg$Svg$polygon,
-			_List_fromArray(
-				[
-					$elm$svg$Svg$Attributes$points(pointsAttr),
-					$elm$svg$Svg$Attributes$class(cls),
-					A2($elm$html$Html$Attributes$attribute, 'vector-effect', 'non-scaling-stroke'),
-					$elm$html$Html$Events$onClick(clickMsg)
-				]),
+			_Utils_ap(
+				_List_fromArray(
+					[
+						$elm$svg$Svg$Attributes$points(pointsAttr),
+						$elm$svg$Svg$Attributes$class(cls),
+						A2($elm$html$Html$Attributes$attribute, 'vector-effect', 'non-scaling-stroke'),
+						$elm$html$Html$Events$onClick(clickMsg)
+					]),
+				_Utils_ap(
+					$elm$core$String$isEmpty(pieceHoverStyle) ? _List_Nil : _List_fromArray(
+						[
+							$elm$svg$Svg$Attributes$style(pieceHoverStyle)
+						]),
+					hoverAttrs)),
 			_List_Nil);
 	});
 var $author$project$Main$viewBrickOverlay = function (brick) {
@@ -10022,21 +10215,6 @@ var $author$project$Main$AssignPieceToWave = function (a) {
 var $author$project$Main$SelectPiece = function (a) {
 	return {$: 'SelectPiece', a: a};
 };
-var $author$project$Main$SetHoveredPiece = function (a) {
-	return {$: 'SetHoveredPiece', a: a};
-};
-var $elm$html$Html$Events$onMouseEnter = function (msg) {
-	return A2(
-		$elm$html$Html$Events$on,
-		'mouseenter',
-		$elm$json$Json$Decode$succeed(msg));
-};
-var $elm$html$Html$Events$onMouseLeave = function (msg) {
-	return A2(
-		$elm$html$Html$Events$on,
-		'mouseleave',
-		$elm$json$Json$Decode$succeed(msg));
-};
 var $author$project$Main$hslToRgb = function (hue) {
 	var h = hue / 60;
 	var i = $elm$core$Basics$floor(h);
@@ -10346,7 +10524,7 @@ var $author$project$Main$viewMainSvg = F2(
 					A2($elm$core$Dict$get, piece.id, piecePositions));
 			},
 			visiblePieces) : _List_Nil;
-		var outlineLayer = ((!model.editMode) && (isGenerated && (model.showOutlines && (_Utils_eq(model.appMode, $author$project$Main$ModePieces) || (_Utils_eq(model.appMode, $author$project$Main$ModeGroups) || (_Utils_eq(model.appMode, $author$project$Main$ModeWaves) || _Utils_eq(model.appMode, $author$project$Main$ModeExport))))))) ? A2(
+		var outlineLayer = (isGenerated && (model.showOutlines && (_Utils_eq(model.appMode, $author$project$Main$ModePieces) || (_Utils_eq(model.appMode, $author$project$Main$ModeGroups) || (_Utils_eq(model.appMode, $author$project$Main$ModeWaves) || _Utils_eq(model.appMode, $author$project$Main$ModeExport)))))) ? A2(
 			$elm$core$List$map,
 			$author$project$Main$viewPieceOutline(
 				A2($author$project$Main$waveColor, model.outlineHue, 1.0)),
@@ -10373,7 +10551,7 @@ var $author$project$Main$viewMainSvg = F2(
 						model.pieces));
 				return A2(
 					$elm$core$List$map,
-					A2($author$project$Main$viewBrickEditOverlay, model.editBrickIds, brickToPiece),
+					A3($author$project$Main$viewBrickEditOverlay, model.editBrickIds, brickToPiece, model.hoveredPieceId),
 					response.bricks);
 			} else {
 				return _List_Nil;
@@ -14290,6 +14468,61 @@ var $author$project$Main$viewTitleBar = function (model) {
 						_List_fromArray(
 							[
 								$elm$html$Html$text('Export')
+							]))
+					])),
+				A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('undo-redo-bar'),
+						A2($elm$html$Html$Attributes$style, 'display', 'flex'),
+						A2($elm$html$Html$Attributes$style, 'flex-direction', 'row'),
+						A2($elm$html$Html$Attributes$style, 'gap', '4px'),
+						A2($elm$html$Html$Attributes$style, 'width', '100%')
+					]),
+				_List_fromArray(
+					[
+						A2(
+						$elm$html$Html$button,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$classList(
+								_List_fromArray(
+									[
+										_Utils_Tuple2('mode-btn', true),
+										_Utils_Tuple2('undo-btn', true)
+									])),
+								A2($elm$html$Html$Attributes$style, 'flex', '1'),
+								A2($elm$html$Html$Attributes$style, 'width', 'auto'),
+								$elm$html$Html$Attributes$disabled(
+								$elm$core$List$isEmpty(model.undoHistory)),
+								$elm$html$Html$Events$onClick($author$project$Main$Undo),
+								$elm$html$Html$Attributes$title('Undo (Ctrl+Z)')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text('↩')
+							])),
+						A2(
+						$elm$html$Html$button,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$classList(
+								_List_fromArray(
+									[
+										_Utils_Tuple2('mode-btn', true),
+										_Utils_Tuple2('redo-btn', true)
+									])),
+								A2($elm$html$Html$Attributes$style, 'flex', '1'),
+								A2($elm$html$Html$Attributes$style, 'width', 'auto'),
+								$elm$html$Html$Attributes$disabled(
+								$elm$core$List$isEmpty(model.redoHistory)),
+								$elm$html$Html$Events$onClick($author$project$Main$Redo),
+								$elm$html$Html$Attributes$title('Redo (Ctrl+Shift+Z)')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text('↪')
 							]))
 					])),
 				A2(

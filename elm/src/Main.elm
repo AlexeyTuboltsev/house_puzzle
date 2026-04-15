@@ -2363,16 +2363,20 @@ viewTitleBar model =
                 ]
                 [ text "Export" ]
             ]
-        , div [ class "undo-redo-bar" ]
+        , div [ class "undo-redo-bar", style "display" "flex", style "flex-direction" "row", style "gap" "4px", style "width" "100%" ]
             [ button
-                [ class "undo-btn"
+                [ classList [ ( "mode-btn", True ), ( "undo-btn", True ) ]
+                , style "flex" "1"
+                , style "width" "auto"
                 , disabled (List.isEmpty model.undoHistory)
                 , onClick Undo
                 , title "Undo (Ctrl+Z)"
                 ]
                 [ text "↩" ]
             , button
-                [ class "redo-btn"
+                [ classList [ ( "mode-btn", True ), ( "redo-btn", True ) ]
+                , style "flex" "1"
+                , style "width" "auto"
                 , disabled (List.isEmpty model.redoHistory)
                 , onClick Redo
                 , title "Redo (Ctrl+Shift+Z)"
@@ -3359,7 +3363,7 @@ viewMainSvg response model =
                             |> List.concatMap (\p -> List.map (\bid -> ( bid, p.id )) p.brickIds)
                             |> Dict.fromList
                 in
-                List.map (viewBrickEditOverlay model.editBrickIds brickToPiece) response.bricks
+                List.map (viewBrickEditOverlay model.editBrickIds brickToPiece model.hoveredPieceId) response.bricks
 
             else
                 []
@@ -3375,9 +3379,9 @@ viewMainSvg response model =
             else
                 []
 
-        -- Piece outlines (post-gen, pieces/waves mode only, not in edit)
+        -- Piece outlines (post-gen, pieces/waves mode only; shown even in edit mode so blue outlines stay visible)
         outlineLayer =
-            if (not model.editMode) && isGenerated && model.showOutlines && (model.appMode == ModePieces || model.appMode == ModeGroups || model.appMode == ModeWaves || model.appMode == ModeExport) then
+            if isGenerated && model.showOutlines && (model.appMode == ModePieces || model.appMode == ModeGroups || model.appMode == ModeWaves || model.appMode == ModeExport) then
                 List.map (viewPieceOutline (waveColor model.outlineHue 1.0)) visiblePieces
 
             else
@@ -3587,11 +3591,26 @@ viewBrickOverlay brick =
             []
 
 
-viewBrickEditOverlay : List String -> Dict String String -> Brick -> Svg.Svg Msg
-viewBrickEditOverlay editBrickIds brickToPiece brick =
+viewBrickEditOverlay : List String -> Dict String String -> Maybe String -> Brick -> Svg.Svg Msg
+viewBrickEditOverlay editBrickIds brickToPiece hoveredPieceId brick =
     let
         inEdit =
             List.member brick.id editBrickIds
+
+        -- For out-bricks, which piece does this brick belong to?
+        outBrickPieceId =
+            if inEdit then
+                Nothing
+            else
+                Dict.get brick.id brickToPiece
+
+        -- Whether the piece this out-brick belongs to is currently hovered
+        outPieceHovered =
+            case ( outBrickPieceId, hoveredPieceId ) of
+                ( Just pid, Just hid ) ->
+                    pid == hid
+                _ ->
+                    False
 
         absPoints =
             List.map (\( x, y ) -> ( x + brick.x, y + brick.y )) brick.polygon
@@ -3608,6 +3627,13 @@ viewBrickEditOverlay editBrickIds brickToPiece brick =
             else
                 "brick-edit-out"
 
+        -- Inline style to highlight all bricks of the hovered foreign piece
+        pieceHoverStyle =
+            if outPieceHovered then
+                "fill: rgba(64,120,255,0.3); stroke: rgba(64,120,255,0.8); stroke-width: 3; vector-effect: non-scaling-stroke;"
+            else
+                ""
+
         clickMsg =
             if inEdit then
                 -- Remove from edited piece (unless it's the last brick)
@@ -3622,6 +3648,19 @@ viewBrickEditOverlay editBrickIds brickToPiece brick =
                         MergePieceIntoEdit pid
                     Nothing ->
                         LogBrickClick brick.id
+
+        -- Mouse events for out-bricks: track piece-level hover via hoveredPieceId
+        hoverAttrs =
+            if inEdit then
+                []
+            else
+                case outBrickPieceId of
+                    Just pid ->
+                        [ onMouseEnter (SetHoveredPiece (Just pid))
+                        , onMouseLeave (SetHoveredPiece Nothing)
+                        ]
+                    Nothing ->
+                        []
     in
     if List.isEmpty absPoints then
         -- ERROR: no polygon — all bricks must have vector polygons
@@ -3647,11 +3686,12 @@ viewBrickEditOverlay editBrickIds brickToPiece brick =
 
     else
         Svg.polygon
-            [ SA.points pointsAttr
+            ([ SA.points pointsAttr
             , SA.class cls
             , attribute "vector-effect" "non-scaling-stroke"
             , onClick clickMsg
-            ]
+            ] ++ (if String.isEmpty pieceHoverStyle then [] else [ SA.style pieceHoverStyle ])
+              ++ hoverAttrs)
             []
 
 
