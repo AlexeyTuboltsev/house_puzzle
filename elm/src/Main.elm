@@ -149,6 +149,17 @@ type GenerateState
     | Generated
 
 
+type alias UndoSnapshot =
+    { pieces : List Piece
+    , waves : List Wave
+    , nextWaveId : Int
+    , groups : List Group
+    , nextGroupId : Int
+    , gridHue : Float
+    , outlineHue : Float
+    }
+
+
 type alias Model =
     { selectedFileName : String
     , pdfFiles : List { name : String, path : String }
@@ -201,6 +212,8 @@ type alias Model =
     , sessionKey : String
     , nextSessionId : Int
     , appVersion : String
+    , undoHistory : List UndoSnapshot
+    , redoHistory : List UndoSnapshot
     }
 
 
@@ -258,6 +271,8 @@ init flags =
       , sessionKey = ""
       , nextSessionId = 1
       , appVersion = flags.version
+      , undoHistory = []
+      , redoHistory = []
       }
     , Cmd.batch
         [ fetchPdfList
@@ -340,6 +355,8 @@ type Msg
     | ColorPickMove Float Float
     | EndColorPick
     | ScrollTrayBy Float
+    | Undo
+    | Redo
     | NoOp
 
 
@@ -368,6 +385,46 @@ scrollTrayToEnd =
         (Process.sleep 0
             |> Task.andThen (\_ -> Browser.Dom.setViewportOf "wave-tray-scroll" 999999 0)
         )
+
+
+-- ── Undo/Redo Helpers ────────────────────────────────────────────────────────
+
+
+takeSnapshot : Model -> UndoSnapshot
+takeSnapshot model =
+    { pieces = model.pieces
+    , waves = model.waves
+    , nextWaveId = model.nextWaveId
+    , groups = model.groups
+    , nextGroupId = model.nextGroupId
+    , gridHue = model.gridHue
+    , outlineHue = model.outlineHue
+    }
+
+
+applySnapshot : UndoSnapshot -> Model -> Model
+applySnapshot snap model =
+    { model
+        | pieces = snap.pieces
+        , waves = snap.waves
+        , nextWaveId = snap.nextWaveId
+        , groups = snap.groups
+        , nextGroupId = snap.nextGroupId
+        , gridHue = snap.gridHue
+        , outlineHue = snap.outlineHue
+    }
+
+
+{-| Wrap an update result to push the old model snapshot onto undo history
+and clear the redo stack. -}
+withUndo : Model -> ( Model, Cmd Msg ) -> ( Model, Cmd Msg )
+withUndo oldModel ( newModel, cmd ) =
+    ( { newModel
+        | undoHistory = List.take 50 (takeSnapshot oldModel :: oldModel.undoHistory)
+        , redoHistory = []
+      }
+    , cmd
+    )
 
 
 -- ── Update ──────────────────────────────────────────────────────────────────
@@ -659,29 +716,31 @@ update msg model =
                         )
                         model.waves
             in
-            ( { model
-                | waves = [ newWave ] ++ lockedWaves
-                , nextWaveId = model.nextWaveId + 1
-                , selectedWaveId = Just newWave.id
-              }
-            , Cmd.none
-            )
+            withUndo model
+                ( { model
+                    | waves = [ newWave ] ++ lockedWaves
+                    , nextWaveId = model.nextWaveId + 1
+                    , selectedWaveId = Just newWave.id
+                  }
+                , Cmd.none
+                )
 
         ToggleWaveVisibility waveId ->
-            ( { model
-                | waves =
-                    List.map
-                        (\w ->
-                            if w.id == waveId then
-                                { w | visible = not w.visible }
+            withUndo model
+                ( { model
+                    | waves =
+                        List.map
+                            (\w ->
+                                if w.id == waveId then
+                                    { w | visible = not w.visible }
 
-                            else
-                                w
-                        )
-                        model.waves
-              }
-            , Cmd.none
-            )
+                                else
+                                    w
+                            )
+                            model.waves
+                  }
+                , Cmd.none
+                )
 
         SetHoveredPiece mid ->
             ( { model | hoveredPieceId = mid }, Cmd.none )
@@ -745,7 +804,8 @@ update msg model =
                         didAdd =
                             not targetLocked && not alreadyIn && not sourceLocked
                     in
-                    ( { model | waves = updatedWaves }, if didAdd then scrollTrayToEnd else Cmd.none )
+                    withUndo model
+                        ( { model | waves = updatedWaves }, if didAdd then scrollTrayToEnd else Cmd.none )
 
         RemovePieceFromWave wid pid ->
             let
@@ -756,20 +816,21 @@ update msg model =
                 ( model, Cmd.none )
 
             else
-            ( { model
-                | waves =
-                    List.map
-                        (\w ->
-                            if w.id == wid then
-                                { w | pieceIds = List.filter (\p -> p /= pid) w.pieceIds }
+            withUndo model
+                ( { model
+                    | waves =
+                        List.map
+                            (\w ->
+                                if w.id == wid then
+                                    { w | pieceIds = List.filter (\p -> p /= pid) w.pieceIds }
 
-                            else
-                                w
-                        )
-                        model.waves
-              }
-            , Cmd.none
-            )
+                                else
+                                    w
+                            )
+                            model.waves
+                  }
+                , Cmd.none
+                )
 
         MoveWave wid dir ->
             let
@@ -815,7 +876,7 @@ update msg model =
                 renumbered =
                     List.indexedMap (\i w -> { w | name = "Wave " ++ String.fromInt (i + 1) }) swapped
             in
-            ( { model | waves = renumbered }, Cmd.none )
+            withUndo model ( { model | waves = renumbered }, Cmd.none )
 
         RemoveWave wid ->
             let
@@ -832,7 +893,7 @@ update msg model =
                     else
                         model.selectedWaveId
             in
-            ( { model | waves = renumbered, selectedWaveId = newSelectedWaveId }, Cmd.none )
+            withUndo model ( { model | waves = renumbered, selectedWaveId = newSelectedWaveId }, Cmd.none )
 
         StartEdit ->
             case model.selectedPieceId of
@@ -961,18 +1022,19 @@ update msg model =
                                 (\w -> { w | pieceIds = List.filter (\pid -> List.member pid validIds) w.pieceIds })
                                 model.waves
                     in
-                    ( { model
-                        | pieces = allPieces
-                        , waves = updatedWaves
-                        , editMode = False
-                        , editBrickIds = []
-                        , editOriginalBrickIds = []
-                        , generateState = Generated
-                        , recomputing = True
-                        , selectedPieceId = Just editedPieceId
-                      }
-                    , recomputePiecePolygons model.sessionKey allPieces
-                    )
+                    withUndo model
+                        ( { model
+                            | pieces = allPieces
+                            , waves = updatedWaves
+                            , editMode = False
+                            , editBrickIds = []
+                            , editOriginalBrickIds = []
+                            , generateState = Generated
+                            , recomputing = True
+                            , selectedPieceId = Just editedPieceId
+                          }
+                        , recomputePiecePolygons model.sessionKey allPieces
+                        )
 
         CancelEdit ->
             ( { model
@@ -1198,17 +1260,20 @@ update msg model =
                                                     wv
                                         )
                     in
-                    ( { model | waves = newWaves, draggingPieceId = Nothing, dragOverWaveId = Nothing, dragInsertBeforeId = Nothing }, Cmd.none )
+                    withUndo model
+                        ( { model | waves = newWaves, draggingPieceId = Nothing, dragOverWaveId = Nothing, dragInsertBeforeId = Nothing }, Cmd.none )
 
         ToggleWaveLock wid ->
-            ( { model | waves = List.map (\w -> if w.id == wid then { w | locked = not w.locked } else w) model.waves }
-            , Cmd.none
-            )
+            withUndo model
+                ( { model | waves = List.map (\w -> if w.id == wid then { w | locked = not w.locked } else w) model.waves }
+                , Cmd.none
+                )
 
         ToggleGroupLock gid ->
-            ( { model | groups = List.map (\g -> if g.id == gid then { g | locked = not g.locked } else g) model.groups }
-            , Cmd.none
-            )
+            withUndo model
+                ( { model | groups = List.map (\g -> if g.id == gid then { g | locked = not g.locked } else g) model.groups }
+                , Cmd.none
+                )
 
         AddGroup ->
             let
@@ -1220,13 +1285,14 @@ update msg model =
                     , locked = False
                     }
             in
-            ( { model
-                | groups = model.groups ++ [ newGroup ]
-                , nextGroupId = model.nextGroupId + 1
-                , selectedGroupId = Just newGroup.id
-              }
-            , Cmd.none
-            )
+            withUndo model
+                ( { model
+                    | groups = model.groups ++ [ newGroup ]
+                    , nextGroupId = model.nextGroupId + 1
+                    , selectedGroupId = Just newGroup.id
+                  }
+                , Cmd.none
+                )
 
         SelectGroup mgid ->
             ( { model | selectedGroupId = mgid }, Cmd.none )
@@ -1242,7 +1308,7 @@ update msg model =
                     else
                         model.selectedGroupId
             in
-            ( { model | groups = newGroups, selectedGroupId = newSelectedGroupId }, Cmd.none )
+            withUndo model ( { model | groups = newGroups, selectedGroupId = newSelectedGroupId }, Cmd.none )
 
         MoveGroup gid dir ->
             let
@@ -1258,7 +1324,7 @@ update msg model =
                         Just g -> List.take newIdx without ++ [ g ] ++ List.drop newIdx without
                         Nothing -> lst
             in
-            ( { model | groups = moveItem model.groups }, Cmd.none )
+            withUndo model ( { model | groups = moveItem model.groups }, Cmd.none )
 
         AssignPieceToGroup pid ->
             case model.selectedGroupId of
@@ -1285,7 +1351,7 @@ update msg model =
                                 )
                                 model.groups
                     in
-                    ( { model | groups = updatedGroups }, Cmd.none )
+                    withUndo model ( { model | groups = updatedGroups }, Cmd.none )
 
         DragEnterGroup mgid ->
             ( { model | dragOverGroupId = Just mgid }, Cmd.none )
@@ -1312,7 +1378,7 @@ update msg model =
                                         )
                                         model.groups
                     in
-                    ( { model | groups = updatedGroups, draggingPieceId = Nothing, dragOverGroupId = Nothing }, Cmd.none )
+                    withUndo model ( { model | groups = updatedGroups, draggingPieceId = Nothing, dragOverGroupId = Nothing }, Cmd.none )
 
         AssignGroupToWave gid wid ->
             case model.groups |> List.filter (\g -> g.id == gid) |> List.head of
@@ -1350,9 +1416,10 @@ update msg model =
                                     |> List.map (\w -> { w | pieceIds = List.filter (\p -> not (List.member p pids)) w.pieceIds })
                                     |> List.map (\w -> if w.id == wid then { w | pieceIds = w.pieceIds ++ pids } else w)
                     in
-                    ( { model | waves = updatedWaves }
-                    , if targetLocked then Cmd.none else scrollTrayToEnd
-                    )
+                    withUndo model
+                        ( { model | waves = updatedWaves }
+                        , if targetLocked then Cmd.none else scrollTrayToEnd
+                        )
 
         GotViewport viewport ->
             let
@@ -1478,7 +1545,7 @@ update msg model =
                                             model.waves
                                             selectedIds
                                 in
-                                ( { cleared | waves = updatedWaves }, Cmd.none )
+                                withUndo model ( { cleared | waves = updatedWaves }, Cmd.none )
 
         SetZoomLevel z ->
             ( { model | zoomLevel = z }, Cmd.none )
@@ -1621,7 +1688,7 @@ update msg model =
                                 , colorPicking = Nothing
                             }
             in
-            ( updated, Cmd.none )
+            withUndo model ( updated, Cmd.none )
 
         EndColorPick ->
             ( { model | colorPicking = Nothing }, Cmd.none )
@@ -1633,6 +1700,46 @@ update msg model =
                     |> Task.andThen (\vp -> Browser.Dom.setViewportOf "wave-tray-scroll" (vp.viewport.x + delta) 0)
                 )
             )
+
+        Undo ->
+            case model.undoHistory of
+                [] ->
+                    ( model, Cmd.none )
+
+                top :: rest ->
+                    let
+                        currentSnap =
+                            takeSnapshot model
+
+                        restored =
+                            applySnapshot top model
+                    in
+                    ( { restored
+                        | undoHistory = rest
+                        , redoHistory = List.take 50 (currentSnap :: model.redoHistory)
+                      }
+                    , Cmd.none
+                    )
+
+        Redo ->
+            case model.redoHistory of
+                [] ->
+                    ( model, Cmd.none )
+
+                top :: rest ->
+                    let
+                        currentSnap =
+                            takeSnapshot model
+
+                        restored =
+                            applySnapshot top model
+                    in
+                    ( { restored
+                        | undoHistory = List.take 50 (currentSnap :: model.undoHistory)
+                        , redoHistory = rest
+                      }
+                    , Cmd.none
+                    )
 
         NoOp ->
             ( model, Cmd.none )
@@ -2182,6 +2289,22 @@ viewTitleBar model =
                     )
                 ]
                 [ text "Export" ]
+            ]
+        , div [ class "undo-redo-bar" ]
+            [ button
+                [ class "undo-btn"
+                , disabled (List.isEmpty model.undoHistory)
+                , onClick Undo
+                , title "Undo (Ctrl+Z)"
+                ]
+                [ text "↩" ]
+            , button
+                [ class "redo-btn"
+                , disabled (List.isEmpty model.redoHistory)
+                , onClick Redo
+                , title "Redo (Ctrl+Shift+Z)"
+                ]
+                [ text "↪" ]
             ]
         , span [ class "version-tag" ] [ text model.appVersion ]
         ]
@@ -4133,10 +4256,28 @@ viewStats model =
 -- ── Subscriptions ────────────────────────────────────────────────────────────
 
 
+keyDecoder : D.Decoder Msg
+keyDecoder =
+    D.map3
+        (\key ctrl shift ->
+            if ctrl && key == "z" && not shift then
+                Undo
+
+            else if ctrl && key == "z" && shift then
+                Redo
+
+            else
+                NoOp
+        )
+        (D.field "key" D.string)
+        (D.field "ctrlKey" D.bool)
+        (D.field "shiftKey" D.bool)
+
+
 subscriptions : Model -> Sub Msg
 subscriptions model =
     Sub.batch
-        ([]
+        ([ Browser.Events.onKeyDown keyDecoder ]
             ++ (case model.colorPicking of
                     Just _ ->
                         [ Browser.Events.onMouseMove
