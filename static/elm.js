@@ -6335,7 +6335,7 @@ var $author$project$Main$fetchPdfList = $elm$http$Http$get(
 var $elm$browser$Browser$Dom$getViewport = _Browser_withWindow(_Browser_getViewport);
 var $author$project$Main$init = function (flags) {
 	return _Utils_Tuple2(
-		{appMode: $author$project$Main$ModeInit, appVersion: flags.version, availableH: 900.0, bricksById: $elm$core$Dict$empty, colorPicking: $elm$core$Maybe$Nothing, dragInsertBeforeId: $elm$core$Maybe$Nothing, dragOverGroupId: $elm$core$Maybe$Nothing, dragOverWaveId: $elm$core$Maybe$Nothing, draggingPieceId: $elm$core$Maybe$Nothing, editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, editOriginalGroups: _List_Nil, editOriginalPieces: _List_Nil, editOriginalWaves: _List_Nil, exportCanvasHeight: '900', exportHouseName: 'NewHouse', exportLocation: 'Rome', exportPosition: '0', exportSpacing: '12.0', exporting: false, generateState: $author$project$Main$NotGenerated, gridHue: 35.0, groups: _List_Nil, houseUnitsHigh: 15.5, hoveredPieceId: $elm$core$Maybe$Nothing, lasso: $elm$core$Maybe$Nothing, loadState: $author$project$Main$Idle, minBorder: 10, nextGroupId: 1, nextSessionId: 1, nextWaveId: 1, outlineHue: 210.0, pdfFiles: _List_Nil, pieceGeneration: 0, pieces: _List_Nil, recomputing: false, redoHistory: _List_Nil, seed: 42, selectedFileName: '', selectedGroupId: $elm$core$Maybe$Nothing, selectedPieceId: $elm$core$Maybe$Nothing, selectedWaveId: $elm$core$Maybe$Nothing, sessionKey: '', showGrid: false, showGroupOverlay: true, showLights: false, showNumbers: true, showOutlines: true, showWaveOverlay: true, svgScale: 1.0, targetCount: 60, undoHistory: _List_Nil, waves: _List_Nil, zoomGridActive: false, zoomLevel: 1.0},
+		{appMode: $author$project$Main$ModeInit, appVersion: flags.version, availableH: 900.0, bricksById: $elm$core$Dict$empty, colorPicking: $elm$core$Maybe$Nothing, dragInsertBeforeId: $elm$core$Maybe$Nothing, dragOverGroupId: $elm$core$Maybe$Nothing, dragOverWaveId: $elm$core$Maybe$Nothing, draggingPieceId: $elm$core$Maybe$Nothing, editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, editOriginalGroups: _List_Nil, editOriginalPieces: _List_Nil, editOriginalWaves: _List_Nil, exportCanvasHeight: '900', exportHouseName: 'NewHouse', exportLocation: 'Rome', exportPosition: '0', exportSpacing: '12.0', exporting: false, generateState: $author$project$Main$NotGenerated, gridHue: 35.0, groups: _List_Nil, houseUnitsHigh: 15.5, hoveredBrickId: $elm$core$Maybe$Nothing, hoveredPieceId: $elm$core$Maybe$Nothing, lasso: $elm$core$Maybe$Nothing, loadState: $author$project$Main$Idle, minBorder: 10, nextGroupId: 1, nextSessionId: 1, nextWaveId: 1, outlineHue: 210.0, pdfFiles: _List_Nil, pieceGeneration: 0, pieces: _List_Nil, recomputing: false, redoHistory: _List_Nil, seed: 42, selectedFileName: '', selectedGroupId: $elm$core$Maybe$Nothing, selectedPieceId: $elm$core$Maybe$Nothing, selectedWaveId: $elm$core$Maybe$Nothing, sessionKey: '', showGrid: false, showGroupOverlay: true, showLights: false, showNumbers: true, showOutlines: true, showWaveOverlay: true, svgScale: 1.0, targetCount: 60, undoHistory: _List_Nil, waves: _List_Nil, zoomGridActive: false, zoomLevel: 1.0},
 		$elm$core$Platform$Cmd$batch(
 			_List_fromArray(
 				[
@@ -7950,6 +7950,13 @@ var $author$project$Main$update = F2(
 					_Utils_update(
 						model,
 						{hoveredPieceId: mid}),
+					$elm$core$Platform$Cmd$none);
+			case 'SetHoveredBrick':
+				var mid = msg.a;
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{hoveredBrickId: mid}),
 					$elm$core$Platform$Cmd$none);
 			case 'SelectPiece':
 				var pid = msg.a;
@@ -9750,6 +9757,9 @@ var $author$project$Main$MergePieceIntoEdit = function (a) {
 var $author$project$Main$RemoveBrickFromEdit = function (a) {
 	return {$: 'RemoveBrickFromEdit', a: a};
 };
+var $author$project$Main$SetHoveredBrick = function (a) {
+	return {$: 'SetHoveredBrick', a: a};
+};
 var $author$project$Main$SetHoveredPiece = function (a) {
 	return {$: 'SetHoveredPiece', a: a};
 };
@@ -9783,20 +9793,16 @@ var $author$project$Main$viewBrickEditOverlay = F4(
 	function (editBrickIds, brickToPiece, hoveredPieceId, brick) {
 		var inEdit = A2($elm$core$List$member, brick.id, editBrickIds);
 		var outBrickPieceId = inEdit ? $elm$core$Maybe$Nothing : A2($elm$core$Dict$get, brick.id, brickToPiece);
-		var outPieceHovered = function () {
-			var _v4 = _Utils_Tuple2(outBrickPieceId, hoveredPieceId);
-			if ((_v4.a.$ === 'Just') && (_v4.b.$ === 'Just')) {
-				var pid = _v4.a.a;
-				var hid = _v4.b.a;
-				return _Utils_eq(pid, hid);
-			} else {
-				return false;
-			}
-		}();
-		var pieceHoverStyle = outPieceHovered ? 'fill: rgba(64,120,255,0.3); stroke: rgba(64,120,255,0.8); stroke-width: 3; vector-effect: non-scaling-stroke;' : '';
 		var hoverAttrs = function () {
 			if (inEdit) {
-				return _List_Nil;
+				return _List_fromArray(
+					[
+						$elm$html$Html$Events$onMouseEnter(
+						$author$project$Main$SetHoveredBrick(
+							$elm$core$Maybe$Just(brick.id))),
+						$elm$html$Html$Events$onMouseLeave(
+						$author$project$Main$SetHoveredBrick($elm$core$Maybe$Nothing))
+					]);
 			} else {
 				if (outBrickPieceId.$ === 'Just') {
 					var pid = outBrickPieceId.a;
@@ -9891,12 +9897,7 @@ var $author$project$Main$viewBrickEditOverlay = F4(
 						A2($elm$html$Html$Attributes$attribute, 'vector-effect', 'non-scaling-stroke'),
 						$elm$html$Html$Events$onClick(clickMsg)
 					]),
-				_Utils_ap(
-					$elm$core$String$isEmpty(pieceHoverStyle) ? _List_Nil : _List_fromArray(
-						[
-							$elm$svg$Svg$Attributes$style(pieceHoverStyle)
-						]),
-					hoverAttrs)),
+				hoverAttrs),
 			_List_Nil);
 	});
 var $author$project$Main$viewBrickOverlay = function (brick) {
@@ -9967,6 +9968,65 @@ var $author$project$Main$viewBrickOverlay = function (brick) {
 			]),
 		_List_Nil);
 };
+var $author$project$Main$viewGreenHoverOverlay = F5(
+	function (editBrickIds, brickToPiece, hoveredPieceId, hoveredBrickId, brick) {
+		var inEdit = A2($elm$core$List$member, brick.id, editBrickIds);
+		var shouldHighlight = function () {
+			if (inEdit) {
+				return _Utils_eq(
+					hoveredBrickId,
+					$elm$core$Maybe$Just(brick.id));
+			} else {
+				var _v2 = A2($elm$core$Dict$get, brick.id, brickToPiece);
+				if (_v2.$ === 'Just') {
+					var pid = _v2.a;
+					return _Utils_eq(
+						hoveredPieceId,
+						$elm$core$Maybe$Just(pid));
+				} else {
+					return false;
+				}
+			}
+		}();
+		if ((!shouldHighlight) || $elm$core$List$isEmpty(brick.polygon)) {
+			return _List_Nil;
+		} else {
+			var absPoints = A2(
+				$elm$core$List$map,
+				function (_v1) {
+					var x = _v1.a;
+					var y = _v1.b;
+					return _Utils_Tuple2(x + brick.x, y + brick.y);
+				},
+				brick.polygon);
+			var pointsAttr = A2(
+				$elm$core$String$join,
+				' ',
+				A2(
+					$elm$core$List$map,
+					function (_v0) {
+						var x = _v0.a;
+						var y = _v0.b;
+						return $elm$core$String$fromFloat(x) + (',' + $elm$core$String$fromFloat(y));
+					},
+					absPoints));
+			return _List_fromArray(
+				[
+					A2(
+					$elm$svg$Svg$polygon,
+					_List_fromArray(
+						[
+							$elm$svg$Svg$Attributes$points(pointsAttr),
+							$elm$svg$Svg$Attributes$fill('rgba(40,180,80,0.3)'),
+							$elm$svg$Svg$Attributes$stroke('rgba(40,180,80,0.9)'),
+							$elm$svg$Svg$Attributes$strokeWidth('2'),
+							A2($elm$html$Html$Attributes$attribute, 'vector-effect', 'non-scaling-stroke'),
+							$elm$svg$Svg$Attributes$style('pointer-events: none;')
+						]),
+					_List_Nil)
+				]);
+		}
+	});
 var $elm$svg$Svg$line = $elm$svg$Svg$trustedNode('line');
 var $elm$svg$Svg$Attributes$x1 = _VirtualDom_attribute('x1');
 var $elm$svg$Svg$Attributes$x2 = _VirtualDom_attribute('x2');
@@ -10529,6 +10589,28 @@ var $author$project$Main$viewMainSvg = F2(
 			$author$project$Main$viewPieceOutline(
 				A2($author$project$Main$waveColor, model.outlineHue, 1.0)),
 			visiblePieces) : _List_Nil;
+		var greenHoverLayer = function () {
+			if (model.editMode) {
+				var brickToPiece = $elm$core$Dict$fromList(
+					A2(
+						$elm$core$List$concatMap,
+						function (p) {
+							return A2(
+								$elm$core$List$map,
+								function (bid) {
+									return _Utils_Tuple2(bid, p.id);
+								},
+								p.brickIds);
+						},
+						model.pieces));
+				return A2(
+					$elm$core$List$concatMap,
+					A4($author$project$Main$viewGreenHoverOverlay, model.editBrickIds, brickToPiece, model.hoveredPieceId, model.hoveredBrickId),
+					response.bricks);
+			} else {
+				return _List_Nil;
+			}
+		}();
 		var effectiveScale = model.svgScale * model.zoomLevel;
 		var effectiveHoverId = (!_Utils_eq(model.draggingPieceId, $elm$core$Maybe$Nothing)) ? model.draggingPieceId : model.hoveredPieceId;
 		var pieceOverlays = ((!model.editMode) && isGenerated) ? A2(
@@ -10785,9 +10867,10 @@ var $author$project$Main$viewMainSvg = F2(
 			model.editMode ? _List_fromArray(
 				[
 					A2($elm$svg$Svg$g, _List_Nil, baseLayer),
-					A2($elm$svg$Svg$g, _List_Nil, outlineLayer),
 					A2($elm$svg$Svg$g, _List_Nil, editActivePieceOverlay),
-					A2($elm$svg$Svg$g, _List_Nil, editOverlays)
+					A2($elm$svg$Svg$g, _List_Nil, editOverlays),
+					A2($elm$svg$Svg$g, _List_Nil, outlineLayer),
+					A2($elm$svg$Svg$g, _List_Nil, greenHoverLayer)
 				]) : _List_fromArray(
 				[
 					A2($elm$svg$Svg$g, _List_Nil, bgImageLayer),
@@ -14476,7 +14559,8 @@ var $author$project$Main$viewTitleBar = function (model) {
 				_List_fromArray(
 					[
 						$elm$html$Html$Attributes$class('undo-redo-bar sidebar-nav'),
-						A2($elm$html$Html$Attributes$style, 'flex-direction', 'row')
+						A2($elm$html$Html$Attributes$style, 'flex-direction', 'row'),
+						A2($elm$html$Html$Attributes$style, 'margin-top', '12px')
 					]),
 				_List_fromArray(
 					[

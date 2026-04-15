@@ -185,6 +185,7 @@ type alias Model =
     , selectedGroupId : Maybe Int
     , dragOverGroupId : Maybe (Maybe Int)
     , hoveredPieceId : Maybe String
+    , hoveredBrickId : Maybe String
     , selectedPieceId : Maybe String
     , selectedWaveId : Maybe Int
     , editMode : Bool
@@ -247,6 +248,7 @@ init flags =
       , selectedGroupId = Nothing
       , dragOverGroupId = Nothing
       , hoveredPieceId = Nothing
+      , hoveredBrickId = Nothing
       , selectedPieceId = Nothing
       , selectedWaveId = Nothing
       , editMode = False
@@ -317,6 +319,7 @@ type Msg
     | AddWave
     | ToggleWaveVisibility Int
     | SetHoveredPiece (Maybe String)
+    | SetHoveredBrick (Maybe String)
     | SelectPiece String
     | SelectWave (Maybe Int)
     | AssignPieceToWave String
@@ -763,6 +766,9 @@ update msg model =
 
         SetHoveredPiece mid ->
             ( { model | hoveredPieceId = mid }, Cmd.none )
+
+        SetHoveredBrick mid ->
+            ( { model | hoveredBrickId = mid }, Cmd.none )
 
         SelectPiece pid ->
             ( { model
@@ -2363,7 +2369,7 @@ viewTitleBar model =
                 ]
                 [ text "Export" ]
             ]
-        , div [ class "undo-redo-bar sidebar-nav", style "flex-direction" "row" ]
+        , div [ class "undo-redo-bar sidebar-nav", style "flex-direction" "row", style "margin-top" "12px" ]
             [ button
                 [ classList [ ( "mode-btn", True ), ( "undo-btn", True ) ]
                 , style "flex" "1"
@@ -3387,6 +3393,20 @@ viewMainSvg response model =
             else
                 []
 
+        -- Green hover highlights rendered on top of outlines (edit mode only)
+        greenHoverLayer =
+            if model.editMode then
+                let
+                    brickToPiece =
+                        model.pieces
+                            |> List.concatMap (\p -> List.map (\bid -> ( bid, p.id )) p.brickIds)
+                            |> Dict.fromList
+                in
+                List.concatMap (viewGreenHoverOverlay model.editBrickIds brickToPiece model.hoveredPieceId model.hoveredBrickId) response.bricks
+
+            else
+                []
+
         -- Piece interaction overlays (post-gen, not in edit)
         effectiveHoverId =
             if model.draggingPieceId /= Nothing then
@@ -3517,6 +3537,7 @@ viewMainSvg response model =
             , Svg.g [] editActivePieceOverlay
             , Svg.g [] editOverlays
             , Svg.g [] outlineLayer
+            , Svg.g [] greenHoverLayer
             ]
 
          else
@@ -3605,14 +3626,6 @@ viewBrickEditOverlay editBrickIds brickToPiece hoveredPieceId brick =
             else
                 Dict.get brick.id brickToPiece
 
-        -- Whether the piece this out-brick belongs to is currently hovered
-        outPieceHovered =
-            case ( outBrickPieceId, hoveredPieceId ) of
-                ( Just pid, Just hid ) ->
-                    pid == hid
-                _ ->
-                    False
-
         absPoints =
             List.map (\( x, y ) -> ( x + brick.x, y + brick.y )) brick.polygon
 
@@ -3627,13 +3640,6 @@ viewBrickEditOverlay editBrickIds brickToPiece hoveredPieceId brick =
 
             else
                 "brick-edit-out"
-
-        -- Inline style to highlight all bricks of the hovered foreign piece
-        pieceHoverStyle =
-            if outPieceHovered then
-                "fill: rgba(64,120,255,0.3); stroke: rgba(64,120,255,0.8); stroke-width: 3; vector-effect: non-scaling-stroke;"
-            else
-                ""
 
         clickMsg =
             if inEdit then
@@ -3650,10 +3656,12 @@ viewBrickEditOverlay editBrickIds brickToPiece hoveredPieceId brick =
                     Nothing ->
                         LogBrickClick brick.id
 
-        -- Mouse events for out-bricks: track piece-level hover via hoveredPieceId
+        -- Mouse events: track hover for both in-edit (brick-level) and out-bricks (piece-level)
         hoverAttrs =
             if inEdit then
-                []
+                [ onMouseEnter (SetHoveredBrick (Just brick.id))
+                , onMouseLeave (SetHoveredBrick Nothing)
+                ]
             else
                 case outBrickPieceId of
                     Just pid ->
@@ -3691,9 +3699,51 @@ viewBrickEditOverlay editBrickIds brickToPiece hoveredPieceId brick =
             , SA.class cls
             , attribute "vector-effect" "non-scaling-stroke"
             , onClick clickMsg
-            ] ++ (if String.isEmpty pieceHoverStyle then [] else [ SA.style pieceHoverStyle ])
-              ++ hoverAttrs)
+            ] ++ hoverAttrs)
             []
+
+
+-- Green hover overlay for edit mode: renders on top of blue outlines.
+-- For in-edit bricks: highlight the individual brick when it is hovered.
+-- For out-bricks: highlight the brick when its piece is the hovered piece.
+viewGreenHoverOverlay : List String -> Dict String String -> Maybe String -> Maybe String -> Brick -> List (Svg.Svg Msg)
+viewGreenHoverOverlay editBrickIds brickToPiece hoveredPieceId hoveredBrickId brick =
+    let
+        inEdit =
+            List.member brick.id editBrickIds
+
+        shouldHighlight =
+            if inEdit then
+                hoveredBrickId == Just brick.id
+            else
+                case Dict.get brick.id brickToPiece of
+                    Just pid ->
+                        hoveredPieceId == Just pid
+                    Nothing ->
+                        False
+    in
+    if not shouldHighlight || List.isEmpty brick.polygon then
+        []
+    else
+        let
+            absPoints =
+                List.map (\( x, y ) -> ( x + brick.x, y + brick.y )) brick.polygon
+
+            pointsAttr =
+                absPoints
+                    |> List.map (\( x, y ) -> String.fromFloat x ++ "," ++ String.fromFloat y)
+                    |> String.join " "
+        in
+        [ Svg.polygon
+            [ SA.points pointsAttr
+            , SA.fill "rgba(40,180,80,0.3)"
+            , SA.stroke "rgba(40,180,80,0.9)"
+            , SA.strokeWidth "2"
+            , attribute "vector-effect" "non-scaling-stroke"
+            , SA.style "pointer-events: none;"
+            ]
+            []
+        ]
 
 
 viewPieceBlueprintPath : Piece -> Svg.Svg Msg
