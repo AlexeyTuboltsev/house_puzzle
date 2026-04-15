@@ -3514,9 +3514,9 @@ viewMainSvg response model =
         )
         (if model.editMode then
             [ Svg.g [] baseLayer
-            , Svg.g [] outlineLayer
             , Svg.g [] editActivePieceOverlay
             , Svg.g [] editOverlays
+            , Svg.g [] outlineLayer
             ]
 
          else
