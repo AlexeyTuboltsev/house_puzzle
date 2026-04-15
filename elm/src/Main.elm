@@ -3407,6 +3407,48 @@ viewMainSvg response model =
             else
                 []
 
+        -- Green polygon outline for hovered foreign piece (whole-piece outline, not per-brick)
+        greenPieceOutlineLayer =
+            if model.editMode then
+                case model.hoveredPieceId of
+                    Nothing ->
+                        []
+
+                    Just pid ->
+                        if Just pid == model.selectedPieceId then
+                            []
+
+                        else
+                            case List.filter (\p -> p.id == pid) model.pieces |> List.head of
+                                Nothing ->
+                                    []
+
+                                Just piece ->
+                                    if List.isEmpty piece.polygon then
+                                        []
+
+                                    else
+                                        let
+                                            pointsAttr =
+                                                piece.polygon
+                                                    |> List.map (\( x, y ) -> String.fromFloat x ++ "," ++ String.fromFloat y)
+                                                    |> String.join " "
+                                        in
+                                        [ Svg.polygon
+                                            [ SA.points pointsAttr
+                                            , SA.fill "none"
+                                            , SA.stroke "rgba(40,180,80,0.9)"
+                                            , SA.strokeWidth "3"
+                                            , SA.strokeLinejoin "round"
+                                            , attribute "vector-effect" "non-scaling-stroke"
+                                            , SA.style "pointer-events: none;"
+                                            ]
+                                            []
+                                        ]
+
+            else
+                []
+
         -- Piece interaction overlays (post-gen, not in edit)
         effectiveHoverId =
             if model.draggingPieceId /= Nothing then
@@ -3534,10 +3576,11 @@ viewMainSvg response model =
         )
         (if model.editMode then
             [ Svg.g [] baseLayer
-            , Svg.g [] editActivePieceOverlay
             , Svg.g [] editOverlays
             , Svg.g [] outlineLayer
+            , Svg.g [] editActivePieceOverlay
             , Svg.g [] greenHoverLayer
+            , Svg.g [] greenPieceOutlineLayer
             ]
 
          else
@@ -3704,8 +3747,9 @@ viewBrickEditOverlay editBrickIds brickToPiece hoveredPieceId brick =
 
 
 -- Green hover overlay for edit mode: renders on top of blue outlines.
--- For in-edit bricks: highlight the individual brick when it is hovered.
--- For out-bricks: highlight the brick when its piece is the hovered piece.
+-- For in-edit bricks: highlight the individual brick when it is hovered (fill + brick outline).
+-- For out-bricks: highlight the brick fill when its piece is the hovered piece.
+--   (The whole-piece green outline is handled separately by greenPieceOutlineLayer.)
 viewGreenHoverOverlay : List String -> Dict String String -> Maybe String -> Maybe String -> Brick -> List (Svg.Svg Msg)
 viewGreenHoverOverlay editBrickIds brickToPiece hoveredPieceId hoveredBrickId brick =
     let
@@ -3734,16 +3778,29 @@ viewGreenHoverOverlay editBrickIds brickToPiece hoveredPieceId hoveredBrickId br
                     |> List.map (\( x, y ) -> String.fromFloat x ++ "," ++ String.fromFloat y)
                     |> String.join " "
         in
-        [ Svg.polygon
-            [ SA.points pointsAttr
-            , SA.fill "rgba(40,180,80,0.3)"
-            , SA.stroke "rgba(40,180,80,0.9)"
-            , SA.strokeWidth "2"
-            , attribute "vector-effect" "non-scaling-stroke"
-            , SA.style "pointer-events: none;"
+        if inEdit then
+            -- In-edit brick hovered: green fill + green outline around just this brick
+            [ Svg.polygon
+                [ SA.points pointsAttr
+                , SA.fill "rgba(40,180,80,0.3)"
+                , SA.stroke "rgba(40,180,80,0.9)"
+                , SA.strokeWidth "3"
+                , attribute "vector-effect" "non-scaling-stroke"
+                , SA.style "pointer-events: none;"
+                ]
+                []
             ]
-            []
-        ]
+        else
+            -- Foreign piece brick hovered: green fill only (piece polygon outline handled by greenPieceOutlineLayer)
+            [ Svg.polygon
+                [ SA.points pointsAttr
+                , SA.fill "rgba(40,180,80,0.3)"
+                , SA.stroke "none"
+                , attribute "vector-effect" "non-scaling-stroke"
+                , SA.style "pointer-events: none;"
+                ]
+                []
+            ]
 
 
 viewPieceBlueprintPath : Piece -> Svg.Svg Msg

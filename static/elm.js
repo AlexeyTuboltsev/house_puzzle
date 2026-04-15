@@ -10010,7 +10010,7 @@ var $author$project$Main$viewGreenHoverOverlay = F5(
 						return $elm$core$String$fromFloat(x) + (',' + $elm$core$String$fromFloat(y));
 					},
 					absPoints));
-			return _List_fromArray(
+			return inEdit ? _List_fromArray(
 				[
 					A2(
 					$elm$svg$Svg$polygon,
@@ -10019,7 +10019,20 @@ var $author$project$Main$viewGreenHoverOverlay = F5(
 							$elm$svg$Svg$Attributes$points(pointsAttr),
 							$elm$svg$Svg$Attributes$fill('rgba(40,180,80,0.3)'),
 							$elm$svg$Svg$Attributes$stroke('rgba(40,180,80,0.9)'),
-							$elm$svg$Svg$Attributes$strokeWidth('2'),
+							$elm$svg$Svg$Attributes$strokeWidth('3'),
+							A2($elm$html$Html$Attributes$attribute, 'vector-effect', 'non-scaling-stroke'),
+							$elm$svg$Svg$Attributes$style('pointer-events: none;')
+						]),
+					_List_Nil)
+				]) : _List_fromArray(
+				[
+					A2(
+					$elm$svg$Svg$polygon,
+					_List_fromArray(
+						[
+							$elm$svg$Svg$Attributes$points(pointsAttr),
+							$elm$svg$Svg$Attributes$fill('rgba(40,180,80,0.3)'),
+							$elm$svg$Svg$Attributes$stroke('none'),
 							A2($elm$html$Html$Attributes$attribute, 'vector-effect', 'non-scaling-stroke'),
 							$elm$svg$Svg$Attributes$style('pointer-events: none;')
 						]),
@@ -10499,11 +10512,11 @@ var $author$project$Main$viewMainSvg = F2(
 				},
 				model.waves));
 		var lassoRect = function () {
-			var _v6 = model.lasso;
-			if (_v6.$ === 'Nothing') {
+			var _v9 = model.lasso;
+			if (_v9.$ === 'Nothing') {
 				return _List_Nil;
 			} else {
-				var ls = _v6.a;
+				var ls = _v9.a;
 				var ry = A2($elm$core$Basics$min, ls.y0, ls.y1);
 				var rx = A2($elm$core$Basics$min, ls.x0, ls.x1);
 				var rw = $elm$core$Basics$abs(ls.x1 - ls.x0);
@@ -10555,9 +10568,9 @@ var $author$project$Main$viewMainSvg = F2(
 					return !A2($elm$core$List$member, p.id, hiddenPieceIds);
 				},
 				model.pieces);
-			var _v5 = model.draggingPieceId;
-			if (_v5.$ === 'Just') {
-				var dragId = _v5.a;
+			var _v8 = model.draggingPieceId;
+			if (_v8.$ === 'Just') {
+				var dragId = _v8.a;
 				return _Utils_ap(
 					A2(
 						$elm$core$List$filter,
@@ -10589,6 +10602,67 @@ var $author$project$Main$viewMainSvg = F2(
 			$author$project$Main$viewPieceOutline(
 				A2($author$project$Main$waveColor, model.outlineHue, 1.0)),
 			visiblePieces) : _List_Nil;
+		var greenPieceOutlineLayer = function () {
+			if (model.editMode) {
+				var _v5 = model.hoveredPieceId;
+				if (_v5.$ === 'Nothing') {
+					return _List_Nil;
+				} else {
+					var pid = _v5.a;
+					if (_Utils_eq(
+						$elm$core$Maybe$Just(pid),
+						model.selectedPieceId)) {
+						return _List_Nil;
+					} else {
+						var _v6 = $elm$core$List$head(
+							A2(
+								$elm$core$List$filter,
+								function (p) {
+									return _Utils_eq(p.id, pid);
+								},
+								model.pieces));
+						if (_v6.$ === 'Nothing') {
+							return _List_Nil;
+						} else {
+							var piece = _v6.a;
+							if ($elm$core$List$isEmpty(piece.polygon)) {
+								return _List_Nil;
+							} else {
+								var pointsAttr = A2(
+									$elm$core$String$join,
+									' ',
+									A2(
+										$elm$core$List$map,
+										function (_v7) {
+											var x = _v7.a;
+											var y = _v7.b;
+											return $elm$core$String$fromFloat(x) + (',' + $elm$core$String$fromFloat(y));
+										},
+										piece.polygon));
+								return _List_fromArray(
+									[
+										A2(
+										$elm$svg$Svg$polygon,
+										_List_fromArray(
+											[
+												$elm$svg$Svg$Attributes$points(pointsAttr),
+												$elm$svg$Svg$Attributes$fill('none'),
+												$elm$svg$Svg$Attributes$stroke('rgba(40,180,80,0.9)'),
+												$elm$svg$Svg$Attributes$strokeWidth('3'),
+												$elm$svg$Svg$Attributes$strokeLinejoin('round'),
+												A2($elm$html$Html$Attributes$attribute, 'vector-effect', 'non-scaling-stroke'),
+												$elm$svg$Svg$Attributes$style('pointer-events: none;')
+											]),
+										_List_Nil)
+									]);
+							}
+						}
+					}
+				}
+			} else {
+				return _List_Nil;
+			}
+		}();
 		var greenHoverLayer = function () {
 			if (model.editMode) {
 				var brickToPiece = $elm$core$Dict$fromList(
@@ -10867,10 +10941,11 @@ var $author$project$Main$viewMainSvg = F2(
 			model.editMode ? _List_fromArray(
 				[
 					A2($elm$svg$Svg$g, _List_Nil, baseLayer),
-					A2($elm$svg$Svg$g, _List_Nil, editActivePieceOverlay),
 					A2($elm$svg$Svg$g, _List_Nil, editOverlays),
 					A2($elm$svg$Svg$g, _List_Nil, outlineLayer),
-					A2($elm$svg$Svg$g, _List_Nil, greenHoverLayer)
+					A2($elm$svg$Svg$g, _List_Nil, editActivePieceOverlay),
+					A2($elm$svg$Svg$g, _List_Nil, greenHoverLayer),
+					A2($elm$svg$Svg$g, _List_Nil, greenPieceOutlineLayer)
 				]) : _List_fromArray(
 				[
 					A2($elm$svg$Svg$g, _List_Nil, bgImageLayer),
