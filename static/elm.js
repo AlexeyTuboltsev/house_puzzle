@@ -10785,6 +10785,7 @@ var $author$project$Main$viewMainSvg = F2(
 			model.editMode ? _List_fromArray(
 				[
 					A2($elm$svg$Svg$g, _List_Nil, baseLayer),
+					A2($elm$svg$Svg$g, _List_Nil, outlineLayer),
 					A2($elm$svg$Svg$g, _List_Nil, editActivePieceOverlay),
 					A2($elm$svg$Svg$g, _List_Nil, editOverlays)
 				]) : _List_fromArray(
@@ -14474,11 +14475,12 @@ var $author$project$Main$viewTitleBar = function (model) {
 				$elm$html$Html$div,
 				_List_fromArray(
 					[
-						$elm$html$Html$Attributes$class('undo-redo-bar'),
+						$elm$html$Html$Attributes$class('undo-redo-bar sidebar-nav'),
 						A2($elm$html$Html$Attributes$style, 'display', 'flex'),
 						A2($elm$html$Html$Attributes$style, 'flex-direction', 'row'),
-						A2($elm$html$Html$Attributes$style, 'gap', '4px'),
-						A2($elm$html$Html$Attributes$style, 'width', '100%')
+						A2($elm$html$Html$Attributes$style, 'gap', '0'),
+						A2($elm$html$Html$Attributes$style, 'width', '100%'),
+						A2($elm$html$Html$Attributes$style, 'margin-top', '8px')
 					]),
 				_List_fromArray(
 					[

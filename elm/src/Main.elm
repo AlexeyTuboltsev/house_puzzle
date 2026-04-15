@@ -2363,7 +2363,7 @@ viewTitleBar model =
                 ]
                 [ text "Export" ]
             ]
-        , div [ class "undo-redo-bar", style "display" "flex", style "flex-direction" "row", style "gap" "4px", style "width" "100%" ]
+        , div [ class "undo-redo-bar sidebar-nav", style "display" "flex", style "flex-direction" "row", style "gap" "0", style "width" "100%", style "margin-top" "8px" ]
             [ button
                 [ classList [ ( "mode-btn", True ), ( "undo-btn", True ) ]
                 , style "flex" "1"
@@ -3514,6 +3514,7 @@ viewMainSvg response model =
         )
         (if model.editMode then
             [ Svg.g [] baseLayer
+            , Svg.g [] outlineLayer
             , Svg.g [] editActivePieceOverlay
             , Svg.g [] editOverlays
             ]
