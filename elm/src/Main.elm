@@ -185,11 +185,15 @@ type alias Model =
     , selectedGroupId : Maybe Int
     , dragOverGroupId : Maybe (Maybe Int)
     , hoveredPieceId : Maybe String
+    , hoveredBrickId : Maybe String
     , selectedPieceId : Maybe String
     , selectedWaveId : Maybe Int
     , editMode : Bool
     , editBrickIds : List String
     , editOriginalBrickIds : List String
+    , editOriginalPieces : List Piece
+    , editOriginalWaves : List Wave
+    , editOriginalGroups : List Group
     , recomputing : Bool
     , exporting : Bool
     , exportCanvasHeight : String
@@ -244,11 +248,15 @@ init flags =
       , selectedGroupId = Nothing
       , dragOverGroupId = Nothing
       , hoveredPieceId = Nothing
+      , hoveredBrickId = Nothing
       , selectedPieceId = Nothing
       , selectedWaveId = Nothing
       , editMode = False
       , editBrickIds = []
       , editOriginalBrickIds = []
+      , editOriginalPieces = []
+      , editOriginalWaves = []
+      , editOriginalGroups = []
       , recomputing = False
       , exporting = False
       , exportCanvasHeight = "900"
@@ -311,6 +319,7 @@ type Msg
     | AddWave
     | ToggleWaveVisibility Int
     | SetHoveredPiece (Maybe String)
+    | SetHoveredBrick (Maybe String)
     | SelectPiece String
     | SelectWave (Maybe Int)
     | AssignPieceToWave String
@@ -318,7 +327,8 @@ type Msg
     | MoveWave Int Int
     | RemoveWave Int
     | StartEdit
-    | ToggleBrickInEdit String
+    | RemoveBrickFromEdit String
+    | MergePieceIntoEdit String
     | SaveEdit
     | CancelEdit
     | GotPiecePolygons (Result Http.Error (List ( String, List Point )))
@@ -456,6 +466,9 @@ update msg model =
                 , editMode = False
                 , editBrickIds = []
                 , editOriginalBrickIds = []
+                , editOriginalPieces = []
+                , editOriginalWaves = []
+                , editOriginalGroups = []
                 , recomputing = False
                 , appMode = ModeInit
               }
@@ -488,6 +501,9 @@ update msg model =
                 , editMode = False
                 , editBrickIds = []
                 , editOriginalBrickIds = []
+                , editOriginalPieces = []
+                , editOriginalWaves = []
+                , editOriginalGroups = []
                 , recomputing = False
                 , appMode = ModeInit
                 , sessionKey = ""
@@ -530,6 +546,9 @@ update msg model =
                 , editMode = False
                 , editBrickIds = []
                 , editOriginalBrickIds = []
+                , editOriginalPieces = []
+                , editOriginalWaves = []
+                , editOriginalGroups = []
                 , recomputing = False
                 , appMode = ModeInit
                 , exportHouseName = houseName
@@ -603,6 +622,9 @@ update msg model =
                         , editMode = False
                         , editBrickIds = []
                         , editOriginalBrickIds = []
+                        , editOriginalPieces = []
+                        , editOriginalWaves = []
+                        , editOriginalGroups = []
                         , recomputing = False
                       }
                     , mergeBricks model.sessionKey model.targetCount model.minBorder model.seed
@@ -628,7 +650,7 @@ update msg model =
         SetAppMode mode ->
             let
                 baseModel =
-                    { model | appMode = mode, editMode = False, editBrickIds = [], editOriginalBrickIds = [] }
+                    { model | appMode = mode, editMode = False, editBrickIds = [], editOriginalBrickIds = [], editOriginalPieces = [], editOriginalWaves = [], editOriginalGroups = [] }
 
                 recomputeViewport =
                     Task.perform GotViewport Browser.Dom.getViewport
@@ -744,6 +766,9 @@ update msg model =
 
         SetHoveredPiece mid ->
             ( { model | hoveredPieceId = mid }, Cmd.none )
+
+        SetHoveredBrick mid ->
+            ( { model | hoveredBrickId = mid }, Cmd.none )
 
         SelectPiece pid ->
             ( { model
@@ -910,137 +935,191 @@ update msg model =
                                 | editMode = True
                                 , editBrickIds = piece.brickIds
                                 , editOriginalBrickIds = piece.brickIds
+                                , editOriginalPieces = model.pieces
+                                , editOriginalWaves = model.waves
+                                , editOriginalGroups = model.groups
                               }
                             , Cmd.none
                             )
 
-        ToggleBrickInEdit bid ->
-            let
-                newList =
-                    if List.member bid model.editBrickIds then
-                        if List.length model.editBrickIds <= 1 then
-                            model.editBrickIds
-
-                        else
-                            List.filter (\b -> b /= bid) model.editBrickIds
-
-                    else
-                        model.editBrickIds ++ [ bid ]
-            in
-            ( { model | editBrickIds = newList }, Cmd.none )
-
-        SaveEdit ->
+        RemoveBrickFromEdit bid ->
             case model.selectedPieceId of
                 Nothing ->
-                    ( { model | editMode = False, editBrickIds = [], editOriginalBrickIds = [] }
-                    , Cmd.none
-                    )
+                    ( model, Cmd.none )
 
                 Just editedPieceId ->
-                    let
-                        newBrickIds =
-                            model.editBrickIds
+                    if List.length model.editBrickIds <= 1 then
+                        -- Don't remove the last brick
+                        ( model, Cmd.none )
 
-                        removedBrickIds =
-                            model.pieces
-                                |> List.filter (\p -> p.id == editedPieceId)
-                                |> List.head
-                                |> Maybe.map (\p -> List.filter (\bid -> not (List.member bid newBrickIds)) p.brickIds)
-                                |> Maybe.withDefault []
+                    else
+                        let
+                            newEditBrickIds =
+                                List.filter (\b -> b /= bid) model.editBrickIds
 
-                        -- Update edited piece; strip stolen bricks from all others
-                        updatedExisting =
-                            List.map
-                                (\p ->
-                                    if p.id == editedPieceId then
-                                        { p | brickIds = newBrickIds }
+                            -- Compute new ID for the displaced single-brick piece
+                            maxIdNum =
+                                List.foldl
+                                    (\p acc ->
+                                        case String.toInt (String.dropLeft 1 p.id) of
+                                            Just n -> Basics.max n acc
+                                            Nothing -> acc
+                                    )
+                                    0
+                                    model.pieces
 
-                                    else
-                                        { p | brickIds = List.filter (\bid -> not (List.member bid newBrickIds)) p.brickIds }
-                                )
-                                model.pieces
+                            newPieceId =
+                                "p" ++ String.fromInt (maxIdNum + 1)
 
-                        -- New single-brick pieces for bricks removed from the edited piece
-                        maxIdNum =
-                            List.foldl
-                                (\p acc ->
-                                    case String.toInt (String.dropLeft 1 p.id) of
-                                        Just n -> Basics.max n acc
-                                        Nothing -> acc
-                                )
-                                0
-                                model.pieces
+                            -- Build a new single-brick piece for the displaced brick
+                            newSinglePiece =
+                                case Dict.get bid model.bricksById of
+                                    Just brick ->
+                                        { id = newPieceId
+                                        , x = brick.x
+                                        , y = brick.y
+                                        , width = brick.width
+                                        , height = brick.height
+                                        , brickIds = [ bid ]
+                                        , bricks = [ BrickRef bid brick.x brick.y brick.width brick.height ]
+                                        , polygon = []
+                                        , imgUrl = "/api/s/" ++ model.sessionKey ++ "/piece/" ++ newPieceId ++ ".png"
+                                        , outlineUrl = "/api/s/" ++ model.sessionKey ++ "/piece_outline/" ++ newPieceId ++ ".png"
+                                        }
 
-                        newSinglePieces =
-                            List.indexedMap
-                                (\i bid ->
-                                    let
-                                        newId =
-                                            "p" ++ String.fromInt (maxIdNum + i + 1)
-                                    in
-                                    case Dict.get bid model.bricksById of
-                                        Just brick ->
-                                            { id = newId
-                                            , x = brick.x
-                                            , y = brick.y
-                                            , width = brick.width
-                                            , height = brick.height
-                                            , brickIds = [ bid ]
-                                            , bricks = [ BrickRef bid brick.x brick.y brick.width brick.height ]
-                                            , polygon = []
-                                            , imgUrl = "/api/s/" ++ model.sessionKey ++ "/piece/" ++ newId ++ ".png"
-                                            , outlineUrl = "/api/s/" ++ model.sessionKey ++ "/piece_outline/" ++ newId ++ ".png"
-                                            }
+                                    Nothing ->
+                                        { id = newPieceId
+                                        , x = 0
+                                        , y = 0
+                                        , width = 0
+                                        , height = 0
+                                        , brickIds = [ bid ]
+                                        , bricks = []
+                                        , polygon = []
+                                        , imgUrl = "/api/s/" ++ model.sessionKey ++ "/piece/" ++ newPieceId ++ ".png"
+                                        , outlineUrl = "/api/s/" ++ model.sessionKey ++ "/piece_outline/" ++ newPieceId ++ ".png"
+                                        }
 
-                                        Nothing ->
-                                            { id = newId
-                                            , x = 0
-                                            , y = 0
-                                            , width = 0
-                                            , height = 0
-                                            , brickIds = [ bid ]
-                                            , bricks = []
-                                            , polygon = []
-                                            , imgUrl = "/api/s/" ++ model.sessionKey ++ "/piece/" ++ newId ++ ".png"
-                                            , outlineUrl = "/api/s/" ++ model.sessionKey ++ "/piece_outline/" ++ newId ++ ".png"
-                                            }
-                                )
-                                removedBrickIds
-
-                        -- Combine, filter empty, recalculate bboxes (keep original IDs)
-                        allPieces =
-                            (updatedExisting ++ newSinglePieces)
-                                |> List.filter (\p -> not (List.isEmpty p.brickIds))
-                                |> List.map (recalcPieceBbox model.sessionKey model.bricksById)
-
-                        -- Prune stale wave piece references
-                        validIds =
-                            List.map .id allPieces
-
-                        updatedWaves =
-                            List.map
-                                (\w -> { w | pieceIds = List.filter (\pid -> List.member pid validIds) w.pieceIds })
-                                model.waves
-                    in
-                    withUndo model
+                            -- Update the edited piece in model.pieces
+                            updatedPieces =
+                                List.map
+                                    (\p ->
+                                        if p.id == editedPieceId then
+                                            recalcPieceBbox model.sessionKey model.bricksById { p | brickIds = newEditBrickIds }
+                                        else
+                                            p
+                                    )
+                                    model.pieces
+                                    ++ [ newSinglePiece ]
+                        in
                         ( { model
-                            | pieces = allPieces
-                            , waves = updatedWaves
-                            , editMode = False
-                            , editBrickIds = []
-                            , editOriginalBrickIds = []
-                            , generateState = Generated
-                            , recomputing = True
-                            , selectedPieceId = Just editedPieceId
+                            | editBrickIds = newEditBrickIds
+                            , pieces = updatedPieces
                           }
-                        , recomputePiecePolygons model.sessionKey allPieces
+                        , Cmd.none
                         )
+
+        MergePieceIntoEdit pid ->
+            case model.selectedPieceId of
+                Nothing ->
+                    ( model, Cmd.none )
+
+                Just editedPieceId ->
+                    if pid == editedPieceId then
+                        ( model, Cmd.none )
+
+                    else
+                        case List.filter (\p -> p.id == pid) model.pieces |> List.head of
+                            Nothing ->
+                                ( model, Cmd.none )
+
+                            Just mergedPiece ->
+                                let
+                                    newEditBrickIds =
+                                        model.editBrickIds ++ mergedPiece.brickIds
+
+                                    -- Update edited piece and remove merged piece
+                                    updatedPieces =
+                                        List.map
+                                            (\p ->
+                                                if p.id == editedPieceId then
+                                                    recalcPieceBbox model.sessionKey model.bricksById { p | brickIds = newEditBrickIds }
+                                                else
+                                                    p
+                                            )
+                                            model.pieces
+                                            |> List.filter (\p -> p.id /= pid)
+
+                                    -- Remove merged piece from waves
+                                    updatedWaves =
+                                        List.map
+                                            (\w -> { w | pieceIds = List.filter (\wid -> wid /= pid) w.pieceIds })
+                                            model.waves
+
+                                    -- Remove merged piece from groups
+                                    updatedGroups =
+                                        List.map
+                                            (\g -> { g | pieceIds = List.filter (\gid -> gid /= pid) g.pieceIds })
+                                            model.groups
+                                in
+                                ( { model
+                                    | editBrickIds = newEditBrickIds
+                                    , pieces = updatedPieces
+                                    , waves = updatedWaves
+                                    , groups = updatedGroups
+                                  }
+                                , Cmd.none
+                                )
+
+        SaveEdit ->
+            -- Pieces are already live-updated; just recompute polygons and clean up.
+            let
+                allPieces =
+                    model.pieces
+                        |> List.filter (\p -> not (List.isEmpty p.brickIds))
+
+                -- Prune stale wave/group piece references
+                validIds =
+                    List.map .id allPieces
+
+                updatedWaves =
+                    List.map
+                        (\w -> { w | pieceIds = List.filter (\wid -> List.member wid validIds) w.pieceIds })
+                        model.waves
+
+                updatedGroups =
+                    List.map
+                        (\g -> { g | pieceIds = List.filter (\gid -> List.member gid validIds) g.pieceIds })
+                        model.groups
+            in
+            withUndo model
+                ( { model
+                    | pieces = allPieces
+                    , waves = updatedWaves
+                    , groups = updatedGroups
+                    , editMode = False
+                    , editBrickIds = []
+                    , editOriginalBrickIds = []
+                    , editOriginalPieces = []
+                    , editOriginalWaves = []
+                    , editOriginalGroups = []
+                    , generateState = Generated
+                    , recomputing = True
+                  }
+                , recomputePiecePolygons model.sessionKey allPieces
+                )
 
         CancelEdit ->
             ( { model
                 | editMode = False
                 , editBrickIds = []
                 , editOriginalBrickIds = []
+                , editOriginalPieces = []
+                , editOriginalWaves = []
+                , editOriginalGroups = []
+                , pieces = model.editOriginalPieces
+                , waves = model.editOriginalWaves
+                , groups = model.editOriginalGroups
               }
             , Cmd.none
             )
@@ -2290,16 +2369,20 @@ viewTitleBar model =
                 ]
                 [ text "Export" ]
             ]
-        , div [ class "undo-redo-bar" ]
+        , div [ class "undo-redo-bar sidebar-nav", style "flex-direction" "row", style "margin-top" "12px" ]
             [ button
-                [ class "undo-btn"
+                [ classList [ ( "mode-btn", True ), ( "undo-btn", True ) ]
+                , style "flex" "1"
+                , style "width" "auto"
                 , disabled (List.isEmpty model.undoHistory)
                 , onClick Undo
                 , title "Undo (Ctrl+Z)"
                 ]
                 [ text "↩" ]
             , button
-                [ class "redo-btn"
+                [ classList [ ( "mode-btn", True ), ( "redo-btn", True ) ]
+                , style "flex" "1"
+                , style "width" "auto"
                 , disabled (List.isEmpty model.redoHistory)
                 , onClick Redo
                 , title "Redo (Ctrl+Shift+Z)"
@@ -3239,10 +3322,54 @@ viewMainSvg response model =
             else
                 []
 
-        -- Edit mode: brick overlays for toggling
+        -- Edit mode: green polygon overlay for the piece being edited
+        editActivePieceOverlay =
+            if model.editMode then
+                case model.selectedPieceId of
+                    Nothing ->
+                        []
+
+                    Just pid ->
+                        case List.filter (\p -> p.id == pid) model.pieces |> List.head of
+                            Nothing ->
+                                []
+
+                            Just piece ->
+                                if List.isEmpty piece.polygon then
+                                    []
+
+                                else
+                                    let
+                                        pointsAttr =
+                                            piece.polygon
+                                                |> List.map (\( x, y ) -> String.fromFloat x ++ "," ++ String.fromFloat y)
+                                                |> String.join " "
+                                    in
+                                    [ Svg.polygon
+                                        [ SA.points pointsAttr
+                                        , SA.fill "rgba(40,180,80,0.25)"
+                                        , SA.stroke "rgba(40,180,80,0.9)"
+                                        , SA.strokeWidth "3"
+                                        , SA.strokeLinejoin "round"
+                                        , attribute "vector-effect" "non-scaling-stroke"
+                                        , SA.style "pointer-events: none;"
+                                        ]
+                                        []
+                                    ]
+
+            else
+                []
+
+        -- Edit mode: brick overlays for context-sensitive clicking
         editOverlays =
             if model.editMode then
-                List.map (viewBrickEditOverlay model.editBrickIds) response.bricks
+                let
+                    brickToPiece =
+                        model.pieces
+                            |> List.concatMap (\p -> List.map (\bid -> ( bid, p.id )) p.brickIds)
+                            |> Dict.fromList
+                in
+                List.map (viewBrickEditOverlay model.editBrickIds brickToPiece model.hoveredPieceId) response.bricks
 
             else
                 []
@@ -3258,10 +3385,66 @@ viewMainSvg response model =
             else
                 []
 
-        -- Piece outlines (post-gen, pieces/waves mode only, not in edit)
+        -- Piece outlines (post-gen, pieces/waves mode only; always shown in edit mode so blue outlines stay visible)
         outlineLayer =
-            if (not model.editMode) && isGenerated && model.showOutlines && (model.appMode == ModePieces || model.appMode == ModeGroups || model.appMode == ModeWaves || model.appMode == ModeExport) then
+            if isGenerated && (model.editMode || (model.showOutlines && (model.appMode == ModePieces || model.appMode == ModeGroups || model.appMode == ModeWaves || model.appMode == ModeExport))) then
                 List.map (viewPieceOutline (waveColor model.outlineHue 1.0)) visiblePieces
+
+            else
+                []
+
+        -- Green hover highlights rendered on top of outlines (edit mode only)
+        greenHoverLayer =
+            if model.editMode then
+                let
+                    brickToPiece =
+                        model.pieces
+                            |> List.concatMap (\p -> List.map (\bid -> ( bid, p.id )) p.brickIds)
+                            |> Dict.fromList
+                in
+                List.concatMap (viewGreenHoverOverlay model.editBrickIds brickToPiece model.hoveredPieceId model.hoveredBrickId) response.bricks
+
+            else
+                []
+
+        -- Green polygon outline for hovered foreign piece (whole-piece outline, not per-brick)
+        greenPieceOutlineLayer =
+            if model.editMode then
+                case model.hoveredPieceId of
+                    Nothing ->
+                        []
+
+                    Just pid ->
+                        if Just pid == model.selectedPieceId then
+                            []
+
+                        else
+                            case List.filter (\p -> p.id == pid) model.pieces |> List.head of
+                                Nothing ->
+                                    []
+
+                                Just piece ->
+                                    if List.isEmpty piece.polygon then
+                                        []
+
+                                    else
+                                        let
+                                            pointsAttr =
+                                                piece.polygon
+                                                    |> List.map (\( x, y ) -> String.fromFloat x ++ "," ++ String.fromFloat y)
+                                                    |> String.join " "
+                                        in
+                                        [ Svg.polygon
+                                            [ SA.points pointsAttr
+                                            , SA.fill "none"
+                                            , SA.stroke "rgba(40,180,80,0.9)"
+                                            , SA.strokeWidth "3"
+                                            , SA.strokeLinejoin "round"
+                                            , attribute "vector-effect" "non-scaling-stroke"
+                                            , SA.style "pointer-events: none;"
+                                            ]
+                                            []
+                                        ]
 
             else
                 []
@@ -3394,6 +3577,10 @@ viewMainSvg response model =
         (if model.editMode then
             [ Svg.g [] baseLayer
             , Svg.g [] editOverlays
+            , Svg.g [] outlineLayer
+            , Svg.g [] editActivePieceOverlay
+            , Svg.g [] greenHoverLayer
+            , Svg.g [] greenPieceOutlineLayer
             ]
 
          else
@@ -3469,11 +3656,18 @@ viewBrickOverlay brick =
             []
 
 
-viewBrickEditOverlay : List String -> Brick -> Svg.Svg Msg
-viewBrickEditOverlay editBrickIds brick =
+viewBrickEditOverlay : List String -> Dict String String -> Maybe String -> Brick -> Svg.Svg Msg
+viewBrickEditOverlay editBrickIds brickToPiece hoveredPieceId brick =
     let
         inEdit =
             List.member brick.id editBrickIds
+
+        -- For out-bricks, which piece does this brick belong to?
+        outBrickPieceId =
+            if inEdit then
+                Nothing
+            else
+                Dict.get brick.id brickToPiece
 
         absPoints =
             List.map (\( x, y ) -> ( x + brick.x, y + brick.y )) brick.polygon
@@ -3489,6 +3683,36 @@ viewBrickEditOverlay editBrickIds brick =
 
             else
                 "brick-edit-out"
+
+        clickMsg =
+            if inEdit then
+                -- Remove from edited piece (unless it's the last brick)
+                if List.length editBrickIds <= 1 then
+                    LogBrickClick brick.id
+                else
+                    RemoveBrickFromEdit brick.id
+            else
+                -- Merge the piece this brick belongs to into the edited piece
+                case Dict.get brick.id brickToPiece of
+                    Just pid ->
+                        MergePieceIntoEdit pid
+                    Nothing ->
+                        LogBrickClick brick.id
+
+        -- Mouse events: track hover for both in-edit (brick-level) and out-bricks (piece-level)
+        hoverAttrs =
+            if inEdit then
+                [ onMouseEnter (SetHoveredBrick (Just brick.id))
+                , onMouseLeave (SetHoveredBrick Nothing)
+                ]
+            else
+                case outBrickPieceId of
+                    Just pid ->
+                        [ onMouseEnter (SetHoveredPiece (Just pid))
+                        , onMouseLeave (SetHoveredPiece Nothing)
+                        ]
+                    Nothing ->
+                        []
     in
     if List.isEmpty absPoints then
         -- ERROR: no polygon — all bricks must have vector polygons
@@ -3514,12 +3738,69 @@ viewBrickEditOverlay editBrickIds brick =
 
     else
         Svg.polygon
-            [ SA.points pointsAttr
+            ([ SA.points pointsAttr
             , SA.class cls
             , attribute "vector-effect" "non-scaling-stroke"
-            , onClick (ToggleBrickInEdit brick.id)
-            ]
+            , onClick clickMsg
+            ] ++ hoverAttrs)
             []
+
+
+-- Green hover overlay for edit mode: renders on top of blue outlines.
+-- For in-edit bricks: highlight the individual brick when it is hovered (fill + brick outline).
+-- For out-bricks: highlight the brick fill when its piece is the hovered piece.
+--   (The whole-piece green outline is handled separately by greenPieceOutlineLayer.)
+viewGreenHoverOverlay : List String -> Dict String String -> Maybe String -> Maybe String -> Brick -> List (Svg.Svg Msg)
+viewGreenHoverOverlay editBrickIds brickToPiece hoveredPieceId hoveredBrickId brick =
+    let
+        inEdit =
+            List.member brick.id editBrickIds
+
+        shouldHighlight =
+            if inEdit then
+                hoveredBrickId == Just brick.id
+            else
+                case Dict.get brick.id brickToPiece of
+                    Just pid ->
+                        hoveredPieceId == Just pid
+                    Nothing ->
+                        False
+    in
+    if not shouldHighlight || List.isEmpty brick.polygon then
+        []
+    else
+        let
+            absPoints =
+                List.map (\( x, y ) -> ( x + brick.x, y + brick.y )) brick.polygon
+
+            pointsAttr =
+                absPoints
+                    |> List.map (\( x, y ) -> String.fromFloat x ++ "," ++ String.fromFloat y)
+                    |> String.join " "
+        in
+        if inEdit then
+            -- In-edit brick hovered: green fill + green outline around just this brick
+            [ Svg.polygon
+                [ SA.points pointsAttr
+                , SA.fill "rgba(40,180,80,0.3)"
+                , SA.stroke "rgba(40,180,80,0.9)"
+                , SA.strokeWidth "3"
+                , attribute "vector-effect" "non-scaling-stroke"
+                , SA.style "pointer-events: none;"
+                ]
+                []
+            ]
+        else
+            -- Foreign piece brick hovered: green fill only (piece polygon outline handled by greenPieceOutlineLayer)
+            [ Svg.polygon
+                [ SA.points pointsAttr
+                , SA.fill "rgba(40,180,80,0.3)"
+                , SA.stroke "none"
+                , attribute "vector-effect" "non-scaling-stroke"
+                , SA.style "pointer-events: none;"
+                ]
+                []
+            ]
 
 
 viewPieceBlueprintPath : Piece -> Svg.Svg Msg
@@ -4136,9 +4417,11 @@ viewEditControls model =
         , style "margin-bottom" "10px"
         , style "line-height" "1.5"
         ]
-        [ text "Click bricks to add/remove."
+        [ text "Click a brick in the piece to remove it."
         , br [] []
-        , text (String.fromInt brickCount ++ " brick" ++ (if brickCount == 1 then "" else "s") ++ " selected.")
+        , text "Click a brick in another piece to merge it."
+        , br [] []
+        , text (String.fromInt brickCount ++ " brick" ++ (if brickCount == 1 then "" else "s") ++ " in piece.")
         ]
     , div [ class "btn-row" ]
         [ button
