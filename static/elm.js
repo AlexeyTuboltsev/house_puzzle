@@ -10524,7 +10524,7 @@ var $author$project$Main$viewMainSvg = F2(
 					A2($elm$core$Dict$get, piece.id, piecePositions));
 			},
 			visiblePieces) : _List_Nil;
-		var outlineLayer = (isGenerated && (model.showOutlines && (_Utils_eq(model.appMode, $author$project$Main$ModePieces) || (_Utils_eq(model.appMode, $author$project$Main$ModeGroups) || (_Utils_eq(model.appMode, $author$project$Main$ModeWaves) || _Utils_eq(model.appMode, $author$project$Main$ModeExport)))))) ? A2(
+		var outlineLayer = (isGenerated && (model.editMode || (model.showOutlines && (_Utils_eq(model.appMode, $author$project$Main$ModePieces) || (_Utils_eq(model.appMode, $author$project$Main$ModeGroups) || (_Utils_eq(model.appMode, $author$project$Main$ModeWaves) || _Utils_eq(model.appMode, $author$project$Main$ModeExport))))))) ? A2(
 			$elm$core$List$map,
 			$author$project$Main$viewPieceOutline(
 				A2($author$project$Main$waveColor, model.outlineHue, 1.0)),
@@ -14476,11 +14476,7 @@ var $author$project$Main$viewTitleBar = function (model) {
 				_List_fromArray(
 					[
 						$elm$html$Html$Attributes$class('undo-redo-bar sidebar-nav'),
-						A2($elm$html$Html$Attributes$style, 'display', 'flex'),
-						A2($elm$html$Html$Attributes$style, 'flex-direction', 'row'),
-						A2($elm$html$Html$Attributes$style, 'gap', '0'),
-						A2($elm$html$Html$Attributes$style, 'width', '100%'),
-						A2($elm$html$Html$Attributes$style, 'margin-top', '8px')
+						A2($elm$html$Html$Attributes$style, 'flex-direction', 'row')
 					]),
 				_List_fromArray(
 					[

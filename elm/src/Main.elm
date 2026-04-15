@@ -2363,7 +2363,7 @@ viewTitleBar model =
                 ]
                 [ text "Export" ]
             ]
-        , div [ class "undo-redo-bar sidebar-nav", style "display" "flex", style "flex-direction" "row", style "gap" "0", style "width" "100%", style "margin-top" "8px" ]
+        , div [ class "undo-redo-bar sidebar-nav", style "flex-direction" "row" ]
             [ button
                 [ classList [ ( "mode-btn", True ), ( "undo-btn", True ) ]
                 , style "flex" "1"
@@ -3379,9 +3379,9 @@ viewMainSvg response model =
             else
                 []
 
-        -- Piece outlines (post-gen, pieces/waves mode only; shown even in edit mode so blue outlines stay visible)
+        -- Piece outlines (post-gen, pieces/waves mode only; always shown in edit mode so blue outlines stay visible)
         outlineLayer =
-            if isGenerated && model.showOutlines && (model.appMode == ModePieces || model.appMode == ModeGroups || model.appMode == ModeWaves || model.appMode == ModeExport) then
+            if isGenerated && (model.editMode || (model.showOutlines && (model.appMode == ModePieces || model.appMode == ModeGroups || model.appMode == ModeWaves || model.appMode == ModeExport))) then
                 List.map (viewPieceOutline (waveColor model.outlineHue 1.0)) visiblePieces
 
             else
