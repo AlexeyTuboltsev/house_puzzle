@@ -1061,13 +1061,32 @@ if (window.Elm && window.Elm.Main) {
     };
   })();
 
-  const app = window.Elm.Main.init({ node: document.getElementById('elm-root'), flags: { version: 'dev' } });
+  const app = window.Elm.Main.init({ node: document.getElementById('elm-root'), flags: { version: 'dev', isTauri: !!window.__TAURI__ } });
 
   app.ports.setTitle.subscribe(function(title) { document.title = title; });
 
   app.ports.logBrick.subscribe(function(data) {
     console.log('[brick click] id=' + data.brickId + '  layer=' + data.layerName + '  piece=' + data.pieceId);
   });
+
+  if (window.__TAURI__) {
+    app.ports.tauriInvoke.subscribe(async function(request) {
+      try {
+        const result = await window.__TAURI__.core.invoke(request.command, request.args || {});
+        app.ports.tauriResponse.send({
+          requestId: request.requestId,
+          ok: true,
+          data: result
+        });
+      } catch (error) {
+        app.ports.tauriResponse.send({
+          requestId: request.requestId,
+          ok: false,
+          error: String(error)
+        });
+      }
+    });
+  }
 
 }
 

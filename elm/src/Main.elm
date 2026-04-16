@@ -216,12 +216,13 @@ type alias Model =
     , sessionKey : String
     , nextSessionId : Int
     , appVersion : String
+    , isTauri : Bool
     , undoHistory : List UndoSnapshot
     , redoHistory : List UndoSnapshot
     }
 
 
-init : { version : String } -> ( Model, Cmd Msg )
+init : { version : String, isTauri : Bool } -> ( Model, Cmd Msg )
 init flags =
     ( { selectedFileName = ""
       , pdfFiles = []
@@ -279,11 +280,12 @@ init flags =
       , sessionKey = ""
       , nextSessionId = 1
       , appVersion = flags.version
+      , isTauri = flags.isTauri
       , undoHistory = []
       , redoHistory = []
       }
     , Cmd.batch
-        [ fetchPdfList
+        [ fetchPdfList flags.isTauri
         , Task.perform GotViewport Browser.Dom.getViewport
         ]
     )
@@ -367,6 +369,7 @@ type Msg
     | ScrollTrayBy Float
     | Undo
     | Redo
+    | TauriResponse D.Value
     | NoOp
 
 
@@ -378,6 +381,12 @@ port logBrick : E.Value -> Cmd msg
 
 
 port setTitle : String -> Cmd msg
+
+
+port tauriInvoke : { command : String, args : E.Value, requestId : String } -> Cmd msg
+
+
+port tauriResponse : (D.Value -> msg) -> Sub msg
 
 
 
@@ -453,27 +462,42 @@ update msg model =
             ( model, Select.file [ ".pdf", "application/pdf", ".ai", "application/illustrator" ] FileSelected )
 
         FileSelected file ->
-            ( { model
-                | selectedFileName = File.name file
-                , loadState = Loading
-                , generateState = NotGenerated
-                , pieces = []
-                , pieceGeneration = 0
-                , waves = []
-                , nextWaveId = 1
-                , selectedPieceId = Nothing
-                , selectedWaveId = Nothing
-                , editMode = False
-                , editBrickIds = []
-                , editOriginalBrickIds = []
-                , editOriginalPieces = []
-                , editOriginalWaves = []
-                , editOriginalGroups = []
-                , recomputing = False
-                , appMode = ModeInit
-              }
-            , uploadFile file
-            )
+            let
+                baseModel =
+                    { model
+                        | selectedFileName = File.name file
+                        , loadState = Loading
+                        , generateState = NotGenerated
+                        , pieces = []
+                        , pieceGeneration = 0
+                        , waves = []
+                        , nextWaveId = 1
+                        , selectedPieceId = Nothing
+                        , selectedWaveId = Nothing
+                        , editMode = False
+                        , editBrickIds = []
+                        , editOriginalBrickIds = []
+                        , editOriginalPieces = []
+                        , editOriginalWaves = []
+                        , editOriginalGroups = []
+                        , recomputing = False
+                        , appMode = ModeInit
+                    }
+            in
+            if model.isTauri then
+                -- In Tauri mode, skip the HTTP upload; construct local path directly
+                let
+                    path =
+                        "in/" ++ File.name file
+
+                    key =
+                        String.fromInt model.nextSessionId
+                in
+                ( { baseModel | sessionKey = key, nextSessionId = model.nextSessionId + 1 }
+                , loadPdf True key path model.availableH
+                )
+            else
+                ( baseModel, uploadFile file )
 
         FileUploaded (Ok path) ->
             let
@@ -481,7 +505,7 @@ update msg model =
                     String.fromInt model.nextSessionId
             in
             ( { model | sessionKey = key, nextSessionId = model.nextSessionId + 1 }
-            , loadPdf key path model.availableH
+            , loadPdf model.isTauri key path model.availableH
             )
 
         FileUploaded (Err _) ->
@@ -508,7 +532,7 @@ update msg model =
                 , appMode = ModeInit
                 , sessionKey = ""
               }
-            , fetchPdfList
+            , fetchPdfList model.isTauri
             )
 
         LoadFile path ->
@@ -555,7 +579,7 @@ update msg model =
                 , sessionKey = key
                 , nextSessionId = model.nextSessionId + 1
               }
-            , loadPdf key path model.availableH
+            , loadPdf model.isTauri key path model.availableH
             )
 
         GotLoadResponse (Ok response) ->
@@ -627,7 +651,7 @@ update msg model =
                         , editOriginalGroups = []
                         , recomputing = False
                       }
-                    , mergeBricks model.sessionKey model.targetCount model.minBorder model.seed
+                    , mergeBricks model.isTauri model.sessionKey model.targetCount model.minBorder model.seed
                     )
 
                 _ ->
@@ -1106,7 +1130,7 @@ update msg model =
                     , generateState = Generated
                     , recomputing = True
                   }
-                , recomputePiecePolygons model.sessionKey allPieces
+                , recomputePiecePolygons model.isTauri model.sessionKey allPieces
                 )
 
         CancelEdit ->
@@ -1216,17 +1240,41 @@ update msg model =
                           )
                         ]
             in
-            ( { model | exporting = True }
-            , Http.riskyRequest
-                { method = "POST"
-                , headers = []
-                , url = "/api/s/" ++ model.sessionKey ++ "/export"
-                , body = Http.jsonBody payload
-                , expect = Http.expectWhatever GotExportResponse
-                , timeout = Just (10 * 60 * 1000)
-                , tracker = Nothing
-                }
-            )
+            if model.isTauri then
+                ( { model | exporting = True }
+                , tauriInvoke
+                    { command = "export_data"
+                    , args =
+                        E.object
+                            [ ( "key", E.string model.sessionKey )
+                            , ( "waves", wavesJson )
+                            , ( "groups", groupsJson )
+                            , ( "export_canvas_height", E.int exportHeight )
+                            , ( "placement"
+                              , E.object
+                                    [ ( "location", E.string model.exportLocation )
+                                    , ( "position", E.int (Maybe.withDefault 0 (String.toInt model.exportPosition)) )
+                                    , ( "houseName", E.string model.exportHouseName )
+                                    , ( "spacing", E.float (Maybe.withDefault 12.0 (String.toFloat model.exportSpacing)) )
+                                    ]
+                              )
+                            ]
+                    , requestId = "export"
+                    }
+                )
+
+            else
+                ( { model | exporting = True }
+                , Http.riskyRequest
+                    { method = "POST"
+                    , headers = []
+                    , url = "/api/s/" ++ model.sessionKey ++ "/export"
+                    , body = Http.jsonBody payload
+                    , expect = Http.expectWhatever GotExportResponse
+                    , timeout = Just (10 * 60 * 1000)
+                    , tracker = Nothing
+                    }
+                )
 
         GotExportResponse _ ->
             ( { model | exporting = False }, Cmd.none )
@@ -1820,6 +1868,116 @@ update msg model =
                     , Cmd.none
                     )
 
+        TauriResponse val ->
+            let
+                requestId =
+                    D.decodeValue (D.field "requestId" D.string) val
+                        |> Result.withDefault ""
+
+                ok =
+                    D.decodeValue (D.field "ok" D.bool) val
+                        |> Result.withDefault False
+
+                dataVal =
+                    D.decodeValue (D.field "data" D.value) val
+                        |> Result.withDefault E.null
+
+                errorStr =
+                    D.decodeValue (D.field "error" D.string) val
+                        |> Result.withDefault "Tauri invoke error"
+            in
+            if not ok then
+                case requestId of
+                    "load_pdf" ->
+                        ( { model | loadState = LoadError errorStr }, Cmd.none )
+
+                    "merge_pieces" ->
+                        ( { model | generateState = NotGenerated, recomputing = False }, Cmd.none )
+
+                    "merge_pieces_recompute" ->
+                        ( { model | recomputing = False }, Cmd.none )
+
+                    "export" ->
+                        ( { model | exporting = False }, Cmd.none )
+
+                    _ ->
+                        ( model, Cmd.none )
+
+            else
+                case requestId of
+                    "list_pdfs" ->
+                        case D.decodeValue (D.field "files" (D.list decodePdfFile)) dataVal of
+                            Ok files ->
+                                ( { model | pdfFiles = files }, Cmd.none )
+
+                            Err _ ->
+                                ( model, Cmd.none )
+
+                    "load_pdf" ->
+                        case D.decodeValue decodeLoadResponse dataVal of
+                            Ok response ->
+                                update (GotLoadResponse (Ok response)) model
+
+                            Err e ->
+                                ( { model | loadState = LoadError (D.errorToString e) }, Cmd.none )
+
+                    "merge_pieces" ->
+                        case D.decodeValue decodeMergeResponse dataVal of
+                            Ok response ->
+                                update (GotMergeResponse (Ok response)) model
+
+                            Err _ ->
+                                ( { model | generateState = NotGenerated, recomputing = False }, Cmd.none )
+
+                    "merge_pieces_recompute" ->
+                        -- In Tauri mode, get full merge response and update polygon + images
+                        case D.decodeValue decodeMergeResponse dataVal of
+                            Ok response ->
+                                let
+                                    pieceMap =
+                                        Dict.fromList (List.map (\p -> ( p.id, p )) response.pieces)
+
+                                    updatedPieces =
+                                        List.map
+                                            (\p ->
+                                                case Dict.get p.id pieceMap of
+                                                    Just rp ->
+                                                        { p
+                                                            | polygon = rp.polygon
+                                                            , imgUrl =
+                                                                if String.isEmpty rp.imgUrl then
+                                                                    p.imgUrl
+                                                                else
+                                                                    rp.imgUrl
+                                                            , outlineUrl =
+                                                                if String.isEmpty rp.outlineUrl then
+                                                                    p.outlineUrl
+                                                                else
+                                                                    rp.outlineUrl
+                                                        }
+
+                                                    Nothing ->
+                                                        p
+                                            )
+                                            model.pieces
+                                in
+                                ( { model
+                                    | pieces = updatedPieces
+                                    , recomputing = False
+                                    , pieceGeneration = model.pieceGeneration + 1
+                                  }
+                                , Cmd.none
+                                )
+
+                            Err _ ->
+                                ( { model | recomputing = False }, Cmd.none )
+
+                    "export" ->
+                        ( { model | exporting = False }, Cmd.none )
+
+                    _ ->
+                        ( model, Cmd.none )
+
         NoOp ->
             ( model, Cmd.none )
 
@@ -1831,8 +1989,17 @@ update msg model =
 withPieceUrls : String -> Piece -> Piece
 withPieceUrls key p =
     { p
-        | imgUrl = "/api/s/" ++ key ++ "/piece/" ++ p.id ++ ".png"
-        , outlineUrl = "/api/s/" ++ key ++ "/piece_outline/" ++ p.id ++ ".png"
+        | imgUrl =
+            -- Preserve data URLs (set by Tauri) or already-set HTTP URLs
+            if String.isEmpty p.imgUrl then
+                "/api/s/" ++ key ++ "/piece/" ++ p.id ++ ".png"
+            else
+                p.imgUrl
+        , outlineUrl =
+            if String.isEmpty p.outlineUrl then
+                "/api/s/" ++ key ++ "/piece_outline/" ++ p.id ++ ".png"
+            else
+                p.outlineUrl
     }
 
 
@@ -1879,12 +2046,20 @@ editHasChanges model =
 -- ── HTTP ────────────────────────────────────────────────────────────────────
 
 
-fetchPdfList : Cmd Msg
-fetchPdfList =
-    Http.get
-        { url = "/api/list_pdfs"
-        , expect = Http.expectJson GotFileList (D.field "files" (D.list decodePdfFile))
-        }
+fetchPdfList : Bool -> Cmd Msg
+fetchPdfList isTauri =
+    if isTauri then
+        tauriInvoke
+            { command = "list_pdfs"
+            , args = E.object []
+            , requestId = "list_pdfs"
+            }
+
+    else
+        Http.get
+            { url = "/api/list_pdfs"
+            , expect = Http.expectJson GotFileList (D.field "files" (D.list decodePdfFile))
+            }
 
 
 decodePdfFile : D.Decoder { name : String, path : String }
@@ -1903,63 +2078,103 @@ uploadFile file =
         }
 
 
-loadPdf : String -> String -> Float -> Cmd Msg
-loadPdf key path canvasHeight =
-    Http.riskyRequest
-        { method = "POST"
-        , headers = []
-        , url = "/api/s/" ++ key ++ "/load"
-        , body =
-            Http.jsonBody
-                (E.object
+loadPdf : Bool -> String -> String -> Float -> Cmd Msg
+loadPdf isTauri key path canvasHeight =
+    if isTauri then
+        tauriInvoke
+            { command = "load_pdf"
+            , args =
+                E.object
                     [ ( "path", E.string path )
                     , ( "canvas_height", E.int (round canvasHeight) )
                     ]
-                )
-        , expect = Http.expectJson GotLoadResponse decodeLoadResponse
-        , timeout = Just (5 * 60 * 1000)
-        , tracker = Nothing
-        }
+            , requestId = "load_pdf"
+            }
+
+    else
+        Http.riskyRequest
+            { method = "POST"
+            , headers = []
+            , url = "/api/s/" ++ key ++ "/load"
+            , body =
+                Http.jsonBody
+                    (E.object
+                        [ ( "path", E.string path )
+                        , ( "canvas_height", E.int (round canvasHeight) )
+                        ]
+                    )
+            , expect = Http.expectJson GotLoadResponse decodeLoadResponse
+            , timeout = Just (5 * 60 * 1000)
+            , tracker = Nothing
+            }
 
 
-mergeBricks : String -> Int -> Int -> Int -> Cmd Msg
-mergeBricks key targetCount minBorder seed =
-    Http.post
-        { url = "/api/s/" ++ key ++ "/merge"
-        , body =
-            Http.jsonBody
-                (E.object
-                    [ ( "target_count", E.int targetCount )
+mergeBricks : Bool -> String -> Int -> Int -> Int -> Cmd Msg
+mergeBricks isTauri key targetCount minBorder seed =
+    if isTauri then
+        tauriInvoke
+            { command = "merge_pieces"
+            , args =
+                E.object
+                    [ ( "key", E.string key )
+                    , ( "target_count", E.int targetCount )
                     , ( "seed", E.int seed )
                     , ( "min_border", E.int minBorder )
                     ]
+            , requestId = "merge_pieces"
+            }
+
+    else
+        Http.post
+            { url = "/api/s/" ++ key ++ "/merge"
+            , body =
+                Http.jsonBody
+                    (E.object
+                        [ ( "target_count", E.int targetCount )
+                        , ( "seed", E.int seed )
+                        , ( "min_border", E.int minBorder )
+                        ]
+                    )
+            , expect = Http.expectJson GotMergeResponse decodeMergeResponse
+            }
+
+
+
+recomputePiecePolygons : Bool -> String -> List Piece -> Cmd Msg
+recomputePiecePolygons isTauri key pieces =
+    let
+        piecesArg =
+            E.list
+                (\p ->
+                    E.object
+                        [ ( "id", E.string p.id )
+                        , ( "brick_ids", E.list E.string p.brickIds )
+                        ]
                 )
-        , expect = Http.expectJson GotMergeResponse decodeMergeResponse
-        }
-
-
-
-recomputePiecePolygons : String -> List Piece -> Cmd Msg
-recomputePiecePolygons key pieces =
-    Http.post
-        { url = "/api/s/" ++ key ++ "/merge"
-        , body =
-            Http.jsonBody
-                (E.object
-                    [ ( "pieces"
-                      , E.list
-                            (\p ->
-                                E.object
-                                    [ ( "id", E.string p.id )
-                                    , ( "brick_ids", E.list E.string p.brickIds )
-                                    ]
-                            )
-                            pieces
-                      )
+                pieces
+    in
+    if isTauri then
+        tauriInvoke
+            { command = "merge_pieces"
+            , args =
+                E.object
+                    [ ( "key", E.string key )
+                    , ( "pieces", piecesArg )
                     ]
-                )
-        , expect = Http.expectJson GotPiecePolygons decodePiecePolygonResponse
-        }
+            , requestId = "merge_pieces_recompute"
+            }
+
+    else
+        Http.post
+            { url = "/api/s/" ++ key ++ "/merge"
+            , body =
+                Http.jsonBody
+                    (E.object
+                        [ ( "pieces", piecesArg )
+                        ]
+                    )
+            , expect = Http.expectJson GotPiecePolygons decodePiecePolygonResponse
+            }
 
 
 decodePiecePolygonResponse : D.Decoder (List ( String, List Point ))
@@ -4560,7 +4775,9 @@ keyDecoder =
 subscriptions : Model -> Sub Msg
 subscriptions model =
     Sub.batch
-        ([ Browser.Events.onKeyDown keyDecoder ]
+        ([ Browser.Events.onKeyDown keyDecoder
+         , tauriResponse TauriResponse
+         ]
             ++ (case model.colorPicking of
                     Just _ ->
                         [ Browser.Events.onMouseMove
@@ -4581,7 +4798,7 @@ subscriptions model =
 -- ── Main ─────────────────────────────────────────────────────────────────────
 
 
-main : Program { version : String } Model Msg
+main : Program { version : String, isTauri : Bool } Model Msg
 main =
     Browser.element
         { init = init
