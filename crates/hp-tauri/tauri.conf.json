@@ -22,5 +22,13 @@
   "bundle": {
     "active": false,
     "icon": []
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/AlexeyTuboltsev/house_puzzle/releases/latest/download/latest.json"
+      ],
+      "pubkey": ""
+    }
   }
 }

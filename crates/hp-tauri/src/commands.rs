@@ -54,6 +54,29 @@ pub fn list_pdfs() -> Result<Value, String> {
 }
 
 // ---------------------------------------------------------------------------
+// Native file picker — uses tauri-plugin-dialog
+// ---------------------------------------------------------------------------
+
+/// Opens a native file-open dialog filtered to `.pdf` and `.ai` files.
+/// Returns the selected file path as a string, or `null` if the user cancelled.
+#[tauri::command]
+pub async fn pick_file(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+
+    // blocking_pick_file must not run on the async executor — use spawn_blocking.
+    let file_path = tokio::task::spawn_blocking(move || {
+        app.dialog()
+            .file()
+            .add_filter("PDF / AI Files", &["pdf", "ai"])
+            .blocking_pick_file()
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(file_path.map(|fp| fp.to_string()))
+}
+
+// ---------------------------------------------------------------------------
 // Load PDF — mirrors do_load in routes.rs
 // ---------------------------------------------------------------------------
 
@@ -723,4 +746,22 @@ pub async fn export_data(
     .map_err(|e| e.to_string())?;
 
     Ok(BASE64.encode(&zip_data))
+}
+
+// ---------------------------------------------------------------------------
+// Updater
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub async fn check_for_updates(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    use tauri_plugin_updater::UpdaterExt;
+
+    let update = app
+        .updater()
+        .map_err(|e| e.to_string())?
+        .check()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(update.map(|u| u.version.to_string()))
 }

@@ -459,7 +459,19 @@ update msg model =
             ( model, Cmd.none )
 
         PickFile ->
-            ( model, Select.file [ ".pdf", "application/pdf", ".ai", "application/illustrator" ] FileSelected )
+            if model.isTauri then
+                -- In Tauri mode, open a native OS file-picker dialog via Rust.
+                -- The response arrives as a TauriResponse with requestId "pick_file".
+                ( model
+                , tauriInvoke
+                    { command = "pick_file"
+                    , args = E.object []
+                    , requestId = "pick_file"
+                    }
+                )
+
+            else
+                ( model, Select.file [ ".pdf", "application/pdf", ".ai", "application/illustrator" ] FileSelected )
 
         FileSelected file ->
             let
@@ -1974,6 +1986,57 @@ update msg model =
 
                     "export" ->
                         ( { model | exporting = False }, Cmd.none )
+
+                    "pick_file" ->
+                        -- Native dialog result: null when cancelled, path string when selected.
+                        case D.decodeValue (D.nullable D.string) dataVal of
+                            Ok (Just path) ->
+                                let
+                                    -- Extract the filename from the full OS path (handles / and \).
+                                    fileName =
+                                        path
+                                            |> String.split "/"
+                                            |> List.reverse
+                                            |> List.head
+                                            |> Maybe.withDefault path
+                                            |> (\n ->
+                                                    String.split "\\" n
+                                                        |> List.reverse
+                                                        |> List.head
+                                                        |> Maybe.withDefault n
+                                               )
+
+                                    key =
+                                        String.fromInt model.nextSessionId
+
+                                    baseModel =
+                                        { model
+                                            | selectedFileName = fileName
+                                            , loadState = Loading
+                                            , generateState = NotGenerated
+                                            , pieces = []
+                                            , pieceGeneration = 0
+                                            , waves = []
+                                            , nextWaveId = 1
+                                            , selectedPieceId = Nothing
+                                            , selectedWaveId = Nothing
+                                            , editMode = False
+                                            , editBrickIds = []
+                                            , editOriginalBrickIds = []
+                                            , editOriginalPieces = []
+                                            , editOriginalWaves = []
+                                            , editOriginalGroups = []
+                                            , recomputing = False
+                                            , appMode = ModeInit
+                                            , sessionKey = key
+                                            , nextSessionId = model.nextSessionId + 1
+                                        }
+                                in
+                                ( baseModel, loadPdf True key path model.availableH )
+
+                            _ ->
+                                -- User cancelled the dialog — stay in current state.
+                                ( model, Cmd.none )
 
                     _ ->
                         ( model, Cmd.none )
