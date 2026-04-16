@@ -1,0 +1,7 @@
+# Un-ignore files that are excluded by the root .gitignore
+# These are intentionally tracked for the Tauri scaffold
+!dist/
+!dist/**
+!icons/
+!icons/**
+!*.png
