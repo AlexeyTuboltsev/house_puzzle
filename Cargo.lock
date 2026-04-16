@@ -1770,9 +1770,16 @@ dependencies = [
 name = "hp-tauri"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "hp-core",
+ "image",
+ "parking_lot",
+ "serde",
+ "serde_json",
  "tauri",
  "tauri-build",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]
