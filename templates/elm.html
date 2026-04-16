@@ -965,6 +965,46 @@ input.zoom-slider {
     font-size: 14px;
     line-height: 1.7;
 }
+
+/* ── Version update banner ──────────────────────────────────────────────────── */
+.version-update-banner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    background: #fffbe6;
+    border-bottom: 1px solid #f0c040;
+    color: #5a4a00;
+    font-size: 13px;
+    padding: 6px 14px;
+    flex-shrink: 0;
+    z-index: 100;
+}
+.version-update-text {
+    flex: 1;
+    text-align: center;
+}
+.version-update-link {
+    color: #1a6bbf;
+    font-weight: 600;
+    text-decoration: underline;
+}
+.version-update-link:hover {
+    color: #0a4a8e;
+}
+.version-update-dismiss {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #888;
+    font-size: 14px;
+    padding: 0 4px;
+    line-height: 1;
+    flex-shrink: 0;
+}
+.version-update-dismiss:hover {
+    color: #333;
+}
 </style>
 </head>
 <body>

@@ -15,6 +15,7 @@ use std::sync::Arc;
 
 use hp_core::{ai_parser, puzzle, render, types::Brick};
 use crate::session::{Session, SessionStore};
+use crate::version::VersionState;
 
 /// Embedded template (elm.html).
 #[derive(Embed)]
@@ -26,9 +27,18 @@ struct Templates;
 #[folder = "../../static/"]
 struct StaticFiles;
 
-pub fn build_router(sessions: SessionStore) -> Router {
+/// Combined application state threaded through Axum routes.
+#[derive(Clone)]
+pub struct AppState {
+    pub sessions: SessionStore,
+    pub version: VersionState,
+}
+
+pub fn build_router(sessions: SessionStore, version: VersionState) -> Router {
+    let state = AppState { sessions, version };
     Router::new()
         .route("/", get(index))
+        .route("/api/version", get(api_version))
         .route("/api/list_pdfs", get(api_list_pdfs))
         .route("/api/upload_file", post(api_upload_file).layer(DefaultBodyLimit::max(200 * 1024 * 1024)))
         .route("/api/load_pdf", post(api_load_pdf))
@@ -45,7 +55,7 @@ pub fn build_router(sessions: SessionStore) -> Router {
         .route("/api/export", post(api_export))
         .route("/api/s/{key}/export", post(api_export_keyed))
         .route("/static/{*path}", get(static_file))
-        .with_state(sessions)
+        .with_state(state)
 }
 
 // ---------------------------------------------------------------------------
@@ -82,6 +92,20 @@ async fn static_file(Path(path): Path<String>) -> Response {
         }
         None => StatusCode::NOT_FOUND.into_response(),
     }
+}
+
+// ---------------------------------------------------------------------------
+// Version check
+// ---------------------------------------------------------------------------
+
+async fn api_version(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let info = state.version.read();
+    Json(json!({
+        "current": info.current,
+        "latest": info.latest,
+        "update_available": info.update_available,
+        "release_url": info.release_url,
+    }))
 }
 
 async fn api_list_pdfs() -> Json<serde_json::Value> {
@@ -154,19 +178,19 @@ struct LoadRequest {
 fn default_canvas_height() -> i32 { 900 }
 
 async fn api_load_pdf_keyed(
-    State(sessions): State<SessionStore>,
+    State(state): State<AppState>,
     Path(key): Path<String>,
     Json(req): Json<LoadRequest>,
 ) -> Response {
-    do_load(sessions, key, req).await
+    do_load(state.sessions.clone(), key, req).await
 }
 
 async fn api_load_pdf(
-    State(sessions): State<SessionStore>,
+    State(state): State<AppState>,
     Json(req): Json<LoadRequest>,
 ) -> Response {
     let key = uuid::Uuid::new_v4().to_string()[..8].to_string();
-    do_load(sessions, key, req).await
+    do_load(state.sessions.clone(), key, req).await
 }
 
 async fn do_load(sessions: SessionStore, key: String, req: LoadRequest) -> Response {
@@ -417,22 +441,22 @@ async fn do_load(sessions: SessionStore, key: String, req: LoadRequest) -> Respo
 // ---------------------------------------------------------------------------
 
 async fn api_merge_keyed(
-    State(sessions): State<SessionStore>,
+    State(state): State<AppState>,
     Path(key): Path<String>,
     Json(req): Json<serde_json::Value>,
 ) -> Response {
-    do_merge(sessions, &key, req).await
+    do_merge(state.sessions.clone(), &key, req).await
 }
 
 async fn api_merge(
-    State(sessions): State<SessionStore>,
+    State(state): State<AppState>,
     Json(req): Json<serde_json::Value>,
 ) -> Response {
     let key = {
-        let store = sessions.lock();
+        let store = state.sessions.lock();
         store.keys().last().cloned().unwrap_or_default()
     };
-    do_merge(sessions, &key, req).await
+    do_merge(state.sessions.clone(), &key, req).await
 }
 
 async fn do_merge(sessions: SessionStore, key: &str, req: serde_json::Value) -> Response {
@@ -552,22 +576,22 @@ struct ExportRequest {
 fn default_export_height() -> i32 { 900 }
 
 async fn api_export_keyed(
-    State(sessions): State<SessionStore>,
+    State(state): State<AppState>,
     Path(key): Path<String>,
     Json(req): Json<ExportRequest>,
 ) -> Response {
-    do_export(sessions, &key, req).await
+    do_export(state.sessions.clone(), &key, req).await
 }
 
 async fn api_export(
-    State(sessions): State<SessionStore>,
+    State(state): State<AppState>,
     Json(req): Json<ExportRequest>,
 ) -> Response {
     let key = {
-        let store = sessions.lock();
+        let store = state.sessions.lock();
         store.keys().last().cloned().unwrap_or_default()
     };
-    do_export(sessions, &key, req).await
+    do_export(state.sessions.clone(), &key, req).await
 }
 
 async fn do_export(sessions: SessionStore, key: &str, req: ExportRequest) -> Response {
@@ -617,7 +641,7 @@ async fn do_export(sessions: SessionStore, key: &str, req: ExportRequest) -> Res
 // ---------------------------------------------------------------------------
 
 async fn api_serve_png(
-    State(sessions): State<SessionStore>,
+    State(state): State<AppState>,
     Path(key): Path<String>,
     req: axum::extract::Request,
 ) -> Response {
@@ -625,7 +649,7 @@ async fn api_serve_png(
     let filename = uri.rsplit('/').next().unwrap_or("").split('?').next().unwrap_or("");
 
     let extract_dir = {
-        let store = sessions.lock();
+        let store = state.sessions.lock();
         match store.get(&key) {
             Some(s) => s.extract_dir.clone(),
             None => return StatusCode::NOT_FOUND.into_response(),
@@ -653,14 +677,14 @@ async fn api_serve_png(
 }
 
 async fn api_serve_brick_png(
-    State(sessions): State<SessionStore>,
+    State(state): State<AppState>,
     Path((key, rest)): Path<(String, String)>,
 ) -> Response {
     let brick_id = rest.trim_end_matches(".png");
 
     // Try serving from session cache first, then generate on demand
     let png_bytes = {
-        let store = sessions.lock();
+        let store = state.sessions.lock();
         let session = match store.get(&key) {
             Some(s) => s,
             None => return StatusCode::NOT_FOUND.into_response(),
@@ -679,7 +703,7 @@ async fn api_serve_brick_png(
 
     // Generate on demand from bricks_layer_img
     let generated = {
-        let mut store = sessions.lock();
+        let mut store = state.sessions.lock();
         let session = match store.get_mut(&key) {
             Some(s) => s,
             None => return StatusCode::NOT_FOUND.into_response(),
@@ -739,7 +763,7 @@ async fn api_serve_brick_png(
 }
 
 async fn api_serve_piece_png(
-    State(sessions): State<SessionStore>,
+    State(state): State<AppState>,
     Path((key, rest)): Path<(String, String)>,
     req: axum::extract::Request,
 ) -> Response {
@@ -749,7 +773,7 @@ async fn api_serve_piece_png(
     let prefix = if is_outline { "piece_outline" } else { "piece" };
 
     let extract_dir = {
-        let store = sessions.lock();
+        let store = state.sessions.lock();
         match store.get(&key) {
             Some(s) => s.extract_dir.clone(),
             None => return StatusCode::NOT_FOUND.into_response(),

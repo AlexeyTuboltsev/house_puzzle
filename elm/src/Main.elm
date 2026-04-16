@@ -216,6 +216,7 @@ type alias Model =
     , sessionKey : String
     , nextSessionId : Int
     , appVersion : String
+    , versionBanner : Maybe { latest : String, releaseUrl : String }
     , undoHistory : List UndoSnapshot
     , redoHistory : List UndoSnapshot
     }
@@ -279,12 +280,14 @@ init flags =
       , sessionKey = ""
       , nextSessionId = 1
       , appVersion = flags.version
+      , versionBanner = Nothing
       , undoHistory = []
       , redoHistory = []
       }
     , Cmd.batch
         [ fetchPdfList
         , Task.perform GotViewport Browser.Dom.getViewport
+        , checkVersion
         ]
     )
 
@@ -367,6 +370,8 @@ type Msg
     | ScrollTrayBy Float
     | Undo
     | Redo
+    | GotVersionCheck (Result Http.Error { latest : String, updateAvailable : Bool, releaseUrl : String })
+    | DismissVersionBanner
     | NoOp
 
 
@@ -1820,6 +1825,20 @@ update msg model =
                     , Cmd.none
                     )
 
+        GotVersionCheck (Ok info) ->
+            if info.updateAvailable then
+                ( { model | versionBanner = Just { latest = info.latest, releaseUrl = info.releaseUrl } }
+                , Cmd.none
+                )
+            else
+                ( model, Cmd.none )
+
+        GotVersionCheck (Err _) ->
+            ( model, Cmd.none )
+
+        DismissVersionBanner ->
+            ( { model | versionBanner = Nothing }, Cmd.none )
+
         NoOp ->
             ( model, Cmd.none )
 
@@ -1877,6 +1896,28 @@ editHasChanges model =
 
 
 -- ── HTTP ────────────────────────────────────────────────────────────────────
+
+
+checkVersion : Cmd Msg
+checkVersion =
+    Http.get
+        { url = "/api/version"
+        , expect = Http.expectJson GotVersionCheck decodeVersionInfo
+        }
+
+
+decodeVersionInfo : D.Decoder { latest : String, updateAvailable : Bool, releaseUrl : String }
+decodeVersionInfo =
+    D.map3
+        (\latest updateAvailable releaseUrl ->
+            { latest = latest
+            , updateAvailable = updateAvailable
+            , releaseUrl = releaseUrl
+            }
+        )
+        (D.field "latest" (D.map (Maybe.withDefault "") (D.nullable D.string)))
+        (D.field "update_available" D.bool)
+        (D.field "release_url" (D.map (Maybe.withDefault "") (D.nullable D.string)))
 
 
 fetchPdfList : Cmd Msg
@@ -2101,14 +2142,43 @@ httpErrorToString err =
 view : Model -> Html Msg
 view model =
     div [ class "app" ]
-        ([ div [ class "app-main" ]
-             [ viewTitleBar model
-             , viewBody model
-             , viewColorPickerPanel model
-             ]
-         ]
+        (viewVersionBanner model
+            ++ [ div [ class "app-main" ]
+                    [ viewTitleBar model
+                    , viewBody model
+                    , viewColorPickerPanel model
+                    ]
+               ]
             ++ viewBottomWaveTray model
         )
+
+
+viewVersionBanner : Model -> List (Html Msg)
+viewVersionBanner model =
+    case model.versionBanner of
+        Nothing ->
+            []
+
+        Just { latest, releaseUrl } ->
+            [ div [ class "version-update-banner" ]
+                [ span [ class "version-update-text" ]
+                    [ text ("New version " ++ latest ++ " available! ")
+                    , a
+                        [ href releaseUrl
+                        , Html.Attributes.target "_blank"
+                        , rel "noopener noreferrer"
+                        , class "version-update-link"
+                        ]
+                        [ text "Download" ]
+                    ]
+                , button
+                    [ class "version-update-dismiss"
+                    , onClick DismissVersionBanner
+                    , title "Dismiss"
+                    ]
+                    [ text "✕" ]
+                ]
+            ]
 
 
 viewBottomWaveTray : Model -> List (Html Msg)

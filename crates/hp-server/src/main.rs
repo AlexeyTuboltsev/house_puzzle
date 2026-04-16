@@ -1,12 +1,23 @@
 mod routes;
 mod session;
+mod version;
 
 use std::net::SocketAddr;
 
 #[tokio::main]
 async fn main() {
     let sessions = session::new_session_store();
-    let app = routes::build_router(sessions);
+    let version_state = version::new_version_state();
+
+    // Start background task that checks GitHub releases every hour
+    {
+        let vs = version_state.clone();
+        tokio::spawn(async move {
+            version::run_version_checker(vs).await;
+        });
+    }
+
+    let app = routes::build_router(sessions, version_state);
 
     // Try ports 5050-5059, use first available
     let mut listener = None;
