@@ -69,9 +69,10 @@ jobs:
           node-version: '20'
 
       - name: Build Elm frontend
+        working-directory: elm
         run: |
           npm install -g elm
-          elm make elm/src/Main.elm --output crates/hp-tauri/dist/elm.js
+          elm make src/Main.elm --output ../crates/hp-tauri/dist/elm.js
 
       - name: Build debug binary (includes tauri-plugin-webdriver)
         run: cargo build --manifest-path crates/hp-tauri/Cargo.toml
