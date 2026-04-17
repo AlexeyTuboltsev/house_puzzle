@@ -57,6 +57,12 @@ jobs:
         with:
           version: "17"
 
+      - name: Set macOS deployment target flags
+        if: matrix.platform == 'macos-latest'
+        run: |
+          echo "CFLAGS=-mmacosx-version-min=10.15" >> $GITHUB_ENV
+          echo "CXXFLAGS=-mmacosx-version-min=10.15" >> $GITHUB_ENV
+
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
