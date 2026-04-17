@@ -166,8 +166,17 @@ export const config: WebdriverIO.Config = {
 
   // Navigate to the Tauri app URL once the session is open so that
   // the WebView is fully attached before any test assertions run.
+  //
+  // URL scheme differs by platform:
+  //   - Linux (WebKitGTK) / macOS (WebKit): tauri://localhost
+  //   - Windows (Edge WebView2): https://tauri.localhost
+  //     WebView2 maps the custom protocol under https://tauri.localhost/
   before: async () => {
-    await browser.url("tauri://localhost");
+    const appUrl =
+      process.platform === "win32"
+        ? "https://tauri.localhost"
+        : "tauri://localhost";
+    await browser.url(appUrl);
     // Give the Elm SPA a moment to bootstrap
     await browser.pause(2000);
   },
