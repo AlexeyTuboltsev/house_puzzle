@@ -101,11 +101,17 @@ jobs:
         working-directory: crates/hp-tauri/tests/e2e
         run: npm ci
 
+      - name: Download test fixture
+        run: gh release download test-fixtures-v1 -p "_NY2.ai" -D in/
+        env:
+          GH_TOKEN: ${{ github.token }}
+
       - name: Run E2E tests (Linux – headless via xvfb-run)
         if: matrix.platform == 'ubuntu-22.04'
         working-directory: crates/hp-tauri/tests/e2e
         env:
           TAURI_BINARY: ${{ github.workspace }}/${{ matrix.e2e_binary }}
+          FIXTURE_DIR: ${{ github.workspace }}/in
         run: |
           xvfb-run --auto-servernum --server-args="-screen 0 1280x800x24" \
             npx wdio run wdio.conf.ts
@@ -115,6 +121,7 @@ jobs:
         working-directory: crates/hp-tauri/tests/e2e
         env:
           TAURI_BINARY: ${{ github.workspace }}/${{ matrix.e2e_binary }}
+          FIXTURE_DIR: ${{ github.workspace }}/in
         run: npx wdio run wdio.conf.ts
 
       - name: Upload E2E screenshots

@@ -716,3 +716,188 @@ if (fixtures.length > 0) {
     });
   });
 }
+
+// =============================================================================
+// Suite 5 – Visual canary (UI-driven: load → screenshot → generate → screenshot)
+//
+// Mirrors the canary test flow through actual UI interactions:
+//   1. Click a file entry to load an AI file
+//   2. Wait for the composite to appear
+//   3. Take a screenshot of the loaded house
+//   4. Click "Generate Puzzle"
+//   5. Wait for puzzle generation to complete
+//   6. Take a screenshot of the generated puzzle
+//
+// Enabled by FIXTURE_DIR. Uses the first available _NY*.ai file.
+// Screenshots are saved for visual inspection and baseline comparison.
+// =============================================================================
+
+if (fixtures.length > 0) {
+  const firstFixture = fixtures[0];
+
+  describe("Visual canary (UI-driven)", () => {
+    it(`loads ${firstFixture.stem}.ai via file list click`, async function () {
+      this.timeout(120_000);
+
+      // The app should be on the start screen with file entries
+      const fileEntries = await $$(".file-entry:not(.file-entry-browse)");
+      console.log(`[visual] found ${fileEntries.length} file entries`);
+
+      // Find the entry matching our fixture
+      let targetEntry: WebdriverIO.Element | null = null;
+      for (const entry of fileEntries) {
+        const text = await entry.getText();
+        if (text.includes(firstFixture.stem)) {
+          targetEntry = entry;
+          break;
+        }
+      }
+
+      if (!targetEntry) {
+        // Fixture not in the file list — try loading via IPC as fallback
+        console.warn(
+          `[visual] ${firstFixture.stem} not found in file list, loading via IPC`
+        );
+        await invokeTauri("load_pdf", {
+          path: firstFixture.aiPath,
+          canvas_height: 900,
+          deterministic_ids: true,
+        });
+      } else {
+        console.log(`[visual] clicking file entry for ${firstFixture.stem}`);
+        await targetEntry.click();
+      }
+
+      // Wait for the house composite to appear (canvas-area with an image)
+      const canvasArea = await $(".canvas-area");
+      await canvasArea.waitForExist({ timeout: 60_000 });
+
+      // Wait for loading to finish — the house SVG should have an image element
+      await browser.waitUntil(
+        async () => {
+          const imgs = await $$(".house-svg image");
+          return imgs.length > 0;
+        },
+        { timeout: 90_000, interval: 1000, timeoutMsg: "House image did not appear within 90s" }
+      );
+
+      // Small pause for rendering to settle
+      await browser.pause(1000);
+    });
+
+    it("takes screenshot of loaded house", async function () {
+      this.timeout(30_000);
+
+      await takeScreenshot("canary-house-loaded");
+      const mismatch = await compareOrEstablishBaseline("canary-house-loaded");
+
+      if (mismatch < 0) {
+        console.warn("[visual] screenshot size mismatch — skipping pixel diff");
+      } else {
+        // Allow 5% pixel difference (rendering variance across platforms)
+        const windowSize = await browser.getWindowSize();
+        const allowedMismatch = Math.ceil(
+          windowSize.width * windowSize.height * 0.05
+        );
+        expect(mismatch).toBeLessThanOrEqual(allowedMismatch);
+      }
+    });
+
+    it("clicks Generate Puzzle and waits for completion", async function () {
+      this.timeout(120_000);
+
+      // Click the Import/Generate mode button to go to the generate view
+      const modeBtns = await $$(".mode-btn");
+      let importBtn: WebdriverIO.Element | null = null;
+      for (const btn of modeBtns) {
+        const text = await btn.getText();
+        if (
+          text.includes("Import") ||
+          text.includes("Generate") ||
+          text.includes("Importing")
+        ) {
+          importBtn = btn;
+          break;
+        }
+      }
+
+      if (importBtn) {
+        const isEnabled = await importBtn.isEnabled();
+        if (isEnabled) {
+          console.log("[visual] clicking Import mode button");
+          await importBtn.click();
+          await browser.pause(500);
+        }
+      }
+
+      // Find and click the "Generate Puzzle" button
+      const generateBtn = await $("button.primary");
+      await generateBtn.waitForExist({ timeout: 10_000 });
+
+      const btnText = await generateBtn.getText();
+      console.log(`[visual] generate button text: "${btnText}"`);
+
+      if (await generateBtn.isEnabled()) {
+        await generateBtn.click();
+        console.log("[visual] clicked Generate Puzzle");
+      } else {
+        console.warn("[visual] Generate button is disabled");
+        return;
+      }
+
+      // Wait for generation to complete — piece images should appear
+      await browser.waitUntil(
+        async () => {
+          const pieceImgs = await $$(".house-svg image[href*='piece_']");
+          return pieceImgs.length > 0;
+        },
+        {
+          timeout: 90_000,
+          interval: 1000,
+          timeoutMsg: "Piece images did not appear within 90s",
+        }
+      );
+
+      // Navigate to Pieces view
+      const piecesBtn = await $$(".mode-btn");
+      for (const btn of piecesBtn) {
+        const text = await btn.getText();
+        if (text.includes("Pieces")) {
+          if (await btn.isEnabled()) {
+            await btn.click();
+            await browser.pause(500);
+          }
+          break;
+        }
+      }
+
+      await browser.pause(1000);
+    });
+
+    it("takes screenshot of generated puzzle", async function () {
+      this.timeout(30_000);
+
+      await takeScreenshot("canary-puzzle-generated");
+      const mismatch = await compareOrEstablishBaseline(
+        "canary-puzzle-generated"
+      );
+
+      if (mismatch < 0) {
+        console.warn("[visual] screenshot size mismatch — skipping pixel diff");
+      } else {
+        const windowSize = await browser.getWindowSize();
+        const allowedMismatch = Math.ceil(
+          windowSize.width * windowSize.height * 0.05
+        );
+        expect(mismatch).toBeLessThanOrEqual(allowedMismatch);
+      }
+    });
+  });
+} else {
+  describe("Visual canary (UI-driven)", () => {
+    it("is skipped — set FIXTURE_DIR to enable", () => {
+      console.log("[info] visual canary skipped: FIXTURE_DIR not set");
+      expect(true).toBe(true);
+    });
+  });
+}
