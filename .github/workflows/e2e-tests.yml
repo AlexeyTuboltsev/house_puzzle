@@ -30,7 +30,7 @@ jobs:
           - platform: windows-latest
             artifact-suffix: windows
             e2e_binary: target/release/hp-tauri.exe
-            cargo_build_args: --release
+            cargo_build_args: --release --features webdriver
 
     runs-on: ${{ matrix.platform }}
     steps:
