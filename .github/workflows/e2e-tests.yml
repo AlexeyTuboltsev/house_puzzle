@@ -29,7 +29,8 @@ jobs:
             e2e_binary: target/debug/hp-tauri
           - platform: windows-latest
             artifact-suffix: windows
-            e2e_binary: target/debug/hp-tauri.exe
+            e2e_binary: target/release/hp-tauri.exe
+            cargo_build_args: --release
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -91,7 +92,7 @@ jobs:
           elm make src/Main.elm --output ../crates/hp-tauri/dist/elm.js
 
       - name: Build debug binary (includes tauri-plugin-webdriver)
-        run: cargo build --manifest-path crates/hp-tauri/Cargo.toml
+        run: cargo build ${{ matrix.cargo_build_args }} --manifest-path crates/hp-tauri/Cargo.toml
 
       - name: Install E2E test dependencies
         working-directory: crates/hp-tauri/tests/e2e
