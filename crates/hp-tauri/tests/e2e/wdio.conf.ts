@@ -167,16 +167,11 @@ export const config: WebdriverIO.Config = {
   // Navigate to the Tauri app URL once the session is open so that
   // the WebView is fully attached before any test assertions run.
   //
-  // URL scheme differs by platform:
-  //   - Linux (WebKitGTK) / macOS (WebKit): tauri://localhost
-  //   - Windows (Edge WebView2): https://tauri.localhost
-  //     WebView2 maps the custom protocol under https://tauri.localhost/
+  // Use tauri://localhost universally — this worked on all platforms (including
+  // Windows with Edge WebView2) in verified passing CI runs.  The alternative
+  // https://tauri.localhost caused "No window could be found" errors on Windows.
   before: async () => {
-    const appUrl =
-      process.platform === "win32"
-        ? "https://tauri.localhost"
-        : "tauri://localhost";
-    await browser.url(appUrl);
+    await browser.url("tauri://localhost");
     // Give the Elm SPA a moment to bootstrap
     await browser.pause(2000);
   },
