@@ -1,0 +1,105 @@
+name: E2E Tests
+
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+    branches:
+      - main
+
+env:
+  CARGO_TERM_COLOR: always
+  MACOSX_DEPLOYMENT_TARGET: "10.15"
+
+jobs:
+  e2e:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: ubuntu-22.04
+            artifact-suffix: linux
+            e2e_binary: target/debug/hp-tauri
+          - platform: macos-latest
+            artifact-suffix: macos-aarch64
+            e2e_binary: target/debug/hp-tauri
+          - platform: macos-latest
+            artifact-suffix: macos-x86_64
+            e2e_binary: target/debug/hp-tauri
+          - platform: windows-latest
+            artifact-suffix: windows
+            e2e_binary: target/debug/hp-tauri.exe
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install Linux deps
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
+            librsvg2-dev libclang-dev libfontconfig1-dev libfreetype6-dev \
+            pkg-config patchelf \
+            xvfb webkit2gtk-driver
+
+      - name: Install LLVM (Windows)
+        if: matrix.platform == 'windows-latest'
+        uses: KyleMayes/install-llvm-action@v2
+        with:
+          version: "17"
+
+      - name: Set macOS deployment target flags
+        if: matrix.platform == 'macos-latest'
+        run: |
+          echo "CFLAGS=-mmacosx-version-min=10.15" >> $GITHUB_ENV
+          echo "CXXFLAGS=-mmacosx-version-min=10.15" >> $GITHUB_ENV
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build Elm frontend
+        run: |
+          npm install -g elm
+          elm make elm/src/Main.elm --output crates/hp-tauri/dist/elm.js
+
+      - name: Build debug binary (includes tauri-plugin-webdriver)
+        run: cargo build --manifest-path crates/hp-tauri/Cargo.toml
+
+      - name: Install E2E test dependencies
+        working-directory: crates/hp-tauri/tests/e2e
+        run: npm ci
+
+      - name: Run E2E tests (Linux – headless via xvfb-run)
+        if: matrix.platform == 'ubuntu-22.04'
+        working-directory: crates/hp-tauri/tests/e2e
+        env:
+          TAURI_BINARY: ${{ github.workspace }}/${{ matrix.e2e_binary }}
+        run: |
+          xvfb-run --auto-servernum --server-args="-screen 0 1280x800x24" \
+            npx wdio run wdio.conf.ts
+
+      - name: Run E2E tests (macOS / Windows)
+        if: matrix.platform != 'ubuntu-22.04'
+        working-directory: crates/hp-tauri/tests/e2e
+        env:
+          TAURI_BINARY: ${{ github.workspace }}/${{ matrix.e2e_binary }}
+        run: npx wdio run wdio.conf.ts
+
+      - name: Upload E2E screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-screenshots-${{ matrix.artifact-suffix }}
+          path: crates/hp-tauri/tests/e2e/screenshots/
+          if-no-files-found: warn
