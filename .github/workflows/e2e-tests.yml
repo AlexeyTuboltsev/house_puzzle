@@ -21,12 +21,15 @@ jobs:
           - platform: ubuntu-22.04
             artifact-suffix: linux
             e2e_binary: target/debug/hp-tauri
+            cargo_build_args: --features webdriver
           - platform: macos-latest
             artifact-suffix: macos-aarch64
             e2e_binary: target/debug/hp-tauri
+            cargo_build_args: --features webdriver
           - platform: macos-latest
             artifact-suffix: macos-x86_64
             e2e_binary: target/debug/hp-tauri
+            cargo_build_args: --features webdriver
           - platform: windows-latest
             artifact-suffix: windows
             e2e_binary: target/release/hp-tauri.exe

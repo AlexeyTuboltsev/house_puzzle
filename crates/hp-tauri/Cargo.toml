@@ -8,9 +8,10 @@ tauri-build = { version = "2", features = [] }
 
 # ── Optional webdriver feature ───────────────────────────────────────────────
 # Embeds a W3C WebDriver server (port 4445) for E2E tests.
-# Enabled automatically in debug builds via cfg(debug_assertions).
-# Can also be enabled explicitly via --features webdriver (e.g., Windows CI
-# release builds that need the server but must avoid debug CRT linkage issues).
+# Enable with `--features webdriver` when building the E2E test binary.
+# On Linux/macOS: `cargo build --features webdriver` (debug, no CRT issues)
+# On Windows:     `cargo build --release --features webdriver` (avoids
+#                 _ITERATOR_DEBUG_LEVEL mismatch between debug/release CRT)
 [features]
 webdriver = ["dep:tauri-plugin-webdriver"]
 

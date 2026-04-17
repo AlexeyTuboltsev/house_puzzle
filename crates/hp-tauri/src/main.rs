@@ -33,11 +33,11 @@ fn main() {
             commands::check_for_updates,
         ]);
 
-    // In debug builds (or when the "webdriver" feature is explicitly enabled),
-    // embed a W3C WebDriver server (port 4445) so that WebDriverIO E2E tests
-    // can automate the app on every platform, including macOS where the
-    // standalone `tauri-driver` binary is not supported.
-    #[cfg(any(debug_assertions, feature = "webdriver"))]
+    // When the "webdriver" feature is enabled, embed a W3C WebDriver server
+    // (port 4445) so that WebDriverIO E2E tests can automate the app on every
+    // platform, including macOS where the standalone `tauri-driver` binary is
+    // not supported. Build with `--features webdriver` for E2E CI builds.
+    #[cfg(feature = "webdriver")]
     let builder = builder.plugin(tauri_plugin_webdriver::init());
 
     builder
