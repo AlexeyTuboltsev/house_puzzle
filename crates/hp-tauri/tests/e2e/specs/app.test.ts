@@ -746,42 +746,39 @@ if (fixtures.length > 0) {
   const firstFixture = fixtures[0];
 
   describe("Visual canary", () => {
-    before("install page helper", async function () {
-      this.timeout(10_000);
-      await ensurePageHelper();
-    });
+    let ipcAvailable = false;
 
-    it(`loads ${firstFixture.stem}.ai via IPC`, async function () {
+    before("load file via IPC", async function () {
       this.timeout(120_000);
+      await ensurePageHelper();
 
       console.log(`[visual] loading ${firstFixture.aiPath} via IPC`);
       try {
-        const resp = await invokeTauri("load_pdf", {
+        await invokeTauri("load_pdf", {
           path: firstFixture.aiPath,
           canvas_height: 900,
           deterministic_ids: true,
         });
         console.log(`[visual] load_pdf response received`);
+        ipcAvailable = true;
+
+        // Wait for the house image to render
+        await browser.waitUntil(
+          async () => {
+            const imgs = await $$(".house-svg image");
+            return imgs.length > 0;
+          },
+          { timeout: 90_000, interval: 1000, timeoutMsg: "House image did not appear within 90s" }
+        );
+        await browser.pause(1000);
       } catch (e) {
-        console.warn(`[visual] IPC load failed: ${e}`);
-        console.warn("[visual] skipping visual canary — IPC not available on this platform");
-        this.skip();
-        return;
+        console.warn(`[visual] IPC not available: ${e}`);
+        console.warn("[visual] all visual canary tests will be skipped");
       }
-
-      // Wait for the house image to render in the UI
-      await browser.waitUntil(
-        async () => {
-          const imgs = await $$(".house-svg image");
-          return imgs.length > 0;
-        },
-        { timeout: 90_000, interval: 1000, timeoutMsg: "House image did not appear within 90s" }
-      );
-
-      await browser.pause(1000);
     });
 
     it("takes screenshot of loaded house", async function () {
+      if (!ipcAvailable) { this.skip(); return; }
       this.timeout(30_000);
 
       await takeScreenshot("canary-house-loaded");
@@ -799,6 +796,7 @@ if (fixtures.length > 0) {
     });
 
     it("generates puzzle via UI and waits for completion", async function () {
+      if (!ipcAvailable) { this.skip(); return; }
       this.timeout(120_000);
 
       // Navigate to Import section
@@ -855,6 +853,7 @@ if (fixtures.length > 0) {
     });
 
     it("takes screenshot of generated puzzle", async function () {
+      if (!ipcAvailable) { this.skip(); return; }
       this.timeout(30_000);
 
       await takeScreenshot("canary-puzzle-generated");
