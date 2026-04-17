@@ -25,15 +25,19 @@ jobs:
           - platform: ubuntu-22.04
             args: ''
             artifact-suffix: linux
+            tauri_binary: target/release/hp-tauri
           - platform: macos-latest
             args: '--target aarch64-apple-darwin'
             artifact-suffix: macos-aarch64
+            tauri_binary: target/aarch64-apple-darwin/release/bundle/macos/House Puzzle.app/Contents/MacOS/House Puzzle
           - platform: macos-latest
             args: '--target x86_64-apple-darwin'
             artifact-suffix: macos-x86_64
+            tauri_binary: target/x86_64-apple-darwin/release/bundle/macos/House Puzzle.app/Contents/MacOS/House Puzzle
           - platform: windows-latest
             args: ''
             artifact-suffix: windows
+            tauri_binary: target/release/hp-tauri.exe
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -89,31 +93,38 @@ jobs:
             target/x86_64-apple-darwin/release/bundle/**/*.dmg
             target/x86_64-apple-darwin/release/bundle/**/*.app
 
-      # ── E2E tests (Linux only – headless via xvfb-run) ──────────────────────
+      # ── E2E tests (all platforms) ────────────────────────────────────────────
+
       - name: Install tauri-driver
-        if: matrix.platform == 'ubuntu-22.04'
         run: cargo install tauri-driver
 
+      - name: Enable safaridriver (macOS)
+        if: matrix.platform == 'macos-latest'
+        run: sudo safaridriver --enable
+
       - name: Install E2E test dependencies
-        if: matrix.platform == 'ubuntu-22.04'
         working-directory: crates/hp-tauri/tests/e2e
         run: npm ci
 
-      - name: Run E2E tests
+      - name: Run E2E tests (Linux – headless via xvfb-run)
         if: matrix.platform == 'ubuntu-22.04'
         working-directory: crates/hp-tauri/tests/e2e
         env:
-          # Point at the debug binary built by tauri-action (–-debug not used,
-          # but a debug build was produced as a side-effect). If only release
-          # is available, set TAURI_BINARY accordingly.
-          TAURI_BINARY: ${{ github.workspace }}/target/release/hp-tauri
+          TAURI_BINARY: ${{ github.workspace }}/${{ matrix.tauri_binary }}
           WEBKIT_DRIVER: /usr/bin/WebKitWebDriver
         run: |
           xvfb-run --auto-servernum --server-args="-screen 0 1280x800x24" \
             npx wdio run wdio.conf.ts
 
+      - name: Run E2E tests (macOS / Windows)
+        if: matrix.platform != 'ubuntu-22.04'
+        working-directory: crates/hp-tauri/tests/e2e
+        env:
+          TAURI_BINARY: ${{ github.workspace }}/${{ matrix.tauri_binary }}
+        run: npx wdio run wdio.conf.ts
+
       - name: Upload E2E screenshots
-        if: matrix.platform == 'ubuntu-22.04' && always()
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: e2e-screenshots-${{ matrix.artifact-suffix }}
