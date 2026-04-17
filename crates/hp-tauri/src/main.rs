@@ -30,7 +30,9 @@ fn main() {
         .setup(move |app| {
             // Inject --load path into the webview via JS so Elm can pick it up
             if let Some(ref path) = load_file {
-                if let Some(window) = app.get_webview_window("main") {
+                use tauri::Manager;
+                let windows = app.webview_windows();
+                if let Some(window) = windows.values().next() {
                     let path_js = path.replace('\\', "\\\\").replace('\'', "\\'");
                     let _ = window.eval(&format!("window.__LOAD_FILE__ = '{path_js}';"));
                 }
