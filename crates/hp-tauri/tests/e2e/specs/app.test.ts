@@ -2,9 +2,13 @@
  * E2E tests for House Puzzle Tauri app
  *
  * Prerequisites:
- *   - tauri-driver installed: cargo install tauri-driver
  *   - Debug binary built: cargo build -p hp-tauri
+ *     (tauri-plugin-webdriver is compiled in automatically via cfg(debug_assertions))
  *   - On Linux headless: wrap with xvfb-run
+ *
+ * The app exposes a W3C WebDriver server on 127.0.0.1:4445 (tauri-plugin-webdriver).
+ * No external tauri-driver binary is required; the plugin works on all platforms
+ * including macOS.
  */
 
 import fs from "fs";

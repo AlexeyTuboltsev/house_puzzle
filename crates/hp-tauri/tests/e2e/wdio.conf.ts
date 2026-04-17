@@ -1,6 +1,24 @@
-import os from "os";
+/**
+ * WebDriverIO configuration for House Puzzle E2E tests.
+ *
+ * Uses tauri-plugin-webdriver (https://github.com/Choochmeque/tauri-plugin-webdriver),
+ * a Tauri plugin that embeds a W3C WebDriver server (port 4445) directly in the
+ * debug build of the app.  This approach works on all platforms including macOS,
+ * where the standalone `tauri-driver` binary is not supported.
+ *
+ * Flow:
+ *  1. beforeSession – spawn the debug app binary directly; it starts the
+ *     embedded WebDriver server on 127.0.0.1:4445.
+ *  2. WebDriverIO connects to port 4445 and creates a session.
+ *  3. before (browser hook) – navigate to tauri://localhost so the WebView is
+ *     attached to the session.
+ *  4. Tests run.
+ *  5. afterSession – kill the app process.
+ */
+
 import path from "path";
-import { spawn } from "child_process";
+import http from "http";
+import { spawn, ChildProcess } from "child_process";
 
 // ─── Platform helpers ────────────────────────────────────────────────────────
 
@@ -8,6 +26,8 @@ function getAppBinary(): string {
   const platform = process.platform;
   const projectRoot = path.resolve(__dirname, "../../../..");
 
+  // All platforms: use the raw debug binary produced by `cargo build`.
+  // tauri-plugin-webdriver embeds the WebDriver server, so no bundle is needed.
   if (platform === "linux") {
     return (
       process.env.TAURI_BINARY ||
@@ -16,10 +36,7 @@ function getAppBinary(): string {
   } else if (platform === "darwin") {
     return (
       process.env.TAURI_BINARY ||
-      path.join(
-        projectRoot,
-        "target/debug/bundle/macos/House Puzzle.app/Contents/MacOS/House Puzzle"
-      )
+      path.join(projectRoot, "target/debug/hp-tauri")
     );
   } else if (platform === "win32") {
     return (
@@ -30,78 +47,106 @@ function getAppBinary(): string {
   throw new Error(`Unsupported platform: ${platform}`);
 }
 
-function getTauriDriverPath(): string {
-  return (
-    process.env.TAURI_DRIVER ||
-    path.join(os.homedir(), ".cargo", "bin", "tauri-driver")
-  );
-}
+// ─── App process management ──────────────────────────────────────────────────
 
-/**
- * On Linux, tauri-driver proxies to WebKitWebDriver.
- * Pass the path via --native-driver so it is always found, even in CI
- * where it may not be on PATH.
- *
- * On macOS, Safari / WebKit is used (no extra flag needed).
- * On Windows, tauri-driver proxies to msedgedriver automatically.
- */
-function getTauriDriverArgs(): string[] {
-  if (process.platform === "linux") {
-    const nativeDriver =
-      process.env.WEBKIT_DRIVER ||
-      "/usr/bin/WebKitWebDriver";
-    return ["--native-driver", nativeDriver];
-  }
-  return [];
-}
+/** Port used by tauri-plugin-webdriver (default, overridable via env). */
+const WEBDRIVER_PORT = parseInt(
+  process.env.TAURI_WEBDRIVER_PORT ?? "4445",
+  10
+);
 
-// ─── Process management ──────────────────────────────────────────────────────
+let appProcess: ChildProcess | undefined;
+let appShuttingDown = false;
 
-let tauriDriver: ReturnType<typeof spawn> | undefined;
-let driverShuttingDown = false;
+function startApp(): void {
+  appShuttingDown = false;
+  const binary = getAppBinary();
+  console.log(`[wdio] launching app: ${binary}`);
 
-function startTauriDriver() {
-  driverShuttingDown = false;
-  const driverPath = getTauriDriverPath();
-  const driverArgs = getTauriDriverArgs();
-  console.log(`[wdio] starting tauri-driver: ${driverPath} ${driverArgs.join(" ")}`);
-
-  tauriDriver = spawn(driverPath, driverArgs, {
+  appProcess = spawn(binary, [], {
     stdio: [null, process.stdout, process.stderr],
+    env: {
+      ...process.env,
+      // Ensure the plugin WebDriver port is set in case the app reads it
+      TAURI_WEBDRIVER_PORT: String(WEBDRIVER_PORT),
+    },
   });
 
-  tauriDriver.on("error", (error) => {
-    console.error("[wdio] tauri-driver error:", error);
+  appProcess.on("error", (err) => {
+    console.error("[wdio] app process error:", err);
     process.exit(1);
   });
 
-  tauriDriver.on("exit", (code) => {
-    if (!driverShuttingDown) {
-      console.error("[wdio] tauri-driver exited unexpectedly, code:", code);
+  appProcess.on("exit", (code) => {
+    if (!appShuttingDown) {
+      console.error("[wdio] app exited unexpectedly, code:", code);
       process.exit(1);
     }
   });
 }
 
-function stopTauriDriver() {
-  driverShuttingDown = true;
-  tauriDriver?.kill();
+function stopApp(): void {
+  appShuttingDown = true;
+  appProcess?.kill();
+  appProcess = undefined;
+}
+
+/**
+ * Poll the embedded WebDriver /status endpoint until it responds (or timeout).
+ * The plugin starts the HTTP server almost immediately, but the app itself may
+ * take a moment to initialise.
+ */
+function waitForWebDriver(
+  port: number,
+  timeoutMs = 30_000,
+  intervalMs = 500
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const deadline = Date.now() + timeoutMs;
+
+    const check = () => {
+      const req = http.get(
+        { hostname: "127.0.0.1", port, path: "/status", timeout: 1000 },
+        (res) => {
+          res.resume(); // discard body
+          if (res.statusCode !== undefined && res.statusCode < 500) {
+            resolve();
+          } else {
+            retry();
+          }
+        }
+      );
+      req.on("error", retry);
+      req.on("timeout", () => { req.destroy(); retry(); });
+    };
+
+    const retry = () => {
+      if (Date.now() >= deadline) {
+        reject(new Error(`WebDriver server did not become ready on port ${port} within ${timeoutMs} ms`));
+      } else {
+        setTimeout(check, intervalMs);
+      }
+    };
+
+    check();
+  });
 }
 
 // ─── WebDriverIO configuration ───────────────────────────────────────────────
 
 export const config: WebdriverIO.Config = {
-  host: "127.0.0.1",
-  port: 4444,
+  hostname: "127.0.0.1",
+  port: WEBDRIVER_PORT,
+  path: "/",
+
   specs: ["./specs/**/*.ts"],
   maxInstances: 1,
 
+  // tauri-plugin-webdriver accepts any capabilities (they are not processed).
+  // Do NOT use `tauri:options` – that was specific to the standalone tauri-driver.
   capabilities: [
     {
       maxInstances: 1,
-      "tauri:options": {
-        application: getAppBinary(),
-      },
     } as WebdriverIO.Capabilities,
   ],
 
@@ -112,11 +157,25 @@ export const config: WebdriverIO.Config = {
     timeout: 60000,
   },
 
-  beforeSession: () => startTauriDriver(),
-  afterSession: () => stopTauriDriver(),
+  // Start the app before the WebDriver session is established.
+  beforeSession: async () => {
+    startApp();
+    await waitForWebDriver(WEBDRIVER_PORT);
+    console.log(`[wdio] WebDriver server ready on port ${WEBDRIVER_PORT}`);
+  },
+
+  // Navigate to the Tauri app URL once the session is open so that
+  // the WebView is fully attached before any test assertions run.
+  before: async () => {
+    await browser.url("tauri://localhost");
+    // Give the Elm SPA a moment to bootstrap
+    await browser.pause(2000);
+  },
+
+  afterSession: () => stopApp(),
 };
 
 // Graceful shutdown on signals
 ["SIGINT", "SIGTERM", "exit"].forEach((sig) => {
-  process.on(sig as NodeJS.Signals, stopTauriDriver);
+  process.on(sig as NodeJS.Signals, stopApp);
 });

@@ -6,6 +6,13 @@ edition = "2021"
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
+# ── Debug / test-only dependencies ──────────────────────────────────────────
+# tauri-plugin-webdriver embeds a W3C WebDriver server (port 4445) in the app,
+# enabling E2E tests on all platforms (including macOS where tauri-driver is
+# not supported). Never included in release builds.
+[target.'cfg(debug_assertions)'.dependencies]
+tauri-plugin-webdriver = "0.2"
+
 [dependencies]
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"

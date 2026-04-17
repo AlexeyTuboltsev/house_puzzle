@@ -25,19 +25,21 @@ jobs:
           - platform: ubuntu-22.04
             args: ''
             artifact-suffix: linux
-            tauri_binary: target/release/hp-tauri
+            # Debug binary for E2E (tauri-plugin-webdriver is debug_assertions only)
+            e2e_binary: target/debug/hp-tauri
           - platform: macos-latest
             args: '--target aarch64-apple-darwin'
             artifact-suffix: macos-aarch64
-            tauri_binary: target/aarch64-apple-darwin/release/bundle/macos/House Puzzle.app/Contents/MacOS/House Puzzle
+            # cargo build (no cross-target flag) produces the native-arch debug binary
+            e2e_binary: target/debug/hp-tauri
           - platform: macos-latest
             args: '--target x86_64-apple-darwin'
             artifact-suffix: macos-x86_64
-            tauri_binary: target/x86_64-apple-darwin/release/bundle/macos/House Puzzle.app/Contents/MacOS/House Puzzle
+            e2e_binary: target/debug/hp-tauri
           - platform: windows-latest
             args: ''
             artifact-suffix: windows
-            tauri_binary: target/release/hp-tauri.exe
+            e2e_binary: target/debug/hp-tauri.exe
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -94,13 +96,16 @@ jobs:
             target/x86_64-apple-darwin/release/bundle/**/*.app
 
       # ── E2E tests (all platforms) ────────────────────────────────────────────
+      #
+      # Strategy: tauri-plugin-webdriver embeds a W3C WebDriver server (port 4445)
+      # directly in the debug build of the app.  No external tauri-driver binary is
+      # needed, so E2E tests work on all platforms including macOS.
+      #
+      # We build a separate debug binary here (--cfg debug_assertions) so the plugin
+      # is compiled in.  The frontend dist produced by tauri-action above is reused.
 
-      - name: Install tauri-driver
-        run: cargo install tauri-driver
-
-      - name: Enable safaridriver (macOS)
-        if: matrix.platform == 'macos-latest'
-        run: sudo safaridriver --enable
+      - name: Build debug binary for E2E (includes tauri-plugin-webdriver)
+        run: cargo build --manifest-path crates/hp-tauri/Cargo.toml
 
       - name: Install E2E test dependencies
         working-directory: crates/hp-tauri/tests/e2e
@@ -110,8 +115,7 @@ jobs:
         if: matrix.platform == 'ubuntu-22.04'
         working-directory: crates/hp-tauri/tests/e2e
         env:
-          TAURI_BINARY: ${{ github.workspace }}/${{ matrix.tauri_binary }}
-          WEBKIT_DRIVER: /usr/bin/WebKitWebDriver
+          TAURI_BINARY: ${{ github.workspace }}/${{ matrix.e2e_binary }}
         run: |
           xvfb-run --auto-servernum --server-args="-screen 0 1280x800x24" \
             npx wdio run wdio.conf.ts
@@ -120,7 +124,7 @@ jobs:
         if: matrix.platform != 'ubuntu-22.04'
         working-directory: crates/hp-tauri/tests/e2e
         env:
-          TAURI_BINARY: ${{ github.workspace }}/${{ matrix.tauri_binary }}
+          TAURI_BINARY: ${{ github.workspace }}/${{ matrix.e2e_binary }}
         run: npx wdio run wdio.conf.ts
 
       - name: Upload E2E screenshots
