@@ -49,7 +49,11 @@ jobs:
         if: matrix.platform == 'ubuntu-22.04'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libclang-dev libfontconfig1-dev libfreetype6-dev pkg-config patchelf
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
+            librsvg2-dev libclang-dev libfontconfig1-dev libfreetype6-dev \
+            pkg-config patchelf \
+            xvfb webkit2gtk-driver
 
       - name: Install LLVM (Windows)
         if: matrix.platform == 'windows-latest'
@@ -84,3 +88,34 @@ jobs:
             target/aarch64-apple-darwin/release/bundle/**/*.app
             target/x86_64-apple-darwin/release/bundle/**/*.dmg
             target/x86_64-apple-darwin/release/bundle/**/*.app
+
+      # ── E2E tests (Linux only – headless via xvfb-run) ──────────────────────
+      - name: Install tauri-driver
+        if: matrix.platform == 'ubuntu-22.04'
+        run: cargo install tauri-driver
+
+      - name: Install E2E test dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        working-directory: crates/hp-tauri/tests/e2e
+        run: npm ci
+
+      - name: Run E2E tests
+        if: matrix.platform == 'ubuntu-22.04'
+        working-directory: crates/hp-tauri/tests/e2e
+        env:
+          # Point at the debug binary built by tauri-action (–-debug not used,
+          # but a debug build was produced as a side-effect). If only release
+          # is available, set TAURI_BINARY accordingly.
+          TAURI_BINARY: ${{ github.workspace }}/target/release/hp-tauri
+          WEBKIT_DRIVER: /usr/bin/WebKitWebDriver
+        run: |
+          xvfb-run --auto-servernum --server-args="-screen 0 1280x800x24" \
+            npx wdio run wdio.conf.ts
+
+      - name: Upload E2E screenshots
+        if: matrix.platform == 'ubuntu-22.04' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-screenshots-${{ matrix.artifact-suffix }}
+          path: crates/hp-tauri/tests/e2e/screenshots/
+          if-no-files-found: warn
