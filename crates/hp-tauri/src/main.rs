@@ -13,12 +13,30 @@ mod session;
 fn main() {
     let sessions = session::new_session_store();
 
+    // Parse CLI args: --load <path> auto-loads a file on startup
+    let load_file: Option<String> = {
+        let args: Vec<String> = std::env::args().collect();
+        args.windows(2)
+            .find(|w| w[0] == "--load")
+            .map(|w| w[1].clone())
+    };
+
     // Build the Tauri app step-by-step so that debug-only plugins can be
     // inserted via conditional compilation without losing the chain.
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(sessions)
+        .setup(move |app| {
+            // Inject --load path into the webview via JS so Elm can pick it up
+            if let Some(ref path) = load_file {
+                if let Some(window) = app.get_webview_window("main") {
+                    let path_js = path.replace('\\', "\\\\").replace('\'', "\\'");
+                    let _ = window.eval(&format!("window.__LOAD_FILE__ = '{path_js}';"));
+                }
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             commands::get_version,
             commands::list_pdfs,

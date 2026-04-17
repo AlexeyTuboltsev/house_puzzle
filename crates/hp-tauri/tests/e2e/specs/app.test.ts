@@ -742,43 +742,33 @@ if (fixtures.length > 0) {
 // Enabled by FIXTURE_DIR. Uses the first available _NY*.ai file.
 // =============================================================================
 
-if (fixtures.length > 0) {
-  const firstFixture = fixtures[0];
+// =============================================================================
+// Suite 5 – Visual canary (CLI --load → screenshot → generate via UI → screenshot)
+//
+// When FIXTURE_DIR is set, the app is launched with --load <path> which
+// auto-loads the file on startup. No IPC needed — works on all platforms.
+// =============================================================================
 
-  describe("Visual canary", () => {
-    let ipcAvailable = false;
-
-    before("load file via IPC", async function () {
+if (FIXTURE_DIR) {
+  describe("Visual canary (CLI --load)", () => {
+    it("waits for house to load via --load CLI arg", async function () {
       this.timeout(120_000);
-      await ensurePageHelper();
 
-      console.log(`[visual] loading ${firstFixture.aiPath} via IPC`);
-      try {
-        await invokeTauri("load_pdf", {
-          path: firstFixture.aiPath,
-          canvas_height: 900,
-          deterministic_ids: true,
-        });
-        console.log(`[visual] load_pdf response received`);
-        ipcAvailable = true;
+      // The app was started with --load, so it should auto-load the file.
+      // Wait for the house SVG to have image elements.
+      await browser.waitUntil(
+        async () => {
+          const imgs = await $$(".house-svg image");
+          return imgs.length > 0;
+        },
+        { timeout: 90_000, interval: 1000, timeoutMsg: "House image did not appear within 90s (--load)" }
+      );
 
-        // Wait for the house image to render
-        await browser.waitUntil(
-          async () => {
-            const imgs = await $$(".house-svg image");
-            return imgs.length > 0;
-          },
-          { timeout: 90_000, interval: 1000, timeoutMsg: "House image did not appear within 90s" }
-        );
-        await browser.pause(1000);
-      } catch (e) {
-        console.warn(`[visual] IPC not available: ${e}`);
-        console.warn("[visual] all visual canary tests will be skipped");
-      }
+      await browser.pause(1000);
+      console.log("[visual] house loaded via --load CLI arg");
     });
 
     it("takes screenshot of loaded house", async function () {
-      if (!ipcAvailable) { this.skip(); return; }
       this.timeout(30_000);
 
       await takeScreenshot("canary-house-loaded");
@@ -796,7 +786,6 @@ if (fixtures.length > 0) {
     });
 
     it("generates puzzle via UI and waits for completion", async function () {
-      if (!ipcAvailable) { this.skip(); return; }
       this.timeout(120_000);
 
       // Navigate to Import section
@@ -812,7 +801,7 @@ if (fixtures.length > 0) {
         }
       }
 
-      // Wait for Generate Puzzle button
+      // Wait for Generate Puzzle button to be enabled
       await browser.waitUntil(
         async () => {
           const btn = await $("button.primary");
@@ -853,7 +842,6 @@ if (fixtures.length > 0) {
     });
 
     it("takes screenshot of generated puzzle", async function () {
-      if (!ipcAvailable) { this.skip(); return; }
       this.timeout(30_000);
 
       await takeScreenshot("canary-puzzle-generated");
@@ -871,7 +859,7 @@ if (fixtures.length > 0) {
     });
   });
 } else {
-  describe("Visual canary", () => {
+  describe("Visual canary (CLI --load)", () => {
     it("is skipped — set FIXTURE_DIR to enable", () => {
       console.log("[info] visual canary skipped: FIXTURE_DIR not set");
       expect(true).toBe(true);

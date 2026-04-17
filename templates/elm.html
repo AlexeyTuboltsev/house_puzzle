@@ -1021,7 +1021,7 @@ if (window.Elm && window.Elm.Main) {
     };
   })();
 
-  const app = window.Elm.Main.init({ node: document.getElementById('elm-root'), flags: { version: '{{ app_version }}', isTauri: !!window.__TAURI__ } });
+  const app = window.Elm.Main.init({ node: document.getElementById('elm-root'), flags: { version: '{{ app_version }}', isTauri: !!window.__TAURI__, loadFile: window.__LOAD_FILE__ || null } });
 
   app.ports.setTitle.subscribe(function(title) { document.title = title; });
 

@@ -222,11 +222,11 @@ type alias Model =
     }
 
 
-init : { version : String, isTauri : Bool } -> ( Model, Cmd Msg )
+init : { version : String, isTauri : Bool, loadFile : Maybe String } -> ( Model, Cmd Msg )
 init flags =
-    ( { selectedFileName = ""
+    ( { selectedFileName = Maybe.withDefault "" flags.loadFile
       , pdfFiles = []
-      , loadState = Idle
+      , loadState = if flags.loadFile /= Nothing then Loading else Idle
       , targetCount = 60
       , minBorder = 10
       , seed = 42
@@ -277,17 +277,27 @@ init flags =
       , houseUnitsHigh = 15.5
       , zoomLevel = 1.0
       , zoomGridActive = False
-      , sessionKey = ""
-      , nextSessionId = 1
+      , sessionKey = case flags.loadFile of
+            Just _ -> "1"
+            Nothing -> ""
+      , nextSessionId = 2
       , appVersion = flags.version
       , isTauri = flags.isTauri
       , undoHistory = []
       , redoHistory = []
       }
     , Cmd.batch
-        [ fetchPdfList flags.isTauri
-        , Task.perform GotViewport Browser.Dom.getViewport
-        ]
+        ([ fetchPdfList flags.isTauri
+         , Task.perform GotViewport Browser.Dom.getViewport
+         ]
+            ++ (case flags.loadFile of
+                    Just path ->
+                        [ loadPdf flags.isTauri "1" path 900 ]
+
+                    Nothing ->
+                        []
+               )
+        )
     )
 
 
@@ -4862,7 +4872,7 @@ subscriptions model =
 -- ── Main ─────────────────────────────────────────────────────────────────────
 
 
-main : Program { version : String, isTauri : Bool } Model Msg
+main : Program { version : String, isTauri : Bool, loadFile : Maybe String } Model Msg
 main =
     Browser.element
         { init = init

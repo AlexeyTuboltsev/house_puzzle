@@ -61,12 +61,27 @@ let appShuttingDown = false;
 function startApp(): void {
   appShuttingDown = false;
   const binary = getAppBinary();
-  console.log(`[wdio] launching app: ${binary}`);
 
   // Run the app from the project root so it can find in/ and presets/
   const projectRoot = path.resolve(__dirname, "../../../..");
 
-  appProcess = spawn(binary, [], {
+  // If FIXTURE_DIR is set, auto-load the first AI file via --load
+  const fixtureDir = process.env.FIXTURE_DIR ?? "";
+  const args: string[] = [];
+  if (fixtureDir) {
+    const fs = require("fs");
+    const candidates = ["_NY2.ai", "_NY1.ai"];
+    for (const name of candidates) {
+      const p = path.join(fixtureDir, name);
+      if (fs.existsSync(p)) {
+        args.push("--load", p);
+        break;
+      }
+    }
+  }
+  console.log(`[wdio] launching app: ${binary} ${args.join(" ")}`);
+
+  appProcess = spawn(binary, args, {
     cwd: projectRoot,
     stdio: [null, process.stdout, process.stderr],
     env: {
