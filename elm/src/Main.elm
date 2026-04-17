@@ -2429,6 +2429,7 @@ viewBody model =
     if model.appMode == ModeInit then
         div [ class "app-body-empty" ]
             [ viewFileList model
+            , viewStatusBadge model
             , viewBodyOverlay model
             ]
 

@@ -73,7 +73,15 @@ pub async fn pick_file(app: tauri::AppHandle) -> Result<Option<String>, String> 
     .await
     .map_err(|e| e.to_string())?;
 
-    Ok(file_path.map(|fp| fp.to_string()))
+    // `FilePath` may be a `file://` URL on Linux (xdg-desktop-portal).
+    // `into_path()` converts both variants to a plain `PathBuf`.
+    file_path
+        .map(|fp| {
+            fp.into_path()
+                .map_err(|e| e.to_string())
+                .map(|p| p.to_string_lossy().into_owned())
+        })
+        .transpose()
 }
 
 // ---------------------------------------------------------------------------

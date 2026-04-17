@@ -7292,6 +7292,15 @@ var $elm$file$File$name = _File_name;
 var $elm$core$Basics$neq = _Utils_notEqual;
 var $elm$core$Platform$Cmd$none = $elm$core$Platform$Cmd$batch(_List_Nil);
 var $elm$json$Json$Encode$null = _Json_encodeNull;
+var $elm$json$Json$Decode$null = _Json_decodeNull;
+var $elm$json$Json$Decode$nullable = function (decoder) {
+	return $elm$json$Json$Decode$oneOf(
+		_List_fromArray(
+			[
+				$elm$json$Json$Decode$null($elm$core$Maybe$Nothing),
+				A2($elm$json$Json$Decode$map, $elm$core$Maybe$Just, decoder)
+			]));
+};
 var $elm$core$List$maximum = function (list) {
 	if (list.b) {
 		var x = list.a;
@@ -7668,7 +7677,14 @@ var $author$project$Main$update = F2(
 						return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 					}
 				case 'PickFile':
-					return _Utils_Tuple2(
+					return model.isTauri ? _Utils_Tuple2(
+						model,
+						$author$project$Main$tauriInvoke(
+							{
+								args: $elm$json$Json$Encode$object(_List_Nil),
+								command: 'pick_file',
+								requestId: 'pick_file'
+							})) : _Utils_Tuple2(
 						model,
 						A2(
 							$elm$file$File$Select$file,
@@ -9895,6 +9911,37 @@ var $author$project$Main$update = F2(
 										model,
 										{exporting: false}),
 									$elm$core$Platform$Cmd$none);
+							case 'pick_file':
+								var _v52 = A2(
+									$elm$json$Json$Decode$decodeValue,
+									$elm$json$Json$Decode$nullable($elm$json$Json$Decode$string),
+									dataVal);
+								if ((_v52.$ === 'Ok') && (_v52.a.$ === 'Just')) {
+									var path = _v52.a.a;
+									var key = $elm$core$String$fromInt(model.nextSessionId);
+									var fileName = function (n) {
+										return A2(
+											$elm$core$Maybe$withDefault,
+											n,
+											$elm$core$List$head(
+												$elm$core$List$reverse(
+													A2($elm$core$String$split, '\\', n))));
+									}(
+										A2(
+											$elm$core$Maybe$withDefault,
+											path,
+											$elm$core$List$head(
+												$elm$core$List$reverse(
+													A2($elm$core$String$split, '/', path)))));
+									var baseModel = _Utils_update(
+										model,
+										{appMode: $author$project$Main$ModeInit, editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, editOriginalGroups: _List_Nil, editOriginalPieces: _List_Nil, editOriginalWaves: _List_Nil, generateState: $author$project$Main$NotGenerated, loadState: $author$project$Main$Loading, nextSessionId: model.nextSessionId + 1, nextWaveId: 1, pieceGeneration: 0, pieces: _List_Nil, recomputing: false, selectedFileName: fileName, selectedPieceId: $elm$core$Maybe$Nothing, selectedWaveId: $elm$core$Maybe$Nothing, sessionKey: key, waves: _List_Nil});
+									return _Utils_Tuple2(
+										baseModel,
+										A4($author$project$Main$loadPdf, true, key, path, model.availableH));
+								} else {
+									return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
+								}
 							default:
 								return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 						}
@@ -11568,6 +11615,38 @@ var $author$project$Main$viewFileList = function (model) {
 				},
 				model.pdfFiles)));
 };
+var $author$project$Main$viewStatusBadge = function (model) {
+	var _v0 = model.loadState;
+	switch (_v0.$) {
+		case 'Idle':
+			return $elm$html$Html$text('');
+		case 'Loading':
+			return A2(
+				$elm$html$Html$span,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('status loading')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text('Parsing PDF\u2026')
+					]));
+		case 'Loaded':
+			return $elm$html$Html$text('');
+		default:
+			var err = _v0.a;
+			return A2(
+				$elm$html$Html$span,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('status error')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text('Error: ' + err)
+					]));
+	}
+};
 var $author$project$Main$ToggleGrid = function (a) {
 	return {$: 'ToggleGrid', a: a};
 };
@@ -12285,38 +12364,6 @@ var $author$project$Main$viewStats = function (model) {
 							]))
 					]))
 			]));
-};
-var $author$project$Main$viewStatusBadge = function (model) {
-	var _v0 = model.loadState;
-	switch (_v0.$) {
-		case 'Idle':
-			return $elm$html$Html$text('');
-		case 'Loading':
-			return A2(
-				$elm$html$Html$span,
-				_List_fromArray(
-					[
-						$elm$html$Html$Attributes$class('status loading')
-					]),
-				_List_fromArray(
-					[
-						$elm$html$Html$text('Parsing PDF\u2026')
-					]));
-		case 'Loaded':
-			return $elm$html$Html$text('');
-		default:
-			var err = _v0.a;
-			return A2(
-				$elm$html$Html$span,
-				_List_fromArray(
-					[
-						$elm$html$Html$Attributes$class('status error')
-					]),
-				_List_fromArray(
-					[
-						$elm$html$Html$text('Error: ' + err)
-					]));
-	}
 };
 var $author$project$Main$viewGenerateTools = F2(
 	function (model, response) {
@@ -14245,6 +14292,7 @@ var $author$project$Main$viewBody = function (model) {
 			_List_fromArray(
 				[
 					$author$project$Main$viewFileList(model),
+					$author$project$Main$viewStatusBadge(model),
 					$author$project$Main$viewBodyOverlay(model)
 				]));
 	} else {
