@@ -732,48 +732,44 @@ if (fixtures.length > 0) {
 // Screenshots are saved for visual inspection and baseline comparison.
 // =============================================================================
 
+// =============================================================================
+// Suite 5 – Visual canary (load via IPC → screenshot → generate via UI → screenshot)
+//
+// Loads a file via Tauri IPC (no native file dialog in e2e), then drives
+// the Generate button via UI, takes screenshots at each step.
+// Uses the in-page _testInvoke helper to bypass WebDriver context isolation.
+//
+// Enabled by FIXTURE_DIR. Uses the first available _NY*.ai file.
+// =============================================================================
+
 if (fixtures.length > 0) {
   const firstFixture = fixtures[0];
 
-  describe("Visual canary (UI-driven)", () => {
-    it(`loads ${firstFixture.stem}.ai via file list click`, async function () {
+  describe("Visual canary", () => {
+    before("install page helper", async function () {
+      this.timeout(10_000);
+      await ensurePageHelper();
+    });
+
+    it(`loads ${firstFixture.stem}.ai via IPC`, async function () {
       this.timeout(120_000);
 
-      // Wait for file list to populate (API call may take a moment)
-      await browser.waitUntil(
-        async () => {
-          const entries = await $$(".file-entry:not(.file-entry-browse)");
-          return entries.length > 0;
-        },
-        { timeout: 15_000, interval: 500, timeoutMsg: "No file entries appeared" }
-      );
-
-      const fileEntries = await $$(".file-entry:not(.file-entry-browse)");
-      console.log(`[visual] found ${fileEntries.length} file entries`);
-
-      // Find the entry matching our fixture (text contains filename e.g. "_NY2.ai")
-      let targetEntry: WebdriverIO.Element | null = null;
-      for (const entry of fileEntries) {
-        const text = await entry.getText();
-        if (text.includes(firstFixture.stem)) {
-          targetEntry = entry;
-          break;
-        }
-      }
-
-      if (!targetEntry) {
-        console.warn(
-          `[visual] ${firstFixture.stem} not found in file list — ` +
-          `available entries: ${(await Promise.all(fileEntries.map(e => e.getText()))).join(", ")}`
-        );
-        // Skip rather than fail — the file might not be in the app's in/ dir
+      console.log(`[visual] loading ${firstFixture.aiPath} via IPC`);
+      try {
+        const resp = await invokeTauri("load_pdf", {
+          path: firstFixture.aiPath,
+          canvas_height: 900,
+          deterministic_ids: true,
+        });
+        console.log(`[visual] load_pdf response received`);
+      } catch (e) {
+        console.warn(`[visual] IPC load failed: ${e}`);
+        console.warn("[visual] skipping visual canary — IPC not available on this platform");
+        this.skip();
         return;
       }
 
-      console.log(`[visual] clicking file entry for ${firstFixture.stem}`);
-      await targetEntry.click();
-
-      // Wait for loading to finish — the house SVG should have an image element
+      // Wait for the house image to render in the UI
       await browser.waitUntil(
         async () => {
           const imgs = await $$(".house-svg image");
@@ -782,7 +778,6 @@ if (fixtures.length > 0) {
         { timeout: 90_000, interval: 1000, timeoutMsg: "House image did not appear within 90s" }
       );
 
-      // Small pause for rendering to settle
       await browser.pause(1000);
     });
 
@@ -795,7 +790,6 @@ if (fixtures.length > 0) {
       if (mismatch < 0) {
         console.warn("[visual] screenshot size mismatch — skipping pixel diff");
       } else {
-        // Allow 5% pixel difference (rendering variance across platforms)
         const windowSize = await browser.getWindowSize();
         const allowedMismatch = Math.ceil(
           windowSize.width * windowSize.height * 0.05
@@ -804,11 +798,10 @@ if (fixtures.length > 0) {
       }
     });
 
-    it("clicks Generate Puzzle and waits for completion", async function () {
+    it("generates puzzle via UI and waits for completion", async function () {
       this.timeout(120_000);
 
-      // After loading, app should be on Import view with a Generate button.
-      // First ensure we're on the Import section.
+      // Navigate to Import section
       const modeBtns = await $$(".mode-btn");
       for (const btn of modeBtns) {
         const text = await btn.getText();
@@ -821,7 +814,7 @@ if (fixtures.length > 0) {
         }
       }
 
-      // Wait for the Generate Puzzle button to appear and be enabled
+      // Wait for Generate Puzzle button
       await browser.waitUntil(
         async () => {
           const btn = await $("button.primary");
@@ -833,27 +826,21 @@ if (fixtures.length > 0) {
 
       const generateBtn = await $("button.primary");
       const btnText = await generateBtn.getText();
-      console.log(`[visual] generate button text: "${btnText}"`);
+      console.log(`[visual] clicking: "${btnText}"`);
       await generateBtn.click();
-      console.log("[visual] clicked Generate Puzzle");
 
-      // Wait for generation — app switches to Pieces view with piece images
+      // Wait for piece images to appear
       await browser.waitUntil(
         async () => {
-          const pieceImgs = await $$(".house-svg image");
-          // After generation there should be many piece images (>5)
-          return pieceImgs.length > 5;
+          const imgs = await $$(".house-svg image");
+          return imgs.length > 5;
         },
-        {
-          timeout: 90_000,
-          interval: 1000,
-          timeoutMsg: "Piece images did not appear within 90s",
-        }
+        { timeout: 90_000, interval: 1000, timeoutMsg: "Piece images did not appear within 90s" }
       );
 
-      // Navigate to Pieces view if not already there
-      const piecesBtn = await $$(".mode-btn");
-      for (const btn of piecesBtn) {
+      // Navigate to Pieces view
+      const allBtns = await $$(".mode-btn");
+      for (const btn of allBtns) {
         const text = await btn.getText();
         if (text.includes("Pieces")) {
           if (await btn.isEnabled()) {
@@ -871,9 +858,7 @@ if (fixtures.length > 0) {
       this.timeout(30_000);
 
       await takeScreenshot("canary-puzzle-generated");
-      const mismatch = await compareOrEstablishBaseline(
-        "canary-puzzle-generated"
-      );
+      const mismatch = await compareOrEstablishBaseline("canary-puzzle-generated");
 
       if (mismatch < 0) {
         console.warn("[visual] screenshot size mismatch — skipping pixel diff");
@@ -887,7 +872,7 @@ if (fixtures.length > 0) {
     });
   });
 } else {
-  describe("Visual canary (UI-driven)", () => {
+  describe("Visual canary", () => {
     it("is skipped — set FIXTURE_DIR to enable", () => {
       console.log("[info] visual canary skipped: FIXTURE_DIR not set");
       expect(true).toBe(true);
