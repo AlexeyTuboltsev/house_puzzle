@@ -20,6 +20,17 @@ pub fn get_version() -> String {
 }
 
 // ---------------------------------------------------------------------------
+// CLI --load file (one-shot: returns path and clears it)
+// ---------------------------------------------------------------------------
+
+pub type LoadFileState = std::sync::Arc<std::sync::Mutex<Option<String>>>;
+
+#[tauri::command]
+pub fn get_load_file(state: tauri::State<'_, LoadFileState>) -> Option<String> {
+    state.lock().unwrap().take()
+}
+
+// ---------------------------------------------------------------------------
 // List PDFs
 // ---------------------------------------------------------------------------
 

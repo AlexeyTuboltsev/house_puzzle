@@ -21,26 +21,20 @@ fn main() {
             .map(|w| w[1].clone())
     };
 
+    // Store load_file in managed state so the get_load_file command can return it
+    let load_file_state: std::sync::Arc<std::sync::Mutex<Option<String>>> =
+        std::sync::Arc::new(std::sync::Mutex::new(load_file));
+
     // Build the Tauri app step-by-step so that debug-only plugins can be
     // inserted via conditional compilation without losing the chain.
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(sessions)
-        .setup(move |app| {
-            // Inject --load path into the webview via JS so Elm can pick it up
-            if let Some(ref path) = load_file {
-                use tauri::Manager;
-                let windows = app.webview_windows();
-                if let Some(window) = windows.values().next() {
-                    let path_js = path.replace('\\', "\\\\").replace('\'', "\\'");
-                    let _ = window.eval(&format!("window.__LOAD_FILE__ = '{path_js}';"));
-                }
-            }
-            Ok(())
-        })
+        .manage(load_file_state)
         .invoke_handler(tauri::generate_handler![
             commands::get_version,
+            commands::get_load_file,
             commands::list_pdfs,
             commands::load_pdf,
             commands::pick_file,
