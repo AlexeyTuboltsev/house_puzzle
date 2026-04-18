@@ -22,22 +22,22 @@ jobs:
             artifact-suffix: linux
             app_binary: target/debug/hp-tauri
             test_binary: target/debug/hp-e2e-test
-            cargo_build_args: --features webdriver
+            cargo_build_args:
           - platform: macos-latest
             artifact-suffix: macos-aarch64
             app_binary: target/debug/hp-tauri
             test_binary: target/debug/hp-e2e-test
-            cargo_build_args: --features webdriver
+            cargo_build_args:
           - platform: macos-latest
             artifact-suffix: macos-x86_64
             app_binary: target/debug/hp-tauri
             test_binary: target/debug/hp-e2e-test
-            cargo_build_args: --features webdriver
+            cargo_build_args:
           - platform: windows-latest
             artifact-suffix: windows
             app_binary: target/release/hp-tauri.exe
             test_binary: target/release/hp-e2e-test.exe
-            cargo_build_args: --release --features webdriver
+            cargo_build_args: --release
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -93,7 +93,7 @@ jobs:
       - name: Build app + test runner
         run: |
           cargo build ${{ matrix.cargo_build_args }} --manifest-path crates/hp-tauri/Cargo.toml
-          cargo build ${{ matrix.cargo_build_args == '--release --features webdriver' && '--release' || '' }} --manifest-path tests/accessibility/Cargo.toml
+          cargo build ${{ matrix.cargo_build_args }} --manifest-path tests/accessibility/Cargo.toml
 
       - name: Download test fixture
         run: gh release download test-fixtures-v1 -p "_NY2.ai" -D in/

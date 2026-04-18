@@ -6,17 +6,7 @@ edition = "2021"
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
-# ── Optional webdriver feature ───────────────────────────────────────────────
-# Embeds a W3C WebDriver server (port 4445) for E2E tests.
-# Enable with `--features webdriver` when building the E2E test binary.
-# On Linux/macOS: `cargo build --features webdriver` (debug, no CRT issues)
-# On Windows:     `cargo build --release --features webdriver` (avoids
-#                 _ITERATOR_DEBUG_LEVEL mismatch between debug/release CRT)
-[features]
-webdriver = ["dep:tauri-plugin-webdriver"]
-
 [dependencies]
-tauri-plugin-webdriver = { version = "0.2", optional = true }
 tauri = { version = "2", features = ["protocol-asset"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-updater = "2"

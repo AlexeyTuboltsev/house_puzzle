@@ -1,4 +1,0 @@
-node_modules/
-dist/
-screenshots/actual/
-# baselines are committed; actual/diff shots are ephemeral

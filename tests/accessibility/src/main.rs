@@ -1,10 +1,8 @@
-//! E2E test runner for House Puzzle — uses the `ui_test` utility library.
-
-mod ui_test;
+//! E2E test runner for House Puzzle — uses the `tauri-ui-test` library.
 
 use std::path::Path;
 use std::{env, fs};
-use ui_test::App;
+use tauri_ui_test::App;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
