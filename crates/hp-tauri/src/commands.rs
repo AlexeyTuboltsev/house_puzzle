@@ -823,8 +823,8 @@ mod macos_screenshot {
         window.with_webview(move |webview| {
             use objc2::rc::Retained;
             use objc2::runtime::AnyObject;
-            use objc2::{msg_send, msg_send_id, ClassType};
-            use objc2_foundation::{NSData, NSRect, NSSize, NSPoint};
+            use objc2::{msg_send, msg_send_id};
+            use objc2_foundation::NSRect;
 
             unsafe {
                 let wk_webview = webview.inner() as *const AnyObject as *mut AnyObject;
@@ -833,65 +833,58 @@ mod macos_screenshot {
                     return;
                 }
 
-                // Get webview bounds for the snapshot configuration
+                // WKWebView is an NSView — get its bounds
                 let bounds: NSRect = msg_send![wk_webview, bounds];
 
-                // Create WKSnapshotConfiguration
-                let config_class = objc2::runtime::AnyClass::get(c"WKSnapshotConfiguration")
-                    .expect("WKSnapshotConfiguration class");
-                let config: Retained<AnyObject> = msg_send_id![config_class, new];
-                let _: () = msg_send![&config, setRect: bounds];
+                // Capture as PDF (NSView.dataWithPDFInsideRect: — no permission needed)
+                let pdf_data: Retained<AnyObject> = msg_send_id![wk_webview, dataWithPDFInsideRect: bounds];
 
-                // Call takeSnapshotWithConfiguration:completionHandler:
-                // We use a block to receive the result
-                let path_for_block = path.clone();
-                let result_for_block = result_clone.clone();
+                // Get raw bytes from NSData
+                let pdf_bytes: *const u8 = msg_send![&pdf_data, bytes];
+                let pdf_len: usize = msg_send![&pdf_data, length];
+                let pdf_slice = std::slice::from_raw_parts(pdf_bytes, pdf_len);
 
-                // Use a simpler approach: render to PDF then convert
-                // Actually, let's use NSView's cacheDisplay instead
-                // which doesn't require screen recording permission
+                // Convert PDF → NSImage → TIFF → NSBitmapImageRep → PNG
+                let nsimage_class = objc2::runtime::AnyClass::get(c"NSImage").unwrap();
+                let nsdata_class = objc2::runtime::AnyClass::get(c"NSData").unwrap();
+                let bitmap_class = objc2::runtime::AnyClass::get(c"NSBitmapImageRep").unwrap();
 
-                // Get the NSView backing the webview
-                let ns_view = wk_webview; // WKWebView IS an NSView
-
-                // Use dataWithPDFInsideRect to capture the view
-                let pdf_data: Retained<NSData> = msg_send_id![ns_view, dataWithPDFInsideRect: bounds];
-                let bytes = pdf_data.bytes();
-                let len = pdf_data.len();
-                let slice = std::slice::from_raw_parts(bytes, len);
-
-                // Convert PDF data to PNG via NSImage -> NSBitmapImageRep
-                use objc2_app_kit::{NSImage, NSBitmapImageRep};
-                use objc2_foundation::NSData as NSData2;
-
-                let ns_data = NSData2::with_bytes(slice);
-                let ns_image: Retained<NSImage> = msg_send_id![
-                    NSImage::alloc(), initWithData: &*ns_data
+                // NSData from PDF bytes
+                let ns_pdf: Retained<AnyObject> = msg_send_id![
+                    nsdata_class, dataWithBytes: pdf_bytes, length: pdf_len
                 ];
 
-                // Get TIFF representation then bitmap rep
-                let tiff_data: Retained<NSData2> = msg_send_id![&ns_image, TIFFRepresentation];
-                let bitmap_rep: Retained<NSBitmapImageRep> = msg_send_id![
-                    NSBitmapImageRep::alloc(), initWithData: &*tiff_data
+                // NSImage from PDF data
+                let ns_image: Retained<AnyObject> = msg_send_id![
+                    msg_send_id![nsimage_class, alloc], initWithData: &*ns_pdf
                 ];
 
-                // Convert to PNG
-                let png_type: usize = 4; // NSBitmapImageFileTypePNG
-                let png_data: Retained<NSData2> = msg_send_id![
-                    &bitmap_rep, representationUsingType: png_type, properties: std::ptr::null::<AnyObject>()
+                // TIFF representation
+                let tiff_data: Retained<AnyObject> = msg_send_id![&ns_image, TIFFRepresentation];
+
+                // NSBitmapImageRep from TIFF
+                let bitmap_rep: Retained<AnyObject> = msg_send_id![
+                    msg_send_id![bitmap_class, alloc], initWithData: &*tiff_data
                 ];
 
-                let png_bytes = png_data.bytes();
-                let png_len = png_data.len();
+                // PNG representation (type 4 = NSBitmapImageFileTypePNG)
+                let empty_dict_class = objc2::runtime::AnyClass::get(c"NSDictionary").unwrap();
+                let empty_dict: Retained<AnyObject> = msg_send_id![empty_dict_class, dictionary];
+                let png_data: Retained<AnyObject> = msg_send_id![
+                    &bitmap_rep, representationUsingType: 4usize, properties: &*empty_dict
+                ];
+
+                let png_bytes: *const u8 = msg_send![&png_data, bytes];
+                let png_len: usize = msg_send![&png_data, length];
                 let png_slice = std::slice::from_raw_parts(png_bytes, png_len);
 
-                match std::fs::write(&path_for_block, png_slice) {
+                match std::fs::write(&path, png_slice) {
                     Ok(_) => {
-                        eprintln!("[screenshot] saved: {} ({} bytes)", path_for_block, png_len);
-                        *result_for_block.lock().unwrap() = Some(Ok(()));
+                        eprintln!("[screenshot] saved: {} ({} bytes)", path, png_len);
+                        *result_clone.lock().unwrap() = Some(Ok(()));
                     }
                     Err(e) => {
-                        *result_for_block.lock().unwrap() = Some(Err(e.to_string()));
+                        *result_clone.lock().unwrap() = Some(Err(e.to_string()));
                     }
                 }
             }
