@@ -1,0 +1,8 @@
+[package]
+name = "hp-e2e-test"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "hp-e2e-test"
+path = "src/main.rs"

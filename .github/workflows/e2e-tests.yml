@@ -20,19 +20,23 @@ jobs:
         include:
           - platform: ubuntu-22.04
             artifact-suffix: linux
-            e2e_binary: target/debug/hp-tauri
+            app_binary: target/debug/hp-tauri
+            test_binary: target/debug/hp-e2e-test
             cargo_build_args: --features webdriver
           - platform: macos-latest
             artifact-suffix: macos-aarch64
-            e2e_binary: target/debug/hp-tauri
+            app_binary: target/debug/hp-tauri
+            test_binary: target/debug/hp-e2e-test
             cargo_build_args: --features webdriver
           - platform: macos-latest
             artifact-suffix: macos-x86_64
-            e2e_binary: target/debug/hp-tauri
+            app_binary: target/debug/hp-tauri
+            test_binary: target/debug/hp-e2e-test
             cargo_build_args: --features webdriver
           - platform: windows-latest
             artifact-suffix: windows
-            e2e_binary: target/release/hp-tauri.exe
+            app_binary: target/release/hp-tauri.exe
+            test_binary: target/release/hp-e2e-test.exe
             cargo_build_args: --release --features webdriver
 
     runs-on: ${{ matrix.platform }}
@@ -53,14 +57,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-elm-
 
-      - name: Cache E2E npm dependencies
-        uses: actions/cache@v4
-        with:
-          path: crates/hp-tauri/tests/e2e/node_modules
-          key: ${{ runner.os }}-e2e-npm-${{ hashFiles('crates/hp-tauri/tests/e2e/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-npm-
-
       - name: Install Linux deps
         if: matrix.platform == 'ubuntu-22.04'
         run: |
@@ -68,8 +64,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
             librsvg2-dev libclang-dev libfontconfig1-dev libfreetype6-dev \
-            pkg-config patchelf \
-            xvfb webkit2gtk-driver
+            pkg-config patchelf xvfb xdotool scrot
 
       - name: Install LLVM (Windows)
         if: matrix.platform == 'windows-latest'
@@ -94,53 +89,47 @@ jobs:
           npm install -g elm
           elm make src/Main.elm --output ../crates/hp-tauri/dist/elm.js
 
-      - name: Build debug binary (includes tauri-plugin-webdriver)
-        run: cargo build ${{ matrix.cargo_build_args }} --manifest-path crates/hp-tauri/Cargo.toml
-
-      - name: Install E2E test dependencies (Linux only — WebDriver tests)
-        if: matrix.platform == 'ubuntu-22.04'
-        working-directory: crates/hp-tauri/tests/e2e
-        run: npm ci
+      - name: Build app + test runner
+        run: |
+          cargo build ${{ matrix.cargo_build_args }} --manifest-path crates/hp-tauri/Cargo.toml
+          cargo build ${{ matrix.cargo_build_args == '--release --features webdriver' && '--release' || '' }} --manifest-path tests/accessibility/Cargo.toml
 
       - name: Download test fixture
         run: gh release download test-fixtures-v1 -p "_NY2.ai" -D in/
         env:
           GH_TOKEN: ${{ github.token }}
 
-      - name: Run E2E tests (Linux – WebDriver via xvfb-run)
+      - name: Run E2E tests (Linux)
         if: matrix.platform == 'ubuntu-22.04'
-        working-directory: crates/hp-tauri/tests/e2e
-        env:
-          TAURI_BINARY: ${{ github.workspace }}/${{ matrix.e2e_binary }}
-          FIXTURE_DIR: ${{ github.workspace }}/in
         run: |
+          chmod +x ${{ matrix.app_binary }} ${{ matrix.test_binary }}
           xvfb-run --auto-servernum --server-args="-screen 0 1280x800x24" \
-            npx wdio run wdio.conf.ts
+            ${{ matrix.test_binary }} \
+              --binary ${{ matrix.app_binary }} \
+              --fixture-dir in \
+              --screenshots screenshots
 
-      - name: Run accessibility E2E (macOS)
+      - name: Run E2E tests (macOS)
         if: startsWith(matrix.platform, 'macos')
-        env:
-          BINARY: ${{ github.workspace }}/${{ matrix.e2e_binary }}
         run: |
-          chmod +x "$BINARY"
-          chmod +x tests/accessibility/test_macos.sh
-          tests/accessibility/test_macos.sh "$BINARY" "${{ github.workspace }}/in" "${{ github.workspace }}/screenshots"
+          chmod +x ${{ matrix.app_binary }} ${{ matrix.test_binary }}
+          ${{ matrix.test_binary }} \
+            --binary ${{ matrix.app_binary }} \
+            --fixture-dir in \
+            --screenshots screenshots
 
-      - name: Run accessibility E2E (Windows)
+      - name: Run E2E tests (Windows)
         if: matrix.platform == 'windows-latest'
-        shell: pwsh
         run: |
-          tests/accessibility/test_windows.ps1 `
-            -Binary "${{ github.workspace }}/${{ matrix.e2e_binary }}" `
-            -FixtureDir "${{ github.workspace }}/in" `
-            -ScreenshotsDir "${{ github.workspace }}/screenshots"
+          ${{ matrix.test_binary }} `
+            --binary ${{ matrix.app_binary }} `
+            --fixture-dir in `
+            --screenshots screenshots
 
-      - name: Upload E2E screenshots
+      - name: Upload screenshots
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: e2e-screenshots-${{ matrix.artifact-suffix }}
-          path: |
-            crates/hp-tauri/tests/e2e/screenshots/
-            screenshots/
+          path: screenshots/
           if-no-files-found: warn
