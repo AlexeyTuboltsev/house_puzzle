@@ -93,11 +93,11 @@ jobs:
       - name: Configure SSH for private git deps
         shell: bash
         run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.DEPLOY_KEY_TAURI_UI_TEST }}" > ~/.ssh/tauri_ui_test
-          chmod 600 ~/.ssh/tauri_ui_test
-          ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
-          echo "GIT_SSH_COMMAND=ssh -i ~/.ssh/tauri_ui_test -o StrictHostKeyChecking=no" >> $GITHUB_ENV
+          mkdir -p "$HOME/.ssh"
+          echo "${{ secrets.DEPLOY_KEY_TAURI_UI_TEST }}" > "$HOME/.ssh/tauri_ui_test"
+          chmod 600 "$HOME/.ssh/tauri_ui_test"
+          ssh-keyscan github.com >> "$HOME/.ssh/known_hosts" 2>/dev/null
+          echo "GIT_SSH_COMMAND=ssh -i $HOME/.ssh/tauri_ui_test -o StrictHostKeyChecking=no" >> $GITHUB_ENV
 
       - name: Build app + test runner
         run: |
