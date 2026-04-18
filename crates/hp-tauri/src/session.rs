@@ -1,4 +1,4 @@
-//! In-memory session management — mirrors hp-server/src/session.rs.
+//! In-memory session management.
 
 use hp_core::ai_parser::{AiPrivateData, BrickPlacement, LayerBlock, ParsedAiMetadata};
 use hp_core::types::{Brick, PuzzlePiece};

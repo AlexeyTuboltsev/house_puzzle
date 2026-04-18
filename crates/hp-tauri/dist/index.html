@@ -1011,8 +1011,8 @@ input.zoom-slider {
 
 <div id="not-built">
   <b>elm.js not found.</b><br>
-  Run: <code>docker compose --profile elm run --rm elm-build</code><br>
-  then reload this page.
+  Run: <code>cd elm && npx elm make src/Main.elm --output ../crates/hp-tauri/dist/elm.js</code><br>
+  then rebuild the app.
 </div>
 
 <div id="elm-root"></div>

@@ -1,0 +1,8 @@
+# Compiled Elm output
+crates/hp-tauri/dist/elm.js linguist-generated
+
+# Tauri generated schemas
+crates/hp-tauri/gen/** linguist-generated
+
+# Cargo lock
+Cargo.lock linguist-generated

@@ -1,4 +1,4 @@
-//! Tauri commands — ported from hp-server Axum handlers.
+//! Tauri commands for the House Puzzle editor.
 
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use hp_core::{ai_parser, puzzle, render, types::Brick};

@@ -4,55 +4,42 @@ An automation pipeline for converting Adobe Illustrator `.ai` sketches into Unit
 
 ## Architecture
 
-- **Backend**: Rust (Axum web server + hp-core library)
-- **Frontend**: Elm + JavaScript Canvas
+- **App**: Tauri v2 desktop app (native webview)
+- **Backend**: Rust (hp-core library + Tauri commands)
+- **Frontend**: Elm
 - **Output**: Unity-compatible ZIP (piece sprite PNGs + house_data.json)
 
 ## Quick Start
 
 ```bash
-# Run with Docker
-docker compose up
+# Build Elm frontend
+cd elm && npx elm make src/Main.elm --output ../crates/hp-tauri/dist/elm.js && cd ..
 
-# Or build and run directly (requires Rust + libclang)
-cargo build --release
-./target/release/hp-server
+# Build and run Tauri app
+cargo tauri dev --manifest-path crates/hp-tauri/Cargo.toml
 ```
-
-The editor opens at `http://localhost:5050`.
 
 ## Project Structure
 
 ```
 crates/
   hp-core/       — AI parsing, puzzle generation, rendering, export
-  hp-server/     — Axum web server, routes, session management
+  hp-tauri/      — Tauri desktop app, commands, session management
 elm/
   src/Main.elm   — Frontend application
-static/
-  editor.js      — Canvas rendering and interaction
-  elm.js         — Compiled Elm output
-templates/
-  elm.html       — Main HTML template
 tests/
-  canary.py      — Cross-platform integration tests
-  baselines/     — Snapshot baselines for regression testing
+  accessibility/ — Cross-platform E2E tests (Rust, uses tauri-ui-test)
 presets/         — Puzzle parameter presets (Coarse/Default/Fine)
 ```
 
 ## Building
 
-### Rust backend
-```bash
-cargo build --release
-```
-
 ### Elm frontend
 ```bash
-cd elm && npx elm make src/Main.elm --output ../static/elm.js
+cd elm && npx elm make src/Main.elm --output ../crates/hp-tauri/dist/elm.js
 ```
 
-### Docker
+### Tauri app (release)
 ```bash
-docker compose up
+cargo tauri build --manifest-path crates/hp-tauri/Cargo.toml
 ```
