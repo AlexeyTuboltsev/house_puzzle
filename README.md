@@ -30,8 +30,7 @@ crates/
 elm/
   src/Main.elm   — Frontend application
 static/
-  editor.js      — Canvas rendering and interaction
-  elm.js         — Compiled Elm output
+  elm.js         — Compiled Elm output (built from elm/src/Main.elm)
 templates/
   elm.html       — Main HTML template
 tests/
