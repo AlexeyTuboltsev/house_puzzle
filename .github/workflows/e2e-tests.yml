@@ -105,7 +105,7 @@ jobs:
       - name: Build app + test runner
         run: |
           cargo build ${{ matrix.cargo_build_args }} --manifest-path crates/hp-tauri/Cargo.toml
-          cargo build ${{ matrix.cargo_build_args }} --manifest-path tests/accessibility/Cargo.toml
+          cargo build ${{ matrix.cargo_build_args }} --manifest-path tests/accessibility/Cargo.toml --target-dir target
 
       - name: Download test fixture
         run: gh release download test-fixtures-v1 -p "_NY2.ai" -D in/
