@@ -49,6 +49,26 @@ so client-reported issues can be diagnosed without access to their machine.
 On startup, check GitHub releases API for a newer version.
 If found, show a non-blocking banner in the UI: "Version X.Y.Z available".
 
+### Extract test harness behind feature flag
+The `--test-mode` file watcher and JS eval for clicks live in production
+`main.rs`. Move behind `#[cfg(feature = "e2e-test")]` so they're only
+compiled in test builds. Also move `save_screenshot` command.
+
+### Evaluate tauri-webdriver for e2e testing
+Replace our custom test harness with proper WebDriver-based testing:
+- `tauri-plugin-webdriver-automation` (danielraffel) — JS bridge plugin
+  for macOS WKWebView, speaks W3C WebDriver. Solves the context isolation
+  issue we hit. https://github.com/danielraffel/tauri-webdriver
+- `tauri-plugin-webdriver` (Choochmeque) — embedded WebDriver server,
+  cross-platform. The one we tried but had issues with.
+- `tauri-plugin-screenshots` — Tauri v2 plugin for window/monitor
+  screenshots. Could replace our WKWebView.takeSnapshot code.
+- CrabNebula WebDriver — commercial hosted service with macOS support.
+
+### Piece editor adjacency check
+When combining pieces in the editor, verify they are adjacent before
+allowing the merge. Currently not enforced.
+
 ## Nice-to-have
 
 ### Tauri desktop app
