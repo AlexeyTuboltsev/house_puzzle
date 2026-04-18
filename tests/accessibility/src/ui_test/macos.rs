@@ -33,6 +33,9 @@ pub fn click_button(app: &App, name: &str) {
 }
 
 pub fn screenshot(path: &str) {
-    // Use file-cmd to capture from inside the webview (no OS permission needed)
-    super::file_cmd::send_screenshot(path);
+    // screencapture works on CI but shows a permission dialog overlay.
+    // The app content is still visible behind the dialog.
+    // This is a known macOS CI limitation — the screenshots are usable
+    // for verifying the app state even with the dialog present.
+    Command::new("screencapture").args(["-x", path]).status().ok();
 }
