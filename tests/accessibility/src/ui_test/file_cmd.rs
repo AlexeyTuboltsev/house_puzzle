@@ -38,10 +38,3 @@ fn send_cmd(cmd: &str, timeout_secs: u64) {
 pub fn send_click(name: &str) {
     send_cmd(&format!("click:{name}"), 10);
 }
-
-/// Take a screenshot via in-app JS rendering (avoids OS permissions).
-pub fn send_screenshot(path: &str) {
-    send_cmd(&format!("screenshot:{path}"), 15);
-    // Give extra time for the JS canvas rendering + file write
-    std::thread::sleep(Duration::from_secs(3));
-}

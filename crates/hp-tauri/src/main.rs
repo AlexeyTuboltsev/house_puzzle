@@ -52,53 +52,6 @@ fn main() {
                                     name = name.replace('\'', "\\'")
                                 );
                                 let _ = window.eval(&js);
-                            } else if let Some(path) = cmd.strip_prefix("screenshot:") {
-                                // Capture the webview by rendering the page to a canvas via JS.
-                                // Writes base64 PNG to a temp file, then Rust converts to disk.
-                                let save_path = path.to_string();
-                                let b64_path = std::env::temp_dir().join("hp_test_screenshot_b64");
-                                let b64_path_str = b64_path.to_string_lossy().to_string();
-
-                                // Inject JS that uses the built-in canvas API to capture
-                                // a screenshot of the entire document
-                                let js = format!(r#"
-                                    (async function() {{
-                                        try {{
-                                            // Create a canvas the size of the viewport
-                                            var w = document.documentElement.scrollWidth;
-                                            var h = document.documentElement.scrollHeight;
-                                            // Use foreignObject SVG to render HTML to canvas
-                                            var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + w + '" height="' + h + '">'
-                                                + '<foreignObject width="100%" height="100%">'
-                                                + new XMLSerializer().serializeToString(document.documentElement)
-                                                + '</foreignObject></svg>';
-                                            var img = new Image();
-                                            var blob = new Blob([svg], {{type: 'image/svg+xml'}});
-                                            var url = URL.createObjectURL(blob);
-                                            await new Promise(function(resolve, reject) {{
-                                                img.onload = resolve;
-                                                img.onerror = reject;
-                                                img.src = url;
-                                            }});
-                                            var canvas = document.createElement('canvas');
-                                            canvas.width = w;
-                                            canvas.height = h;
-                                            canvas.getContext('2d').drawImage(img, 0, 0);
-                                            URL.revokeObjectURL(url);
-                                            var dataUrl = canvas.toDataURL('image/png');
-                                            // Send base64 data back to Rust via Tauri invoke
-                                            await window.__TAURI__.core.invoke('save_screenshot', {{
-                                                path: '{save_path}',
-                                                data: dataUrl.replace('data:image/png;base64,', '')
-                                            }});
-                                        }} catch(e) {{
-                                            console.error('Screenshot failed:', e);
-                                        }}
-                                    }})();
-                                "#, save_path = save_path.replace('\\', "\\\\").replace('\'', "\\'"));
-                                let _ = window.eval(&js);
-                                // Give JS time to execute
-                                std::thread::sleep(std::time::Duration::from_secs(2));
                             }
                             // Delete the file to signal completion
                             std::fs::remove_file(&cmd_path).ok();
@@ -121,7 +74,6 @@ fn main() {
             commands::get_piece_outline_image,
             commands::export_data,
             commands::check_for_updates,
-            commands::save_screenshot,
         ]);
 
     // When the "webdriver" feature is enabled, embed a W3C WebDriver server

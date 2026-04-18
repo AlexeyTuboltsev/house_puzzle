@@ -32,7 +32,6 @@ pub fn click_button(app: &App, name: &str) {
     super::file_cmd::send_click(name);
 }
 
-pub fn screenshot(_path: &str) {
-    // Use in-app screenshot via file-cmd to avoid macOS permission dialog
-    super::file_cmd::send_screenshot(_path);
+pub fn screenshot(path: &str) {
+    Command::new("screencapture").args(["-x", path]).status().ok();
 }
