@@ -53,35 +53,13 @@ fn main() {
                                 );
                                 let _ = window.eval(&js);
                             } else if let Some(path) = cmd.strip_prefix("screenshot:") {
+                                // Call save_screenshot via JS invoke (triggers native capture)
                                 let save_path = path.replace('\\', "\\\\").replace('\'', "\\'");
-                                let js = format!(r#"
-                                    (async function() {{
-                                        try {{
-                                            var el = document.documentElement;
-                                            var w = el.clientWidth, h = el.clientHeight;
-                                            var canvas = document.createElement('canvas');
-                                            canvas.width = w; canvas.height = h;
-                                            var ctx = canvas.getContext('2d');
-                                            var data = '<svg xmlns="http://www.w3.org/2000/svg" width="'+w+'" height="'+h+'">'
-                                                + '<foreignObject width="100%" height="100%">'
-                                                + new XMLSerializer().serializeToString(el)
-                                                + '</foreignObject></svg>';
-                                            var img = new Image();
-                                            var blob = new Blob([data], {{type:'image/svg+xml;charset=utf-8'}});
-                                            var url = URL.createObjectURL(blob);
-                                            img.src = url;
-                                            await new Promise(function(r,e){{ img.onload=r; img.onerror=e; }});
-                                            ctx.drawImage(img, 0, 0);
-                                            URL.revokeObjectURL(url);
-                                            var b64 = canvas.toDataURL('image/png').split(',')[1];
-                                            await window.__TAURI__.core.invoke('save_screenshot', {{
-                                                path: '{save_path}', data: b64
-                                            }});
-                                        }} catch(e) {{ console.error('screenshot:', e); }}
-                                    }})();
-                                "#);
+                                let js = format!(
+                                    "window.__TAURI__.core.invoke('save_screenshot', {{ path: '{save_path}' }}).catch(function(e) {{ console.error('screenshot:', e); }});"
+                                );
                                 let _ = window.eval(&js);
-                                std::thread::sleep(std::time::Duration::from_secs(2));
+                                std::thread::sleep(std::time::Duration::from_secs(3));
                             }
                             // Delete the file to signal completion
                             std::fs::remove_file(&cmd_path).ok();

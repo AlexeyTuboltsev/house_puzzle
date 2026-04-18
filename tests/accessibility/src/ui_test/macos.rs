@@ -33,9 +33,7 @@ pub fn click_button(app: &App, name: &str) {
 }
 
 pub fn screenshot(path: &str) {
-    // screencapture works on CI but shows a permission dialog overlay.
-    // The app content is still visible behind the dialog.
-    // This is a known macOS CI limitation — the screenshots are usable
-    // for verifying the app state even with the dialog present.
-    Command::new("screencapture").args(["-x", path]).status().ok();
+    // Use native webview snapshot via file-cmd → save_screenshot Tauri command.
+    // This uses NSView.dataWithPDFInsideRect internally — no OS permission needed.
+    super::file_cmd::send_screenshot(path);
 }

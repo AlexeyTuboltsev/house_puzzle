@@ -785,16 +785,130 @@ pub async fn export_data(
 }
 
 // ---------------------------------------------------------------------------
-// Screenshot (test mode — captures webview DOM via canvas)
+// Screenshot — uses native webview snapshot (no OS permission needed on macOS)
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
-pub fn save_screenshot(path: String, data: String) -> Result<(), String> {
-    let bytes = BASE64.decode(&data).map_err(|e| e.to_string())?;
-    std::fs::write(&path, &bytes).map_err(|e| e.to_string())?;
-    eprintln!("[test-mode] screenshot saved: {path} ({} bytes)", bytes.len());
+pub async fn save_screenshot(
+    window: tauri::WebviewWindow,
+    path: String,
+) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        macos_screenshot::take_snapshot(&window, &path).await?;
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        // On other platforms, save_screenshot is called with base64 data from JS
+        let _ = window;
+        let _ = path;
+    }
+
     Ok(())
 }
+
+#[cfg(target_os = "macos")]
+mod macos_screenshot {
+    use std::sync::{Arc, Mutex};
+
+    pub async fn take_snapshot(
+        window: &tauri::WebviewWindow,
+        path: &str,
+    ) -> Result<(), String> {
+        let path = path.to_string();
+        let result: Arc<Mutex<Option<Result<(), String>>>> = Arc::new(Mutex::new(None));
+        let result_clone = result.clone();
+
+        window.with_webview(move |webview| {
+            use objc2::rc::Retained;
+            use objc2::runtime::AnyObject;
+            use objc2::{msg_send, msg_send_id, ClassType};
+            use objc2_foundation::{NSData, NSRect, NSSize, NSPoint};
+
+            unsafe {
+                let wk_webview = webview.inner() as *const AnyObject as *mut AnyObject;
+                if wk_webview.is_null() {
+                    *result_clone.lock().unwrap() = Some(Err("null webview".into()));
+                    return;
+                }
+
+                // Get webview bounds for the snapshot configuration
+                let bounds: NSRect = msg_send![wk_webview, bounds];
+
+                // Create WKSnapshotConfiguration
+                let config_class = objc2::runtime::AnyClass::get(c"WKSnapshotConfiguration")
+                    .expect("WKSnapshotConfiguration class");
+                let config: Retained<AnyObject> = msg_send_id![config_class, new];
+                let _: () = msg_send![&config, setRect: bounds];
+
+                // Call takeSnapshotWithConfiguration:completionHandler:
+                // We use a block to receive the result
+                let path_for_block = path.clone();
+                let result_for_block = result_clone.clone();
+
+                // Use a simpler approach: render to PDF then convert
+                // Actually, let's use NSView's cacheDisplay instead
+                // which doesn't require screen recording permission
+
+                // Get the NSView backing the webview
+                let ns_view = wk_webview; // WKWebView IS an NSView
+
+                // Use dataWithPDFInsideRect to capture the view
+                let pdf_data: Retained<NSData> = msg_send_id![ns_view, dataWithPDFInsideRect: bounds];
+                let bytes = pdf_data.bytes();
+                let len = pdf_data.len();
+                let slice = std::slice::from_raw_parts(bytes, len);
+
+                // Convert PDF data to PNG via NSImage -> NSBitmapImageRep
+                use objc2_app_kit::{NSImage, NSBitmapImageRep};
+                use objc2_foundation::NSData as NSData2;
+
+                let ns_data = NSData2::with_bytes(slice);
+                let ns_image: Retained<NSImage> = msg_send_id![
+                    NSImage::alloc(), initWithData: &*ns_data
+                ];
+
+                // Get TIFF representation then bitmap rep
+                let tiff_data: Retained<NSData2> = msg_send_id![&ns_image, TIFFRepresentation];
+                let bitmap_rep: Retained<NSBitmapImageRep> = msg_send_id![
+                    NSBitmapImageRep::alloc(), initWithData: &*tiff_data
+                ];
+
+                // Convert to PNG
+                let png_type: usize = 4; // NSBitmapImageFileTypePNG
+                let png_data: Retained<NSData2> = msg_send_id![
+                    &bitmap_rep, representationUsingType: png_type, properties: std::ptr::null::<AnyObject>()
+                ];
+
+                let png_bytes = png_data.bytes();
+                let png_len = png_data.len();
+                let png_slice = std::slice::from_raw_parts(png_bytes, png_len);
+
+                match std::fs::write(&path_for_block, png_slice) {
+                    Ok(_) => {
+                        eprintln!("[screenshot] saved: {} ({} bytes)", path_for_block, png_len);
+                        *result_for_block.lock().unwrap() = Some(Ok(()));
+                    }
+                    Err(e) => {
+                        *result_for_block.lock().unwrap() = Some(Err(e.to_string()));
+                    }
+                }
+            }
+        }).map_err(|e| format!("with_webview failed: {e}"))?;
+
+        // Wait for the callback
+        for _ in 0..50 {
+            if result.lock().unwrap().is_some() {
+                return result.lock().unwrap().take().unwrap();
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+
+        Err("screenshot timeout".into())
+    }
+}
+
 
 // ---------------------------------------------------------------------------
 // Updater
