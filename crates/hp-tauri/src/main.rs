@@ -41,13 +41,17 @@ fn main() {
                                 let js = format!(
                                     r#"(function(){{
                                         var buttons = document.querySelectorAll('button');
+                                        var names = [];
                                         for (var b of buttons) {{
-                                            if (b.textContent.includes('{name}')) {{
+                                            var t = b.textContent.trim();
+                                            names.push(t);
+                                            if (t.includes('{name}')) {{
                                                 b.click();
-                                                return 'clicked';
+                                                console.log('[test-click] clicked: ' + t);
+                                                return;
                                             }}
                                         }}
-                                        return 'not-found';
+                                        console.log('[test-click] not found: {name}, buttons: ' + names.join(', '));
                                     }})()"#,
                                     name = name.replace('\'', "\\'")
                                 );
