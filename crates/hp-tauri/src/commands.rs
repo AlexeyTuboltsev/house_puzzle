@@ -16,7 +16,7 @@ use crate::session::{Session, SessionStore};
 
 #[tauri::command]
 pub fn get_version() -> String {
-    option_env!("HP_VERSION").unwrap_or("dev").to_string()
+    env!("CARGO_PKG_VERSION").to_string()
 }
 
 // ---------------------------------------------------------------------------

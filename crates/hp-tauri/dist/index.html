@@ -1026,7 +1026,7 @@ window.addEventListener('error', function(e) {
 </script>
 <script src="elm.js" onerror="document.getElementById('not-built').style.display='block'"></script>
 <script>
-if (window.Elm && window.Elm.Main) {
+if (window.Elm && window.Elm.Main) { (async function() {
   // Performance timing for API calls + render detection
   (function() {
     let loadResponseTime = null;
@@ -1061,7 +1061,12 @@ if (window.Elm && window.Elm.Main) {
     };
   })();
 
-  const app = window.Elm.Main.init({ node: document.getElementById('elm-root'), flags: { version: 'dev', isTauri: !!window.__TAURI__, loadFile: null } });
+  // Fetch version from Tauri backend, fall back to 'dev'
+  var initVersion = 'dev';
+  if (window.__TAURI__) {
+    try { initVersion = await window.__TAURI__.core.invoke('get_version'); } catch(e) {}
+  }
+  const app = window.Elm.Main.init({ node: document.getElementById('elm-root'), flags: { version: initVersion, isTauri: !!window.__TAURI__, loadFile: null } });
 
   app.ports.setTitle.subscribe(function(title) { document.title = title; });
 
@@ -1113,7 +1118,7 @@ if (window.Elm && window.Elm.Main) {
     });
   }
 
-}
+})(); }
 
 // ── Resizable tools column ──────────────────────────────────────────────────
 document.addEventListener('mousedown', function(e) {
