@@ -25,8 +25,10 @@ pub fn get_version() -> String {
 
 #[tauri::command]
 pub fn list_pdfs() -> Result<Value, String> {
-    // Look for in/ relative to CWD first, then next to the binary
-    let in_dir = if PathBuf::from("in").is_dir() {
+    // HP_IN_DIR env var overrides default; then try CWD, then next to binary
+    let in_dir = if let Ok(env_dir) = std::env::var("HP_IN_DIR") {
+        PathBuf::from(env_dir)
+    } else if PathBuf::from("in").is_dir() {
         PathBuf::from("in")
     } else if let Ok(exe) = std::env::current_exe() {
         let beside_exe = exe.parent().unwrap_or(std::path::Path::new(".")).join("in");

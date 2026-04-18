@@ -38,10 +38,13 @@ pub struct App {
 
 impl App {
     /// Launch the app binary from the given working directory.
+    /// Sets HP_IN_DIR to `cwd/in` so the app can find fixture files.
     pub fn launch(binary: &str, cwd: &Path) -> Self {
-        println!("[ui_test] Launching: {binary}");
+        let in_dir = cwd.join("in");
+        println!("[ui_test] Launching: {binary} (cwd={}, HP_IN_DIR={})", cwd.display(), in_dir.display());
         let process = Command::new(binary)
             .current_dir(cwd)
+            .env("HP_IN_DIR", &in_dir)
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit())
             .spawn()
