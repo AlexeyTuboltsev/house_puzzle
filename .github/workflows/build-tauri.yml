@@ -5,12 +5,6 @@ on:
   push:
     tags:
       - 'v*'
-    paths:
-      - 'crates/hp-tauri/**'
-      - 'crates/hp-core/**'
-      - 'elm/**'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
 
 env:
   CARGO_TERM_COLOR: always
@@ -35,6 +29,8 @@ jobs:
             args: ''
             artifact-suffix: windows
 
+    permissions:
+      contents: write
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
@@ -79,6 +75,11 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           projectPath: crates/hp-tauri
+          tagName: ${{ github.ref_name }}
+          releaseName: ${{ github.ref_name }}
+          releaseBody: ''
+          releaseDraft: false
+          prerelease: false
           args: ${{ matrix.args }}
 
       - uses: actions/upload-artifact@v4
