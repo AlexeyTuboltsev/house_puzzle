@@ -17,21 +17,31 @@ pub fn cmd_file_path() -> PathBuf {
     std::env::temp_dir().join("hp_test_cmd")
 }
 
-/// Write a click command and wait for the app to process it.
-pub fn send_click(name: &str) {
+/// Write a command and wait for the app to process it (delete the file).
+fn send_cmd(cmd: &str, timeout_secs: u64) {
     let path = cmd_file_path();
-    let cmd = format!("click:{name}");
-    std::fs::write(&path, &cmd).ok();
+    std::fs::write(&path, cmd).ok();
     println!("[file_cmd] wrote: {cmd}");
 
-    // Wait for the file to be deleted (app processed it)
     let start = std::time::Instant::now();
-    while start.elapsed() < Duration::from_secs(10) {
+    while start.elapsed() < Duration::from_secs(timeout_secs) {
         if !path.exists() {
             println!("[file_cmd] command processed");
             return;
         }
         std::thread::sleep(Duration::from_millis(200));
     }
-    println!("[file_cmd] WARNING: command not processed within 10s");
+    println!("[file_cmd] WARNING: command not processed within {timeout_secs}s");
+}
+
+/// Click a button by text content.
+pub fn send_click(name: &str) {
+    send_cmd(&format!("click:{name}"), 10);
+}
+
+/// Take a screenshot via in-app JS rendering (avoids OS permissions).
+pub fn send_screenshot(path: &str) {
+    send_cmd(&format!("screenshot:{path}"), 15);
+    // Give extra time for the JS canvas rendering + file write
+    std::thread::sleep(Duration::from_secs(3));
 }
