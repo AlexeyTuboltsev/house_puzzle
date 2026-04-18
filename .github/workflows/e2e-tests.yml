@@ -91,11 +91,13 @@ jobs:
           elm make src/Main.elm --output ../crates/hp-tauri/dist/elm.js
 
       - name: Configure SSH for private git deps
+        shell: bash
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.DEPLOY_KEY_TAURI_UI_TEST }}" > ~/.ssh/tauri_ui_test
           chmod 600 ~/.ssh/tauri_ui_test
-          echo -e "Host github.com\n  IdentityFile ~/.ssh/tauri_ui_test\n  StrictHostKeyChecking no" >> ~/.ssh/config
+          ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
+          echo "GIT_SSH_COMMAND=ssh -i ~/.ssh/tauri_ui_test -o StrictHostKeyChecking=no" >> $GITHUB_ENV
 
       - name: Build app + test runner
         run: |
