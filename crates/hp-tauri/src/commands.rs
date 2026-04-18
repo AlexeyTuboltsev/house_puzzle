@@ -822,9 +822,8 @@ mod macos_screenshot {
 
         window.with_webview(move |webview| {
             use objc2::rc::Retained;
-            use objc2::runtime::AnyObject;
+            use objc2::runtime::{AnyClass, AnyObject};
             use objc2::{msg_send, msg_send_id};
-            use objc2_foundation::NSRect;
 
             unsafe {
                 let wk_webview = webview.inner() as *const AnyObject as *mut AnyObject;
@@ -833,65 +832,69 @@ mod macos_screenshot {
                     return;
                 }
 
-                // WKWebView is an NSView — get its bounds
-                let bounds: NSRect = msg_send![wk_webview, bounds];
+                // Create a nil snapshot configuration (captures full webview)
+                let config: *const AnyObject = std::ptr::null();
 
-                // Capture as PDF (NSView.dataWithPDFInsideRect: — no permission needed)
-                let pdf_data: Retained<AnyObject> = msg_send_id![wk_webview, dataWithPDFInsideRect: bounds];
+                // Build the completion handler block
+                let path_for_block = path.clone();
+                let result_for_block = result_clone.clone();
 
-                // Get raw bytes from NSData
-                let pdf_bytes: *const u8 = msg_send![&pdf_data, bytes];
-                let pdf_len: usize = msg_send![&pdf_data, length];
-                let pdf_slice = std::slice::from_raw_parts(pdf_bytes, pdf_len);
-
-                // Convert PDF → NSImage → TIFF → NSBitmapImageRep → PNG
-                let nsimage_class = objc2::runtime::AnyClass::get(c"NSImage").unwrap();
-                let nsdata_class = objc2::runtime::AnyClass::get(c"NSData").unwrap();
-                let bitmap_class = objc2::runtime::AnyClass::get(c"NSBitmapImageRep").unwrap();
-
-                // NSData from PDF bytes
-                let ns_pdf: Retained<AnyObject> = msg_send_id![
-                    nsdata_class, dataWithBytes: pdf_bytes, length: pdf_len
-                ];
-
-                // NSImage from PDF data
-                let ns_image: Retained<AnyObject> = msg_send_id![
-                    msg_send_id![nsimage_class, alloc], initWithData: &*ns_pdf
-                ];
-
-                // TIFF representation
-                let tiff_data: Retained<AnyObject> = msg_send_id![&ns_image, TIFFRepresentation];
-
-                // NSBitmapImageRep from TIFF
-                let bitmap_rep: Retained<AnyObject> = msg_send_id![
-                    msg_send_id![bitmap_class, alloc], initWithData: &*tiff_data
-                ];
-
-                // PNG representation (type 4 = NSBitmapImageFileTypePNG)
-                let empty_dict_class = objc2::runtime::AnyClass::get(c"NSDictionary").unwrap();
-                let empty_dict: Retained<AnyObject> = msg_send_id![empty_dict_class, dictionary];
-                let png_data: Retained<AnyObject> = msg_send_id![
-                    &bitmap_rep, representationUsingType: 4usize, properties: &*empty_dict
-                ];
-
-                let png_bytes: *const u8 = msg_send![&png_data, bytes];
-                let png_len: usize = msg_send![&png_data, length];
-                let png_slice = std::slice::from_raw_parts(png_bytes, png_len);
-
-                match std::fs::write(&path, png_slice) {
-                    Ok(_) => {
-                        eprintln!("[screenshot] saved: {} ({} bytes)", path, png_len);
-                        *result_clone.lock().unwrap() = Some(Ok(()));
+                let block = block2::RcBlock::new(move |ns_image: *mut AnyObject, error: *mut AnyObject| {
+                    if ns_image.is_null() {
+                        let err_msg = if !error.is_null() {
+                            let desc: Retained<AnyObject> = msg_send_id![error, localizedDescription];
+                            let utf8: *const u8 = msg_send![&desc, UTF8String];
+                            if !utf8.is_null() {
+                                std::ffi::CStr::from_ptr(utf8 as *const _).to_string_lossy().to_string()
+                            } else {
+                                "unknown error".to_string()
+                            }
+                        } else {
+                            "null image, no error".to_string()
+                        };
+                        *result_for_block.lock().unwrap() = Some(Err(err_msg));
+                        return;
                     }
-                    Err(e) => {
-                        *result_clone.lock().unwrap() = Some(Err(e.to_string()));
+
+                    // NSImage → TIFF → NSBitmapImageRep → PNG
+                    let tiff_data: Retained<AnyObject> = msg_send_id![ns_image, TIFFRepresentation];
+                    let bitmap_class = AnyClass::get(c"NSBitmapImageRep").unwrap();
+                    let bitmap_rep: Retained<AnyObject> = msg_send_id![
+                        msg_send_id![bitmap_class, alloc], initWithData: &*tiff_data
+                    ];
+
+                    let empty_dict_class = AnyClass::get(c"NSDictionary").unwrap();
+                    let empty_dict: Retained<AnyObject> = msg_send_id![empty_dict_class, dictionary];
+                    let png_data: Retained<AnyObject> = msg_send_id![
+                        &bitmap_rep, representationUsingType: 4usize, properties: &*empty_dict
+                    ];
+
+                    let png_bytes: *const u8 = msg_send![&png_data, bytes];
+                    let png_len: usize = msg_send![&png_data, length];
+                    let png_slice = std::slice::from_raw_parts(png_bytes, png_len);
+
+                    match std::fs::write(&path_for_block, png_slice) {
+                        Ok(_) => {
+                            eprintln!("[screenshot] saved: {} ({} bytes)", path_for_block, png_len);
+                            *result_for_block.lock().unwrap() = Some(Ok(()));
+                        }
+                        Err(e) => {
+                            *result_for_block.lock().unwrap() = Some(Err(e.to_string()));
+                        }
                     }
-                }
+                });
+
+                // Call [wkWebView takeSnapshotWithConfiguration:nil completionHandler:block]
+                let _: () = msg_send![
+                    wk_webview,
+                    takeSnapshotWithConfiguration: config,
+                    completionHandler: &*block
+                ];
             }
         }).map_err(|e| format!("with_webview failed: {e}"))?;
 
-        // Wait for the callback
-        for _ in 0..50 {
+        // Wait for the async completion handler
+        for _ in 0..100 {
             if result.lock().unwrap().is_some() {
                 return result.lock().unwrap().take().unwrap();
             }
