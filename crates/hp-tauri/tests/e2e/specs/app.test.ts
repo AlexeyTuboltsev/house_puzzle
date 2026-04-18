@@ -750,22 +750,35 @@ if (fixtures.length > 0) {
 // =============================================================================
 
 if (FIXTURE_DIR) {
-  describe("Visual canary (CLI --load)", () => {
-    it("waits for house to load via --load CLI arg", async function () {
+  describe("Visual canary", () => {
+    it("loads a file by clicking a file entry", async function () {
       this.timeout(120_000);
 
-      // The app was started with --load, so it should auto-load the file.
-      // Wait for the house SVG to have image elements.
+      // The app lists files from in/ on startup. Wait for entries to appear.
+      await browser.waitUntil(
+        async () => {
+          const entries = await $$(".file-entry:not(.file-entry-browse)");
+          return entries.length > 0;
+        },
+        { timeout: 30_000, interval: 500, timeoutMsg: "No file entries appeared in the file list" }
+      );
+
+      // Click the first .ai file entry
+      const entries = await $$(".file-entry:not(.file-entry-browse)");
+      console.log(`[visual] found ${entries.length} file entries, clicking first`);
+      await entries[0].click();
+
+      // Wait for house image to render
       await browser.waitUntil(
         async () => {
           const imgs = await $$(".house-svg image");
           return imgs.length > 0;
         },
-        { timeout: 90_000, interval: 1000, timeoutMsg: "House image did not appear within 90s (--load)" }
+        { timeout: 90_000, interval: 1000, timeoutMsg: "House image did not appear within 90s" }
       );
 
       await browser.pause(1000);
-      console.log("[visual] house loaded via --load CLI arg");
+      console.log("[visual] house loaded via file list click");
     });
 
     it("takes screenshot of loaded house", async function () {
@@ -859,7 +872,7 @@ if (FIXTURE_DIR) {
     });
   });
 } else {
-  describe("Visual canary (CLI --load)", () => {
+  describe("Visual canary", () => {
     it("is skipped — set FIXTURE_DIR to enable", () => {
       console.log("[info] visual canary skipped: FIXTURE_DIR not set");
       expect(true).toBe(true);

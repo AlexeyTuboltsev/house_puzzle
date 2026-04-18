@@ -13,17 +13,6 @@ mod session;
 fn main() {
     let sessions = session::new_session_store();
 
-    // Parse CLI args: --load <path> auto-loads a file on startup
-    let load_file: Option<String> = {
-        let args: Vec<String> = std::env::args().collect();
-        args.windows(2)
-            .find(|w| w[0] == "--load")
-            .map(|w| w[1].clone())
-    };
-
-    // Store load_file in managed state so the get_load_file command can return it
-    let load_file_state: std::sync::Arc<std::sync::Mutex<Option<String>>> =
-        std::sync::Arc::new(std::sync::Mutex::new(load_file));
 
     // Build the Tauri app step-by-step so that debug-only plugins can be
     // inserted via conditional compilation without losing the chain.
@@ -31,10 +20,8 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(sessions)
-        .manage(load_file_state)
         .invoke_handler(tauri::generate_handler![
             commands::get_version,
-            commands::get_load_file,
             commands::list_pdfs,
             commands::load_pdf,
             commands::pick_file,

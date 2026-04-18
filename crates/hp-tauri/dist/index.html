@@ -1061,14 +1061,7 @@ if (window.Elm && window.Elm.Main) {
     };
   })();
 
-  // In Tauri mode, check if --load CLI arg was passed before initializing Elm
-  (async function() {
-  var loadFile = null;
-  if (window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke) {
-    try { loadFile = await window.__TAURI__.core.invoke('get_load_file'); } catch(e) {}
-  }
-
-  const app = window.Elm.Main.init({ node: document.getElementById('elm-root'), flags: { version: 'dev', isTauri: !!window.__TAURI__, loadFile: loadFile } });
+  const app = window.Elm.Main.init({ node: document.getElementById('elm-root'), flags: { version: 'dev', isTauri: !!window.__TAURI__, loadFile: null } });
 
   app.ports.setTitle.subscribe(function(title) { document.title = title; });
 
@@ -1124,7 +1117,6 @@ document.addEventListener('mousedown', function(e) {
   document.addEventListener('mouseup', onUp);
 });
 
-  })(); // end async IIFE
 
 </script>
 </body>
