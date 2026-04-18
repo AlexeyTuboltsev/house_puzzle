@@ -33,5 +33,24 @@ pub fn click_button(app: &App, name: &str) {
 }
 
 pub fn screenshot(path: &str) {
+    // Dismiss any macOS permission dialogs before taking screenshot
+    let _ = Command::new("osascript")
+        .args(["-e", r#"
+            tell application "System Events"
+                try
+                    -- Dismiss "requesting to bypass" dialog by clicking Allow or pressing Escape
+                    set allDialogs to every window of every process whose subrole is "AXSystemDialog"
+                    repeat with d in allDialogs
+                        try
+                            click button "Allow" of d
+                        end try
+                    end repeat
+                end try
+            end tell
+        "#])
+        .status();
+    std::thread::sleep(std::time::Duration::from_millis(500));
+
+    // Take screenshot
     Command::new("screencapture").args(["-x", path]).status().ok();
 }
