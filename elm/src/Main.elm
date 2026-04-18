@@ -2049,6 +2049,14 @@ update msg model =
 -- ── Helpers ─────────────────────────────────────────────────────────────────
 
 
+cacheBust : String -> Int -> String
+cacheBust url gen =
+    if String.startsWith "data:" url then
+        url
+    else
+        url ++ "?v=" ++ String.fromInt gen
+
+
 withPieceUrls : String -> Piece -> Piece
 withPieceUrls key p =
     { p
@@ -2337,6 +2345,11 @@ decodePiece =
         (D.field "brick_ids" (D.list D.string))
         (D.field "bricks" (D.list decodeBrickRef))
         (D.field "polygon" (D.list decodePoint))
+        |> D.andThen (\piece ->
+            D.map2 (\img out -> { piece | imgUrl = img, outlineUrl = out })
+                (D.oneOf [ D.field "img_url" D.string, D.succeed "" ])
+                (D.oneOf [ D.field "outline_url" D.string, D.succeed "" ])
+        )
 
 
 decodeBrickRef : D.Decoder BrickRef
@@ -2847,7 +2860,7 @@ viewWaveTrayThumb piece isLocked scale hoveredId generation showNum pos maybeGro
          ]
             ++ dragAttrs
         )
-        [ img [ src (piece.imgUrl ++ "?v=" ++ String.fromInt generation) ] []
+        [ img [ src (cacheBust piece.imgUrl generation) ] []
         , if showNum then
             div [ class "tray-thumb-num" ] [ text (String.fromInt pos) ]
           else
@@ -3281,7 +3294,7 @@ viewGroupRow model allGroups group =
                     model.pieces
                         |> List.filter (\p -> p.id == pid)
                         |> List.head
-                        |> Maybe.map (\piece -> viewPieceThumb (Just ( group.id, pid )) False model.hoveredPieceId pid (piece.imgUrl ++ "?v=" ++ String.fromInt model.pieceGeneration) Nothing)
+                        |> Maybe.map (\piece -> viewPieceThumb (Just ( group.id, pid )) False model.hoveredPieceId pid (cacheBust piece.imgUrl model.pieceGeneration) Nothing)
                 )
                 group.pieceIds
             )
@@ -3886,7 +3899,7 @@ viewPieceImage generation piece =
         , SA.y (String.fromFloat piece.y)
         , SA.width (String.fromFloat piece.width)
         , SA.height (String.fromFloat piece.height)
-        , attribute "href" (piece.imgUrl ++ "?v=" ++ String.fromInt generation)
+        , attribute "href" (cacheBust piece.imgUrl generation)
         ]
         []
 
@@ -4516,7 +4529,7 @@ viewWaveRow model allWaves wave =
                         case display of
                             SinglePiece pid ->
                                 model.pieces |> List.filter (\p -> p.id == pid) |> List.head
-                                    |> Maybe.map (\piece -> viewPieceThumb (Just ( wave.id, pid )) wave.locked model.hoveredPieceId pid (piece.imgUrl ++ "?v=" ++ String.fromInt model.pieceGeneration) (Just pos))
+                                    |> Maybe.map (\piece -> viewPieceThumb (Just ( wave.id, pid )) wave.locked model.hoveredPieceId pid (cacheBust piece.imgUrl model.pieceGeneration) (Just pos))
 
                             GroupedPiece repId allIds ->
                                 model.pieces |> List.filter (\p -> p.id == repId) |> List.head
@@ -4654,7 +4667,7 @@ viewGroupThumb maybeWaveId hoveredId maybeGroup piece allIds generation maybePos
          ] ++ dragAttrs
         )
         [ img
-            [ src (piece.imgUrl ++ "?v=" ++ String.fromInt generation)
+            [ src (cacheBust piece.imgUrl generation)
             , style "max-height" "48px"
             , style "max-width" "80px"
             , style "display" "block"

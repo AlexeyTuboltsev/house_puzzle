@@ -374,6 +374,16 @@ pub async fn load_pdf(
 
     eprintln!("[profile] TOTAL load: {:?}", t_total.elapsed());
 
+    // Build data URLs for images (Tauri has no HTTP server)
+    let composite_data = read_png_base64(&extract_dir.join("composite.png"));
+    let outlines_data = read_png_base64(&extract_dir.join("outlines.png"));
+    let lights_url = if has_lights {
+        Some(format!("data:image/png;base64,{}", read_png_base64(&extract_dir.join("lights.png"))))
+    } else { None };
+    let bg_url = if has_background {
+        Some(format!("data:image/png;base64,{}", read_png_base64(&extract_dir.join("background.png"))))
+    } else { None };
+
     Ok(json!({
         "key": key,
         "canvas": { "width": metadata.canvas_width, "height": metadata.canvas_height },
@@ -385,8 +395,10 @@ pub async fn load_pdf(
         "render_dpi": (metadata.render_dpi * 100.0).round() / 100.0,
         "warnings": all_warnings,
         "houseUnitsHigh": house_units_high,
-        "has_lights": has_lights,
-        "has_background": has_background,
+        "composite_url": format!("data:image/png;base64,{}", composite_data),
+        "outlines_url": format!("data:image/png;base64,{}", outlines_data),
+        "lights_url": lights_url,
+        "blueprint_bg_url": bg_url,
     }))
 }
 
@@ -511,6 +523,8 @@ pub async fn merge_pieces(
                 .get(&p.id)
                 .map(|pts| pts.iter().map(|pt| json!([pt[0], pt[1]])).collect::<Vec<_>>())
                 .unwrap_or_default();
+            let img_b64 = read_png_base64(&extract_dir.join(format!("piece_{}.png", p.id)));
+            let outline_b64 = read_png_base64(&extract_dir.join(format!("piece_outline_{}.png", p.id)));
             json!({
                 "id": p.id,
                 "x": p.x, "y": p.y,
@@ -518,6 +532,8 @@ pub async fn merge_pieces(
                 "brick_ids": p.brick_ids,
                 "bricks": brick_refs,
                 "polygon": poly,
+                "img_url": format!("data:image/png;base64,{}", img_b64),
+                "outline_url": format!("data:image/png;base64,{}", outline_b64),
             })
         })
         .collect();
