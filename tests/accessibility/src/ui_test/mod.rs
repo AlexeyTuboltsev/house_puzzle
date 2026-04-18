@@ -22,6 +22,10 @@ mod windows;
 #[cfg(target_os = "linux")]
 mod linux;
 
+/// File-based command injection (macOS/Windows fallback)
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+pub mod file_cmd;
+
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::time::Duration;
@@ -39,10 +43,19 @@ pub struct App {
 impl App {
     /// Launch the app binary from the given working directory.
     /// Sets HP_IN_DIR to `cwd/in` so the app can find fixture files.
+    /// On macOS/Windows, passes --test-mode for file-based command injection.
     pub fn launch(binary: &str, cwd: &Path) -> Self {
         let in_dir = cwd.join("in");
-        println!("[ui_test] Launching: {binary} (cwd={}, HP_IN_DIR={})", cwd.display(), in_dir.display());
+
+        // On macOS/Windows, use file-based command injection (--test-mode)
+        // On Linux, AT-SPI works directly
+        let mut args: Vec<&str> = Vec::new();
+        #[cfg(not(target_os = "linux"))]
+        args.push("--test-mode");
+
+        println!("[ui_test] Launching: {binary} {:?} (cwd={}, HP_IN_DIR={})", args, cwd.display(), in_dir.display());
         let process = Command::new(binary)
+            .args(&args)
             .current_dir(cwd)
             .env("HP_IN_DIR", &in_dir)
             .stdout(Stdio::inherit())

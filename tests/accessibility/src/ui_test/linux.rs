@@ -1,33 +1,104 @@
-//! Linux backend: xdotool for window management + coordinate-based clicks
+//! Linux backend: AT-SPI accessibility via python3 subprocess
 //!
-//! Note: Linux xdotool can find windows but can't query button names
-//! from the accessibility tree without python3-atspi. We use known
-//! UI layout positions as a practical workaround.
-//! Button positions are based on the 80px left sidebar layout.
+//! WebKitGTK exposes the full web accessibility tree through AT-SPI.
+//! We use python3 with gi.repository.Atspi to find and click buttons
+//! by their accessible name — this is the only reliable approach on Linux
+//! as xdotool coordinate clicks don't register in the webview.
 
 use super::App;
 use std::process::Command;
 use std::time::{Duration, Instant};
 
+/// Python script that finds and clicks a button via AT-SPI.
+/// Takes app process name and button name as arguments.
+const ATSPI_CLICK_SCRIPT: &str = r#"
+import sys, gi
+gi.require_version('Atspi', '2.0')
+from gi.repository import Atspi
+
+Atspi.init()
+app_name = sys.argv[1]
+button_name = sys.argv[2]
+
+desktop = Atspi.get_desktop(0)
+for i in range(desktop.get_child_count()):
+    app = desktop.get_child_at_index(i)
+    if app_name in (app.get_name() or ''):
+        def find_button(node, name):
+            try:
+                if node.get_role_name() == 'push button' and name in (node.get_name() or ''):
+                    return node
+                for j in range(node.get_child_count()):
+                    r = find_button(node.get_child_at_index(j), name)
+                    if r:
+                        return r
+            except:
+                pass
+            return None
+        btn = find_button(app, button_name)
+        if btn:
+            btn.get_action_iface().do_action(0)
+            print("clicked")
+            sys.exit(0)
+        else:
+            print("not-found")
+            sys.exit(1)
+
+print("app-not-found")
+sys.exit(1)
+"#;
+
+/// Python script that lists all buttons (for debugging).
+const ATSPI_LIST_SCRIPT: &str = r#"
+import sys, gi
+gi.require_version('Atspi', '2.0')
+from gi.repository import Atspi
+
+Atspi.init()
+app_name = sys.argv[1]
+
+desktop = Atspi.get_desktop(0)
+for i in range(desktop.get_child_count()):
+    app = desktop.get_child_at_index(i)
+    if app_name in (app.get_name() or ''):
+        def list_buttons(node):
+            try:
+                if node.get_role_name() == 'push button':
+                    print(node.get_name() or "(unnamed)")
+                for j in range(node.get_child_count()):
+                    list_buttons(node.get_child_at_index(j))
+            except:
+                pass
+        list_buttons(app)
+        sys.exit(0)
+
+print("app-not-found")
+sys.exit(1)
+"#;
+
 pub fn wait_for_window(app: &App, timeout: Duration) -> bool {
-    let pid = app.pid().to_string();
     let start = Instant::now();
+    let name = &app.name;
     while start.elapsed() < timeout {
-        // Try by PID
-        if let Ok(o) = Command::new("xdotool")
-            .args(["search", "--pid", &pid, "--onlyvisible", "--name", ""])
-            .output()
-        {
-            if !String::from_utf8_lossy(&o.stdout).trim().is_empty() {
-                return true;
-            }
-        }
-        // Try by window title
-        if let Ok(o) = Command::new("xdotool")
-            .args(["search", "--onlyvisible", "--name", "House Puzzle"])
-            .output()
-        {
-            if !String::from_utf8_lossy(&o.stdout).trim().is_empty() {
+        // Check if AT-SPI can find the app with at least one child
+        let out = Command::new("python3")
+            .args(["-c", &format!(r#"
+import gi
+gi.require_version('Atspi', '2.0')
+from gi.repository import Atspi
+Atspi.init()
+desktop = Atspi.get_desktop(0)
+for i in range(desktop.get_child_count()):
+    app = desktop.get_child_at_index(i)
+    if '{name}' in (app.get_name() or ''):
+        if app.get_child_count() > 0:
+            print('found')
+            exit(0)
+print('not-found')
+"#)])
+            .output();
+        if let Ok(o) = out {
+            if String::from_utf8_lossy(&o.stdout).trim() == "found" {
                 return true;
             }
         }
@@ -36,85 +107,53 @@ pub fn wait_for_window(app: &App, timeout: Duration) -> bool {
     false
 }
 
-/// Get the window ID and geometry.
-fn get_window_info() -> Option<(String, i32, i32, i32, i32)> {
-    let wid_out = Command::new("xdotool")
-        .args(["search", "--onlyvisible", "--name", "House Puzzle"])
-        .output().ok()?;
-    let wid = String::from_utf8_lossy(&wid_out.stdout)
-        .trim().lines().next()?.to_string();
-    if wid.is_empty() { return None; }
-
-    let geom_out = Command::new("xdotool")
-        .args(["getwindowgeometry", "--shell", &wid])
-        .output().ok()?;
-    let geom = String::from_utf8_lossy(&geom_out.stdout).to_string();
-
-    let mut x = 0i32;
-    let mut y = 0i32;
-    let mut w = 1280i32;
-    let mut h = 800i32;
-    for line in geom.lines() {
-        if let Some(v) = line.strip_prefix("X=") { x = v.parse().unwrap_or(0); }
-        if let Some(v) = line.strip_prefix("Y=") { y = v.parse().unwrap_or(0); }
-        if let Some(v) = line.strip_prefix("WIDTH=") { w = v.parse().unwrap_or(1280); }
-        if let Some(v) = line.strip_prefix("HEIGHT=") { h = v.parse().unwrap_or(800); }
+pub fn click_button(app: &App, name: &str) {
+    let out = Command::new("python3")
+        .args(["-c", ATSPI_CLICK_SCRIPT, &app.name, name])
+        .output();
+    match out {
+        Ok(o) => {
+            let result = String::from_utf8_lossy(&o.stdout).trim().to_string();
+            let stderr = String::from_utf8_lossy(&o.stderr).trim().to_string();
+            if !stderr.is_empty() && !stderr.contains("DeprecationWarning") {
+                println!("[linux] click_button('{name}'): stderr={stderr}");
+            }
+            println!("[linux] click_button('{name}'): {result}");
+            if result == "not-found" {
+                // Debug: list all available buttons
+                println!("[linux] Available buttons:");
+                if let Ok(o2) = Command::new("python3")
+                    .args(["-c", ATSPI_LIST_SCRIPT, &app.name])
+                    .output()
+                {
+                    for line in String::from_utf8_lossy(&o2.stdout).lines() {
+                        println!("[linux]   - \"{line}\"");
+                    }
+                }
+            }
+        }
+        Err(e) => println!("[linux] click_button('{name}') failed: {e}"),
     }
-    Some((wid, x, y, w, h))
-}
-
-pub fn click_button(_app: &App, name: &str) {
-    let (wid, wx, wy, ww, wh) = match get_window_info() {
-        Some(info) => info,
-        None => {
-            println!("[linux] click_button('{name}'): window not found");
-            return;
-        }
-    };
-
-    // Activate window
-    Command::new("xdotool").args(["windowactivate", "--sync", &wid]).status().ok();
-    std::thread::sleep(Duration::from_millis(300));
-
-    // Map button name to position in the known UI layout:
-    // Left sidebar (80px wide): nav buttons stacked ~50px apart starting at ~70px
-    // Main content area: center of remaining space
-    // Right tools pane: ~260px wide on the right
-    let (cx, cy) = match name {
-        n if n.contains("_NY") => {
-            // File entry: center of the main content area
-            (wx + ww / 2, wy + wh / 3)
-        }
-        "Start" | "Reset" | "Loading…" => (wx + 40, wy + 70),
-        "Import" | "Importing…" => (wx + 40, wy + 120),
-        "Pieces" => (wx + 40, wy + 170),
-        "Blueprint" => (wx + 40, wy + 220),
-        "Groups" => (wx + 40, wy + 270),
-        "Waves" => (wx + 40, wy + 320),
-        "Export" => (wx + 40, wy + 370),
-        "Generate Puzzle" | "Generating…" => {
-            // Primary button in the right tools pane
-            (wx + ww - 130, wy + wh / 2)
-        }
-        _ => {
-            println!("[linux] click_button('{name}'): unknown button");
-            return;
-        }
-    };
-
-    println!("[linux] click_button('{name}') at ({cx}, {cy})");
-    Command::new("xdotool")
-        .args(["mousemove", "--sync", &cx.to_string(), &cy.to_string()])
-        .status().ok();
-    std::thread::sleep(Duration::from_millis(200));
-    Command::new("xdotool").args(["click", "1"]).status().ok();
 }
 
 pub fn screenshot(path: &str) {
-    // Try scrot (focused window), then full screen
-    let ok = Command::new("scrot").args(["-u", path]).status()
-        .map(|s| s.success()).unwrap_or(false);
+    // Try gnome-screenshot (window), then scrot, then import
+    let ok = Command::new("gnome-screenshot")
+        .args(["--window", "--file", path])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
     if !ok {
-        Command::new("scrot").args([path]).status().ok();
+        let ok2 = Command::new("scrot")
+            .args([path])  // full screen fallback
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+        if !ok2 {
+            Command::new("import")
+                .args(["-window", "root", path])
+                .status()
+                .ok();
+        }
     }
 }
