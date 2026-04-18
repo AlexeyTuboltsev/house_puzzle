@@ -84,5 +84,8 @@ end tell
 }
 
 pub fn screenshot(path: &str) {
-    Command::new("screencapture").args(["-x", path]).status().ok();
+    // -x = no sound, -C = include cursor, -t png
+    // If screencapture triggers a permission dialog, it still saves a screenshot
+    // of whatever is visible (which may include the dialog itself).
+    let _ = Command::new("screencapture").args(["-x", "-C", path]).status();
 }

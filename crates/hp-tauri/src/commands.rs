@@ -25,7 +25,16 @@ pub fn get_version() -> String {
 
 #[tauri::command]
 pub fn list_pdfs() -> Result<Value, String> {
-    let in_dir = PathBuf::from("in");
+    // Look for in/ relative to CWD first, then next to the binary
+    let in_dir = if PathBuf::from("in").is_dir() {
+        PathBuf::from("in")
+    } else if let Ok(exe) = std::env::current_exe() {
+        let beside_exe = exe.parent().unwrap_or(std::path::Path::new(".")).join("in");
+        if beside_exe.is_dir() { beside_exe } else { PathBuf::from("in") }
+    } else {
+        PathBuf::from("in")
+    };
+    eprintln!("[list_pdfs] looking in: {:?} (exists={})", in_dir, in_dir.is_dir());
     let mut files = Vec::new();
     if let Ok(entries) = std::fs::read_dir(&in_dir) {
         let mut entries: Vec<_> = entries.filter_map(|e| e.ok()).collect();

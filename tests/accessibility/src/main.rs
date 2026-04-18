@@ -24,6 +24,16 @@ fn main() {
         println!("[test] Copied _NY2.ai to in/");
     }
 
+    // Debug: verify fixture is in place
+    let in_contents: Vec<_> = fs::read_dir(&in_dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().to_string())
+        .collect();
+    println!("[test] CWD: {}", project_root.display());
+    println!("[test] in/ contents: {:?}", in_contents);
+
     // Launch app
     let mut app = App::launch(&binary, &project_root);
     app.wait_for_window(60);
