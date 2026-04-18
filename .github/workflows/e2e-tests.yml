@@ -97,7 +97,8 @@ jobs:
       - name: Build debug binary (includes tauri-plugin-webdriver)
         run: cargo build ${{ matrix.cargo_build_args }} --manifest-path crates/hp-tauri/Cargo.toml
 
-      - name: Install E2E test dependencies
+      - name: Install E2E test dependencies (Linux only — WebDriver tests)
+        if: matrix.platform == 'ubuntu-22.04'
         working-directory: crates/hp-tauri/tests/e2e
         run: npm ci
 
@@ -106,7 +107,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
 
-      - name: Run E2E tests (Linux – headless via xvfb-run)
+      - name: Run E2E tests (Linux – WebDriver via xvfb-run)
         if: matrix.platform == 'ubuntu-22.04'
         working-directory: crates/hp-tauri/tests/e2e
         env:
@@ -116,18 +117,30 @@ jobs:
           xvfb-run --auto-servernum --server-args="-screen 0 1280x800x24" \
             npx wdio run wdio.conf.ts
 
-      - name: Run E2E tests (macOS / Windows)
-        if: matrix.platform != 'ubuntu-22.04'
-        working-directory: crates/hp-tauri/tests/e2e
+      - name: Run accessibility E2E (macOS)
+        if: startsWith(matrix.platform, 'macos')
         env:
-          TAURI_BINARY: ${{ github.workspace }}/${{ matrix.e2e_binary }}
-          FIXTURE_DIR: ${{ github.workspace }}/in
-        run: npx wdio run wdio.conf.ts
+          BINARY: ${{ github.workspace }}/${{ matrix.e2e_binary }}
+        run: |
+          chmod +x "$BINARY"
+          chmod +x tests/accessibility/test_macos.sh
+          tests/accessibility/test_macos.sh "$BINARY" "${{ github.workspace }}/in" "${{ github.workspace }}/screenshots"
+
+      - name: Run accessibility E2E (Windows)
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          tests/accessibility/test_windows.ps1 `
+            -Binary "${{ github.workspace }}/${{ matrix.e2e_binary }}" `
+            -FixtureDir "${{ github.workspace }}/in" `
+            -ScreenshotsDir "${{ github.workspace }}/screenshots"
 
       - name: Upload E2E screenshots
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: e2e-screenshots-${{ matrix.artifact-suffix }}
-          path: crates/hp-tauri/tests/e2e/screenshots/
+          path: |
+            crates/hp-tauri/tests/e2e/screenshots/
+            screenshots/
           if-no-files-found: warn
