@@ -45,9 +45,10 @@ Add structured logging throughout the pipeline (parse, render, merge, export).
 Eventually: opt-in home-calling that sends error logs to a remote endpoint
 so client-reported issues can be diagnosed without access to their machine.
 
-### ~~Update checker~~
-~~On startup, check GitHub releases API for a newer version.~~
-Done: tauri-plugin-updater integrated (PR #56).
+### Update checker — verify
+tauri-plugin-updater integrated (PR #56) but not verified end-to-end.
+Needs testing: does the banner appear when a new release exists?
+Requires a signed release + updater pubkey configuration.
 
 ### Extract test harness behind feature flag
 The `--test-mode` file watcher and JS eval for clicks live in production
