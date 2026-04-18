@@ -1,0 +1,11 @@
+[package]
+name = "hp-e2e-test"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "hp-e2e-test"
+path = "src/main.rs"
+
+[dependencies]
+tauri-ui-test = { git = "ssh://git@github.com/AlexeyTuboltsev/tauri-ui-test", branch = "main" }

@@ -1,0 +1,327 @@
+name: E2E Tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+env:
+  CARGO_TERM_COLOR: always
+  MACOSX_DEPLOYMENT_TARGET: "10.15"
+
+jobs:
+  e2e:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: ubuntu-22.04
+            artifact-suffix: linux
+            app_binary: target/debug/hp-tauri
+            test_binary: target/debug/hp-e2e-test
+            cargo_build_args:
+          - platform: macos-latest
+            artifact-suffix: macos-aarch64
+            app_binary: target/debug/hp-tauri
+            test_binary: target/debug/hp-e2e-test
+            cargo_build_args:
+          - platform: macos-latest
+            artifact-suffix: macos-x86_64
+            app_binary: target/debug/hp-tauri
+            test_binary: target/debug/hp-e2e-test
+            cargo_build_args:
+          - platform: windows-latest
+            artifact-suffix: windows
+            app_binary: target/release/hp-tauri.exe
+            test_binary: target/release/hp-e2e-test.exe
+            cargo_build_args: --release
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Cache Elm packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.elm
+          key: ${{ runner.os }}-elm-${{ hashFiles('elm/elm.json') }}
+          restore-keys: |
+            ${{ runner.os }}-elm-
+
+      - name: Install Linux deps
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
+            librsvg2-dev libclang-dev libfontconfig1-dev libfreetype6-dev \
+            pkg-config patchelf xvfb scrot \
+            python3-gi gir1.2-atspi-2.0 at-spi2-core
+
+      - name: Install LLVM (Windows)
+        if: matrix.platform == 'windows-latest'
+        uses: KyleMayes/install-llvm-action@v2
+        with:
+          version: "17"
+
+      - name: Set macOS deployment target flags
+        if: matrix.platform == 'macos-latest'
+        run: |
+          echo "CFLAGS=-mmacosx-version-min=10.15" >> $GITHUB_ENV
+          echo "CXXFLAGS=-mmacosx-version-min=10.15" >> $GITHUB_ENV
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build Elm frontend
+        working-directory: elm
+        run: |
+          npm install -g elm
+          elm make src/Main.elm --output ../crates/hp-tauri/dist/elm.js
+
+      - name: Configure SSH for private git deps
+        shell: bash
+        run: |
+          mkdir -p "$HOME/.ssh"
+          echo "${{ secrets.DEPLOY_KEY_TAURI_UI_TEST }}" > "$HOME/.ssh/tauri_ui_test"
+          chmod 600 "$HOME/.ssh/tauri_ui_test"
+          ssh-keyscan github.com >> "$HOME/.ssh/known_hosts" 2>/dev/null
+          echo "GIT_SSH_COMMAND=ssh -i $HOME/.ssh/tauri_ui_test -o StrictHostKeyChecking=no" >> $GITHUB_ENV
+          echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> $GITHUB_ENV
+
+      - name: Build app + test runner
+        run: |
+          cargo build ${{ matrix.cargo_build_args }} --manifest-path crates/hp-tauri/Cargo.toml
+          cargo build ${{ matrix.cargo_build_args }} --manifest-path tests/accessibility/Cargo.toml
+
+      - name: Download test fixture
+        run: gh release download test-fixtures-v1 -p "_NY2.ai" -D in/
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Run E2E tests (Linux)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          chmod +x ${{ matrix.app_binary }} ${{ matrix.test_binary }}
+          xvfb-run --auto-servernum --server-args="-screen 0 1280x800x24" \
+            ${{ matrix.test_binary }} \
+              --binary ${{ matrix.app_binary }} \
+              --fixture-dir in \
+              --screenshots screenshots
+
+      - name: Run E2E tests (macOS)
+        if: startsWith(matrix.platform, 'macos')
+        run: |
+          chmod +x ${{ matrix.app_binary }} ${{ matrix.test_binary }}
+          ${{ matrix.test_binary }} \
+            --binary ${{ matrix.app_binary }} \
+            --fixture-dir in \
+            --screenshots screenshots
+
+      - name: Run E2E tests (Windows)
+        if: matrix.platform == 'windows-latest'
+        run: |
+          ${{ matrix.test_binary }} `
+            --binary ${{ matrix.app_binary }} `
+            --fixture-dir in `
+            --screenshots screenshots
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-screenshots-${{ matrix.artifact-suffix }}
+          path: screenshots/
+          if-no-files-found: warn
+
+  # Deploy screenshots to GitHub Pages + post PR comment with link
+  publish-screenshots:
+    needs: e2e
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      pages: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: screenshots
+          pattern: e2e-screenshots-*
+          merge-multiple: false
+
+      - name: Build screenshots page
+        run: |
+          RUN=${{ github.run_id }}
+          REPO=${{ github.repository }}
+          DATE=$(date -u +%Y-%m-%d\ %H:%M)
+          SHA=${{ github.sha }}
+          SHORT_SHA=${SHA:0:7}
+          BRANCH=${{ github.head_ref || github.ref_name }}
+          PLATFORMS="linux macos-aarch64 macos-x86_64 windows"
+          STEPS="initial-state house-loaded puzzle-generated"
+
+          mkdir -p site/runs/${RUN}
+
+          # Copy screenshots
+          for platform_dir in screenshots/e2e-screenshots-*/; do
+            [ -d "$platform_dir" ] || continue
+            platform=$(basename "$platform_dir" | sed 's/e2e-screenshots-//')
+            mkdir -p "site/runs/${RUN}/${platform}"
+            cp "$platform_dir"*.png "site/runs/${RUN}/${platform}/" 2>/dev/null || true
+          done
+
+          # Generate run page
+          cat > "site/runs/${RUN}/index.html" <<RUNHTML
+          <!DOCTYPE html>
+          <html><head>
+          <meta charset="utf-8">
+          <title>E2E Run #${RUN}</title>
+          <style>
+            body { font-family: -apple-system, sans-serif; max-width: 1400px; margin: 0 auto; padding: 20px; background: #f5f5f5; }
+            h1 { color: #2060b0; }
+            .meta { color: #666; font-size: 14px; margin-bottom: 20px; }
+            .meta a { color: #2060b0; }
+            .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+            .platform { text-align: center; }
+            .platform h3 { margin: 0 0 8px; color: #333; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; }
+            .screenshot { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 8px; margin-bottom: 12px; }
+            .screenshot img { width: 100%; border-radius: 4px; cursor: pointer; }
+            .screenshot img:hover { outline: 2px solid #2060b0; }
+            .screenshot .label { font-size: 11px; color: #888; margin-top: 4px; }
+            .back { margin-bottom: 16px; }
+            .back a { color: #2060b0; text-decoration: none; }
+            @media (max-width: 900px) { .grid { grid-template-columns: repeat(2, 1fr); } }
+          </style>
+          </head><body>
+          <div class="back"><a href="../../">&larr; All runs</a></div>
+          <h1>E2E Screenshots</h1>
+          <div class="meta">
+            Run <a href="https://github.com/${REPO}/actions/runs/${RUN}">#${RUN}</a>
+            &middot; ${DATE} UTC
+            &middot; <code>${SHORT_SHA}</code>
+            &middot; ${BRANCH}
+          </div>
+          <div class="grid">
+          RUNHTML
+
+          for platform in $PLATFORMS; do
+            echo "<div class='platform'><h3>${platform}</h3>" >> "site/runs/${RUN}/index.html"
+            for step in $STEPS; do
+              img="${platform}/${step}.png"
+              if [ -f "site/runs/${RUN}/${img}" ]; then
+                echo "<div class='screenshot'><a href='${img}' target='_blank'><img src='${img}' alt='${step}'></a><div class='label'>${step}</div></div>" >> "site/runs/${RUN}/index.html"
+              else
+                echo "<div class='screenshot'><div style='height:100px;display:flex;align-items:center;justify-content:center;color:#ccc'>no screenshot</div><div class='label'>${step}</div></div>" >> "site/runs/${RUN}/index.html"
+              fi
+            done
+            echo "</div>" >> "site/runs/${RUN}/index.html"
+          done
+
+          echo "</div></body></html>" >> "site/runs/${RUN}/index.html"
+
+          # Generate index page (list of runs)
+          cat > site/index.html <<'INDEXHTML'
+          <!DOCTYPE html>
+          <html><head>
+          <meta charset="utf-8">
+          <title>House Puzzle E2E Screenshots</title>
+          <style>
+            body { font-family: -apple-system, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+            h1 { color: #2060b0; }
+            .run { padding: 12px 16px; border: 1px solid #e0e0e0; border-radius: 8px; margin-bottom: 8px; display: flex; align-items: center; gap: 16px; }
+            .run:hover { background: #f0f4ff; }
+            .run a { color: #2060b0; text-decoration: none; font-weight: 600; }
+            .run .date { color: #888; font-size: 13px; }
+          </style>
+          </head><body>
+          <h1>House Puzzle — E2E Screenshots</h1>
+          <div id="runs"></div>
+          <script>
+            fetch('runs.json').then(r=>r.json()).then(runs => {
+              const el = document.getElementById('runs');
+              runs.forEach(r => {
+                el.innerHTML += '<div class="run"><a href="runs/'+r.id+'/">Run #'+r.id+'</a><span class="date">'+r.date+' &middot; '+r.sha+'</span></div>';
+              });
+            });
+          </script>
+          </body></html>
+          INDEXHTML
+
+      - name: Deploy to GitHub Pages
+        run: |
+          RUN=${{ github.run_id }}
+          REPO=${{ github.repository }}
+          DATE=$(date -u +%Y-%m-%d\ %H:%M)
+          SHA=${{ github.sha }}
+          SHORT_SHA=${SHA:0:7}
+
+          # Clone gh-pages branch (or create it)
+          git clone --branch gh-pages --single-branch "https://x-access-token:${{ github.token }}@github.com/${REPO}.git" gh-pages 2>/dev/null || {
+            mkdir gh-pages && cd gh-pages && git init && git checkout -b gh-pages
+            cd ..
+          }
+
+          # Copy new run
+          cp -r site/runs/${RUN} gh-pages/runs/ 2>/dev/null || {
+            mkdir -p gh-pages/runs
+            cp -r site/runs/${RUN} gh-pages/runs/
+          }
+          cp site/index.html gh-pages/index.html
+
+          # Update runs.json (prepend new run, keep last 20)
+          cd gh-pages
+          if [ -f runs.json ]; then
+            python3 -c "
+          import json
+          runs = json.load(open('runs.json'))
+          runs.insert(0, {'id': '${RUN}', 'date': '${DATE}', 'sha': '${SHORT_SHA}'})
+          runs = runs[:20]
+          json.dump(runs, open('runs.json','w'), indent=2)
+          "
+          else
+            echo '[{"id":"'${RUN}'","date":"'${DATE}'","sha":"'${SHORT_SHA}'"}]' > runs.json
+          fi
+
+          # Remove old runs (keep last 20 directories)
+          ls -1d runs/*/  2>/dev/null | head -n -20 | xargs rm -rf 2>/dev/null || true
+
+          git config user.name "k5qkop-bot"
+          git config user.email "noreply@github.com"
+          git add -A
+          git diff --cached --quiet || git commit -m "E2E screenshots: run #${RUN} (${SHORT_SHA})"
+          git push "https://x-access-token:${{ github.token }}@github.com/${REPO}.git" gh-pages
+
+      - name: Post PR comment with link
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PR=${{ github.event.pull_request.number }}
+          REPO=${{ github.repository }}
+          RUN=${{ github.run_id }}
+          OWNER=$(echo $REPO | cut -d/ -f1)
+          REPO_NAME=$(echo $REPO | cut -d/ -f2)
+          URL="https://${OWNER}.github.io/${REPO_NAME}/runs/${RUN}/"
+
+          BODY="## E2E Screenshots — [View all platforms](${URL})\n\nRun [#${RUN}](https://github.com/${REPO}/actions/runs/${RUN}) · [\`${GITHUB_SHA:0:7}\`](https://github.com/${REPO}/commit/${GITHUB_SHA})"
+
+          # Delete previous bot comments
+          gh api "repos/${REPO}/issues/${PR}/comments" --jq '.[] | select(.body | startswith("## E2E Screenshots")) | .id' | while read id; do
+            gh api -X DELETE "repos/${REPO}/issues/comments/${id}" 2>/dev/null
+          done
+
+          gh api "repos/${REPO}/issues/${PR}/comments" -f body="$(echo -e "$BODY")"

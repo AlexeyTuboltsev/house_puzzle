@@ -1,0 +1,47 @@
+{
+  "productName": "House Puzzle",
+  "version": "0.1.0",
+  "identifier": "com.house-puzzle.app",
+  "build": {
+    "frontendDist": "./dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "House Puzzle Editor",
+        "width": 1280,
+        "height": 800,
+        "resizable": true,
+        "center": true
+      }
+    ],
+    "withGlobalTauri": true,
+    "security": {
+      "csp": null,
+      "assetProtocol": {
+        "enable": true,
+        "scope": {
+          "allow": ["$TEMP/house_puzzle_extract/**"]
+        }
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/AlexeyTuboltsev/house_puzzle/releases/latest/download/latest.json"
+      ],
+      "pubkey": ""
+    }
+  }
+}
