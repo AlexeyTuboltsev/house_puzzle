@@ -1,4 +1,4 @@
 [workspace]
 resolver = "2"
-members = ["crates/hp-core", "crates/hp-server", "crates/hp-tauri"]
+members = ["crates/hp-core", "crates/hp-tauri"]
 exclude = ["tests/accessibility"]
