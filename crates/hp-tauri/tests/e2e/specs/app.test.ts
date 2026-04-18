@@ -754,13 +754,18 @@ if (FIXTURE_DIR) {
     it("loads a file by clicking a file entry", async function () {
       this.timeout(120_000);
 
-      // The app lists files from in/ on startup. Wait for entries to appear.
+      // The app lists files from in/ on startup via Tauri IPC.
+      // Wait for file entries to appear (may take a moment for IPC round-trip).
       await browser.waitUntil(
         async () => {
           const entries = await $$(".file-entry:not(.file-entry-browse)");
-          return entries.length > 0;
+          if (entries.length > 0) return true;
+          // Debug: check what's on the page
+          const html = await browser.execute(() => document.body?.innerHTML?.substring(0, 300) || "");
+          console.log(`[visual] waiting for file entries... page: ${html}`);
+          return false;
         },
-        { timeout: 30_000, interval: 500, timeoutMsg: "No file entries appeared in the file list" }
+        { timeout: 60_000, interval: 2000, timeoutMsg: "No file entries appeared in the file list" }
       );
 
       // Click the first .ai file entry
