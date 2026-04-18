@@ -785,6 +785,18 @@ pub async fn export_data(
 }
 
 // ---------------------------------------------------------------------------
+// Screenshot (test mode — captures webview DOM via canvas)
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub fn save_screenshot(path: String, data: String) -> Result<(), String> {
+    let bytes = BASE64.decode(&data).map_err(|e| e.to_string())?;
+    std::fs::write(&path, &bytes).map_err(|e| e.to_string())?;
+    eprintln!("[test-mode] screenshot saved: {path} ({} bytes)", bytes.len());
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
 // Updater
 // ---------------------------------------------------------------------------
 

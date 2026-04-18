@@ -110,16 +110,6 @@ jobs:
               --fixture-dir in \
               --screenshots screenshots
 
-      - name: Grant screen recording permission (macOS)
-        if: startsWith(matrix.platform, 'macos')
-        run: |
-          # Grant screen recording permission to avoid screencapture dialog
-          DB="/Library/Application Support/com.apple.TCC/TCC.db"
-          if [ -f "$DB" ]; then
-            sudo sqlite3 "$DB" "INSERT OR REPLACE INTO access (service, client, client_type, auth_value, auth_reason, auth_version) VALUES ('kTCCServiceScreenCapture', '/usr/sbin/screencapture', 1, 2, 4, 1);" 2>/dev/null || true
-            sudo sqlite3 "$DB" "INSERT OR REPLACE INTO access (service, client, client_type, auth_value, auth_reason, auth_version) VALUES ('kTCCServiceScreenCapture', 'com.apple.Terminal', 0, 2, 4, 1);" 2>/dev/null || true
-          fi
-
       - name: Run E2E tests (macOS)
         if: startsWith(matrix.platform, 'macos')
         run: |

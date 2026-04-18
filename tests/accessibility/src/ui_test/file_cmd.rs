@@ -38,3 +38,11 @@ fn send_cmd(cmd: &str, timeout_secs: u64) {
 pub fn send_click(name: &str) {
     send_cmd(&format!("click:{name}"), 10);
 }
+
+/// Take a screenshot from inside the webview (no OS permissions needed).
+/// The app captures the DOM via canvas and saves to disk via Tauri IPC.
+pub fn send_screenshot(path: &str) {
+    send_cmd(&format!("screenshot:{path}"), 15);
+    // Extra wait for canvas render + file write
+    std::thread::sleep(Duration::from_secs(3));
+}
