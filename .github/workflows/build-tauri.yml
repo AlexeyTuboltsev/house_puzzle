@@ -70,6 +70,18 @@ jobs:
           echo "CFLAGS=-mmacosx-version-min=10.15" >> $GITHUB_ENV
           echo "CXXFLAGS=-mmacosx-version-min=10.15" >> $GITHUB_ENV
 
+      - name: Set app version from tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "Setting app version to $VERSION"
+          cd crates/hp-tauri
+          sed -i.bak "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" tauri.conf.json
+          sed -i.bak "s/^version = \".*\"/version = \"$VERSION\"/" Cargo.toml
+          sed -i.bak "s/version: 'dev'/version: '$VERSION'/" dist/index.html
+          rm -f tauri.conf.json.bak Cargo.toml.bak dist/index.html.bak
+
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
