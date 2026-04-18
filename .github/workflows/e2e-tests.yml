@@ -105,7 +105,7 @@ jobs:
       - name: Build app + test runner
         run: |
           cargo build ${{ matrix.cargo_build_args }} --manifest-path crates/hp-tauri/Cargo.toml
-          cargo build ${{ matrix.cargo_build_args }} --manifest-path tests/accessibility/Cargo.toml
+          cargo build ${{ matrix.cargo_build_args }} --manifest-path tests/accessibility/Cargo.toml --target-dir target
 
       - name: Download test fixture
         run: gh release download test-fixtures-v1 -p "_NY2.ai" -D in/
@@ -304,6 +304,19 @@ jobs:
           git add -A
           git diff --cached --quiet || git commit -m "E2E screenshots: run #${RUN} (${SHORT_SHA})"
           git push "https://x-access-token:${{ github.token }}@github.com/${REPO}.git" gh-pages
+
+      - name: Add screenshots link to job summary
+        run: |
+          RUN=${{ github.run_id }}
+          REPO=${{ github.repository }}
+          OWNER=$(echo $REPO | cut -d/ -f1)
+          REPO_NAME=$(echo $REPO | cut -d/ -f2)
+          URL="https://${OWNER}.github.io/${REPO_NAME}/runs/${RUN}/"
+          echo "## E2E Screenshots" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**[View screenshots for all platforms](${URL})**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "[All runs](https://${OWNER}.github.io/${REPO_NAME}/)" >> $GITHUB_STEP_SUMMARY
 
       - name: Post PR comment with link
         if: github.event_name == 'pull_request'
