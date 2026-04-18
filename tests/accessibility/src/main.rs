@@ -14,14 +14,17 @@ fn main() {
 
     fs::create_dir_all(&screenshots_dir).expect("Failed to create screenshots dir");
 
-    // Copy fixture to in/
+    // Copy fixture to in/ (skip if already there)
     let project_root = env::current_dir().expect("Failed to get cwd");
     let in_dir = project_root.join("in");
     fs::create_dir_all(&in_dir).ok();
     let fixture_src = Path::new(&fixture_dir).join("_NY2.ai");
-    if fixture_src.exists() {
-        fs::copy(&fixture_src, in_dir.join("_NY2.ai")).ok();
+    let fixture_dst = in_dir.join("_NY2.ai");
+    if fixture_src.exists() && fixture_src.canonicalize().ok() != fixture_dst.canonicalize().ok() {
+        fs::copy(&fixture_src, &fixture_dst).ok();
         println!("[test] Copied _NY2.ai to in/");
+    } else if fixture_dst.exists() {
+        println!("[test] _NY2.ai already in in/");
     }
 
     // Debug: verify fixture is in place

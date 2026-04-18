@@ -53,9 +53,10 @@ pub fn list_pdfs() -> Result<Value, String> {
                 let size_mb = std::fs::metadata(&path)
                     .map(|m| (m.len() as f64 / (1024.0 * 1024.0) * 10.0).round() / 10.0)
                     .unwrap_or(0.0);
+                let abs_path = path.canonicalize().unwrap_or(path.clone());
                 files.push(json!({
                     "name": name,
-                    "path": path.to_string_lossy(),
+                    "path": abs_path.to_string_lossy(),
                     "size_mb": size_mb,
                 }));
             }

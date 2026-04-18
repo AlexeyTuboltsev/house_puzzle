@@ -137,23 +137,34 @@ pub fn click_button(app: &App, name: &str) {
 }
 
 pub fn screenshot(path: &str) {
-    // Try gnome-screenshot (window), then scrot, then import
-    let ok = Command::new("gnome-screenshot")
-        .args(["--window", "--file", path])
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false);
-    if !ok {
-        let ok2 = Command::new("scrot")
-            .args([path])  // full screen fallback
+    // Find the app window ID via wmctrl and capture it specifically
+    let wid = Command::new("wmctrl")
+        .args(["-l"])
+        .output()
+        .ok()
+        .and_then(|o| {
+            String::from_utf8_lossy(&o.stdout)
+                .lines()
+                .find(|l| l.contains("House Puzzle"))
+                .and_then(|l| l.split_whitespace().next())
+                .map(|s| s.to_string())
+        });
+
+    if let Some(ref wid) = wid {
+        // Raise the window first
+        Command::new("wmctrl").args(["-i", "-a", wid]).status().ok();
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        // Capture specific window
+        let ok = Command::new("import")
+            .args(["-window", wid, path])
             .status()
             .map(|s| s.success())
             .unwrap_or(false);
-        if !ok2 {
-            Command::new("import")
-                .args(["-window", "root", path])
-                .status()
-                .ok();
+        if ok {
+            return;
         }
     }
+
+    // Fallback: full screen
+    Command::new("scrot").args([path]).status().ok();
 }
