@@ -17,7 +17,13 @@
     ],
     "withGlobalTauri": true,
     "security": {
-      "csp": null
+      "csp": null,
+      "assetProtocol": {
+        "enable": true,
+        "scope": {
+          "allow": ["$TEMP/house_puzzle_extract/**"]
+        }
+      }
     }
   },
   "bundle": {

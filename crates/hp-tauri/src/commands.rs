@@ -374,14 +374,14 @@ pub async fn load_pdf(
 
     eprintln!("[profile] TOTAL load: {:?}", t_total.elapsed());
 
-    // Build data URLs for images (Tauri has no HTTP server)
-    let composite_data = read_png_base64(&extract_dir.join("composite.png"));
-    let outlines_data = read_png_base64(&extract_dir.join("outlines.png"));
-    let lights_url = if has_lights {
-        Some(format!("data:image/png;base64,{}", read_png_base64(&extract_dir.join("lights.png"))))
+    // Return file paths — the JS side converts to asset:// URLs via convertFileSrc()
+    let composite_path = extract_dir.join("composite.png").to_string_lossy().to_string();
+    let outlines_path = extract_dir.join("outlines.png").to_string_lossy().to_string();
+    let lights_path = if has_lights {
+        Some(extract_dir.join("lights.png").to_string_lossy().to_string())
     } else { None };
-    let bg_url = if has_background {
-        Some(format!("data:image/png;base64,{}", read_png_base64(&extract_dir.join("background.png"))))
+    let bg_path = if has_background {
+        Some(extract_dir.join("background.png").to_string_lossy().to_string())
     } else { None };
 
     Ok(json!({
@@ -395,10 +395,10 @@ pub async fn load_pdf(
         "render_dpi": (metadata.render_dpi * 100.0).round() / 100.0,
         "warnings": all_warnings,
         "houseUnitsHigh": house_units_high,
-        "composite_url": format!("data:image/png;base64,{}", composite_data),
-        "outlines_url": format!("data:image/png;base64,{}", outlines_data),
-        "lights_url": lights_url,
-        "blueprint_bg_url": bg_url,
+        "composite_url": composite_path,
+        "outlines_url": outlines_path,
+        "lights_url": lights_path,
+        "blueprint_bg_url": bg_path,
     }))
 }
 
@@ -523,8 +523,8 @@ pub async fn merge_pieces(
                 .get(&p.id)
                 .map(|pts| pts.iter().map(|pt| json!([pt[0], pt[1]])).collect::<Vec<_>>())
                 .unwrap_or_default();
-            let img_b64 = read_png_base64(&extract_dir.join(format!("piece_{}.png", p.id)));
-            let outline_b64 = read_png_base64(&extract_dir.join(format!("piece_outline_{}.png", p.id)));
+            let img_path = extract_dir.join(format!("piece_{}.png", p.id)).to_string_lossy().to_string();
+            let outline_path = extract_dir.join(format!("piece_outline_{}.png", p.id)).to_string_lossy().to_string();
             json!({
                 "id": p.id,
                 "x": p.x, "y": p.y,
@@ -532,8 +532,8 @@ pub async fn merge_pieces(
                 "brick_ids": p.brick_ids,
                 "bricks": brick_refs,
                 "polygon": poly,
-                "img_url": format!("data:image/png;base64,{}", img_b64),
-                "outline_url": format!("data:image/png;base64,{}", outline_b64),
+                "img_url": img_path,
+                "outline_url": outline_path,
             })
         })
         .collect();

@@ -17,7 +17,7 @@ webdriver = ["dep:tauri-plugin-webdriver"]
 
 [dependencies]
 tauri-plugin-webdriver = { version = "0.2", optional = true }
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["protocol-asset"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-updater = "2"
 hp-core = { path = "../hp-core" }

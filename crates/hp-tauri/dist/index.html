@@ -1070,9 +1070,34 @@ if (window.Elm && window.Elm.Main) {
   });
 
   if (window.__TAURI__) {
+    // Convert filesystem paths to asset:// URLs the webview can load
+    var toAssetUrl = window.__TAURI__.core.convertFileSrc || function(p) { return p; };
+
+    function convertImagePaths(obj) {
+      if (!obj || typeof obj !== 'object') return obj;
+      var urlFields = ['composite_url', 'outlines_url', 'lights_url', 'blueprint_bg_url', 'img_url', 'outline_url'];
+      for (var i = 0; i < urlFields.length; i++) {
+        var k = urlFields[i];
+        if (typeof obj[k] === 'string' && obj[k].length > 0 && !obj[k].startsWith('data:') && !obj[k].startsWith('http')) {
+          obj[k] = toAssetUrl(obj[k]);
+        }
+      }
+      // Convert piece image paths inside pieces array
+      if (Array.isArray(obj.pieces)) {
+        for (var j = 0; j < obj.pieces.length; j++) {
+          convertImagePaths(obj.pieces[j]);
+        }
+      }
+      return obj;
+    }
+
     app.ports.tauriInvoke.subscribe(async function(request) {
       try {
-        const result = await window.__TAURI__.core.invoke(request.command, request.args || {});
+        var result = await window.__TAURI__.core.invoke(request.command, request.args || {});
+        // Convert file paths to asset URLs for image-returning commands
+        if (request.command === 'load_pdf' || request.command === 'merge_pieces') {
+          convertImagePaths(result);
+        }
         app.ports.tauriResponse.send({
           requestId: request.requestId,
           ok: true,
