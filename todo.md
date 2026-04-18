@@ -31,9 +31,9 @@ but discard it by rasterizing the entire page into one image.
    paths. Render everything via tiny-skia. MuPDF only for decompression
    and page geometry. Most work but highest fidelity.
 
-### macOS double-click binary (PR #44)
-Binary name with dots (`house-puzzle-0.3.7`) breaks Finder double-click.
-Fix: use dashes (`house-puzzle-0-3-7`). PR #44 open, not merged.
+### ~~macOS double-click binary (PR #44)~~
+~~Binary name with dots breaks Finder double-click.~~
+Resolved: Tauri app bundle handles this natively.
 
 ## Features
 
@@ -45,11 +45,33 @@ Add structured logging throughout the pipeline (parse, render, merge, export).
 Eventually: opt-in home-calling that sends error logs to a remote endpoint
 so client-reported issues can be diagnosed without access to their machine.
 
-### Update checker
-On startup, check GitHub releases API for a newer version.
-If found, show a non-blocking banner in the UI: "Version X.Y.Z available".
+### Update checker — verify
+tauri-plugin-updater integrated (PR #56) but not verified end-to-end.
+Needs testing: does the banner appear when a new release exists?
+Requires a signed release + updater pubkey configuration.
 
-## Nice-to-have
+### Extract test harness behind feature flag
+The `--test-mode` file watcher and JS eval for clicks live in production
+`main.rs`. Move behind `#[cfg(feature = "e2e-test")]` so they're only
+compiled in test builds. Also move `save_screenshot` command.
 
-### Tauri desktop app
-Wrap existing server+webview for native app bundle, Gatekeeper signing, dock icon.
+### Evaluate tauri-webdriver for e2e testing
+Replace our custom test harness with proper WebDriver-based testing:
+- `tauri-plugin-webdriver-automation` (danielraffel) — JS bridge plugin
+  for macOS WKWebView, speaks W3C WebDriver. Solves the context isolation
+  issue we hit. https://github.com/danielraffel/tauri-webdriver
+- `tauri-plugin-webdriver` (Choochmeque) — embedded WebDriver server,
+  cross-platform. The one we tried but had issues with.
+- `tauri-plugin-screenshots` — Tauri v2 plugin for window/monitor
+  screenshots. Could replace our WKWebView.takeSnapshot code.
+- CrabNebula WebDriver — commercial hosted service with macOS support.
+
+### Piece editor adjacency check
+When combining pieces in the editor, verify they are adjacent before
+allowing the merge. Currently not enforced.
+
+## ~~Nice-to-have~~
+
+### ~~Tauri desktop app~~
+~~Wrap existing server+webview for native app bundle, Gatekeeper signing, dock icon.~~
+Done: Tauri migration is now the mainline (PR #57).
