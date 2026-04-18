@@ -141,3 +141,53 @@ jobs:
           name: e2e-screenshots-${{ matrix.artifact-suffix }}
           path: screenshots/
           if-no-files-found: warn
+
+  # Post screenshot summary as a PR comment
+  post-screenshots:
+    needs: e2e
+    if: always() && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: screenshots
+          pattern: e2e-screenshots-*
+          merge-multiple: false
+
+      - name: Post summary to PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PR=${{ github.event.pull_request.number }}
+          REPO=${{ github.repository }}
+          RUN=${{ github.run_id }}
+          BODY="## E2E Screenshots — [Run #${RUN}](https://github.com/${REPO}/actions/runs/${RUN})\n\n"
+          BODY+="| Platform | initial | house-loaded | puzzle-generated |\n"
+          BODY+="|----------|---------|-------------|------------------|\n"
+
+          for platform_dir in screenshots/e2e-screenshots-*/; do
+            [ -d "$platform_dir" ] || continue
+            platform=$(basename "$platform_dir" | sed 's/e2e-screenshots-//')
+            row="| ${platform} |"
+            for name in initial-state house-loaded puzzle-generated; do
+              f="${platform_dir}${name}.png"
+              if [ -s "$f" ]; then
+                size=$(wc -c < "$f" | tr -d ' ')
+                row+=" ${size}B |"
+              else
+                row+=" - |"
+              fi
+            done
+            BODY+="${row}\n"
+          done
+
+          BODY+="\nDownload screenshots from [Artifacts](https://github.com/${REPO}/actions/runs/${RUN}#artifacts)."
+
+          # Delete previous bot comments on this PR
+          gh api "repos/${REPO}/issues/${PR}/comments" --jq '.[] | select(.body | startswith("## E2E Screenshots")) | .id' | while read id; do
+            gh api -X DELETE "repos/${REPO}/issues/comments/${id}" 2>/dev/null
+          done
+
+          gh api "repos/${REPO}/issues/${PR}/comments" -f body="$(echo -e "$BODY")"
