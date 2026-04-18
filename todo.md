@@ -31,9 +31,9 @@ but discard it by rasterizing the entire page into one image.
    paths. Render everything via tiny-skia. MuPDF only for decompression
    and page geometry. Most work but highest fidelity.
 
-### macOS double-click binary (PR #44)
-Binary name with dots (`house-puzzle-0.3.7`) breaks Finder double-click.
-Fix: use dashes (`house-puzzle-0-3-7`). PR #44 open, not merged.
+### ~~macOS double-click binary (PR #44)~~
+~~Binary name with dots breaks Finder double-click.~~
+Resolved: Tauri app bundle handles this natively.
 
 ## Features
 
@@ -45,9 +45,9 @@ Add structured logging throughout the pipeline (parse, render, merge, export).
 Eventually: opt-in home-calling that sends error logs to a remote endpoint
 so client-reported issues can be diagnosed without access to their machine.
 
-### Update checker
-On startup, check GitHub releases API for a newer version.
-If found, show a non-blocking banner in the UI: "Version X.Y.Z available".
+### ~~Update checker~~
+~~On startup, check GitHub releases API for a newer version.~~
+Done: tauri-plugin-updater integrated (PR #56).
 
 ### Extract test harness behind feature flag
 The `--test-mode` file watcher and JS eval for clicks live in production
@@ -69,7 +69,8 @@ Replace our custom test harness with proper WebDriver-based testing:
 When combining pieces in the editor, verify they are adjacent before
 allowing the merge. Currently not enforced.
 
-## Nice-to-have
+## ~~Nice-to-have~~
 
-### Tauri desktop app
-Wrap existing server+webview for native app bundle, Gatekeeper signing, dock icon.
+### ~~Tauri desktop app~~
+~~Wrap existing server+webview for native app bundle, Gatekeeper signing, dock icon.~~
+Done: Tauri migration is now the mainline (PR #57).
