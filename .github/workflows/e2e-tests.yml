@@ -98,6 +98,7 @@ jobs:
           chmod 600 "$HOME/.ssh/tauri_ui_test"
           ssh-keyscan github.com >> "$HOME/.ssh/known_hosts" 2>/dev/null
           echo "GIT_SSH_COMMAND=ssh -i $HOME/.ssh/tauri_ui_test -o StrictHostKeyChecking=no" >> $GITHUB_ENV
+          echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> $GITHUB_ENV
 
       - name: Build app + test runner
         run: |
