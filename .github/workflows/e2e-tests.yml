@@ -90,6 +90,13 @@ jobs:
           npm install -g elm
           elm make src/Main.elm --output ../crates/hp-tauri/dist/elm.js
 
+      - name: Configure SSH for private git deps
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_KEY_TAURI_UI_TEST }}" > ~/.ssh/tauri_ui_test
+          chmod 600 ~/.ssh/tauri_ui_test
+          echo -e "Host github.com\n  IdentityFile ~/.ssh/tauri_ui_test\n  StrictHostKeyChecking no" >> ~/.ssh/config
+
       - name: Build app + test runner
         run: |
           cargo build ${{ matrix.cargo_build_args }} --manifest-path crates/hp-tauri/Cargo.toml

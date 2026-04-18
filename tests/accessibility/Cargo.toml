@@ -8,4 +8,4 @@ name = "hp-e2e-test"
 path = "src/main.rs"
 
 [dependencies]
-tauri-ui-test = { git = "https://github.com/AlexeyTuboltsev/tauri-ui-test", branch = "main" }
+tauri-ui-test = { git = "ssh://git@github.com/AlexeyTuboltsev/tauri-ui-test", branch = "main" }
