@@ -15,6 +15,7 @@
         "center": true
       }
     ],
+    "withGlobalTauri": true,
     "security": {
       "csp": null
     }
