@@ -349,17 +349,19 @@ fn polygon_area(pts: &[[f64; 2]]) -> f64 {
 }
 
 /// Parse path operator lines into polygons (PyMuPDF y-down coords).
+/// Returns (polygons, open_path_count).
 fn parse_path_lines(
     lines: &[Vec<&str>],
     offset_x: f64,
     y_base: f64,
-) -> Vec<Vec<[f64; 2]>> {
+) -> (Vec<Vec<[f64; 2]>>, usize) {
     let to_pymu = |ax: f64, ay: f64| -> [f64; 2] {
         [ax + offset_x, y_base - ay]
     };
 
     let mut pts: Vec<[f64; 2]> = Vec::new();
     let mut polygons: Vec<Vec<[f64; 2]>> = Vec::new();
+    let mut open_paths = 0usize;
 
     for parts in lines {
         if parts.is_empty() {
@@ -369,8 +371,9 @@ fn parse_path_lines(
 
         match op {
             "m" if parts.len() >= 3 => {
-                if pts.len() >= 3 {
-                    polygons.push(pts.clone());
+                // New sub-path — discard any unclosed previous path
+                if !pts.is_empty() {
+                    open_paths += 1;
                 }
                 let x: f64 = parts[0].parse().unwrap_or(0.0);
                 let y: f64 = parts[1].parse().unwrap_or(0.0);
@@ -402,6 +405,7 @@ fn parse_path_lines(
                 pts.push(p4);
             }
             "n" | "N" | "f" | "F" | "s" | "S" | "b" | "B" => {
+                // Close operator — this path is a valid closed polygon
                 if pts.len() >= 3 {
                     polygons.push(pts.clone());
                 }
@@ -411,18 +415,28 @@ fn parse_path_lines(
         }
     }
 
-    if pts.len() >= 3 {
-        polygons.push(pts);
+    // Discard any trailing unclosed path (no close operator before end)
+    if !pts.is_empty() {
+        open_paths += 1;
     }
-    polygons
+    (polygons, open_paths)
 }
 
 /// Extract the vector polygon for a brick from %_ prefixed PostScript path lines.
+///
+/// When a layer contains multiple sub-paths, they are classified into 4 cases:
+/// 1. **Containment**: larger object fully contains smaller ones (e.g. window frame
+///    around glass) → keep only the outermost polygon.
+/// 2. **Overlap**: objects overlap → union them into one polygon.
+/// 3. **Adjacent**: objects are separate but within `ADJACENCY_DIST` px → union
+///    original vectors and bridge gaps with thin rectangles. Outer shapes preserved.
+/// 4. **Independent**: objects are far apart → keep only the largest, log a warning.
 fn extract_vector_path(
     block: &LayerBlock,
     data: &[u8],
     offset_x: f64,
     y_base: f64,
+    warnings: &mut Vec<String>,
 ) -> Vec<[f64; 2]> {
     let block_data = &data[block.begin..block.end];
 
@@ -464,18 +478,243 @@ fn extract_vector_path(
         }
     }
 
+    let trace = block.name == "Layer 81" || block.name == "Layer 82" || block.name == "Layer 83" || block.name == "Layer 84";
+    if trace {
+        eprintln!("[TRACE] layer '{}': {} parsed path lines", block.name, parsed_lines.len());
+        for (i, parts) in parsed_lines.iter().enumerate() {
+            eprintln!("[TRACE]   line {}: {}", i, parts.join(" "));
+        }
+    }
+
     // Convert to &str slices for parse_path_lines
     let refs: Vec<Vec<&str>> = parsed_lines.iter()
         .map(|parts| parts.iter().map(|s| s.as_str()).collect())
         .collect();
-    let polygons = parse_path_lines(&refs, offset_x, y_base);
-    // Pick the polygon with the largest area (not just most points)
-    // This correctly selects the full door/window frame over a small glass insert
-    polygons.into_iter().max_by(|a, b| {
-        let area_a = polygon_area(a);
-        let area_b = polygon_area(b);
-        area_a.partial_cmp(&area_b).unwrap_or(std::cmp::Ordering::Equal)
-    }).unwrap_or_default()
+    let (polygons, open_paths) = parse_path_lines(&refs, offset_x, y_base);
+
+    if open_paths > 0 {
+        warnings.push(format!(
+            "Layer '{}': {} unclosed path(s) — discarded (open paths are not valid brick outlines)",
+            block.name, open_paths
+        ));
+    }
+
+    if trace {
+        eprintln!("[TRACE] layer '{}': parse_path_lines produced {} polygons, {} open paths discarded",
+            block.name, polygons.len(), open_paths);
+        for (i, poly) in polygons.iter().enumerate() {
+            let area = polygon_area(poly);
+            eprintln!("[TRACE]   polygon {}: {} pts, area={:.1}", i, poly.len(), area);
+            for (j, pt) in poly.iter().enumerate() {
+                eprintln!("[TRACE]     v{}: ({:.1}, {:.1})", j, pt[0], pt[1]);
+            }
+        }
+    }
+
+    // Filter to significant polygons (≥3 points, area > 10px²)
+    let significant: Vec<Vec<[f64; 2]>> = polygons.into_iter()
+        .filter(|p| p.len() >= 3 && polygon_area(p).abs() > 10.0)
+        .collect();
+
+    if trace {
+        eprintln!("[TRACE] layer '{}': {} significant polygons after filter", block.name, significant.len());
+    }
+
+    if significant.is_empty() {
+        return vec![];
+    }
+    if significant.len() == 1 {
+        if trace {
+            eprintln!("[TRACE] layer '{}': single polygon, returning as-is", block.name);
+        }
+        return significant.into_iter().next().unwrap();
+    }
+
+    // --- Multiple polygons on this layer: classify each pair ---
+    use geo::{Coord, LineString, Polygon as GeoPoly};
+    use geo::algorithm::area::Area;
+    use geo_clipper::Clipper;
+
+    const ADJACENCY_DIST: f64 = 15.0;
+    const GAP_BRIDGE_WIDTH: f64 = 2.0;
+    let factor = 1000.0;
+
+    // Compute bboxes
+    let bboxes: Vec<(f64, f64, f64, f64)> = significant.iter().map(|poly| {
+        let (mut x0, mut y0) = (f64::INFINITY, f64::INFINITY);
+        let (mut x1, mut y1) = (f64::NEG_INFINITY, f64::NEG_INFINITY);
+        for p in poly { x0 = x0.min(p[0]); y0 = y0.min(p[1]); x1 = x1.max(p[0]); y1 = y1.max(p[1]); }
+        (x0, y0, x1, y1)
+    }).collect();
+
+    let bbox_contains = |outer: (f64, f64, f64, f64), inner: (f64, f64, f64, f64)| -> bool {
+        let m = 2.0;
+        inner.0 >= outer.0 - m && inner.1 >= outer.1 - m
+            && inner.2 <= outer.2 + m && inner.3 <= outer.3 + m
+    };
+
+    let bbox_overlaps = |a: (f64, f64, f64, f64), b: (f64, f64, f64, f64)| -> bool {
+        a.0 < b.2 && a.2 > b.0 && a.1 < b.3 && a.3 > b.1
+    };
+
+    let bbox_distance = |a: (f64, f64, f64, f64), b: (f64, f64, f64, f64)| -> f64 {
+        let dx = if a.2 < b.0 { b.0 - a.2 } else if b.2 < a.0 { a.0 - b.2 } else { 0.0 };
+        let dy = if a.3 < b.1 { b.1 - a.3 } else if b.3 < a.1 { a.1 - b.3 } else { 0.0 };
+        (dx * dx + dy * dy).sqrt()
+    };
+
+    let n = significant.len();
+
+    // Sort by area descending — index 0 is the largest
+    let mut order: Vec<usize> = (0..n).collect();
+    order.sort_by(|&a, &b| {
+        polygon_area(&significant[b]).abs()
+            .partial_cmp(&polygon_area(&significant[a]).abs())
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    // Classify each smaller polygon relative to the largest and its group
+    // Start with the largest polygon; try to absorb others.
+    let mut absorbed: Vec<bool> = vec![false; n];
+    let mut to_merge: Vec<usize> = vec![order[0]]; // always include the largest
+
+    for &i in &order[1..] {
+        let mut relationship = "independent";
+
+        let area_i = polygon_area(&significant[i]).abs();
+
+        // Check against all already-absorbed polygons for any connection
+        for &j in &to_merge {
+            let area_j = polygon_area(&significant[j]).abs();
+
+            if bbox_contains(bboxes[j], bboxes[i]) {
+                // Bbox is contained — but is it truly containment (glass inside
+                // frame) or two halves of a diagonal split?
+                // True containment: inner is small relative to outer (< 30%).
+                // Diagonal split: both halves are large relative to each other.
+                let ratio = if area_j > 0.0 { area_i / area_j } else { 1.0 };
+                if ratio < 0.3 {
+                    // Case 1: genuinely contained (e.g. glass inside frame)
+                    relationship = "contained";
+                } else {
+                    // Case 2: overlapping halves (e.g. diagonal window split)
+                    relationship = "overlap";
+                }
+                break;
+            }
+            if bbox_overlaps(bboxes[j], bboxes[i]) {
+                // Case 2: overlap — include for union
+                relationship = "overlap";
+                break;
+            }
+            if bbox_distance(bboxes[j], bboxes[i]) < ADJACENCY_DIST {
+                // Case 3: adjacent within threshold — include for union+bridge
+                relationship = "adjacent";
+                break;
+            }
+        }
+
+        if trace {
+            eprintln!("[TRACE] layer '{}': poly {} → {}", block.name, i, relationship);
+        }
+
+        match relationship {
+            "contained" => {
+                // Case 1: fully contained — just drop it
+                absorbed[i] = true;
+            }
+            "overlap" | "adjacent" => {
+                // Cases 2 & 3: include in merge group
+                to_merge.push(i);
+                absorbed[i] = true;
+            }
+            _ => {
+                // Case 4: independent — will be discarded
+                absorbed[i] = true;
+            }
+        }
+    }
+
+    // Log case 4 discards
+    let discarded: Vec<usize> = (0..n).filter(|i| {
+        absorbed[*i] && !to_merge.contains(i)
+    }).collect();
+    if !discarded.is_empty() {
+        warnings.push(format!(
+            "MULTI_OBJECT: layer '{}' has {} polygons, discarded {} independent objects",
+            block.name, n, discarded.len()
+        ));
+    }
+
+    // If only the largest survived, return it directly
+    if to_merge.len() == 1 {
+        return significant.into_iter().nth(to_merge[0]).unwrap();
+    }
+
+    // Convert merge group to geo Polygons
+    let mut geo_polys: Vec<GeoPoly<f64>> = Vec::new();
+    for &idx in &to_merge {
+        let pts = &significant[idx];
+        let mut coords: Vec<Coord<f64>> = pts.iter()
+            .map(|p| Coord { x: p[0], y: p[1] })
+            .collect();
+        if coords.len() < 3 { continue; }
+        if coords.first() != coords.last() {
+            coords.push(coords[0]);
+        }
+        let poly = GeoPoly::new(LineString::new(coords), vec![]);
+        if poly.unsigned_area() > 1.0 {
+            geo_polys.push(poly);
+        }
+    }
+
+    if geo_polys.is_empty() {
+        return significant.into_iter().next().unwrap();
+    }
+    if geo_polys.len() == 1 {
+        return geo_polys[0].exterior().0.iter().map(|c| [c.x, c.y]).collect();
+    }
+
+    // Union all polygons in the merge group (handles cases 2 & 3)
+    let mut union = geo::MultiPolygon(vec![geo_polys[0].clone()]);
+    for poly in &geo_polys[1..] {
+        union = Clipper::union(&union, poly, factor);
+    }
+    union.0.retain(|p| p.unsigned_area() > 1.0);
+
+    // Case 3: bridge remaining gaps between disconnected components
+    if union.0.len() > 1 {
+        let mut bridges: Vec<GeoPoly<f64>> = Vec::new();
+        for i in 0..union.0.len() {
+            for j in (i + 1)..union.0.len() {
+                let (dist, pt_a, pt_b) =
+                    crate::puzzle::nearest_edge_points(union.0[i].exterior(), union.0[j].exterior());
+                if dist < ADJACENCY_DIST {
+                    bridges.push(crate::puzzle::make_bridge_rect(pt_a, pt_b, GAP_BRIDGE_WIDTH));
+                }
+            }
+        }
+        for bridge in &bridges {
+            union = Clipper::union(&union, bridge, factor);
+        }
+        union.0.retain(|p| p.unsigned_area() > 1.0);
+    }
+
+    // Take the largest resulting polygon
+    let final_poly = union.0.into_iter()
+        .max_by(|a, b| a.unsigned_area().partial_cmp(&b.unsigned_area())
+            .unwrap_or(std::cmp::Ordering::Equal))
+        .unwrap();
+
+    let result: Vec<[f64; 2]> = final_poly.exterior().0.iter().map(|c| [c.x, c.y]).collect();
+    if trace {
+        eprintln!("[TRACE] layer '{}': final merged polygon {} pts, area={:.1}",
+            block.name, result.len(), final_poly.unsigned_area());
+        for (i, pt) in result.iter().enumerate() {
+            eprintln!("[TRACE]   v{}: ({:.1}, {:.1})", i, pt[0], pt[1]);
+        }
+    }
+    result
 }
 
 // ---------------------------------------------------------------------------
@@ -515,10 +754,18 @@ pub fn parse_ai(
     let t0 = std::time::Instant::now();
     let roots = parse_layer_tree(data);
     eprintln!("[parse_ai] layer_tree: {:?} — roots: {:?}", t0.elapsed(), roots.iter().map(|r| &r.name).collect::<Vec<_>>());
+    // Hard blocks: required layers must exist
+    let root_names: Vec<&str> = roots.iter().map(|r| r.name.as_str()).collect();
     let bg = roots.iter().find(|r| r.name == "background")
-        .context("No 'background' layer found")?;
+        .context("Missing required layer 'background'")?;
     let bricks_node = roots.iter().find(|r| r.name == "bricks")
-        .context("No 'bricks' layer found")?;
+        .context("Missing required layer 'bricks'")?;
+    if bricks_node.children.is_empty() {
+        anyhow::bail!("Layer 'bricks' is empty — no brick sub-layers found");
+    }
+    if !root_names.contains(&"screen") {
+        eprintln!("[parse_ai] WARNING: layer 'screen' is missing — DPI will be estimated");
+    }
 
     // Step 3: open as PDF for page geometry
     let doc = mupdf::pdf::PdfDocument::open(ai_path.to_str().unwrap_or(""))
@@ -661,7 +908,7 @@ pub fn parse_ai(
         seen_bbox.insert(bbox_key);
 
         // Extract vector polygon
-        let poly_pymu = extract_vector_path(p.child, data, offset_x, y_base);
+        let poly_pymu = extract_vector_path(p.child, data, offset_x, y_base, &mut warnings);
         let polygon = if poly_pymu.len() >= 3 {
             Some(
                 poly_pymu.iter().map(|pt| {
@@ -679,64 +926,9 @@ pub fn parse_ai(
             ])
         };
 
-        // Detect multi-object layers using actual parsed vector polygons.
-        // If the layer produces multiple disjoint polygons, it has separate bricks.
-        {
-            let block_data_ref = &data[p.child.begin..p.child.end];
-            let lines: Vec<String> = split_lines(block_data_ref)
-                .iter()
-                .map(|(l, _)| bstr(l).trim().to_string())
-                .collect();
-            let mut parsed_lines: Vec<Vec<String>> = Vec::new();
-            for line in &lines {
-                if !line.starts_with("%_") { continue; }
-                let parts: Vec<String> = line[2..].split_whitespace().map(|s| s.to_string()).collect();
-                if !parts.is_empty() && PATH_OPS.contains(&parts.last().expect("guarded by parts.is_empty() check").as_str()) {
-                    parsed_lines.push(parts);
-                }
-            }
-            let refs: Vec<Vec<&str>> = parsed_lines.iter()
-                .map(|parts| parts.iter().map(|s| s.as_str()).collect())
-                .collect();
-            let all_polys = parse_path_lines(&refs, offset_x, y_base);
-            // Only consider polygons with meaningful area
-            let significant: Vec<_> = all_polys.iter()
-                .filter(|poly| poly.len() >= 3 && polygon_area(poly).abs() > 10.0)
-                .collect();
-            if significant.len() > 1 {
-                // Compute bboxes for each polygon
-                let bboxes: Vec<_> = significant.iter().map(|poly| {
-                    let xs: Vec<f64> = poly.iter().map(|p| p[0]).collect();
-                    let ys: Vec<f64> = poly.iter().map(|p| p[1]).collect();
-                    (xs.iter().cloned().fold(f64::INFINITY, f64::min),
-                     ys.iter().cloned().fold(f64::INFINITY, f64::min),
-                     xs.iter().cloned().fold(f64::NEG_INFINITY, f64::max),
-                     ys.iter().cloned().fold(f64::NEG_INFINITY, f64::max))
-                }).collect();
-                // Find the largest polygon bbox
-                let largest_idx = bboxes.iter().enumerate()
-                    .max_by(|(_, a), (_, b)| {
-                        let area_a = (a.2 - a.0) * (a.3 - a.1);
-                        let area_b = (b.2 - b.0) * (b.3 - b.1);
-                        area_a.partial_cmp(&area_b).unwrap_or(std::cmp::Ordering::Equal)
-                    })
-                    .map(|(i, _)| i)
-                    .unwrap_or(0);
-                let (lx0, ly0, lx1, ly1) = bboxes[largest_idx];
-                // Check if any other polygon falls OUTSIDE the largest bbox
-                // If yes, they're truly separate bricks (not decorative sub-paths)
-                let has_outside = bboxes.iter().enumerate().any(|(i, &(bx0, by0, bx1, by1))| {
-                    if i == largest_idx { return false; }
-                    // "Outside" = bbox center is outside the largest bbox
-                    let cx = (bx0 + bx1) / 2.0;
-                    let cy = (by0 + by1) / 2.0;
-                    cx < lx0 || cx > lx1 || cy < ly0 || cy > ly1
-                });
-                if has_outside {
-                    warnings.push(format!("MULTI_OBJECT: layer '{}' has {} separate outlines", p.child.name, significant.len()));
-                }
-            }
-        }
+        // Note: multi-object layers are now handled in extract_vector_path(),
+        // which groups spatially adjacent polygons (within 15px) and merges
+        // them via convex hull. No separate warning needed here.
 
         // Use polygon bounding box as the brick's true extent.
         // The initial px/py/pw/ph came from raster matrix or plain path bbox,
@@ -785,8 +977,130 @@ pub fn parse_ai(
 
     eprintln!("[parse_ai] build_placements+polygons: {:?} ({} results)", t0.elapsed(), results.len());
 
-    // Filter out bricks without polygons
-    results.retain(|b| b.polygon.is_some());
+    // ── Validation pass ─────────────────────────────────────────────────
+
+    // 5. Degenerate polygons: < 3 points or near-zero area
+    {
+        let before = results.len();
+        results.retain(|b| {
+            match &b.polygon {
+                Some(poly) if poly.len() >= 3 => {
+                    let area = polygon_area(poly).abs();
+                    if area < 1.0 {
+                        warnings.push(format!(
+                            "Layer '{}': degenerate polygon (area={:.1}) — discarded", b.name, area
+                        ));
+                        false
+                    } else {
+                        true
+                    }
+                }
+                Some(poly) => {
+                    warnings.push(format!(
+                        "Layer '{}': polygon has only {} points — discarded", b.name, poly.len()
+                    ));
+                    false
+                }
+                None => {
+                    // No polygon at all — already logged by extract_vector_path
+                    false
+                }
+            }
+        });
+        let removed = before - results.len();
+        if removed > 0 {
+            eprintln!("[validation] removed {} degenerate/missing polygon bricks", removed);
+        }
+    }
+
+    // 2 & 3. Overlap / containment detection between bricks from different layers.
+    // Convert brick polygons to canvas coords for comparison.
+    {
+        use geo::{Coord, LineString, Polygon as GeoPoly};
+        use geo::algorithm::area::Area;
+        use geo::algorithm::bounding_rect::BoundingRect;
+        use geo_clipper::Clipper;
+
+        let factor = 1000.0;
+        const OVERLAP_THRESHOLD: f64 = 0.1; // 10% of smaller brick's area = significant overlap
+
+        // Build geo polygons in canvas coords for each brick
+        let geo_polys: Vec<Option<GeoPoly<f64>>> = results.iter().map(|b| {
+            let pts = b.polygon.as_ref()?;
+            if pts.len() < 3 { return None; }
+            let mut coords: Vec<Coord<f64>> = pts.iter()
+                .map(|p| Coord { x: p[0] + b.x as f64, y: p[1] + b.y as f64 })
+                .collect();
+            if coords.first() != coords.last() {
+                coords.push(coords[0]);
+            }
+            let poly = GeoPoly::new(LineString::new(coords), vec![]);
+            if poly.unsigned_area() > 1.0 { Some(poly) } else { None }
+        }).collect();
+
+        let mut to_remove: std::collections::HashSet<usize> = std::collections::HashSet::new();
+
+        for i in 0..results.len() {
+            if to_remove.contains(&i) { continue; }
+            let pa = match &geo_polys[i] { Some(p) => p, None => continue };
+            let area_a = pa.unsigned_area();
+
+            for j in (i + 1)..results.len() {
+                if to_remove.contains(&j) { continue; }
+                let pb = match &geo_polys[j] { Some(p) => p, None => continue };
+                let area_b = pb.unsigned_area();
+
+                // Quick bbox check
+                let a_bb = pa.bounding_rect();
+                let b_bb = pb.bounding_rect();
+                if let (Some(a_r), Some(b_r)) = (a_bb, b_bb) {
+                    if a_r.max().x < b_r.min().x || b_r.max().x < a_r.min().x
+                        || a_r.max().y < b_r.min().y || b_r.max().y < a_r.min().y
+                    {
+                        continue; // no overlap possible
+                    }
+                }
+
+                // Compute intersection
+                let inter = Clipper::intersection(&geo::MultiPolygon(vec![pa.clone()]),
+                                                   pb, factor);
+                let inter_area: f64 = inter.0.iter().map(|p| p.unsigned_area()).sum();
+                if inter_area < 1.0 { continue; }
+
+                let smaller_area = area_a.min(area_b);
+                let overlap_ratio = inter_area / smaller_area;
+
+                if overlap_ratio > 0.9 {
+                    // Case 3: near-full containment — discard the smaller brick
+                    let (discard, keep) = if area_a < area_b { (i, j) } else { (j, i) };
+                    warnings.push(format!(
+                        "Layer '{}' is fully contained within Layer '{}' ({:.0}% overlap) — discarded",
+                        results[discard].name, results[keep].name, overlap_ratio * 100.0
+                    ));
+                    to_remove.insert(discard);
+                } else if overlap_ratio > OVERLAP_THRESHOLD {
+                    // Case 2: significant overlap — discard the smaller, flag it
+                    let (discard, keep) = if area_a < area_b { (i, j) } else { (j, i) };
+                    warnings.push(format!(
+                        "Layer '{}' overlaps Layer '{}' ({:.0}% of smaller area) — Layer '{}' discarded",
+                        results[discard].name, results[keep].name, overlap_ratio * 100.0,
+                        results[discard].name
+                    ));
+                    to_remove.insert(discard);
+                }
+            }
+        }
+
+        if !to_remove.is_empty() {
+            eprintln!("[validation] removing {} overlapping/contained bricks", to_remove.len());
+            let mut idx = 0;
+            results.retain(|_| {
+                let keep = !to_remove.contains(&idx);
+                idx += 1;
+                keep
+            });
+        }
+    }
 
     let metadata = ParsedAiMetadata {
         canvas_width: canvas_w_px,

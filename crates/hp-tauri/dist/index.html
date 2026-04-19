@@ -1070,7 +1070,9 @@ if (window.Elm && window.Elm.Main) {
   window.__hpApp = app;
 
   app.ports.logBrick.subscribe(function(data) {
-    console.log('[brick click] id=' + data.brickId + '  layer=' + data.layerName + '  piece=' + data.pieceId);
+    var msg = '[brick click] id=' + data.brickId + '  layer=' + data.layerName + '  piece=' + data.pieceId;
+    console.log(msg);
+    if (window.__TAURI__) window.__TAURI__.core.invoke('log_to_stderr', {msg: msg});
   });
 
   if (window.__TAURI__) {
