@@ -19,6 +19,11 @@ pub fn get_version() -> String {
     option_env!("HP_VERSION").unwrap_or("dev").to_string()
 }
 
+#[tauri::command]
+pub fn log_to_stderr(msg: String) {
+    eprintln!("[webview] {msg}");
+}
+
 // ---------------------------------------------------------------------------
 // List PDFs
 // ---------------------------------------------------------------------------

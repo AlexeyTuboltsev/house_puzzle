@@ -1066,6 +1066,9 @@ if (window.Elm && window.Elm.Main) {
 
   app.ports.setTitle.subscribe(function(title) { document.title = title; });
 
+  // Expose app for test-mode commands
+  window.__hpApp = app;
+
   app.ports.logBrick.subscribe(function(data) {
     console.log('[brick click] id=' + data.brickId + '  layer=' + data.layerName + '  piece=' + data.pieceId);
   });
@@ -1095,6 +1098,9 @@ if (window.Elm && window.Elm.Main) {
     app.ports.tauriInvoke.subscribe(async function(request) {
       try {
         console.log('[js-bridge] invoke:', request.command, JSON.stringify(request.args));
+        if (request.command === 'merge_pieces') {
+          await window.__TAURI__.core.invoke('log_to_stderr', {msg: '[js-bridge] merge_pieces args: ' + JSON.stringify(request.args)});
+        }
         var result = await window.__TAURI__.core.invoke(request.command, request.args || {});
         // Convert file paths to asset URLs for image-returning commands
         if (request.command === 'load_pdf' || request.command === 'merge_pieces') {
