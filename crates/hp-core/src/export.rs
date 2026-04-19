@@ -19,7 +19,7 @@ fn pixel_to_unity(px_x: f64, px_y: f64, canvas_h: f64, ppu: f64) -> (f64, f64) {
 /// Build the house_data.json structure for Unity import.
 pub fn build_house_data(
     pieces: &[PuzzlePiece],
-    bricks_by_id: &HashMap<String, Brick>,
+    _bricks_by_id: &HashMap<String, Brick>,
     canvas_width: i32,
     canvas_height: i32,
     waves: &[serde_json::Value],
@@ -60,7 +60,7 @@ pub fn build_house_data(
     }
 
     // Steps from waves
-    let all_piece_ids: std::collections::HashSet<&str> = pieces.iter().map(|p| p.id.as_str()).collect();
+    let _all_piece_ids: std::collections::HashSet<&str> = pieces.iter().map(|p| p.id.as_str()).collect();
     let mut assigned_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut steps = Vec::new();
 

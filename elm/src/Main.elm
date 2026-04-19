@@ -18,6 +18,11 @@ import Process
 import Task
 
 
+tid : String -> Html.Attribute msg
+tid val =
+    Html.Attributes.attribute "data-testid" val
+
+
 
 -- ── Types ──────────────────────────────────────────────────────────────────
 
@@ -370,6 +375,7 @@ type Msg
     | Undo
     | Redo
     | TauriResponse D.Value
+    | TestSetValue { testId : String, value : String }
     | NoOp
 
 
@@ -387,6 +393,9 @@ port tauriInvoke : { command : String, args : E.Value, requestId : String } -> C
 
 
 port tauriResponse : (D.Value -> msg) -> Sub msg
+
+
+port testSetValue : ({ testId : String, value : String } -> msg) -> Sub msg
 
 
 
@@ -624,6 +633,9 @@ update msg model =
         SetTargetCount s ->
             case String.toInt s of
                 Just n ->
+                    let
+                        _ = Debug.log "[elm] SetTargetCount" (String.fromInt n)
+                    in
                     ( { model | targetCount = Basics.max 1 n }, Cmd.none )
 
                 Nothing ->
@@ -648,6 +660,21 @@ update msg model =
         RequestGenerate ->
             case model.loadState of
                 Loaded _ ->
+                    let
+                        _ = Debug.log "[elm] RequestGenerate targetCount" model.targetCount
+                        _ = Debug.log "[elm] RequestGenerate minBorder" model.minBorder
+                        _ = Debug.log "[elm] RequestGenerate seed" model.seed
+
+                        logGenCmd =
+                            if model.isTauri then
+                                tauriInvoke
+                                    { command = "log_to_stderr"
+                                    , args = E.object [ ( "msg", E.string ("[elm] RequestGenerate: targetCount=" ++ String.fromInt model.targetCount) ) ]
+                                    , requestId = "log"
+                                    }
+                            else
+                                Cmd.none
+                    in
                     ( { model
                         | generateState = Compositing
                         , pieces = []
@@ -663,7 +690,10 @@ update msg model =
                         , editOriginalGroups = []
                         , recomputing = False
                       }
-                    , mergeBricks model.isTauri model.sessionKey model.targetCount model.minBorder model.seed
+                    , Cmd.batch
+                        [ mergeBricks model.isTauri model.sessionKey model.targetCount model.minBorder model.seed
+                        , logGenCmd
+                        ]
                     )
 
                 _ ->
@@ -1241,7 +1271,7 @@ update msg model =
                         [ ( "waves", wavesJson )
                         , ( "outlines", outlinesJson )
                         , ( "groups", groupsJson )
-                        , ( "export_canvas_height", E.int exportHeight )
+                        , ( "exportCanvasHeight", E.int exportHeight )
                         , ( "placement"
                           , E.object
                                 [ ( "location", E.string model.exportLocation )
@@ -1261,7 +1291,7 @@ update msg model =
                             [ ( "key", E.string model.sessionKey )
                             , ( "waves", wavesJson )
                             , ( "groups", groupsJson )
-                            , ( "export_canvas_height", E.int exportHeight )
+                            , ( "exportCanvasHeight", E.int exportHeight )
                             , ( "placement"
                               , E.object
                                     [ ( "location", E.string model.exportLocation )
@@ -2041,6 +2071,39 @@ update msg model =
                     _ ->
                         ( model, Cmd.none )
 
+        TestSetValue { testId, value } ->
+            let
+                _ = Debug.log "[elm] TestSetValue" (testId ++ "=" ++ value)
+
+                logCmd =
+                    if model.isTauri then
+                        tauriInvoke
+                            { command = "log_to_stderr"
+                            , args = E.object [ ( "msg", E.string ("[elm] TestSetValue received: " ++ testId ++ "=" ++ value) ) ]
+                            , requestId = "log"
+                            }
+                    else
+                        Cmd.none
+            in
+            case testId of
+                "target-pieces" ->
+                    case String.toInt value of
+                        Just n -> ( { model | targetCount = Basics.max 1 n }, logCmd )
+                        Nothing -> ( model, logCmd )
+
+                "min-border" ->
+                    case String.toInt value of
+                        Just n -> ( { model | minBorder = Basics.max 0 n }, Cmd.none )
+                        Nothing -> ( model, Cmd.none )
+
+                "zoom" ->
+                    case String.toFloat value of
+                        Just z -> ( { model | zoomLevel = z }, Cmd.none )
+                        Nothing -> ( model, Cmd.none )
+
+                _ ->
+                    ( model, Cmd.none )
+
         NoOp ->
             ( model, Cmd.none )
 
@@ -2157,7 +2220,7 @@ loadPdf isTauri key path canvasHeight =
             , args =
                 E.object
                     [ ( "path", E.string path )
-                    , ( "canvas_height", E.int (round canvasHeight) )
+                    , ( "canvasHeight", E.int (round canvasHeight) )
                     ]
             , requestId = "load_pdf"
             }
@@ -2171,7 +2234,7 @@ loadPdf isTauri key path canvasHeight =
                 Http.jsonBody
                     (E.object
                         [ ( "path", E.string path )
-                        , ( "canvas_height", E.int (round canvasHeight) )
+                        , ( "canvasHeight", E.int (round canvasHeight) )
                         ]
                     )
             , expect = Http.expectJson GotLoadResponse decodeLoadResponse
@@ -2182,15 +2245,18 @@ loadPdf isTauri key path canvasHeight =
 
 mergeBricks : Bool -> String -> Int -> Int -> Int -> Cmd Msg
 mergeBricks isTauri key targetCount minBorder seed =
+    let
+        _ = Debug.log "[elm] mergeBricks sending" { targetCount = targetCount, minBorder = minBorder, seed = seed, isTauri = isTauri }
+    in
     if isTauri then
         tauriInvoke
             { command = "merge_pieces"
             , args =
                 E.object
                     [ ( "key", E.string key )
-                    , ( "target_count", E.int targetCount )
+                    , ( "targetCount", E.int targetCount )
                     , ( "seed", E.int seed )
-                    , ( "min_border", E.int minBorder )
+                    , ( "minBorder", E.int minBorder )
                     ]
             , requestId = "merge_pieces"
             }
@@ -2201,9 +2267,9 @@ mergeBricks isTauri key targetCount minBorder seed =
             , body =
                 Http.jsonBody
                     (E.object
-                        [ ( "target_count", E.int targetCount )
+                        [ ( "targetCount", E.int targetCount )
                         , ( "seed", E.int seed )
-                        , ( "min_border", E.int minBorder )
+                        , ( "minBorder", E.int minBorder )
                         ]
                     )
             , expect = Http.expectJson GotMergeResponse decodeMergeResponse
@@ -2473,7 +2539,7 @@ viewFileList model =
             model.loadState == Loading
     in
     div [ class "file-list" ]
-        ([ button [ class "file-entry file-entry-browse", onClick PickFile, disabled isBusy ]
+        ([ button [ class "file-entry file-entry-browse", onClick PickFile, disabled isBusy, tid "browse" ]
             [ text "Browse…" ]
          ]
             ++ (if List.isEmpty model.pdfFiles then
@@ -2591,6 +2657,7 @@ viewTitleBar model =
                     ]
                 , disabled (not isLoaded || isBusy || isGenerating)
                 , onClick (SetAppMode ModeGenerate)
+                , tid "mode-import"
                 ]
                 [ text
                     (if isGenerating then
@@ -2609,6 +2676,7 @@ viewTitleBar model =
                     ]
                 , disabled (not isGenerated || isBusy || isGenerating)
                 , onClick (SetAppMode ModePieces)
+                , tid "mode-pieces"
                 ]
                 [ text "Pieces" ]
             , span [ class "mode-sep" ] [ text "\u{2195}" ]
@@ -2619,6 +2687,7 @@ viewTitleBar model =
                     ]
                 , disabled (not isGenerated || isBusy || isGenerating)
                 , onClick (SetAppMode ModeBlueprint)
+                , tid "mode-blueprint"
                 ]
                 [ text "Blueprint" ]
             , span [ class "mode-sep" ] [ text "\u{2195}" ]
@@ -2629,6 +2698,7 @@ viewTitleBar model =
                     ]
                 , disabled (not isGenerated || isBusy || isGenerating)
                 , onClick (SetAppMode ModeGroups)
+                , tid "mode-groups"
                 ]
                 [ text "Groups" ]
             , span [ class "mode-sep" ] [ text "\u{2193}" ]
@@ -2639,6 +2709,7 @@ viewTitleBar model =
                     ]
                 , disabled (not isGenerated || isBusy || isGenerating)
                 , onClick (SetAppMode ModeWaves)
+                , tid "mode-waves"
                 ]
                 [ text "Waves" ]
             , span [ class "mode-sep" ] [ text "\u{2193}" ]
@@ -2651,6 +2722,7 @@ viewTitleBar model =
                     ]
                 , disabled (not canExport)
                 , onClick (SetAppMode ModeExport)
+                , tid "mode-export"
                 , title
                     (if hasUnassigned && isGenerated then
                         "All pieces must be assigned to waves before exporting"
@@ -2700,6 +2772,7 @@ viewZoomSlider model =
             [ input
                 [ type_ "range"
                 , class "zoom-slider"
+                , tid "zoom"
                 , Html.Attributes.list "zoom-ticks"
                 , Html.Attributes.min "0.25"
                 , Html.Attributes.max "4.0"
@@ -2923,11 +2996,11 @@ viewGenerateTools model response =
         , viewSectionTitle "Import"
         , div [ class "param-group" ]
             [ label [] [ text "Target Pieces ", span [ class "value" ] [ text (String.fromInt model.targetCount) ] ]
-            , input [ type_ "range", Html.Attributes.min "5", Html.Attributes.max "181", value (String.fromInt model.targetCount), onInput SetTargetCount ] []
+            , input [ type_ "range", Html.Attributes.min "5", Html.Attributes.max "181", value (String.fromInt model.targetCount), onInput SetTargetCount, tid "target-pieces" ] []
             ]
         , div [ class "param-group" ]
             [ label [] [ text "Min. Common Border Length ", span [ class "value" ] [ text (String.fromInt model.minBorder) ], text "px" ]
-            , input [ type_ "range", Html.Attributes.min "0", Html.Attributes.max "50", value (String.fromInt model.minBorder), onInput SetMinBorder ] []
+            , input [ type_ "range", Html.Attributes.min "0", Html.Attributes.max "50", value (String.fromInt model.minBorder), onInput SetMinBorder, tid "min-border" ] []
             ]
         , h2 [] [ text "Import" ]
         , viewImportStats response
@@ -2938,6 +3011,7 @@ viewGenerateTools model response =
             [ class "primary"
             , disabled (not isLoaded || isBusy || isGenerating)
             , onClick RequestGenerate
+            , tid "generate"
             ]
             [ text
                 (if isGenerating then
@@ -4854,6 +4928,7 @@ subscriptions model =
     Sub.batch
         ([ Browser.Events.onKeyDown keyDecoder
          , tauriResponse TauriResponse
+         , testSetValue TestSetValue
          ]
             ++ (case model.colorPicking of
                     Just _ ->

@@ -19,6 +19,11 @@ pub fn get_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }
 
+#[tauri::command]
+pub fn log_to_stderr(msg: String) {
+    eprintln!("[webview] {msg}");
+}
+
 // ---------------------------------------------------------------------------
 // List PDFs
 // ---------------------------------------------------------------------------
@@ -478,8 +483,11 @@ pub async fn merge_pieces(
         let seed_val = seed.unwrap_or(42);
         let min_b = min_border.unwrap_or(5.0);
         let b_gap = border_gap.unwrap_or(2.0);
+        eprintln!("[merge] target_count={target} seed={seed_val} min_border={min_b} border_gap={b_gap} bricks={}", bricks.len());
         let adj = puzzle::build_adjacency_vector(&bricks, &polygons, 15.0, min_b, b_gap);
-        puzzle::merge_bricks(&bricks, target, seed_val, &adj, &areas)
+        let pieces = puzzle::merge_bricks(&bricks, target, seed_val, &adj, &areas);
+        eprintln!("[merge] result: {} pieces", pieces.len());
+        pieces
     };
 
     // Compute piece polygons

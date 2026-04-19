@@ -70,6 +70,20 @@ Replace our custom test harness with proper WebDriver-based testing:
 When combining pieces in the editor, verify they are adjacent before
 allowing the merge. Currently not enforced.
 
+### Adobe Illustrator validation script
+Create a standalone validation script that runs inside Adobe Illustrator
+(ExtendScript / JSX) to check `.ai` files before export. Should detect:
+- Missing required layers (bricks, background, screen)
+- Empty required layers
+- Unclosed paths in brick sub-layers
+- Overlapping brick polygons (bricks must be adjacent, not overlapping)
+- Brick containment (one brick fully inside another)
+- Multi-object layers with independent sub-paths
+- Degenerate paths (< 3 points, zero area)
+
+The Rust backend already validates these on load (see `ai_parser.rs`),
+but catching errors in Illustrator is faster feedback for the artist.
+
 ## ~~Nice-to-have~~
 
 ### ~~Tauri desktop app~~

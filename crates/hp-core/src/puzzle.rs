@@ -163,17 +163,20 @@ pub fn merge_bricks(
     let bricks_by_id: HashMap<&str, &Brick> = bricks.iter().map(|b| (b.id.as_str(), b)).collect();
     let all_ids: HashSet<String> = bricks.iter().map(|b| b.id.clone()).collect();
     let target_count = target_piece_count.max(1);
+    eprintln!("[puzzle] merge_bricks: target_piece_count={target_piece_count} total_bricks={}", all_ids.len());
 
     // Phase 0: exclude oversized bricks
     let total_area: f64 = all_ids.iter().map(|id| brick_areas.get(id).copied().unwrap_or(0.0)).sum();
+    eprintln!("[puzzle] total_area={total_area:.0}");
     let mut fixed_ids: HashSet<String> = HashSet::new();
-    for _ in 0..10 {
+    for iter in 0..10 {
         let target_area = total_area / target_count.max(1) as f64;
         let new_fixed: HashSet<String> = all_ids
             .iter()
             .filter(|id| brick_areas.get(*id).copied().unwrap_or(0.0) >= target_area)
             .cloned()
             .collect();
+        eprintln!("[puzzle] phase0 iter={iter} target_area={target_area:.0} fixed={}", new_fixed.len());
         if new_fixed == fixed_ids {
             break;
         }
@@ -182,6 +185,7 @@ pub fn merge_bricks(
 
     let mergeable_ids: HashSet<String> = all_ids.difference(&fixed_ids).cloned().collect();
     let target_mergeable = target_count.saturating_sub(fixed_ids.len()).max(1);
+    eprintln!("[puzzle] fixed_ids={} mergeable_ids={} target_mergeable={target_mergeable}", fixed_ids.len(), mergeable_ids.len());
     let mergeable_area: f64 = mergeable_ids
         .iter()
         .map(|id| brick_areas.get(id).copied().unwrap_or(0.0))
@@ -220,6 +224,8 @@ pub fn merge_bricks(
     }
 
     // Phase 1: greedy merge
+    eprintln!("[puzzle] phase1 start: pieces_dict.len()={} target_mergeable={target_mergeable}", pieces_dict.len());
+    let mut merge_iter = 0usize;
     while pieces_dict.len() > target_mergeable {
         let mut candidates: Vec<String> = pieces_dict.keys().cloned().collect();
         candidates.sort_by(|a, b| {
@@ -305,10 +311,13 @@ pub fn merge_bricks(
             }
         }
 
+        merge_iter += 1;
         if !merged {
+            eprintln!("[puzzle] phase1 stuck at iter={merge_iter} pieces_dict.len()={}", pieces_dict.len());
             break;
         }
     }
+    eprintln!("[puzzle] phase1 done: iters={merge_iter} mergeable_pieces={} fixed_pieces={}", pieces_dict.len(), fixed_ids.len());
 
     // Build result
     let mut result: Vec<PuzzlePiece> = Vec::new();
@@ -346,14 +355,100 @@ pub fn merge_bricks(
         piece.id = format!("p{i}");
     }
 
+    eprintln!("[puzzle] final result: {} pieces (target was {target_count})", result.len());
     result
+}
+
+/// Find the nearest points between two polygon rings.
+/// Returns (distance, point_on_a, point_on_b).
+pub fn nearest_edge_points(
+    ring_a: &LineString<f64>,
+    ring_b: &LineString<f64>,
+) -> (f64, Coord<f64>, Coord<f64>) {
+    let mut best_dist = f64::INFINITY;
+    let mut best_a = ring_a.0[0];
+    let mut best_b = ring_b.0[0];
+
+    // Check each vertex of A against each edge of B, and vice versa
+    for &pa in &ring_a.0 {
+        for seg in ring_b.lines() {
+            let (dist, closest) = point_to_segment_dist(pa, seg.start, seg.end);
+            if dist < best_dist {
+                best_dist = dist;
+                best_a = pa;
+                best_b = closest;
+            }
+        }
+    }
+    for &pb in &ring_b.0 {
+        for seg in ring_a.lines() {
+            let (dist, closest) = point_to_segment_dist(pb, seg.start, seg.end);
+            if dist < best_dist {
+                best_dist = dist;
+                best_a = closest;
+                best_b = pb;
+            }
+        }
+    }
+
+    (best_dist, best_a, best_b)
+}
+
+/// Distance from point P to segment AB, and the closest point on AB.
+pub fn point_to_segment_dist(p: Coord<f64>, a: Coord<f64>, b: Coord<f64>) -> (f64, Coord<f64>) {
+    let ab = Coord { x: b.x - a.x, y: b.y - a.y };
+    let ap = Coord { x: p.x - a.x, y: p.y - a.y };
+    let len_sq = ab.x * ab.x + ab.y * ab.y;
+    if len_sq < 1e-12 {
+        let d = ((p.x - a.x).powi(2) + (p.y - a.y).powi(2)).sqrt();
+        return (d, a);
+    }
+    let t = (ap.x * ab.x + ap.y * ab.y) / len_sq;
+    let t = t.clamp(0.0, 1.0);
+    let closest = Coord { x: a.x + t * ab.x, y: a.y + t * ab.y };
+    let d = ((p.x - closest.x).powi(2) + (p.y - closest.y).powi(2)).sqrt();
+    (d, closest)
+}
+
+/// Create a thin rectangle bridging two points.
+pub fn make_bridge_rect(a: Coord<f64>, b: Coord<f64>, width: f64) -> Polygon<f64> {
+    let dx = b.x - a.x;
+    let dy = b.y - a.y;
+    let len = (dx * dx + dy * dy).sqrt();
+    if len < 1e-12 {
+        // Degenerate: points are the same, make a tiny square
+        let hw = width / 2.0;
+        return Polygon::new(
+            LineString::new(vec![
+                Coord { x: a.x - hw, y: a.y - hw },
+                Coord { x: a.x + hw, y: a.y - hw },
+                Coord { x: a.x + hw, y: a.y + hw },
+                Coord { x: a.x - hw, y: a.y + hw },
+                Coord { x: a.x - hw, y: a.y - hw },
+            ]),
+            vec![],
+        );
+    }
+    // Normal perpendicular to the line AB
+    let nx = -dy / len * width / 2.0;
+    let ny = dx / len * width / 2.0;
+    Polygon::new(
+        LineString::new(vec![
+            Coord { x: a.x + nx, y: a.y + ny },
+            Coord { x: b.x + nx, y: b.y + ny },
+            Coord { x: b.x - nx, y: b.y - ny },
+            Coord { x: a.x - nx, y: a.y - ny },
+            Coord { x: a.x + nx, y: a.y + ny },
+        ]),
+        vec![],
+    )
 }
 
 /// Compute merged polygon outlines for each piece.
 ///
-/// For each piece, converts brick polygons to canvas coords, buffers by BRIDGE px,
-/// computes union, then erodes back. Returns the largest polygon if the union
-/// produces a MultiPolygon.
+/// Unions the original brick polygons (unbuffered) to preserve exact vector shapes.
+/// Bridges gaps between disconnected components with thin rectangles.
+/// Fills small interior holes.
 pub fn compute_piece_polygons(
     pieces: &[PuzzlePiece],
     bricks_by_id: &HashMap<String, Brick>,
@@ -361,12 +456,11 @@ pub fn compute_piece_polygons(
 ) -> HashMap<String, Vec<[f64; 2]>> {
     use geo::algorithm::bool_ops::BooleanOps;
 
-    const BRIDGE: f64 = 3.0; // px buffer to bridge shared edges (matches Python)
-
     let mut result: HashMap<String, Vec<[f64; 2]>> = HashMap::new();
 
     for piece in pieces {
         let mut polys: Vec<Polygon<f64>> = Vec::new();
+        let debug_piece = piece.id == "p12" || piece.id == "p11" || piece.id == "p13";
 
         for bid in &piece.brick_ids {
             let brick = match bricks_by_id.get(bid) {
@@ -376,19 +470,7 @@ pub fn compute_piece_polygons(
             let pts = match brick_polygons.get(bid) {
                 Some(p) if p.len() >= 3 => p,
                 _ => {
-                    // Fallback: bounding box rectangle
-                    let bx = brick.x as f64;
-                    let by = brick.y as f64;
-                    let bw = brick.width as f64;
-                    let bh = brick.height as f64;
-                    let coords = vec![
-                        Coord { x: bx, y: by },
-                        Coord { x: bx + bw, y: by },
-                        Coord { x: bx + bw, y: by + bh },
-                        Coord { x: bx, y: by + bh },
-                        Coord { x: bx, y: by },
-                    ];
-                    polys.push(Polygon::new(LineString::new(coords), vec![]));
+                    // No vector polygon — skip this brick
                     continue;
                 }
             };
@@ -415,7 +497,21 @@ pub fn compute_piece_polygons(
             if poly.unsigned_area() < 1.0 {
                 continue;
             }
+            if debug_piece {
+                let bb = poly.bounding_rect();
+                eprintln!("[piece-debug] {} brick {} area={:.0} pts={} bbox={:?}",
+                    piece.id, bid, poly.unsigned_area(), poly.exterior().0.len(),
+                    bb.map(|r| (r.min().x as i32, r.min().y as i32, r.max().x as i32, r.max().y as i32)));
+                // Dump all vertices
+                for (vi, c) in poly.exterior().0.iter().enumerate() {
+                    eprintln!("[piece-debug]   v{}: ({:.1}, {:.1})", vi, c.x, c.y);
+                }
+            }
             polys.push(poly);
+        }
+
+        if debug_piece {
+            eprintln!("[piece-debug] {} has {} brick polygons", piece.id, polys.len());
         }
 
         if polys.is_empty() {
@@ -423,59 +519,71 @@ pub fn compute_piece_polygons(
             continue;
         }
 
-        // Match Python's Shapely: buffer(BRIDGE) → unary_union → buffer(-BRIDGE).
+        // Union original (unbuffered) polygons to preserve exact vector shapes.
+        // Bridge only small gaps (< 5px) between adjacent bricks — these are
+        // alignment artifacts. Don't bridge large gaps (windows, doors).
         use geo_clipper::Clipper;
-        use geo::algorithm::convex_hull::ConvexHull;
 
-        let factor = 1000.0; // internal i64 precision
+        let factor = 1000.0;
+        const GAP_BRIDGE_WIDTH: f64 = 2.0;
+        const MAX_GAP: f64 = 5.0; // only bridge tiny alignment gaps
+        const HOLE_AREA_THRESHOLD: f64 = 100.0;
 
-        // Buffer each polygon by BRIDGE px, collect all expanded polygons
-        let mut buffered: Vec<Polygon<f64>> = Vec::new();
-        for poly in &polys {
-            let expanded = poly.offset(BRIDGE, geo_clipper::JoinType::Square, geo_clipper::EndType::ClosedPolygon, factor);
-            for p in expanded.0 {
-                if p.unsigned_area() > 1.0 {
-                    buffered.push(p);
-                }
+        // Union all original polygons (no buffer)
+        let mut union = geo::MultiPolygon(vec![polys[0].clone()]);
+        for poly in &polys[1..] {
+            union = Clipper::union(&union, poly, factor);
+        }
+        union.0.retain(|p| p.unsigned_area() > 1.0);
+
+        if debug_piece {
+            eprintln!("[piece-debug] {} union produced {} components", piece.id, union.0.len());
+            for (ci, comp) in union.0.iter().enumerate() {
+                let bb = comp.bounding_rect();
+                eprintln!("[piece-debug]   component {} area={:.0} pts={} holes={} bbox={:?}",
+                    ci, comp.unsigned_area(), comp.exterior().0.len(), comp.interiors().len(),
+                    bb.map(|r| (r.min().x as i32, r.min().y as i32, r.max().x as i32, r.max().y as i32)));
             }
         }
 
-        if buffered.is_empty() {
-            let all_points: Vec<Coord<f64>> = polys.iter()
-                .flat_map(|p| p.exterior().0.iter().cloned())
-                .collect();
-            let hull = LineString::new(all_points).convex_hull();
-            result.insert(piece.id.clone(), hull.exterior().0.iter().map(|c| [c.x, c.y]).collect());
-            continue;
-        }
-
-        // Union all buffered polygons at once, keeping the full MultiPolygon
-        // result (matching Python's unary_union behavior).
-        let mut union = geo::MultiPolygon(vec![buffered[0].clone()]);
-        for poly in &buffered[1..] {
-            union = Clipper::union(&union, poly, factor);
-        }
-
-        // Erode back by BRIDGE. Take the largest polygon from the result.
         if union.0.is_empty() {
             result.insert(piece.id.clone(), vec![]);
             continue;
         }
 
-        let largest = union.0.into_iter()
+        // Bridge small gaps between disconnected components
+        if union.0.len() > 1 {
+            let mut bridges: Vec<Polygon<f64>> = Vec::new();
+            for i in 0..union.0.len() {
+                for j in (i + 1)..union.0.len() {
+                    let (dist, pt_a, pt_b) =
+                        nearest_edge_points(union.0[i].exterior(), union.0[j].exterior());
+                    if dist < MAX_GAP {
+                        bridges.push(make_bridge_rect(pt_a, pt_b, GAP_BRIDGE_WIDTH));
+                    }
+                }
+            }
+            for bridge in &bridges {
+                union = Clipper::union(&union, bridge, factor);
+            }
+            union.0.retain(|p| p.unsigned_area() > 1.0);
+        }
+
+        // Take the largest polygon
+        let mut final_poly = union.0.into_iter()
             .max_by(|a, b| a.unsigned_area().partial_cmp(&b.unsigned_area())
                 .unwrap_or(std::cmp::Ordering::Equal))
-            .expect("union is non-empty (checked above)");
+            .expect("union is non-empty");
 
-        let eroded = largest.offset(-BRIDGE, geo_clipper::JoinType::Square, geo_clipper::EndType::ClosedPolygon, factor);
-        let final_poly = if !eroded.0.is_empty() {
-            eroded.0.into_iter()
-                .max_by(|a, b| a.unsigned_area().partial_cmp(&b.unsigned_area())
-                    .unwrap_or(std::cmp::Ordering::Equal))
-                .expect("eroded is non-empty (checked above)")
-        } else {
-            largest
-        };
+        // Fill small interior holes
+        let (exterior, interiors) = final_poly.into_inner();
+        let kept_holes: Vec<LineString<f64>> = interiors.into_iter()
+            .filter(|hole| {
+                let hole_poly = Polygon::new(hole.clone(), vec![]);
+                hole_poly.unsigned_area() >= HOLE_AREA_THRESHOLD
+            })
+            .collect();
+        final_poly = Polygon::new(exterior, kept_holes);
 
         let coords: Vec<[f64; 2]> = final_poly.exterior().0.iter()
             .map(|c| [c.x, c.y])
