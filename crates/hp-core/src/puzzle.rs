@@ -519,22 +519,50 @@ pub fn compute_piece_polygons(
             continue;
         }
 
-        // Union original (unbuffered) polygons to preserve exact vector shapes.
-        // Bridge only small gaps (< 5px) between adjacent bricks — these are
-        // alignment artifacts. Don't bridge large gaps (windows, doors).
+        // Union brick polygons with a tiny expansion (0.1px) to merge polygons
+        // that touch at single vertices. This is invisible but ensures the clipper
+        // can fuse vertex-touching polygons into one shape.
         use geo_clipper::Clipper;
 
         let factor = 1000.0;
-        const GAP_BRIDGE_WIDTH: f64 = 2.0;
-        const MAX_GAP: f64 = 5.0; // only bridge tiny alignment gaps
+        const EPSILON: f64 = 0.1; // sub-pixel expansion to fuse touching vertices
         const HOLE_AREA_THRESHOLD: f64 = 100.0;
 
-        // Union all original polygons (no buffer)
-        let mut union = geo::MultiPolygon(vec![polys[0].clone()]);
-        for poly in &polys[1..] {
+        // Expand each polygon by a tiny epsilon, union, then erode back
+        let mut expanded: Vec<Polygon<f64>> = Vec::new();
+        for poly in &polys {
+            let exp = poly.offset(EPSILON, geo_clipper::JoinType::Miter(2.0),
+                                  geo_clipper::EndType::ClosedPolygon, factor);
+            for p in exp.0 {
+                if p.unsigned_area() > 1.0 {
+                    expanded.push(p);
+                }
+            }
+        }
+        if expanded.is_empty() {
+            expanded = polys.clone();
+        }
+
+        let mut union = geo::MultiPolygon(vec![expanded[0].clone()]);
+        for poly in &expanded[1..] {
             union = Clipper::union(&union, poly, factor);
         }
         union.0.retain(|p| p.unsigned_area() > 1.0);
+
+        // Erode back by epsilon to restore original shape
+        let mut eroded_union: Vec<Polygon<f64>> = Vec::new();
+        for poly in &union.0 {
+            let er = poly.offset(-EPSILON, geo_clipper::JoinType::Miter(2.0),
+                                 geo_clipper::EndType::ClosedPolygon, factor);
+            for p in er.0 {
+                if p.unsigned_area() > 1.0 {
+                    eroded_union.push(p);
+                }
+            }
+        }
+        if !eroded_union.is_empty() {
+            union = geo::MultiPolygon(eroded_union);
+        }
 
         if debug_piece {
             eprintln!("[piece-debug] {} union produced {} components", piece.id, union.0.len());
@@ -551,22 +579,10 @@ pub fn compute_piece_polygons(
             continue;
         }
 
-        // Bridge small gaps between disconnected components
+        // Log if still disconnected after epsilon union (shouldn't happen normally)
         if union.0.len() > 1 {
-            let mut bridges: Vec<Polygon<f64>> = Vec::new();
-            for i in 0..union.0.len() {
-                for j in (i + 1)..union.0.len() {
-                    let (dist, pt_a, pt_b) =
-                        nearest_edge_points(union.0[i].exterior(), union.0[j].exterior());
-                    if dist < MAX_GAP {
-                        bridges.push(make_bridge_rect(pt_a, pt_b, GAP_BRIDGE_WIDTH));
-                    }
-                }
-            }
-            for bridge in &bridges {
-                union = Clipper::union(&union, bridge, factor);
-            }
-            union.0.retain(|p| p.unsigned_area() > 1.0);
+            eprintln!("[piece-gap] {} still has {} components after epsilon union ({} bricks)",
+                piece.id, union.0.len(), piece.brick_ids.len());
         }
 
         // Take the largest polygon
