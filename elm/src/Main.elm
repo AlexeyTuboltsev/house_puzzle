@@ -624,6 +624,9 @@ update msg model =
         SetTargetCount s ->
             case String.toInt s of
                 Just n ->
+                    let
+                        _ = Debug.log "[elm] SetTargetCount" (String.fromInt n)
+                    in
                     ( { model | targetCount = Basics.max 1 n }, Cmd.none )
 
                 Nothing ->
@@ -648,6 +651,11 @@ update msg model =
         RequestGenerate ->
             case model.loadState of
                 Loaded _ ->
+                    let
+                        _ = Debug.log "[elm] RequestGenerate targetCount" model.targetCount
+                        _ = Debug.log "[elm] RequestGenerate minBorder" model.minBorder
+                        _ = Debug.log "[elm] RequestGenerate seed" model.seed
+                    in
                     ( { model
                         | generateState = Compositing
                         , pieces = []
@@ -2182,6 +2190,9 @@ loadPdf isTauri key path canvasHeight =
 
 mergeBricks : Bool -> String -> Int -> Int -> Int -> Cmd Msg
 mergeBricks isTauri key targetCount minBorder seed =
+    let
+        _ = Debug.log "[elm] mergeBricks sending" { targetCount = targetCount, minBorder = minBorder, seed = seed, isTauri = isTauri }
+    in
     if isTauri then
         tauriInvoke
             { command = "merge_pieces"

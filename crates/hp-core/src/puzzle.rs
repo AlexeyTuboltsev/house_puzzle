@@ -163,17 +163,20 @@ pub fn merge_bricks(
     let bricks_by_id: HashMap<&str, &Brick> = bricks.iter().map(|b| (b.id.as_str(), b)).collect();
     let all_ids: HashSet<String> = bricks.iter().map(|b| b.id.clone()).collect();
     let target_count = target_piece_count.max(1);
+    eprintln!("[puzzle] merge_bricks: target_piece_count={target_piece_count} total_bricks={}", all_ids.len());
 
     // Phase 0: exclude oversized bricks
     let total_area: f64 = all_ids.iter().map(|id| brick_areas.get(id).copied().unwrap_or(0.0)).sum();
+    eprintln!("[puzzle] total_area={total_area:.0}");
     let mut fixed_ids: HashSet<String> = HashSet::new();
-    for _ in 0..10 {
+    for iter in 0..10 {
         let target_area = total_area / target_count.max(1) as f64;
         let new_fixed: HashSet<String> = all_ids
             .iter()
             .filter(|id| brick_areas.get(*id).copied().unwrap_or(0.0) >= target_area)
             .cloned()
             .collect();
+        eprintln!("[puzzle] phase0 iter={iter} target_area={target_area:.0} fixed={}", new_fixed.len());
         if new_fixed == fixed_ids {
             break;
         }
@@ -182,6 +185,7 @@ pub fn merge_bricks(
 
     let mergeable_ids: HashSet<String> = all_ids.difference(&fixed_ids).cloned().collect();
     let target_mergeable = target_count.saturating_sub(fixed_ids.len()).max(1);
+    eprintln!("[puzzle] fixed_ids={} mergeable_ids={} target_mergeable={target_mergeable}", fixed_ids.len(), mergeable_ids.len());
     let mergeable_area: f64 = mergeable_ids
         .iter()
         .map(|id| brick_areas.get(id).copied().unwrap_or(0.0))
@@ -220,6 +224,8 @@ pub fn merge_bricks(
     }
 
     // Phase 1: greedy merge
+    eprintln!("[puzzle] phase1 start: pieces_dict.len()={} target_mergeable={target_mergeable}", pieces_dict.len());
+    let mut merge_iter = 0usize;
     while pieces_dict.len() > target_mergeable {
         let mut candidates: Vec<String> = pieces_dict.keys().cloned().collect();
         candidates.sort_by(|a, b| {
@@ -305,10 +311,13 @@ pub fn merge_bricks(
             }
         }
 
+        merge_iter += 1;
         if !merged {
+            eprintln!("[puzzle] phase1 stuck at iter={merge_iter} pieces_dict.len()={}", pieces_dict.len());
             break;
         }
     }
+    eprintln!("[puzzle] phase1 done: iters={merge_iter} mergeable_pieces={} fixed_pieces={}", pieces_dict.len(), fixed_ids.len());
 
     // Build result
     let mut result: Vec<PuzzlePiece> = Vec::new();
@@ -346,6 +355,7 @@ pub fn merge_bricks(
         piece.id = format!("p{i}");
     }
 
+    eprintln!("[puzzle] final result: {} pieces (target was {target_count})", result.len());
     result
 }
 

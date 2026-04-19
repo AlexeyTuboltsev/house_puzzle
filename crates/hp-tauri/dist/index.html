@@ -1094,6 +1094,7 @@ if (window.Elm && window.Elm.Main) {
 
     app.ports.tauriInvoke.subscribe(async function(request) {
       try {
+        console.log('[js-bridge] invoke:', request.command, JSON.stringify(request.args));
         var result = await window.__TAURI__.core.invoke(request.command, request.args || {});
         // Convert file paths to asset URLs for image-returning commands
         if (request.command === 'load_pdf' || request.command === 'merge_pieces') {
