@@ -909,7 +909,7 @@ pub fn parse_ai(
 
         // Extract vector polygon
         let poly_pymu = extract_vector_path(p.child, data, offset_x, y_base, &mut warnings);
-        let polygon = if poly_pymu.len() >= 3 {
+        let polygon: Option<Vec<[f64; 2]>> = if poly_pymu.len() >= 3 {
             Some(
                 poly_pymu.iter().map(|pt| {
                     [(pt[0] - clip_x0) * scale - px as f64,
@@ -917,13 +917,8 @@ pub fn parse_ai(
                 }).collect()
             )
         } else {
-            // Fallback: use bounding box as polygon (for bricks with no %_ path)
-            Some(vec![
-                [0.0, 0.0],
-                [pw as f64, 0.0],
-                [pw as f64, ph as f64],
-                [0.0, ph as f64],
-            ])
+            // No vector polygon — brick will be discarded in validation
+            None
         };
 
         // Note: multi-object layers are now handled in extract_vector_path(),

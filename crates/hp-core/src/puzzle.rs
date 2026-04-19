@@ -470,19 +470,7 @@ pub fn compute_piece_polygons(
             let pts = match brick_polygons.get(bid) {
                 Some(p) if p.len() >= 3 => p,
                 _ => {
-                    // Fallback: bounding box rectangle
-                    let bx = brick.x as f64;
-                    let by = brick.y as f64;
-                    let bw = brick.width as f64;
-                    let bh = brick.height as f64;
-                    let coords = vec![
-                        Coord { x: bx, y: by },
-                        Coord { x: bx + bw, y: by },
-                        Coord { x: bx + bw, y: by + bh },
-                        Coord { x: bx, y: by + bh },
-                        Coord { x: bx, y: by },
-                    ];
-                    polys.push(Polygon::new(LineString::new(coords), vec![]));
+                    // No vector polygon — skip this brick
                     continue;
                 }
             };
