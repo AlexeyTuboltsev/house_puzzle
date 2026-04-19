@@ -70,29 +70,66 @@ jobs:
           echo "CFLAGS=-mmacosx-version-min=10.15" >> $GITHUB_ENV
           echo "CXXFLAGS=-mmacosx-version-min=10.15" >> $GITHUB_ENV
 
+      - name: Set app version from tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "Setting app version to $VERSION"
+          cd crates/hp-tauri
+          sed -i.bak "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" tauri.conf.json
+          sed -i.bak "s/^version = \".*\"/version = \"$VERSION\"/" Cargo.toml
+          sed -i.bak "s/version: 'dev'/version: '$VERSION'/" dist/index.html
+          rm -f tauri.conf.json.bak Cargo.toml.bak dist/index.html.bak
+
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           projectPath: crates/hp-tauri
-          tagName: ${{ github.ref_name }}
-          releaseName: ${{ github.ref_name }}
-          releaseBody: ''
-          releaseDraft: false
-          prerelease: false
           args: ${{ matrix.args }}
+
+      - name: Collect and rename release artifacts
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          mkdir -p release-artifacts/${{ matrix.artifact-suffix }}
+          SUFFIX=${{ matrix.artifact-suffix }}
+
+          # Find and copy artifacts with platform prefix
+          find target -name "*.deb" -path "*/bundle/*" | while read f; do
+            base=$(basename "$f")
+            cp "$f" "release-artifacts/${SUFFIX}/${SUFFIX}-${base}"
+          done
+          find target -name "*.AppImage" -path "*/bundle/*" | while read f; do
+            base=$(basename "$f")
+            cp "$f" "release-artifacts/${SUFFIX}/${SUFFIX}-${base}"
+            chmod +x "release-artifacts/${SUFFIX}/${SUFFIX}-${base}"
+          done
+          find target -name "*.dmg" -path "*/bundle/*" | while read f; do
+            base=$(basename "$f")
+            cp "$f" "release-artifacts/${SUFFIX}/${SUFFIX}-${base}"
+          done
+          find target -name "*.msi" -path "*/bundle/*" | while read f; do
+            base=$(basename "$f")
+            cp "$f" "release-artifacts/${SUFFIX}/${SUFFIX}-${base}"
+          done
+          find target -name "*.exe" -path "*/bundle/nsis/*" | while read f; do
+            base=$(basename "$f")
+            cp "$f" "release-artifacts/${SUFFIX}/${SUFFIX}-${base}"
+          done
+
+          echo "Release artifacts for ${SUFFIX}:"
+          ls -la release-artifacts/${SUFFIX}/ || echo "(none)"
+
+      - name: Upload release artifacts
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-artifacts/${{ matrix.artifact-suffix }}/*
 
       - uses: actions/upload-artifact@v4
         with:
           name: tauri-${{ matrix.artifact-suffix }}
-          path: |
-            target/release/bundle/**/*.deb
-            target/release/bundle/**/*.AppImage
-            target/release/bundle/**/*.dmg
-            target/release/bundle/**/*.app
-            target/release/bundle/**/*.msi
-            target/release/bundle/**/*.exe
-            target/aarch64-apple-darwin/release/bundle/**/*.dmg
-            target/aarch64-apple-darwin/release/bundle/**/*.app
-            target/x86_64-apple-darwin/release/bundle/**/*.dmg
-            target/x86_64-apple-darwin/release/bundle/**/*.app
+          path: release-artifacts/${{ matrix.artifact-suffix }}/
+          if-no-files-found: warn

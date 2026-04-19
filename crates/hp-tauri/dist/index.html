@@ -252,11 +252,12 @@ body {
     flex: 1;
     min-height: 60px;
     max-height: 300px;
+    display: flex;
+    justify-content: center;
 }
 input.zoom-slider {
-    writing-mode: vertical-lr;
-    direction: rtl;
-    width: 6px;
+    -webkit-appearance: slider-vertical;
+    width: 20px;
     height: 100%;
     cursor: pointer;
     accent-color: #fff;
