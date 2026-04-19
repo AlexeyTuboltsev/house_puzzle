@@ -371,8 +371,17 @@ fn parse_path_lines(
 
         match op {
             "m" if parts.len() >= 3 => {
-                // New sub-path — discard any unclosed previous path
-                if !pts.is_empty() {
+                // New sub-path — save previous if geometrically closed,
+                // otherwise discard as open path
+                if pts.len() >= 3 {
+                    let d = ((pts.first().unwrap()[0] - pts.last().unwrap()[0]).powi(2)
+                           + (pts.first().unwrap()[1] - pts.last().unwrap()[1]).powi(2)).sqrt();
+                    if d < 1.0 {
+                        polygons.push(pts.clone());
+                    } else {
+                        open_paths += 1;
+                    }
+                } else if !pts.is_empty() {
                     open_paths += 1;
                 }
                 let x: f64 = parts[0].parse().unwrap_or(0.0);
@@ -415,8 +424,16 @@ fn parse_path_lines(
         }
     }
 
-    // Discard any trailing unclosed path (no close operator before end)
-    if !pts.is_empty() {
+    // Trailing path: accept if geometrically closed, discard otherwise
+    if pts.len() >= 3 {
+        let d = ((pts.first().unwrap()[0] - pts.last().unwrap()[0]).powi(2)
+               + (pts.first().unwrap()[1] - pts.last().unwrap()[1]).powi(2)).sqrt();
+        if d < 1.0 {
+            polygons.push(pts);
+        } else {
+            open_paths += 1;
+        }
+    } else if !pts.is_empty() {
         open_paths += 1;
     }
     (polygons, open_paths)
