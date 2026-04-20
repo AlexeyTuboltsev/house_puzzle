@@ -1,5 +1,29 @@
 ## Open
 
+### AI unscaled vector data as source of truth
+Current pipeline runs vector operations (adjacency, unions, spike removal,
+piece outlines) partly in canvas-pixel coords after scaling. Scaling is lossy
+— shared endpoints that were bit-identical in the AI file stop matching, so
+we pile on workarounds: epsilon expand/erode, vertex snapping, spike removal.
+
+Refactor: keep AI native coords (pymu units) and bezier curves as the single
+source of truth for every vector op. Tessellate and scale to canvas only at
+the last possible moment — ideally only for raster masks. Blue/white outlines
+should go to SVG as bezier path commands and be tessellated by the browser
+after the CSS transform, not by us before.
+
+Raster pipeline review (same direction): we may not need per-brick raster
+layers at all. Alternative shape:
+
+1. Render ONE high-res raster of the full artwork via MuPDF (bricks layer,
+   plus lights/background/etc. as separate hi-res layers).
+2. Clip that hi-res raster by vector outlines — at full AI resolution, so
+   edges land exactly on vector boundaries.
+3. Downsample per piece/brick to the target canvas size only at the end.
+
+That removes the per-brick OCG render roundtrips, keeps edges sharp, and
+avoids all the polygon-mask artefacts we chase today.
+
 ### Piece 1px gaps/bleeding — rasterization pipeline redesign
 **Root cause**: We rasterize the full page at ~30 DPI via MuPDF, then split
 the low-res raster into bricks/pieces using vector polygon masks. At 30 DPI,
