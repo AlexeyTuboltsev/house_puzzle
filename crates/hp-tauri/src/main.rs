@@ -158,6 +158,7 @@ fn main() {
             commands::check_for_updates,
             commands::save_screenshot,
             commands::log_to_stderr,
+            commands::dump_brick_polygons,
         ]);
 
     builder

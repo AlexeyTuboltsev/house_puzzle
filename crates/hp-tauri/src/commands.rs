@@ -24,6 +24,49 @@ pub fn log_to_stderr(msg: String) {
     eprintln!("[webview] {msg}");
 }
 
+#[tauri::command]
+pub fn dump_brick_polygons(
+    sessions: tauri::State<'_, SessionStore>,
+    key: String,
+) {
+    let store = sessions.lock();
+    let session = match store.get(&key) {
+        Some(s) => s,
+        None => { eprintln!("[dump] session not found: {key}"); return; }
+    };
+    // Map brick ID → layer name from placements
+    let id_to_layer: HashMap<&str, &str> = session.brick_placements.iter()
+        .map(|bp| {
+            // BrickPlacement doesn't have an id field — match by bbox
+            // Just use the name directly since bricks and placements are 1:1 in order
+            (bp.name.as_str(), bp.name.as_str())
+        })
+        .collect();
+
+    // Build name map by matching brick index to placement index
+    let names: Vec<&str> = session.brick_placements.iter().map(|bp| bp.name.as_str()).collect();
+
+    let (cx0, cy0) = (session.metadata.clip_rect.0, session.metadata.clip_rect.1);
+    let scale = session.metadata.render_dpi / 72.0;
+    for (i, brick) in session.bricks.iter().enumerate() {
+        if let Some(poly) = session.brick_polygons.get(&brick.id) {
+            if poly.len() >= 3 {
+                let layer = names.get(i).unwrap_or(&"?");
+                // Display in canvas coords (scaled from AI pymu)
+                let canvas_pts: Vec<String> = poly.iter()
+                    .map(|p| format!("({:.2},{:.2})",
+                        (p[0] - cx0) * scale, (p[1] - cy0) * scale))
+                    .collect();
+                eprintln!("[dump] {} id={} pts={} bbox=({},{},{},{}) poly=[{}]",
+                    layer, brick.id, poly.len(),
+                    brick.x, brick.y, brick.x + brick.width, brick.y + brick.height,
+                    canvas_pts.join(", "));
+            }
+        }
+    }
+    eprintln!("[dump] done — {} bricks, {} placements", session.bricks.len(), session.brick_placements.len());
+}
+
 // ---------------------------------------------------------------------------
 // List PDFs
 // ---------------------------------------------------------------------------
@@ -229,8 +272,12 @@ pub async fn load_pdf(
     let bp_vec: Vec<(String, hp_core::ai_parser::BrickPlacement)> = render_bricks.clone();
     let bla_for_hybrid = bricks_layer_img.clone();
     let ai_raw = ai_data.raw.clone();
+    let clip_for_render = clip;
+    let dpi_for_render = metadata.render_dpi;
     let brick_images_map = tokio::task::spawn_blocking(move || {
-        render::render_brick_images_hybrid(&bp_vec, &ai_raw, cw, ch, &bla_for_hybrid)
+        let scale = dpi_for_render / 72.0;
+        render::render_brick_images_hybrid(&bp_vec, &ai_raw, cw, ch, &bla_for_hybrid,
+            clip_for_render.0, clip_for_render.1, scale)
     })
     .await
     .map_err(|e| e.to_string())?;
@@ -272,7 +319,9 @@ pub async fn load_pdf(
     }
 
     // Recompute adjacency and areas
-    let adj = puzzle::build_adjacency_vector(&bricks, &brick_polygons, 15.0, 5.0, 2.0);
+    let adj_scale = metadata.render_dpi / 72.0;
+    let adj = puzzle::build_adjacency_vector(&bricks, &brick_polygons, 15.0, 5.0, 2.0,
+        clip.0, clip.1, adj_scale);
     let brick_areas = puzzle::compute_polygon_areas(&bricks, &brick_polygons);
 
     let bricks_layer_arc = Arc::new(bricks_layer_img);
@@ -298,7 +347,9 @@ pub async fn load_pdf(
             render::save_composite(&bla, &ed4.join("composite.png"));
         }),
         tokio::task::spawn_blocking(move || {
-            render::render_outlines_png(&rb, cw, ch, &ed3.join("outlines.png"));
+            let scale = dpi_for_render / 72.0;
+            render::render_outlines_png(&rb, cw, ch, &ed3.join("outlines.png"),
+                clip_for_render.0, clip_for_render.1, scale);
         }),
         tokio::task::spawn_blocking(move || {
             render::render_ocg_layer(&fp1, "lights", &ed1.join("lights.png"), dpi, clip, cw, ch, pdf_offset)
@@ -423,7 +474,8 @@ pub async fn merge_pieces(
     // Optional: recompute mode — array of { id, brick_ids } objects.
     pieces: Option<Vec<Value>>,
 ) -> Result<Value, String> {
-    let (bricks, polygons, areas, extract_dir, bricks_layer_img, brick_rgba) = {
+    let (bricks, polygons, areas, extract_dir, bricks_layer_img, brick_rgba,
+         clip_rect, render_dpi) = {
         let store = sessions.lock();
         let session = store
             .get(&key)
@@ -435,6 +487,8 @@ pub async fn merge_pieces(
             session.extract_dir.clone(),
             session.bricks_layer_img.clone(),
             session.brick_rgba.clone(),
+            session.metadata.clip_rect,
+            session.metadata.render_dpi,
         )
     };
 
@@ -483,16 +537,20 @@ pub async fn merge_pieces(
         let seed_val = seed.unwrap_or(42);
         let min_b = min_border.unwrap_or(5.0);
         let b_gap = border_gap.unwrap_or(2.0);
+        let _piece_scale = render_dpi / 72.0; // computed here for adjacency
         eprintln!("[merge] target_count={target} seed={seed_val} min_border={min_b} border_gap={b_gap} bricks={}", bricks.len());
-        let adj = puzzle::build_adjacency_vector(&bricks, &polygons, 15.0, min_b, b_gap);
+        let adj = puzzle::build_adjacency_vector(&bricks, &polygons, 15.0, min_b, b_gap,
+            clip_rect.0, clip_rect.1, _piece_scale);
         let pieces = puzzle::merge_bricks(&bricks, target, seed_val, &adj, &areas);
         eprintln!("[merge] result: {} pieces", pieces.len());
         pieces
     };
 
-    // Compute piece polygons
+    // Compute piece polygons — done in AI pymu space, scaled to canvas at end
+    let piece_scale = render_dpi / 72.0;
     let piece_polys =
-        puzzle::compute_piece_polygons(&computed_pieces, &bricks_by_id, &polygons);
+        puzzle::compute_piece_polygons(&computed_pieces, &bricks_by_id, &polygons,
+            clip_rect.0, clip_rect.1, piece_scale);
 
     // Render piece PNGs
     let pieces_clone = computed_pieces.clone();
@@ -645,11 +703,18 @@ pub fn get_brick_image(
                         let px = session.bricks_layer_img.get_pixel(sx, sy);
                         if px[3] > 0 {
                             let in_poly = match poly {
-                                Some(pts) if pts.len() >= 3 => render::point_in_polygon(
-                                    dx as f64 + 0.5,
-                                    dy as f64 + 0.5,
-                                    pts,
-                                ),
+                                Some(pts) if pts.len() >= 3 => {
+                                    let scale = session.metadata.render_dpi / 72.0;
+                                    let cx0 = session.metadata.clip_rect.0;
+                                    let cy0 = session.metadata.clip_rect.1;
+                                    let cx = (bp.x + dx) as f64 + 0.5;
+                                    let cy = (bp.y + dy) as f64 + 0.5;
+                                    render::point_in_polygon(
+                                        cx / scale + cx0,
+                                        cy / scale + cy0,
+                                        pts,
+                                    )
+                                }
                                 _ => true,
                             };
                             if in_poly {

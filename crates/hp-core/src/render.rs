@@ -164,6 +164,9 @@ pub fn render_brick_images_hybrid(
     canvas_width: u32,
     canvas_height: u32,
     ocg_fallback: &RgbaImage,
+    clip_x0: f64,
+    clip_y0: f64,
+    scale: f64,
 ) -> HashMap<String, RgbaImage> {
     let result = Mutex::new(HashMap::new());
     let mut raster_count = 0u32;
@@ -190,7 +193,12 @@ pub fn render_brick_images_hybrid(
                     if px[3] > 0 {
                         let in_poly = match poly {
                             Some(pts) if pts.len() >= 3 => {
-                                point_in_polygon(dx as f64 + 0.5, dy as f64 + 0.5, pts)
+                                // Polygon in AI pymu coords; convert test point from canvas to pymu
+                                let cx = (bp.x + dx) as f64 + 0.5;
+                                let cy = (bp.y + dy) as f64 + 0.5;
+                                let px_pymu = cx / scale + clip_x0;
+                                let py_pymu = cy / scale + clip_y0;
+                                point_in_polygon(px_pymu, py_pymu, pts)
                             }
                             _ => true,
                         };
@@ -390,6 +398,9 @@ pub fn render_outlines_png(
     canvas_width: u32,
     canvas_height: u32,
     out_path: &Path,
+    clip_x0: f64,
+    clip_y0: f64,
+    scale: f64,
 ) {
     let ss = 4u32;
     let sw = canvas_width * ss;
@@ -401,8 +412,10 @@ pub fn render_outlines_png(
             Some(p) if p.len() >= 3 => p,
             _ => continue,
         };
+        // Polygon in AI pymu coords — scale to canvas × supersampling
         let points: Vec<(f64, f64)> = poly.iter()
-            .map(|pt| ((pt[0] + bp.x as f64) * ss as f64, (pt[1] + bp.y as f64) * ss as f64))
+            .map(|pt| ((pt[0] - clip_x0) * scale * ss as f64,
+                       (pt[1] - clip_y0) * scale * ss as f64))
             .collect();
         let white = Rgba([255, 255, 255, 255]);
         for i in 0..points.len() {

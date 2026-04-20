@@ -401,7 +401,11 @@ fn parse_path_lines(
                 let cp1 = to_pymu(parts[0].parse().unwrap_or(0.0), parts[1].parse().unwrap_or(0.0));
                 let cp2 = to_pymu(parts[2].parse().unwrap_or(0.0), parts[3].parse().unwrap_or(0.0));
                 let p4 = to_pymu(parts[4].parse().unwrap_or(0.0), parts[5].parse().unwrap_or(0.0));
-                // Tessellate cubic bezier with 9 intermediate points
+                // Tessellate cubic bezier with 9 intermediate points.
+                // Round to 1e-6 to eliminate IEEE 754 floating-point noise —
+                // adjacent bricks sharing a curve may evaluate it in opposite
+                // directions, producing results that differ by ~1e-15.
+                const ROUND: f64 = 1e6;
                 for i in 1..9 {
                     let t = i as f64 / 9.0;
                     let u = 1.0 - t;
@@ -409,7 +413,7 @@ fn parse_path_lines(
                         + 3.0 * u * t.powi(2) * cp2[0] + t.powi(3) * p4[0];
                     let y = u.powi(3) * p1[1] + 3.0 * u.powi(2) * t * cp1[1]
                         + 3.0 * u * t.powi(2) * cp2[1] + t.powi(3) * p4[1];
-                    pts.push([x, y]);
+                    pts.push([(x * ROUND).round() / ROUND, (y * ROUND).round() / ROUND]);
                 }
                 pts.push(p4);
             }
@@ -436,6 +440,15 @@ fn parse_path_lines(
     } else if !pts.is_empty() {
         open_paths += 1;
     }
+    // Deduplicate consecutive identical vertices in each polygon.
+    // Degenerate bezier segments (start == end) produce runs of identical points
+    // that confuse clipper's polygon union.
+    for poly in &mut polygons {
+        poly.dedup_by(|a, b| {
+            (a[0] - b[0]).abs() < 1e-6 && (a[1] - b[1]).abs() < 1e-6
+        });
+    }
+
     (polygons, open_paths)
 }
 
@@ -692,29 +705,41 @@ fn extract_vector_path(
         return geo_polys[0].exterior().0.iter().map(|c| [c.x, c.y]).collect();
     }
 
-    // Union all polygons in the merge group (handles cases 2 & 3)
-    let mut union = geo::MultiPolygon(vec![geo_polys[0].clone()]);
-    for poly in &geo_polys[1..] {
+    // Union all polygons in the merge group (handles cases 2 & 3).
+    // Use epsilon expand (0.1px) to fuse vertex-touching polygons,
+    // then erode back. Same technique as piece outline computation.
+    const EPSILON: f64 = 0.1;
+    let mut expanded: Vec<GeoPoly<f64>> = Vec::new();
+    for poly in &geo_polys {
+        let exp = poly.offset(EPSILON, geo_clipper::JoinType::Miter(2.0),
+                              geo_clipper::EndType::ClosedPolygon, factor);
+        for p in exp.0 {
+            if p.unsigned_area() > 1.0 {
+                expanded.push(p);
+            }
+        }
+    }
+    if expanded.is_empty() { expanded = geo_polys; }
+
+    let mut union = geo::MultiPolygon(vec![expanded[0].clone()]);
+    for poly in &expanded[1..] {
         union = Clipper::union(&union, poly, factor);
     }
     union.0.retain(|p| p.unsigned_area() > 1.0);
 
-    // Case 3: bridge remaining gaps between disconnected components
-    if union.0.len() > 1 {
-        let mut bridges: Vec<GeoPoly<f64>> = Vec::new();
-        for i in 0..union.0.len() {
-            for j in (i + 1)..union.0.len() {
-                let (dist, pt_a, pt_b) =
-                    crate::puzzle::nearest_edge_points(union.0[i].exterior(), union.0[j].exterior());
-                if dist < ADJACENCY_DIST {
-                    bridges.push(crate::puzzle::make_bridge_rect(pt_a, pt_b, GAP_BRIDGE_WIDTH));
-                }
+    // Erode back
+    let mut eroded: Vec<GeoPoly<f64>> = Vec::new();
+    for poly in &union.0 {
+        let er = poly.offset(-EPSILON, geo_clipper::JoinType::Miter(2.0),
+                             geo_clipper::EndType::ClosedPolygon, factor);
+        for p in er.0 {
+            if p.unsigned_area() > 1.0 {
+                eroded.push(p);
             }
         }
-        for bridge in &bridges {
-            union = Clipper::union(&union, bridge, factor);
-        }
-        union.0.retain(|p| p.unsigned_area() > 1.0);
+    }
+    if !eroded.is_empty() {
+        union = geo::MultiPolygon(eroded);
     }
 
     // Take the largest resulting polygon
@@ -924,17 +949,15 @@ pub fn parse_ai(
         }
         seen_bbox.insert(bbox_key);
 
-        // Extract vector polygon
+        // Extract vector polygon in AI pymu coords (y-flipped PDF points, un-scaled).
+        // All polygon manipulations downstream happen in this native AI coord system.
+        // The scale factor is stored in metadata and applied only at render time.
         let poly_pymu = extract_vector_path(p.child, data, offset_x, y_base, &mut warnings);
         let polygon: Option<Vec<[f64; 2]>> = if poly_pymu.len() >= 3 {
-            Some(
-                poly_pymu.iter().map(|pt| {
-                    [(pt[0] - clip_x0) * scale - px as f64,
-                     (pt[1] - clip_y0) * scale - py as f64]
-                }).collect()
-            )
+            let mut pts: Vec<[f64; 2]> = poly_pymu.clone();
+            pts.dedup_by(|a, b| a[0] == b[0] && a[1] == b[1]);
+            if pts.len() >= 3 { Some(pts) } else { None }
         } else {
-            // No vector polygon — brick will be discarded in validation
             None
         };
 
@@ -945,33 +968,25 @@ pub fn parse_ai(
         // Use polygon bounding box as the brick's true extent.
         // The initial px/py/pw/ph came from raster matrix or plain path bbox,
         // but the polygon is the authoritative shape for ALL bricks.
+        // Compute canvas-coord bbox from AI pymu polygon (for PNG positioning)
         let (fx, fy, fw, fh) = if let Some(ref poly) = polygon {
             if poly.len() >= 3 {
+                // pymu bbox
                 let min_x = poly.iter().map(|p| p[0]).fold(f64::INFINITY, f64::min);
                 let min_y = poly.iter().map(|p| p[1]).fold(f64::INFINITY, f64::min);
                 let max_x = poly.iter().map(|p| p[0]).fold(f64::NEG_INFINITY, f64::max);
                 let max_y = poly.iter().map(|p| p[1]).fold(f64::NEG_INFINITY, f64::max);
-                let new_x = px + min_x.floor() as i32;
-                let new_y = py + min_y.floor() as i32;
-                let new_w = (max_x - min_x).ceil() as i32;
-                let new_h = (max_y - min_y).ceil() as i32;
-                (new_x, new_y, new_w.max(1), new_h.max(1))
+                // Convert pymu bbox to canvas coords
+                let cx = ((min_x - clip_x0) * scale).floor() as i32;
+                let cy = ((min_y - clip_y0) * scale).floor() as i32;
+                let cw = ((max_x - min_x) * scale).ceil() as i32;
+                let ch = ((max_y - min_y) * scale).ceil() as i32;
+                (cx, cy, cw.max(1), ch.max(1))
             } else {
                 (px, py, pw, ph)
             }
         } else {
             (px, py, pw, ph)
-        };
-
-        // Shift polygon to new origin
-        let polygon = if fx != px || fy != py {
-            polygon.map(|poly| {
-                let sx = (px - fx) as f64;
-                let sy = (py - fy) as f64;
-                poly.iter().map(|p| [p[0] + sx, p[1] + sy]).collect()
-            })
-        } else {
-            polygon
         };
 
         results.push(BrickPlacement {
@@ -1036,12 +1051,12 @@ pub fn parse_ai(
         let factor = 1000.0;
         const OVERLAP_THRESHOLD: f64 = 0.1; // 10% of smaller brick's area = significant overlap
 
-        // Build geo polygons in canvas coords for each brick
+        // Build geo polygons — polygons are in AI pymu coords (un-scaled)
         let geo_polys: Vec<Option<GeoPoly<f64>>> = results.iter().map(|b| {
             let pts = b.polygon.as_ref()?;
             if pts.len() < 3 { return None; }
             let mut coords: Vec<Coord<f64>> = pts.iter()
-                .map(|p| Coord { x: p[0] + b.x as f64, y: p[1] + b.y as f64 })
+                .map(|p| Coord { x: p[0], y: p[1] })
                 .collect();
             if coords.first() != coords.last() {
                 coords.push(coords[0]);

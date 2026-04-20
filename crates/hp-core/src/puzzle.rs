@@ -17,17 +17,14 @@ use crate::types::{Brick, PuzzlePiece};
 /// Adjacency threshold: bricks within this many pixels are candidates.
 const ADJACENCY_THRESHOLD: f64 = 15.0;
 
-/// Build a Shapely-equivalent polygon from brick-local point coordinates.
-fn brick_polygon(brick: &Brick, polygon: &[[f64; 2]]) -> Option<Polygon<f64>> {
+/// Build a geo polygon from canvas-coord point coordinates.
+fn brick_polygon(_brick: &Brick, polygon: &[[f64; 2]]) -> Option<Polygon<f64>> {
     if polygon.len() < 3 {
         return None;
     }
     let coords: Vec<Coord<f64>> = polygon
         .iter()
-        .map(|p| Coord {
-            x: p[0] + brick.x as f64,
-            y: p[1] + brick.y as f64,
-        })
+        .map(|p| Coord { x: p[0], y: p[1] })
         .collect();
     let ring = LineString::new(coords);
     let poly = Polygon::new(ring, vec![]);
@@ -47,13 +44,27 @@ pub fn build_adjacency_vector(
     gap: f64,
     min_border: f64,
     border_gap: f64,
+    clip_x0: f64,
+    clip_y0: f64,
+    scale: f64,
 ) -> HashMap<String, HashSet<String>> {
-    // Build Shapely-equivalent polygons
+    // All vector operations in AI pymu scale. Convert canvas-px params to AI units.
+    let inv_scale = 1.0 / scale;
+    let gap_ai = gap * inv_scale;
+    let min_border_ai = min_border * inv_scale;
+    let border_gap_ai = border_gap * inv_scale;
+
+    // Polygons are in AI pymu coords — use directly.
     let polys: HashMap<&str, Polygon<f64>> = bricks
         .iter()
         .filter_map(|b| {
             let pts = brick_polygons.get(&b.id)?;
-            let poly = brick_polygon(b, pts)?;
+            if pts.len() < 3 { return None; }
+            let coords: Vec<Coord<f64>> = pts.iter()
+                .map(|p| Coord { x: p[0], y: p[1] })
+                .collect();
+            let poly = Polygon::new(LineString::new(coords), vec![]);
+            if poly.unsigned_area() < 1.0 { return None; }
             Some((b.id.as_str(), poly))
         })
         .collect();
@@ -75,21 +86,26 @@ pub fn build_adjacency_vector(
                 None => continue,
             };
 
-            // Bbox pre-filter
-            if !((a.x as f64 - gap) < b.right() as f64
-                && (a.right() as f64 + gap) > b.x as f64
-                && (a.y as f64 - gap) < b.bottom() as f64
-                && (a.bottom() as f64 + gap) > b.y as f64)
+            // Bbox pre-filter — use polygon bboxes in AI units (brick.x is canvas px)
+            let (abb_min, abb_max) = (pa.bounding_rect().map(|r| (r.min(), r.max()))
+                .map(|(mn, mx)| ((mn.x, mn.y), (mx.x, mx.y)))
+                .unwrap_or(((0.0, 0.0), (0.0, 0.0))));
+            let (bbb_min, bbb_max) = (pb.bounding_rect().map(|r| (r.min(), r.max()))
+                .map(|(mn, mx)| ((mn.x, mn.y), (mx.x, mx.y)))
+                .unwrap_or(((0.0, 0.0), (0.0, 0.0))));
+            if !((abb_min.0 - gap_ai) < bbb_max.0
+                && (abb_max.0 + gap_ai) > bbb_min.0
+                && (abb_min.1 - gap_ai) < bbb_max.1
+                && (abb_max.1 + gap_ai) > bbb_min.1)
             {
                 continue;
             }
 
-            // Match Python: buffer both polygons by border_gap, intersect,
-            // measure border_length = intersection.area / (2 * border_gap)
+            // Buffer in AI units, intersect, measure border_length in AI units.
             use geo_clipper::Clipper;
-            let factor = 1000.0;
-            let buf_a = pa.offset(border_gap, geo_clipper::JoinType::Round(0.25), geo_clipper::EndType::ClosedPolygon, factor);
-            let buf_b = pb.offset(border_gap, geo_clipper::JoinType::Round(0.25), geo_clipper::EndType::ClosedPolygon, factor);
+            let factor = 10000.0; // higher precision for AI-scale coords
+            let buf_a = pa.offset(border_gap_ai, geo_clipper::JoinType::Round(0.25), geo_clipper::EndType::ClosedPolygon, factor);
+            let buf_b = pb.offset(border_gap_ai, geo_clipper::JoinType::Round(0.25), geo_clipper::EndType::ClosedPolygon, factor);
 
             if buf_a.0.is_empty() || buf_b.0.is_empty() {
                 continue;
@@ -101,13 +117,40 @@ pub fn build_adjacency_vector(
             }
 
             let inter_area: f64 = intersection.0.iter().map(|p| p.unsigned_area()).sum();
-            let border_length = if border_gap > 0.0 {
-                inter_area / (2.0 * border_gap)
+            let border_length = if border_gap_ai > 0.0 {
+                inter_area / (2.0 * border_gap_ai)
             } else {
                 0.0
             };
 
-            if border_length >= min_border {
+            // Additional check: if intersection is small and roughly circular
+            // (corner touch), the border length is misleadingly non-zero because
+            // buffered corners overlap. Require the intersection BOUNDING BOX to
+            // have at least one dimension >= min_border.
+            let inter_bbox: (f64, f64, f64, f64) = intersection.0.iter()
+                .map(|p| {
+                    let mut x0 = f64::INFINITY;
+                    let mut y0 = f64::INFINITY;
+                    let mut x1 = f64::NEG_INFINITY;
+                    let mut y1 = f64::NEG_INFINITY;
+                    for c in p.exterior().0.iter() {
+                        x0 = x0.min(c.x); y0 = y0.min(c.y);
+                        x1 = x1.max(c.x); y1 = y1.max(c.y);
+                    }
+                    (x0, y0, x1, y1)
+                })
+                .fold((f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY),
+                    |acc, b| (acc.0.min(b.0), acc.1.min(b.1), acc.2.max(b.2), acc.3.max(b.3)));
+            let inter_w = (inter_bbox.2 - inter_bbox.0).max(0.0);
+            let inter_h = (inter_bbox.3 - inter_bbox.1).max(0.0);
+            let max_extent = inter_w.max(inter_h);
+
+            let passed = border_length >= min_border && max_extent >= min_border;
+            if border_length > 0.5 && !passed {
+                eprintln!("[adj-reject] {} <-> {} bl={:.2} inter_area={:.2} extent={:.2}x{:.2}",
+                    a.id, b.id, border_length, inter_area, inter_w, inter_h);
+            }
+            if passed {
                 adj.entry(a.id.clone()).or_default().insert(b.id.clone());
                 adj.entry(b.id.clone()).or_default().insert(a.id.clone());
             }
@@ -125,10 +168,18 @@ pub fn compute_polygon_areas(
     bricks
         .iter()
         .map(|b| {
+            // Polygons are in AI pymu coords — compute area there.
+            // Merge algorithm uses areas relatively, so the scale factor doesn't matter.
             let area = brick_polygons
                 .get(&b.id)
-                .and_then(|pts| brick_polygon(b, pts))
-                .map(|p| p.unsigned_area())
+                .and_then(|pts| {
+                    if pts.len() < 3 { return None; }
+                    let coords: Vec<Coord<f64>> = pts.iter()
+                        .map(|p| Coord { x: p[0], y: p[1] })
+                        .collect();
+                    let poly = Polygon::new(LineString::new(coords), vec![]);
+                    if poly.unsigned_area() < 0.001 { None } else { Some(poly.unsigned_area()) }
+                })
                 .unwrap_or(b.area() as f64);
             (b.id.clone(), area)
         })
@@ -444,15 +495,197 @@ pub fn make_bridge_rect(a: Coord<f64>, b: Coord<f64>, width: f64) -> Polygon<f64
     )
 }
 
+/// Remove degenerate spikes from a polygon coordinate list.
+///
+/// Clipper union of polygons sharing edges in the same winding direction produces
+/// spikes: the outline traces along the shared internal edge and comes back.
+/// Pattern: `..., A, B, A, ...` where v[i] == v[i+2] — remove B and the second A.
+/// Also removes consecutive duplicate points. Repeats until stable.
+fn remove_polygon_spikes(coords: Vec<[f64; 2]>) -> Vec<[f64; 2]> {
+    remove_polygon_spikes_named(coords, "?")
+}
+
+fn remove_polygon_spikes_named(mut coords: Vec<[f64; 2]>, piece_id: &str) -> Vec<[f64; 2]> {
+    const EPS: f64 = 0.01;
+    let eq = |a: [f64; 2], b: [f64; 2]| (a[0] - b[0]).abs() < EPS && (a[1] - b[1]).abs() < EPS;
+    let input_len = coords.len();
+
+    loop {
+        let before = coords.len();
+        if before < 3 { break; }
+
+        // Remove consecutive duplicates (including wrap-around: last == first)
+        let mut deduped = Vec::with_capacity(coords.len());
+        for pt in &coords {
+            if deduped.last().map_or(true, |prev: &[f64; 2]| !eq(*prev, *pt)) {
+                deduped.push(*pt);
+            }
+        }
+        while deduped.len() > 1 && eq(*deduped.first().unwrap(), *deduped.last().unwrap()) {
+            deduped.pop();
+        }
+        coords = deduped;
+        if coords.len() < 3 { break; }
+
+        let n = coords.len();
+
+        // Find a spike: v[i] == v[i+k] for small k AND the enclosed loop has
+        // near-zero area (path goes out and comes back along nearly the same line).
+        // Loop area threshold ~1.0 square pixel — too large = legitimate lobe, not a spike.
+        let mut found: Option<(usize, usize)> = None;
+        'outer: for i in 0..n {
+            for k in 2..=6.min(n - 1) {
+                let ik = (i + k) % n;
+                if !eq(coords[i], coords[ik]) { continue; }
+                let mut area = 0.0_f64;
+                for j in 0..k {
+                    let a = coords[(i + j) % n];
+                    let b = coords[(i + j + 1) % n];
+                    area += a[0] * b[1] - b[0] * a[1];
+                }
+                if area.abs() < 2.0 {
+                    found = Some((i, k));
+                    break 'outer;
+                }
+            }
+        }
+
+        if let Some((i, k)) = found {
+            let to_remove: Vec<usize> = (1..=k).map(|j| (i + j) % n).collect();
+            let removed_pts: Vec<[f64; 2]> = to_remove.iter().map(|&j| coords[j]).collect();
+            eprintln!("[spike-detected] piece={} at v{} k={} DETECTED (not removing yet) pts: {}",
+                piece_id, i, k,
+                removed_pts.iter().map(|p| format!("({:.2},{:.2})", p[0], p[1])).collect::<Vec<_>>().join(" "));
+            // NOT removing — just detecting for now
+            break;
+        }
+
+        if coords.len() == before { break; }
+    }
+    let _ = input_len;
+    coords
+}
+
+/// For each pair of polygons, find vertices of one that lie near edges of another
+/// and insert them into the edge. Adjacent bricks sharing a curve but tessellated
+/// differently end up with matching shared edges after this pass.
+fn snap_vertices_to_edges(mut polys: Vec<Polygon<f64>>, tolerance: f64) -> Vec<Polygon<f64>> {
+    let tol_sq = tolerance * tolerance;
+    let n = polys.len();
+    if n < 2 { return polys; }
+    let mut total_snapped = 0;
+
+    // STEP 1: snap near-duplicate vertices across polygons to a canonical value.
+    // Collect all vertices, then for each vertex find the "representative" by
+    // taking the first vertex within tolerance (deterministic).
+    let all_verts: Vec<(f64, f64)> = polys.iter()
+        .flat_map(|p| p.exterior().0.iter().map(|c| (c.x, c.y)))
+        .collect();
+    let mut canonical: Vec<(f64, f64)> = Vec::new();
+    let mut snap_map: std::collections::HashMap<u64, (f64, f64)> = std::collections::HashMap::new();
+    let key = |x: f64, y: f64| -> u64 {
+        let ix = (x / tolerance).round() as i64;
+        let iy = (y / tolerance).round() as i64;
+        ((ix as u64) << 32) | (iy as u32 as u64)
+    };
+    for &(x, y) in &all_verts {
+        let k = key(x, y);
+        snap_map.entry(k).or_insert_with(|| {
+            canonical.push((x, y));
+            (x, y)
+        });
+    }
+    // Apply canonical vertices to each polygon
+    for p in polys.iter_mut() {
+        let ring: Vec<Coord<f64>> = p.exterior().0.iter().map(|c| {
+            let rep = snap_map.get(&key(c.x, c.y)).copied().unwrap_or((c.x, c.y));
+            Coord { x: rep.0, y: rep.1 }
+        }).collect();
+        *p = Polygon::new(LineString::new(ring), vec![]);
+    }
+
+    // Extract all (vertex, owner_idx) pairs
+    let mut all_vertices: Vec<(f64, f64, usize)> = Vec::new();
+    for (i, p) in polys.iter().enumerate() {
+        for c in p.exterior().0.iter() {
+            all_vertices.push((c.x, c.y, i));
+        }
+    }
+
+    // For each polygon, build a new vertex list where we insert any foreign vertex
+    // that lies near one of its edges.
+    let mut new_rings: Vec<Vec<Coord<f64>>> = Vec::with_capacity(n);
+    for (i, p) in polys.iter().enumerate() {
+        let ring: Vec<Coord<f64>> = p.exterior().0.clone();
+        let mut new_ring: Vec<Coord<f64>> = Vec::with_capacity(ring.len() * 2);
+        for seg_idx in 0..ring.len().saturating_sub(1) {
+            let a = ring[seg_idx];
+            let b = ring[seg_idx + 1];
+            new_ring.push(a);
+
+            // Find foreign vertices close to segment a→b
+            let mut inserts: Vec<(f64, f64, f64)> = Vec::new(); // (t along seg, x, y)
+            let ab_x = b.x - a.x;
+            let ab_y = b.y - a.y;
+            let ab_len_sq = ab_x * ab_x + ab_y * ab_y;
+            if ab_len_sq > 1e-12 {
+                for &(vx, vy, owner) in &all_vertices {
+                    if owner == i { continue; }
+                    // Skip if very close to endpoint a or b (already have it as vertex)
+                    let da_sq = (vx - a.x).powi(2) + (vy - a.y).powi(2);
+                    let db_sq = (vx - b.x).powi(2) + (vy - b.y).powi(2);
+                    if da_sq < tol_sq || db_sq < tol_sq { continue; }
+                    // Project onto segment
+                    let t = ((vx - a.x) * ab_x + (vy - a.y) * ab_y) / ab_len_sq;
+                    if t <= 0.0 || t >= 1.0 { continue; }
+                    let proj_x = a.x + t * ab_x;
+                    let proj_y = a.y + t * ab_y;
+                    let d_sq = (vx - proj_x).powi(2) + (vy - proj_y).powi(2);
+                    if d_sq < tol_sq {
+                        // Use the foreign vertex's exact coords (not projected) so
+                        // shared vertices become bit-identical across polys
+                        inserts.push((t, vx, vy));
+                    }
+                }
+            }
+            // Sort by t and insert
+            inserts.sort_by(|x, y| x.0.partial_cmp(&y.0).unwrap_or(std::cmp::Ordering::Equal));
+            let mut last_t = -1.0;
+            for (t, x, y) in inserts {
+                if t - last_t < 1e-6 { continue; }
+                last_t = t;
+                new_ring.push(Coord { x, y });
+                total_snapped += 1;
+            }
+        }
+        // Close the ring
+        if let Some(&first) = ring.first() {
+            new_ring.push(first);
+        }
+        new_rings.push(new_ring);
+    }
+
+    // Rebuild polygons with the enriched rings
+    for (i, ring) in new_rings.into_iter().enumerate() {
+        polys[i] = Polygon::new(LineString::new(ring), vec![]);
+    }
+    if total_snapped > 0 {
+        eprintln!("[snap] inserted {} vertices across {} polys", total_snapped, n);
+    }
+    polys
+}
+
 /// Compute merged polygon outlines for each piece.
 ///
 /// Unions the original brick polygons (unbuffered) to preserve exact vector shapes.
-/// Bridges gaps between disconnected components with thin rectangles.
 /// Fills small interior holes.
 pub fn compute_piece_polygons(
     pieces: &[PuzzlePiece],
     bricks_by_id: &HashMap<String, Brick>,
     brick_polygons: &HashMap<String, Vec<[f64; 2]>>,
+    clip_x0: f64,
+    clip_y0: f64,
+    scale: f64,
 ) -> HashMap<String, Vec<[f64; 2]>> {
     use geo::algorithm::bool_ops::BooleanOps;
 
@@ -460,7 +693,9 @@ pub fn compute_piece_polygons(
 
     for piece in pieces {
         let mut polys: Vec<Polygon<f64>> = Vec::new();
-        let debug_piece = piece.id == "p12" || piece.id == "p11" || piece.id == "p13";
+        // Debug: trace pieces that produce multiple components from plain union.
+        // These are the "missing bricks" cases — find out why outlines don't merge.
+        let debug_piece = false; // will enable below if multi-component detected
 
         for bid in &piece.brick_ids {
             let brick = match bricks_by_id.get(bid) {
@@ -475,12 +710,10 @@ pub fn compute_piece_polygons(
                 }
             };
 
-            // Brick-local → canvas coords
+            // Polygons are stored in AI pymu coords — use directly, scale at end
+            let _ = brick;
             let coords: Vec<Coord<f64>> = pts.iter()
-                .map(|p| Coord {
-                    x: p[0] + brick.x as f64,
-                    y: p[1] + brick.y as f64,
-                })
+                .map(|p| Coord { x: p[0], y: p[1] })
                 .collect();
 
             if coords.len() < 3 {
@@ -511,7 +744,8 @@ pub fn compute_piece_polygons(
         }
 
         if debug_piece {
-            eprintln!("[piece-debug] {} has {} brick polygons", piece.id, polys.len());
+            eprintln!("[piece-debug] {} has {} brick polygons from {} bricks: {:?}",
+                piece.id, polys.len(), piece.brick_ids.len(), piece.brick_ids);
         }
 
         if polys.is_empty() {
@@ -519,50 +753,23 @@ pub fn compute_piece_polygons(
             continue;
         }
 
-        // Union brick polygons with a tiny expansion (0.1px) to merge polygons
-        // that touch at single vertices. This is invisible but ensures the clipper
-        // can fuse vertex-touching polygons into one shape.
-        use geo_clipper::Clipper;
+        // Snap vertices across bricks: where a vertex of one brick lies on (or near)
+        // an edge of another brick, insert it into that edge. This fixes shared
+        // curves tessellated with different vertex counts in different bricks.
+        // Runs in AI pymu coords where tolerance matches original source precision.
+        polys = snap_vertices_to_edges(polys, 0.5);
 
-        let factor = 1000.0;
-        const EPSILON: f64 = 0.1; // sub-pixel expansion to fuse touching vertices
+        // Plain union in AI pymu space. Shared edges (now bit-identical after snap)
+        // fuse cleanly without any epsilon tricks.
+        use geo_clipper::Clipper;
+        let factor = 10000.0; // higher precision for AI-scale coords
         const HOLE_AREA_THRESHOLD: f64 = 100.0;
 
-        // Expand each polygon by a tiny epsilon, union, then erode back
-        let mut expanded: Vec<Polygon<f64>> = Vec::new();
-        for poly in &polys {
-            let exp = poly.offset(EPSILON, geo_clipper::JoinType::Miter(2.0),
-                                  geo_clipper::EndType::ClosedPolygon, factor);
-            for p in exp.0 {
-                if p.unsigned_area() > 1.0 {
-                    expanded.push(p);
-                }
-            }
-        }
-        if expanded.is_empty() {
-            expanded = polys.clone();
-        }
-
-        let mut union = geo::MultiPolygon(vec![expanded[0].clone()]);
-        for poly in &expanded[1..] {
+        let mut union = geo::MultiPolygon(vec![polys[0].clone()]);
+        for poly in &polys[1..] {
             union = Clipper::union(&union, poly, factor);
         }
         union.0.retain(|p| p.unsigned_area() > 1.0);
-
-        // Erode back by epsilon to restore original shape
-        let mut eroded_union: Vec<Polygon<f64>> = Vec::new();
-        for poly in &union.0 {
-            let er = poly.offset(-EPSILON, geo_clipper::JoinType::Miter(2.0),
-                                 geo_clipper::EndType::ClosedPolygon, factor);
-            for p in er.0 {
-                if p.unsigned_area() > 1.0 {
-                    eroded_union.push(p);
-                }
-            }
-        }
-        if !eroded_union.is_empty() {
-            union = geo::MultiPolygon(eroded_union);
-        }
 
         if debug_piece {
             eprintln!("[piece-debug] {} union produced {} components", piece.id, union.0.len());
@@ -571,6 +778,11 @@ pub fn compute_piece_polygons(
                 eprintln!("[piece-debug]   component {} area={:.0} pts={} holes={} bbox={:?}",
                     ci, comp.unsigned_area(), comp.exterior().0.len(), comp.interiors().len(),
                     bb.map(|r| (r.min().x as i32, r.min().y as i32, r.max().x as i32, r.max().y as i32)));
+                if union.0.len() > 1 {
+                    for (vi, c) in comp.exterior().0.iter().enumerate() {
+                        eprintln!("[piece-debug]     v{}: ({:.2}, {:.2})", vi, c.x, c.y);
+                    }
+                }
             }
         }
 
@@ -579,10 +791,27 @@ pub fn compute_piece_polygons(
             continue;
         }
 
-        // Log if still disconnected after epsilon union (shouldn't happen normally)
+        // Dump details for pieces that didn't merge into a single component
         if union.0.len() > 1 {
-            eprintln!("[piece-gap] {} still has {} components after epsilon union ({} bricks)",
+            eprintln!("[piece-gap] {} has {} components from {} bricks",
                 piece.id, union.0.len(), piece.brick_ids.len());
+            // Dump input brick polygons
+            for (pi, bp) in polys.iter().enumerate() {
+                let bb = bp.bounding_rect();
+                eprintln!("[piece-gap]   INPUT brick {} pts={} bbox={:?}",
+                    pi, bp.exterior().0.len(),
+                    bb.map(|r| (r.min().x, r.min().y, r.max().x, r.max().y)));
+                for (vi, c) in bp.exterior().0.iter().enumerate() {
+                    eprintln!("[piece-gap]     iv{}: ({:.4}, {:.4})", vi, c.x, c.y);
+                }
+            }
+            // Dump output components
+            for (ci, comp) in union.0.iter().enumerate() {
+                let bb = comp.bounding_rect();
+                eprintln!("[piece-gap]   OUTPUT component {} area={:.1} pts={} bbox={:?}",
+                    ci, comp.unsigned_area(), comp.exterior().0.len(),
+                    bb.map(|r| (r.min().x, r.min().y, r.max().x, r.max().y)));
+            }
         }
 
         // Take the largest polygon
@@ -601,9 +830,39 @@ pub fn compute_piece_polygons(
             .collect();
         final_poly = Polygon::new(exterior, kept_holes);
 
-        let coords: Vec<[f64; 2]> = final_poly.exterior().0.iter()
+        let mut coords: Vec<[f64; 2]> = final_poly.exterior().0.iter()
             .map(|c| [c.x, c.y])
             .collect();
+
+        // Check if this piece contains user-reported spike coordinates
+        let has_target = coords.iter().any(|c| {
+            (c[0] >= 277.0 && c[0] <= 280.0 && c[1] >= 550.0 && c[1] <= 551.0)
+            || (c[0] >= 285.0 && c[0] <= 286.0 && c[1] >= 794.0 && c[1] <= 795.5)
+            || (c[0] >= 144.5 && c[0] <= 145.5 && c[1] >= 792.0 && c[1] <= 795.0)
+        });
+        let debug_this = has_target;
+
+        if debug_this {
+            eprintln!("[target-piece] {} has {} pts before cleanup", piece.id, coords.len());
+            for (vi, c) in coords.iter().enumerate() {
+                eprintln!("[target-piece]   v{}: ({:.4}, {:.4})", vi, c[0], c[1]);
+            }
+        }
+
+        // Clean up clipper union artifacts: degenerate spikes
+        coords = remove_polygon_spikes_named(coords, &piece.id);
+
+        // Scale from AI pymu coords to canvas coords (last step)
+        let coords: Vec<[f64; 2]> = coords.into_iter()
+            .map(|p| [(p[0] - clip_x0) * scale, (p[1] - clip_y0) * scale])
+            .collect();
+
+        if debug_piece {
+            eprintln!("[piece-debug] {} FINAL polygon: {} pts", piece.id, coords.len());
+            for (vi, c) in coords.iter().enumerate() {
+                eprintln!("[piece-debug]   v{}: ({:.6}, {:.6})", vi, c[0], c[1]);
+            }
+        }
         result.insert(piece.id.clone(), coords);
     }
 

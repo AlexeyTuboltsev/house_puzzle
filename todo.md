@@ -66,6 +66,11 @@ Replace our custom test harness with proper WebDriver-based testing:
   screenshots. Could replace our WKWebView.takeSnapshot code.
 - CrabNebula WebDriver — commercial hosted service with macOS support.
 
+### Target pieces slider UX
+The range slider for target piece count is hard to set precisely.
+Consider: numeric input field alongside the slider, or step buttons (+/−),
+or a wider slider with snap-to-value labels.
+
 ### Piece editor adjacency check
 When combining pieces in the editor, verify they are adjacent before
 allowing the merge. Currently not enforced.
