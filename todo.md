@@ -1,5 +1,29 @@
 ## Open
 
+### AI unscaled vector data as source of truth
+Current pipeline runs vector operations (adjacency, unions, spike removal,
+piece outlines) partly in canvas-pixel coords after scaling. Scaling is lossy
+— shared endpoints that were bit-identical in the AI file stop matching, so
+we pile on workarounds: epsilon expand/erode, vertex snapping, spike removal.
+
+Refactor: keep AI native coords (pymu units) and bezier curves as the single
+source of truth for every vector op. Tessellate and scale to canvas only at
+the last possible moment — ideally only for raster masks. Blue/white outlines
+should go to SVG as bezier path commands and be tessellated by the browser
+after the CSS transform, not by us before.
+
+Raster pipeline review (same direction): we may not need per-brick raster
+layers at all. Alternative shape:
+
+1. Render ONE high-res raster of the full artwork via MuPDF (bricks layer,
+   plus lights/background/etc. as separate hi-res layers).
+2. Clip that hi-res raster by vector outlines — at full AI resolution, so
+   edges land exactly on vector boundaries.
+3. Downsample per piece/brick to the target canvas size only at the end.
+
+That removes the per-brick OCG render roundtrips, keeps edges sharp, and
+avoids all the polygon-mask artefacts we chase today.
+
 ### Piece 1px gaps/bleeding — rasterization pipeline redesign
 **Root cause**: We rasterize the full page at ~30 DPI via MuPDF, then split
 the low-res raster into bricks/pieces using vector polygon masks. At 30 DPI,
@@ -45,10 +69,38 @@ Add structured logging throughout the pipeline (parse, render, merge, export).
 Eventually: opt-in home-calling that sends error logs to a remote endpoint
 so client-reported issues can be diagnosed without access to their machine.
 
-### Update checker — verify
-tauri-plugin-updater integrated (PR #56) but not verified end-to-end.
-Needs testing: does the banner appear when a new release exists?
-Requires a signed release + updater pubkey configuration.
+### Update checker — doesn't fire (confirmed broken v0.4.0 → v0.4.1)
+tauri-plugin-updater integrated (PR #56), `check_for_updates` command
+wired, but the banner never appears even when a newer release exists.
+
+**Three root causes:**
+
+1. **No `latest.json` manifest.** The updater endpoint
+   `https://github.com/AlexeyTuboltsev/house_puzzle/releases/latest/download/latest.json`
+   returns HTTP 404. Tauri v2 updater needs this JSON to compare versions
+   and locate the per-platform update bundle.
+
+2. **No signing set up.** `tauri.conf.json` has `"pubkey": ""`; CI
+   (`build-tauri.yml`) has no `TAURI_SIGNING_PRIVATE_KEY` /
+   `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` env vars passed to `tauri-action`,
+   so the bundler never emits `.sig` files. Tauri v2 updater rejects
+   unsigned updates by design.
+
+3. **Platform-prefixed artifact renames.** Release assets end up with names
+   like `linux-House.Puzzle_0.4.1_amd64.AppImage` (done in a later CI step).
+   Even if a `latest.json` existed, the URLs baked into it by `tauri-action`
+   would point at the original names and 404 on download.
+
+**To fix end-to-end:**
+
+1. Generate a Tauri signing keypair: `cargo tauri signer generate`.
+2. Paste the public key into `tauri.conf.json` → `plugins.updater.pubkey`.
+3. Add the private key + password to repo secrets:
+   `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`.
+4. Wire both env vars into the `tauri-apps/tauri-action` step so the
+   bundler signs each artifact and produces `latest.json`.
+5. Either stop renaming artifacts with the platform prefix, or regenerate
+   `latest.json` after renames so its URLs match the uploaded filenames.
 
 ### Extract test harness behind feature flag
 The `--test-mode` file watcher and JS eval for clicks live in production
