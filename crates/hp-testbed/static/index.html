@@ -1,0 +1,464 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>HP Bezier Merge Testbed</title>
+<style>
+  html, body { margin: 0; height: 100%; font-family: system-ui, sans-serif; background: #111; color: #eee; }
+  body { display: grid; grid-template-rows: auto 1fr; height: 100vh; overflow: hidden; }
+  #toolbar { display: flex; gap: 12px; align-items: center; padding: 8px 12px; background: #1b1b1b; border-bottom: 1px solid #333; }
+  #toolbar label { font-size: 13px; }
+  #toolbar select, #toolbar button {
+    background: #222; color: #eee; border: 1px solid #444; padding: 4px 8px; font-size: 13px;
+  }
+  #toolbar button:hover { background: #2a2a2a; cursor: pointer; }
+  #toolbar #status { margin-left: auto; font-size: 12px; color: #888; }
+
+  #main { display: grid; grid-template-columns: 1fr 280px; min-height: 0; }
+
+  #viewport {
+    position: relative;
+    overflow: hidden;
+    background: #0a0a0a;
+    cursor: grab;
+  }
+  #viewport.panning { cursor: grabbing; }
+  #viewport svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+  /* Piece outlines are purely visual; bricks underneath are the click targets. */
+  .piece-outline {
+    fill: none; stroke: #4ea1ff; stroke-width: 2;
+    stroke-linejoin: round; vector-effect: non-scaling-stroke;
+    pointer-events: none;
+  }
+  .piece-outline.selected { stroke: #ffe066; stroke-width: 3; }
+
+  /* Bricks cover the entire house, so any click lands on one. Fill is
+     transparent so bricks receive clicks on the interior too. */
+  .brick-outline {
+    fill: transparent; stroke: #666; stroke-width: 1;
+    stroke-dasharray: 2 3; vector-effect: non-scaling-stroke;
+    cursor: pointer; pointer-events: all;
+  }
+  .brick-outline.hidden { stroke: transparent; stroke-dasharray: none; }
+  .brick-outline.selected {
+    stroke: #ffb700; stroke-width: 2; stroke-dasharray: none;
+  }
+
+  /* Vertex labels for the selected brick. */
+  #vertexLayer text {
+    fill: #ffb700; font-family: monospace; font-weight: bold;
+    pointer-events: none; user-select: none;
+    dominant-baseline: middle;
+  }
+
+  #info {
+    background: #161616; border-left: 1px solid #333;
+    overflow-y: auto; padding: 10px 12px; font-size: 12px; min-width: 0;
+  }
+  #info h3 { margin: 0 0 6px; font-size: 13px; color: #ffe066; }
+  #info .kv { color: #aaa; }
+  #info .brick {
+    padding: 2px 4px; border-bottom: 1px dashed #2a2a2a; cursor: pointer;
+  }
+  #info .brick:hover { background: #1f1f1f; }
+  #info .brick.selected { background: #2a2411; border-bottom-color: #4a3a10; }
+  #info .brick .bid { color: #4ea1ff; font-family: monospace; }
+  #info .brick.selected .bid { color: #ffb700; }
+  #info .brick .bname { color: #ddd; margin-left: 6px; }
+  #info .empty { color: #666; font-style: italic; }
+  #zoom-hint { position: absolute; bottom: 8px; right: 8px; color: #555; font-size: 11px; user-select: none; }
+</style>
+</head>
+<body>
+  <div id="toolbar">
+    <label>Piece:
+      <select id="pieceSelect"><option value="">(all)</option></select>
+    </label>
+    <label><input type="checkbox" id="showBricks" checked> show brick outlines</label>
+    <button id="fit">Fit</button>
+    <button id="reload">Reload</button>
+    <span id="status">loading…</span>
+  </div>
+
+  <div id="main">
+    <div id="viewport">
+      <svg id="svg" xmlns="http://www.w3.org/2000/svg"></svg>
+      <div id="zoom-hint">wheel: zoom &nbsp;·&nbsp; drag: pan</div>
+    </div>
+    <aside id="info">
+      <div class="empty">Click a piece outline for details.</div>
+    </aside>
+  </div>
+
+<script>
+(async () => {
+  const $ = (sel) => document.querySelector(sel);
+  const sel = $('#pieceSelect');
+  const showBricks = $('#showBricks');
+  const status = $('#status');
+  const viewport = $('#viewport');
+  const svg = $('#svg');
+  const info = $('#info');
+  const svgNS = 'http://www.w3.org/2000/svg';
+
+  let state = {
+    canvas: { w: 0, h: 0 },
+    pieces: [],                // full pieces array
+    bricks: [],                // brick preview array (may be empty)
+    brickToPiece: new Map(),   // brick_id → piece_id
+    selectedPieceId: null,
+    selectedBrickId: null,
+    viewBox: { x: 0, y: 0, w: 1, h: 1 },
+  };
+
+  // Bricks are always requested — they're the click targets.
+  async function fetchPieces(pieceId) {
+    const params = new URLSearchParams();
+    if (pieceId) params.set('piece', pieceId);
+    params.set('with_bricks', 'true');
+    const r = await fetch('/api/pieces?' + params.toString());
+    if (!r.ok) throw new Error('api ' + r.status + ' ' + (await r.text()));
+    return r.json();
+  }
+
+  function setViewBox(vb) {
+    state.viewBox = vb;
+    svg.setAttribute('viewBox', `${vb.x} ${vb.y} ${vb.w} ${vb.h}`);
+    // Keep vertex markers a consistent on-screen size across zoom levels.
+    if (state.selectedBrickId) renderVertices();
+  }
+
+  // Compute bbox over visible pieces+bricks.
+  function overallBbox(data) {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const p of data.pieces) {
+      if (p.bbox) {
+        minX = Math.min(minX, p.bbox[0]);
+        minY = Math.min(minY, p.bbox[1]);
+        maxX = Math.max(maxX, p.bbox[2]);
+        maxY = Math.max(maxY, p.bbox[3]);
+      }
+    }
+    if (!isFinite(minX)) return { x: 0, y: 0, w: data.canvas_width, h: data.canvas_height };
+    // add 5% padding
+    const pad = Math.max((maxX - minX) * 0.05, (maxY - minY) * 0.05, 4);
+    return { x: minX - pad, y: minY - pad, w: (maxX - minX) + 2 * pad, h: (maxY - minY) + 2 * pad };
+  }
+
+  function fitView() {
+    // Fit the content bbox, then center it in the viewport preserving aspect.
+    const content = overallBbox({
+      pieces: state.pieces,
+      canvas_width: state.canvas.w,
+      canvas_height: state.canvas.h,
+    });
+    // Expand to match viewport aspect so we don't distort.
+    const vw = viewport.clientWidth || 1;
+    const vh = viewport.clientHeight || 1;
+    const vRatio = vw / vh;
+    const cRatio = content.w / content.h;
+    let vb;
+    if (cRatio > vRatio) {
+      // content wider than viewport → add vertical padding
+      const needH = content.w / vRatio;
+      vb = { x: content.x, y: content.y - (needH - content.h) / 2, w: content.w, h: needH };
+    } else {
+      const needW = content.h * vRatio;
+      vb = { x: content.x - (needW - content.w) / 2, y: content.y, w: needW, h: content.h };
+    }
+    setViewBox(vb);
+  }
+
+  function render(data) {
+    state.canvas = { w: data.canvas_width, h: data.canvas_height };
+    state.pieces = data.pieces;
+    state.bricks = data.bricks || [];
+    state.brickToPiece = new Map();
+    for (const p of state.pieces) {
+      for (const b of p.bricks) state.brickToPiece.set(b.id, p.id);
+    }
+
+    // Build the SVG contents.
+    svg.innerHTML = '';
+
+    // Bricks first, as transparent-fill click targets covering the whole house.
+    const bricksGroup = document.createElementNS(svgNS, 'g');
+    bricksGroup.setAttribute('id', 'brickLayer');
+    const brickVisibility = showBricks.checked ? '' : ' hidden';
+    for (const brick of state.bricks) {
+      for (const d of brick.svg) {
+        const p = document.createElementNS(svgNS, 'path');
+        p.setAttribute('d', d);
+        p.setAttribute('class', 'brick-outline' + brickVisibility);
+        p.setAttribute('data-brick', brick.id);
+        p.addEventListener('click', (e) => {
+          e.stopPropagation();
+          selectBrick(brick.id);
+        });
+        bricksGroup.appendChild(p);
+      }
+    }
+    svg.appendChild(bricksGroup);
+
+    // Piece outlines on top, but pointer-events:none so clicks fall through
+    // to the brick underneath.
+    const pieceGroup = document.createElementNS(svgNS, 'g');
+    pieceGroup.setAttribute('id', 'pieceLayer');
+    for (const piece of state.pieces) {
+      for (const d of piece.svg) {
+        const p = document.createElementNS(svgNS, 'path');
+        p.setAttribute('d', d);
+        p.setAttribute('class', 'piece-outline');
+        p.setAttribute('data-piece', piece.id);
+        pieceGroup.appendChild(p);
+      }
+    }
+    svg.appendChild(pieceGroup);
+
+    // Vertex overlay (only filled when a brick is selected).
+    const vertexLayer = document.createElementNS(svgNS, 'g');
+    vertexLayer.setAttribute('id', 'vertexLayer');
+    svg.appendChild(vertexLayer);
+
+    fitView();
+
+    // Status
+    const total = state.pieces.length;
+    const pathCount = state.pieces.reduce((s, p) => s + p.svg.length, 0);
+    const multi = state.pieces.filter(p => p.svg.length > 1).length;
+    const empty = state.pieces.filter(p => p.svg.length === 0).length;
+    status.textContent = `${total} pieces · ${pathCount} paths (multi: ${multi}, empty: ${empty})`;
+
+    applySelection();
+  }
+
+  function renderInfo() {
+    const id = state.selectedPieceId;
+    if (!id) {
+      info.innerHTML = '<div class="empty">Click a piece outline for details.</div>';
+      return;
+    }
+    const piece = state.pieces.find(p => p.id === id);
+    if (!piece) {
+      info.innerHTML = `<div class="empty">Piece ${id} not in the current view.</div>`;
+      return;
+    }
+    const bboxStr = piece.bbox
+      ? `${piece.bbox.map(v => v.toFixed(1)).join(', ')}`
+      : '—';
+    const rows = piece.bricks.map(b => {
+      const cls = b.id === state.selectedBrickId ? 'brick selected' : 'brick';
+      return `<div class="${cls}" data-brick="${b.id}">` +
+             `<span class="bid">${b.id}</span>` +
+             `<span class="bname">${b.name || '(no name)'}</span></div>`;
+    }).join('');
+
+    let vertexBlock = '';
+    if (state.selectedBrickId) {
+      const brick = state.bricks.find(b => b.id === state.selectedBrickId);
+      if (brick) {
+        const multi = brick.vertices.length > 1;
+        let html = `<h3 style="margin-top:12px">Brick ${brick.id} vertices</h3>`;
+        for (let pi = 0; pi < brick.vertices.length; pi++) {
+          if (multi) html += `<div class="kv">sub-path ${pi}</div>`;
+          for (let vi = 0; vi < brick.vertices[pi].length; vi++) {
+            const [x, y] = brick.vertices[pi][vi];
+            const label = multi ? `v${pi}.${vi}` : `v${vi}`;
+            html += `<div style="font-family:monospace;font-size:11px;">` +
+                    `<span style="color:#ffb700">${label}</span> ` +
+                    `(${x.toFixed(2)}, ${y.toFixed(2)})</div>`;
+          }
+        }
+        vertexBlock = html;
+      }
+    }
+
+    info.innerHTML = `
+      <h3>Piece ${piece.id}</h3>
+      <div class="kv">bricks: ${piece.bricks.length}</div>
+      <div class="kv">paths: ${piece.svg.length}</div>
+      <div class="kv">bbox: ${bboxStr}</div>
+      <div style="height:6px"></div>
+      <div>${rows || '<div class="empty">(no bricks)</div>'}</div>
+      ${vertexBlock}
+    `;
+    // Let the user click rows to select the corresponding brick in the SVG.
+    for (const row of info.querySelectorAll('.brick')) {
+      row.addEventListener('click', () => selectBrick(row.getAttribute('data-brick')));
+    }
+  }
+
+  function applySelection() {
+    for (const el of svg.querySelectorAll('.piece-outline')) {
+      el.classList.toggle('selected', el.getAttribute('data-piece') === state.selectedPieceId);
+    }
+    for (const el of svg.querySelectorAll('.brick-outline')) {
+      el.classList.toggle('selected', el.getAttribute('data-brick') === state.selectedBrickId);
+    }
+    renderVertices();
+    renderInfo();
+  }
+
+  /**
+   * Draw labeled dots at every endpoint of the currently selected brick.
+   * Sized in viewBox units so they stay roughly the same on-screen size.
+   */
+  function renderVertices() {
+    const layer = svg.querySelector('#vertexLayer');
+    if (!layer) return;
+    layer.innerHTML = '';
+    const id = state.selectedBrickId;
+    if (!id) return;
+    const brick = state.bricks.find(b => b.id === id);
+    if (!brick) return;
+
+    const vb = state.viewBox;
+    const unit = Math.min(vb.w, vb.h);  // viewBox-unit ≈ screen-px when fit
+    const fontPx = Math.max(unit * 0.012, 0.01);
+    const offset = fontPx * 0.4;        // small gap right of the vertex point
+    const multi = brick.vertices.length > 1;
+
+    for (let pi = 0; pi < brick.vertices.length; pi++) {
+      const verts = brick.vertices[pi];
+      for (let vi = 0; vi < verts.length; vi++) {
+        const [x, y] = verts[vi];
+        const label = multi ? `v${pi}.${vi}` : `v${vi}`;
+        const t = document.createElementNS(svgNS, 'text');
+        t.setAttribute('x', x + offset);
+        t.setAttribute('y', y);
+        t.setAttribute('font-size', fontPx);
+        t.textContent = label;
+        layer.appendChild(t);
+      }
+    }
+  }
+
+  function selectPiece(id) {
+    state.selectedPieceId = id;
+    // Don't keep a stale brick selection when jumping to a different piece.
+    if (id && state.selectedBrickId && state.brickToPiece.get(state.selectedBrickId) !== id) {
+      state.selectedBrickId = null;
+    }
+    applySelection();
+  }
+
+  function selectBrick(id) {
+    state.selectedBrickId = id;
+    if (id) {
+      const pieceId = state.brickToPiece.get(id);
+      if (pieceId) state.selectedPieceId = pieceId;
+    }
+    applySelection();
+  }
+
+  // ─── Zoom & pan ───────────────────────────────────────────────────────
+  viewport.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const vb = state.viewBox;
+    const rect = viewport.getBoundingClientRect();
+    // Pointer position in SVG coords.
+    const px = vb.x + ((e.clientX - rect.left) / rect.width) * vb.w;
+    const py = vb.y + ((e.clientY - rect.top) / rect.height) * vb.h;
+    const factor = e.deltaY > 0 ? 1.2 : 1 / 1.2;
+    const nw = vb.w * factor;
+    const nh = vb.h * factor;
+    setViewBox({
+      x: px - (px - vb.x) * factor,
+      y: py - (py - vb.y) * factor,
+      w: nw,
+      h: nh,
+    });
+  }, { passive: false });
+
+  // Pan only engages after a small drag threshold, so a plain click on a
+  // piece outline still fires as a click (not as a pan).
+  const PAN_THRESHOLD_PX = 4;
+  let pointer = null; // { pid, x0, y0, vb, dragging }
+  viewport.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    pointer = { pid: e.pointerId, x0: e.clientX, y0: e.clientY,
+                vb: { ...state.viewBox }, dragging: false };
+  });
+  viewport.addEventListener('pointermove', (e) => {
+    if (!pointer) return;
+    const dx = e.clientX - pointer.x0;
+    const dy = e.clientY - pointer.y0;
+    if (!pointer.dragging) {
+      if (Math.hypot(dx, dy) < PAN_THRESHOLD_PX) return;
+      pointer.dragging = true;
+      viewport.classList.add('panning');
+      viewport.setPointerCapture(pointer.pid);
+    }
+    const rect = viewport.getBoundingClientRect();
+    const sx = dx / rect.width * pointer.vb.w;
+    const sy = dy / rect.height * pointer.vb.h;
+    setViewBox({ x: pointer.vb.x - sx, y: pointer.vb.y - sy,
+                 w: pointer.vb.w, h: pointer.vb.h });
+  });
+  const endPan = () => {
+    if (pointer && pointer.dragging) {
+      viewport.classList.remove('panning');
+      try { viewport.releasePointerCapture(pointer.pid); } catch (_) {}
+    }
+    pointer = null;
+  };
+  viewport.addEventListener('pointerup', endPan);
+  viewport.addEventListener('pointercancel', endPan);
+
+  // Click on empty viewport (not on a path) → clear selection.
+  // A click on a piece-outline path stops propagation above, so this only
+  // fires on background clicks.
+  svg.addEventListener('click', (e) => {
+    const cl = e.target && e.target.classList;
+    if (cl && cl.contains('brick-outline')) return;
+    state.selectedPieceId = null;
+    state.selectedBrickId = null;
+    applySelection();
+  });
+
+  // ─── Actions ──────────────────────────────────────────────────────────
+  async function refresh() {
+    try {
+      status.textContent = 'loading…';
+      const data = await fetchPieces(sel.value || null);
+      render(data);
+    } catch (e) {
+      status.textContent = 'error: ' + e.message;
+      console.error(e);
+    }
+  }
+
+  // Toggle brick visibility without re-fetching.
+  function applyBrickVisibility() {
+    for (const el of svg.querySelectorAll('.brick-outline')) {
+      el.classList.toggle('hidden', !showBricks.checked);
+    }
+  }
+
+  // Populate dropdown from initial "all pieces" fetch.
+  try {
+    const data = await fetchPieces(null);
+    for (const p of data.pieces) {
+      const opt = document.createElement('option');
+      opt.value = p.id;
+      opt.textContent = `${p.id} (${p.bricks.length} bricks, ${p.svg.length} paths)`;
+      sel.appendChild(opt);
+    }
+    render(data);
+  } catch (e) {
+    status.textContent = 'error: ' + e.message;
+  }
+
+  sel.addEventListener('change', refresh);
+  showBricks.addEventListener('change', applyBrickVisibility);
+  $('#fit').addEventListener('click', fitView);
+  $('#reload').addEventListener('click', refresh);
+  window.addEventListener('resize', fitView);
+})();
+</script>
+</body>
+</html>

@@ -348,6 +348,82 @@ fn polygon_area(pts: &[[f64; 2]]) -> f64 {
     area.abs() / 2.0
 }
 
+/// Parse path operator lines into bezier paths (curves preserved).
+/// Returns (paths, open_path_count). Coords are in PyMuPDF y-down space.
+pub fn parse_path_lines_bezier(
+    lines: &[Vec<&str>],
+    offset_x: f64,
+    y_base: f64,
+) -> (Vec<crate::bezier::BezierPath>, usize) {
+    use crate::bezier::{BezierPath, Segment};
+
+    let to_pymu = |ax: f64, ay: f64| -> [f64; 2] { [ax + offset_x, y_base - ay] };
+
+    let mut start: Option<[f64; 2]> = None;
+    let mut segs: Vec<Segment> = Vec::new();
+    let mut prev: Option<[f64; 2]> = None;
+    let mut paths: Vec<BezierPath> = Vec::new();
+    let mut open_paths = 0usize;
+
+    let flush_open = |paths: &mut Vec<BezierPath>,
+                      open_paths: &mut usize,
+                      start: Option<[f64; 2]>,
+                      segs: &mut Vec<Segment>| {
+        if let (Some(s), true) = (start, !segs.is_empty()) {
+            // geometrically closed?
+            let last = segs.last().map(|g| g.end()).unwrap_or(s);
+            let d = ((s[0] - last[0]).powi(2) + (s[1] - last[1]).powi(2)).sqrt();
+            if d < 1.0 {
+                paths.push(BezierPath { start: s, segments: std::mem::take(segs) });
+            } else {
+                *open_paths += 1;
+            }
+        }
+    };
+
+    for parts in lines {
+        if parts.is_empty() { continue; }
+        let op = *parts.last().expect("guarded by parts.is_empty() check");
+        match op {
+            "m" if parts.len() >= 3 => {
+                flush_open(&mut paths, &mut open_paths, start, &mut segs);
+                let x: f64 = parts[0].parse().unwrap_or(0.0);
+                let y: f64 = parts[1].parse().unwrap_or(0.0);
+                start = Some(to_pymu(x, y));
+                prev = start;
+                segs.clear();
+            }
+            "L" | "l" if parts.len() >= 3 => {
+                let x: f64 = parts[0].parse().unwrap_or(0.0);
+                let y: f64 = parts[1].parse().unwrap_or(0.0);
+                let to = to_pymu(x, y);
+                segs.push(Segment::Line { to });
+                prev = Some(to);
+            }
+            "C" | "c" if parts.len() >= 7 => {
+                if prev.is_none() { continue; }
+                let cp1 = to_pymu(parts[0].parse().unwrap_or(0.0), parts[1].parse().unwrap_or(0.0));
+                let cp2 = to_pymu(parts[2].parse().unwrap_or(0.0), parts[3].parse().unwrap_or(0.0));
+                let to  = to_pymu(parts[4].parse().unwrap_or(0.0), parts[5].parse().unwrap_or(0.0));
+                segs.push(Segment::Cubic { cp1, cp2, to });
+                prev = Some(to);
+            }
+            "n" | "N" | "f" | "F" | "s" | "S" | "b" | "B" => {
+                // close/fill/stroke — emit whatever we've collected as closed
+                if let (Some(s), false) = (start, segs.is_empty()) {
+                    paths.push(BezierPath { start: s, segments: std::mem::take(&mut segs) });
+                }
+                start = None;
+                prev = None;
+                segs.clear();
+            }
+            _ => {}
+        }
+    }
+    flush_open(&mut paths, &mut open_paths, start, &mut segs);
+    (paths, open_paths)
+}
+
 /// Parse path operator lines into polygons (PyMuPDF y-down coords).
 /// Returns (polygons, open_path_count).
 fn parse_path_lines(
@@ -448,6 +524,55 @@ fn parse_path_lines(
 /// 3. **Adjacent**: objects are separate but within `ADJACENCY_DIST` px → union
 ///    original vectors and bridge gaps with thin rectangles. Outer shapes preserved.
 /// 4. **Independent**: objects are far apart → keep only the largest, log a warning.
+/// Extract all bezier sub-paths for a brick layer, curves preserved,
+/// coordinates in AI PyMuPDF space (y-down). Used by the bezier-merge
+/// testbed; avoids tessellation.
+pub fn extract_vector_path_bezier(
+    block: &LayerBlock,
+    data: &[u8],
+    offset_x: f64,
+    y_base: f64,
+) -> Vec<crate::bezier::BezierPath> {
+    let block_data = &data[block.begin..block.end];
+    let lines: Vec<String> = split_lines(block_data)
+        .iter()
+        .map(|(l, _)| bstr(l).trim().to_string())
+        .collect();
+
+    let mut parsed_lines: Vec<Vec<String>> = Vec::new();
+    for line in &lines {
+        if !line.starts_with("%_") { continue; }
+        let parts: Vec<String> = line[2..].split_whitespace().map(|s| s.to_string()).collect();
+        if !parts.is_empty()
+            && PATH_OPS.contains(&parts.last().expect("guarded by is_empty").as_str())
+        {
+            parsed_lines.push(parts);
+        }
+    }
+    if parsed_lines.is_empty() {
+        for line in &lines {
+            if line.starts_with('%') { continue; }
+            let parts: Vec<String> = line.split_whitespace().map(|s| s.to_string()).collect();
+            if !parts.is_empty()
+                && PATH_OPS.contains(&parts.last().expect("guarded by is_empty").as_str())
+                && (parts.len() == 3 || parts.len() == 7)
+            {
+                let all_numeric = parts[..parts.len() - 1]
+                    .iter()
+                    .all(|p| p.parse::<f64>().is_ok());
+                if all_numeric { parsed_lines.push(parts); }
+            }
+        }
+    }
+    let refs: Vec<Vec<&str>> = parsed_lines
+        .iter()
+        .map(|parts| parts.iter().map(|s| s.as_str()).collect())
+        .collect();
+    let (paths, _open) = parse_path_lines_bezier(&refs, offset_x, y_base);
+    // Drop trivial/degenerate paths (fewer than 2 segments → can't be a closed shape)
+    paths.into_iter().filter(|p| p.segments.len() >= 2).collect()
+}
+
 fn extract_vector_path(
     block: &LayerBlock,
     data: &[u8],
@@ -1123,6 +1248,8 @@ pub fn parse_ai(
         skipped_bricks,
         expected_brick_min: (expected_brick_min_x, expected_brick_min_y),
         warnings,
+        offset_x,
+        y_base,
     };
 
     Ok((results, metadata, ai_data))
@@ -1139,6 +1266,11 @@ pub struct ParsedAiMetadata {
     pub skipped_bricks: Vec<String>,
     pub expected_brick_min: (i32, i32),
     pub warnings: Vec<String>,
+    /// AI → PyMuPDF transform. `pymu_x = ai_x + offset_x`, `pymu_y = y_base - ai_y`.
+    /// Exposed so downstream code (testbed, bezier merge) can re-parse path
+    /// bytes from the raw AI without redoing the artbox probe.
+    pub offset_x: f64,
+    pub y_base: f64,
 }
 
 #[cfg(test)]
