@@ -190,6 +190,15 @@ const BEZIER_TOL: f64 = 0.1;
 /// endpoints when de-duplicating anchors inside the split passes.
 const SPLIT_TOL: f64 = BEZIER_TOL;
 
+/// Perpendicular-distance tolerance for "vertex lies on a line" (line
+/// T-junction test). Must be generous enough to absorb small endpoint
+/// drift introduced by `canonicalize_endpoints` — otherwise a line whose
+/// endpoint was nudged 0.3 pymu by clustering will no longer accept the
+/// midway vertex that was originally exactly on it. 1.0 pymu ≈ 0.4
+/// canvas-px, which is safely below any real perpendicular distance
+/// between distinct lines in puzzle artwork.
+const LINE_PROJECT_TOL: f64 = 1.0;
+
 /// Maximum distance between two endpoint positions that should be treated
 /// as the same vertex. Hand-drawn bricks often drift by up to ~1 pymu
 /// (~0.4 canvas-px) between neighbours; fuse aggressively so the shared-
@@ -526,7 +535,7 @@ fn split_lines_at_vertices(edges: Vec<Edge>) -> Vec<Edge> {
             let px = e.from[0] + t * dx;
             let py = e.from[1] + t * dy;
             let d2 = (a[0] - px).powi(2) + (a[1] - py).powi(2);
-            if d2 > BEZIER_TOL * BEZIER_TOL { continue; }
+            if d2 > LINE_PROJECT_TOL * LINE_PROJECT_TOL { continue; }
             splits.push((t, *a));
         }
 
