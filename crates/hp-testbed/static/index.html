@@ -23,6 +23,28 @@
     cursor: grab;
   }
   #viewport.panning { cursor: grabbing; }
+  #viewport.loading svg { opacity: 0.35; }
+  #loadingOverlay {
+    position: absolute; inset: 0;
+    display: none; align-items: center; justify-content: center;
+    pointer-events: none;
+    color: #ffe066; font-family: system-ui, sans-serif;
+    font-size: 14px; letter-spacing: 0.5px;
+    background: rgba(0, 0, 0, 0.25);
+  }
+  #viewport.loading #loadingOverlay { display: flex; }
+  #loadingOverlay .bubble {
+    background: rgba(10, 10, 10, 0.85);
+    border: 1px solid #333; padding: 10px 14px; border-radius: 6px;
+  }
+  #loadingOverlay .spinner {
+    display: inline-block;
+    width: 12px; height: 12px; margin-right: 8px;
+    border: 2px solid #ffe066; border-top-color: transparent; border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    vertical-align: middle;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
   #viewport svg {
     width: 100%;
     height: 100%;
@@ -75,10 +97,27 @@
 </head>
 <body>
   <div id="toolbar">
+    <label>File:
+      <select id="fileSelect"></select>
+    </label>
     <label>Piece:
       <select id="pieceSelect"><option value="">(all)</option></select>
     </label>
     <label><input type="checkbox" id="showBricks" checked> show brick outlines</label>
+    <span style="margin-left:12px; border-left:1px solid #333; padding-left:12px;">
+      Pieces:
+      <button id="targetDown" title="fewer">−</button>
+      <input id="targetInput" type="number" value="120" min="2" max="500" step="1"
+             style="width:64px; background:#222; color:#eee; border:1px solid #444; padding:4px;">
+      <button id="targetUp" title="more">+</button>
+    </span>
+    <span style="margin-left:12px; border-left:1px solid #333; padding-left:12px;">
+      Seed:
+      <button id="seedBack" title="← prev seed">◀</button>
+      <input id="seedInput" type="number" value="42" min="0" max="99" step="1"
+             style="width:54px; background:#222; color:#eee; border:1px solid #444; padding:4px;">
+      <button id="seedFwd" title="next seed →">▶</button>
+    </span>
     <button id="fit">Fit</button>
     <button id="reload">Reload</button>
     <span id="status">loading…</span>
@@ -87,6 +126,7 @@
   <div id="main">
     <div id="viewport">
       <svg id="svg" xmlns="http://www.w3.org/2000/svg"></svg>
+      <div id="loadingOverlay"><div class="bubble"><span class="spinner"></span><span id="loadingText">loading…</span></div></div>
       <div id="zoom-hint">wheel: zoom &nbsp;·&nbsp; drag: pan</div>
     </div>
     <aside id="info">
@@ -116,12 +156,21 @@
   };
 
   // Bricks are always requested — they're the click targets.
-  async function fetchPieces(pieceId) {
+  async function fetchPieces(pieceId, seed, file, target, signal) {
     const params = new URLSearchParams();
     if (pieceId) params.set('piece', pieceId);
     params.set('with_bricks', 'true');
-    const r = await fetch('/api/pieces?' + params.toString());
+    if (seed !== undefined && seed !== null) params.set('seed', String(seed));
+    if (target !== undefined && target !== null) params.set('target', String(target));
+    if (file) params.set('file', file);
+    const r = await fetch('/api/pieces?' + params.toString(), { signal });
     if (!r.ok) throw new Error('api ' + r.status + ' ' + (await r.text()));
+    return r.json();
+  }
+
+  async function fetchFiles() {
+    const r = await fetch('/api/files');
+    if (!r.ok) throw new Error('files api ' + r.status);
     return r.json();
   }
 
@@ -231,7 +280,9 @@
     const pathCount = state.pieces.reduce((s, p) => s + p.svg.length, 0);
     const multi = state.pieces.filter(p => p.svg.length > 1).length;
     const empty = state.pieces.filter(p => p.svg.length === 0).length;
-    status.textContent = `${total} pieces · ${pathCount} paths (multi: ${multi}, empty: ${empty})`;
+    const seed = (data.seed !== undefined) ? data.seed : '?';
+    const target = (data.target !== undefined) ? data.target : '?';
+    status.textContent = `${data.file || '—'} · target=${target} · seed=${seed} · ${total} pieces · ${pathCount} paths (multi: ${multi}, empty: ${empty})`;
 
     applySelection();
   }
@@ -421,14 +472,63 @@
   });
 
   // ─── Actions ──────────────────────────────────────────────────────────
+  const seedInput = $('#seedInput');
+  const targetInput = $('#targetInput');
+  function currentSeed() {
+    const n = parseInt(seedInput.value, 10);
+    return Number.isFinite(n) ? n : 42;
+  }
+  function currentTarget() {
+    const n = parseInt(targetInput.value, 10);
+    return Number.isFinite(n) && n >= 2 ? n : 120;
+  }
+  function setSeed(n) {
+    const clamped = Math.max(0, Math.min(99, n));
+    seedInput.value = String(clamped);
+    refresh();
+  }
+  function setTarget(n) {
+    const clamped = Math.max(2, Math.min(500, n));
+    targetInput.value = String(clamped);
+    refresh();
+  }
+
+  const fileSelect = $('#fileSelect');
+  const loadingText = $('#loadingText');
+  function currentFile() { return fileSelect.value || null; }
+
+  // Cancel the previous in-flight request whenever we start a new one.
+  // `reqToken` lets us ignore any response whose sender was superseded.
+  let reqToken = 0;
+  let reqController = null;
+
   async function refresh() {
+    if (reqController) reqController.abort();
+    reqController = new AbortController();
+    const myToken = ++reqToken;
+    const wantFile = currentFile();
+    const wantSeed = currentSeed();
+    const wantTarget = currentTarget();
+    const wantPiece = sel.value || null;
+
+    loadingText.textContent = `loading ${wantFile || '—'} target=${wantTarget} seed=${wantSeed}…`;
+    viewport.classList.add('loading');
+
     try {
-      status.textContent = 'loading…';
-      const data = await fetchPieces(sel.value || null);
+      const data = await fetchPieces(wantPiece, wantSeed, wantFile, wantTarget, reqController.signal);
+      if (myToken !== reqToken) return;
+      if (data.file !== wantFile) return;
+      if (data.seed !== wantSeed) return;
+      if (data.target !== wantTarget) return;
+      await populatePieceSelector(data);
       render(data);
     } catch (e) {
+      if (e.name === 'AbortError') return;
+      if (myToken !== reqToken) return;
       status.textContent = 'error: ' + e.message;
       console.error(e);
+    } finally {
+      if (myToken === reqToken) viewport.classList.remove('loading');
     }
   }
 
@@ -439,16 +539,44 @@
     }
   }
 
-  // Populate dropdown from initial "all pieces" fetch.
-  try {
-    const data = await fetchPieces(null);
+  async function populatePieceSelector(data) {
+    sel.innerHTML = '<option value="">(all)</option>';
     for (const p of data.pieces) {
       const opt = document.createElement('option');
       opt.value = p.id;
       opt.textContent = `${p.id} (${p.bricks.length} bricks, ${p.svg.length} paths)`;
       sel.appendChild(opt);
     }
-    render(data);
+  }
+
+  // Populate the file dropdown. Files that already have a cached snapshot
+  // are marked with ✓; generating one on first access takes ~90s.
+  // Preserve whatever the user currently has selected across rebuilds — we
+  // only let the server decide on first call (when nothing is selected yet).
+  async function initFiles() {
+    const prev = fileSelect.value;
+    const list = await fetchFiles();
+    fileSelect.innerHTML = '';
+    for (const f of list.files) {
+      const opt = document.createElement('option');
+      opt.value = f.name;
+      opt.textContent = (f.ready ? '✓ ' : '⋯ ') + f.name;
+      fileSelect.appendChild(opt);
+    }
+    const exists = (name) => list.files.some(f => f.name === name);
+    if (prev && exists(prev)) {
+      fileSelect.value = prev; // keep user's selection
+    } else if (list.current && exists(list.current)) {
+      fileSelect.value = list.current;
+    } else if (list.files.length) {
+      fileSelect.value = list.files[0].name;
+    }
+  }
+
+  try {
+    await initFiles();
+    await refresh();
+    initFiles(); // refresh ready-flags after first load (cosmetic)
   } catch (e) {
     status.textContent = 'error: ' + e.message;
   }
@@ -457,7 +585,36 @@
   showBricks.addEventListener('change', applyBrickVisibility);
   $('#fit').addEventListener('click', fitView);
   $('#reload').addEventListener('click', refresh);
+  fileSelect.addEventListener('change', async () => {
+    // New file: clear selection state and piece dropdown. The piece
+    // dropdown will be rebuilt by refresh() once the data returns.
+    state.selectedPieceId = null;
+    state.selectedBrickId = null;
+    sel.value = '';
+    await refresh();
+    initFiles(); // refresh ready flags (don't await — cosmetic only)
+  });
   window.addEventListener('resize', fitView);
+
+  // Seed navigation: buttons + arrow keys.
+  $('#seedBack').addEventListener('click', () => setSeed(currentSeed() - 1));
+  $('#seedFwd').addEventListener('click', () => setSeed(currentSeed() + 1));
+  // Cover both `change` (fired on blur) and Enter keypress explicitly.
+  seedInput.addEventListener('change', refresh);
+  seedInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') refresh(); });
+
+  // Target (piece count) controls.
+  $('#targetDown').addEventListener('click', () => setTarget(currentTarget() - 1));
+  $('#targetUp').addEventListener('click', () => setTarget(currentTarget() + 1));
+  targetInput.addEventListener('change', refresh);
+  targetInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') refresh(); });
+  window.addEventListener('keydown', (e) => {
+    // Ignore when typing into any input/textarea.
+    const tag = (e.target && e.target.tagName) || '';
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    if (e.key === 'ArrowLeft')  { e.preventDefault(); setSeed(currentSeed() - 1); }
+    if (e.key === 'ArrowRight') { e.preventDefault(); setSeed(currentSeed() + 1); }
+  });
 })();
 </script>
 </body>
