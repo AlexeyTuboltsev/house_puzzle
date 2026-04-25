@@ -376,19 +376,24 @@ pub fn parse_path_lines_bezier(
     let mut paths: Vec<BezierPath> = Vec::new();
     let mut open_paths = 0usize;
 
+    // Auto-close: if a brick sub-path was drawn open (start ≠ last seg
+    // endpoint), append an implicit Line back to start so the merge sees
+    // a closed outline. NY9n had 4 such bricks (b012, b020, b022, b026)
+    // because the artist forgot the closing edge — every other NY file
+    // has zero. The validator should still flag these so the artist
+    // fixes them at source.
     let flush_open = |paths: &mut Vec<BezierPath>,
                       open_paths: &mut usize,
                       start: Option<[f64; 2]>,
                       segs: &mut Vec<Segment>| {
         if let (Some(s), true) = (start, !segs.is_empty()) {
-            // geometrically closed?
             let last = segs.last().map(|g| g.end()).unwrap_or(s);
             let d = ((s[0] - last[0]).powi(2) + (s[1] - last[1]).powi(2)).sqrt();
-            if d < 1.0 {
-                paths.push(BezierPath { start: s, segments: std::mem::take(segs) });
-            } else {
+            if d >= 1.0 {
+                segs.push(Segment::Line { to: s });
                 *open_paths += 1;
             }
+            paths.push(BezierPath { start: s, segments: std::mem::take(segs) });
         }
     };
 
@@ -420,8 +425,15 @@ pub fn parse_path_lines_bezier(
                 prev = Some(to);
             }
             "n" | "N" | "f" | "F" | "s" | "S" | "b" | "B" => {
-                // close/fill/stroke — emit whatever we've collected as closed
+                // close/fill/stroke — emit whatever we've collected as closed,
+                // auto-closing if start ≠ last segment endpoint.
                 if let (Some(s), false) = (start, segs.is_empty()) {
+                    let last = segs.last().map(|g| g.end()).unwrap_or(s);
+                    let d = ((s[0] - last[0]).powi(2) + (s[1] - last[1]).powi(2)).sqrt();
+                    if d >= 1.0 {
+                        segs.push(Segment::Line { to: s });
+                        open_paths += 1;
+                    }
                     paths.push(BezierPath { start: s, segments: std::mem::take(&mut segs) });
                 }
                 start = None;

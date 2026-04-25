@@ -128,6 +128,15 @@ Create a standalone validation script that runs inside Adobe Illustrator
 - Missing required layers (bricks, background, screen)
 - Empty required layers
 - Unclosed paths in brick sub-layers
+  Test case: NY9n has 4 unclosed brick sub-paths (b012 sp0 gap=50,
+  b020 sp0 gap=111.8 diagonal, b022 sp0 gap=50, b026 sp0 gap=111.8
+  diagonal) — the artist forgot the closing edge. No other NY file
+  has any. Symptom: at certain target/seed combos, the piece
+  containing one of these bricks ends up multi-path because the open
+  chain doesn't close (NY9n p28/p51 at target=60). Currently
+  worked-around by an auto-close pass in `ai_parser.rs` that appends
+  an implicit line from the last vertex back to start; the validator
+  should still flag these so the artist fixes them at source.
 - Overlapping brick polygons (bricks must be adjacent, not overlapping)
 - Brick containment (one brick fully inside another)
 - Multi-object layers with independent sub-paths
