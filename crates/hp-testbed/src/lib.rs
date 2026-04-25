@@ -44,9 +44,30 @@ pub fn build_snapshot(ai_path: &Path, target: usize, seed: u64) -> Result<Snapsh
     let (clip_x0, clip_y0, _, _) = metadata.clip_rect;
     let scale = metadata.render_dpi / 72.0;
 
-    let mut bricks: Vec<Brick> = Vec::new();
+    // Bezier extraction is the per-brick bottleneck; do it in parallel.
+    use rayon::prelude::*;
+    let bezier_per_brick: Vec<Vec<BezierPath>> = placements
+        .par_iter()
+        .map(|p| {
+            let block = LayerBlock {
+                name: p.name.clone(),
+                begin: p.block_begin,
+                end: p.block_end,
+                depth: 0,
+                children: Vec::new(),
+            };
+            ai_parser::extract_vector_path_bezier(
+                &block,
+                &ai_data.raw,
+                metadata.offset_x,
+                metadata.y_base,
+            )
+        })
+        .collect();
+
+    let mut bricks: Vec<Brick> = Vec::with_capacity(placements.len());
     let mut brick_polys_canvas: HashMap<String, Vec<[f64; 2]>> = HashMap::new();
-    let mut bricks_out: Vec<BrickOut> = Vec::new();
+    let mut bricks_out: Vec<BrickOut> = Vec::with_capacity(placements.len());
 
     for (i, p) in placements.iter().enumerate() {
         let id = format!("b{i:03}");
@@ -61,25 +82,11 @@ pub fn build_snapshot(ai_path: &Path, target: usize, seed: u64) -> Result<Snapsh
         if let Some(poly) = &p.polygon {
             brick_polys_canvas.insert(id.clone(), poly.clone());
         }
-
-        let block = LayerBlock {
-            name: p.name.clone(),
-            begin: p.block_begin,
-            end: p.block_end,
-            depth: 0,
-            children: Vec::new(),
-        };
-        let beziers = ai_parser::extract_vector_path_bezier(
-            &block,
-            &ai_data.raw,
-            metadata.offset_x,
-            metadata.y_base,
-        );
         bricks_out.push(BrickOut {
             id,
             name: p.name.clone(),
             layer_type: p.layer_type.clone(),
-            beziers,
+            beziers: bezier_per_brick[i].clone(),
         });
     }
 

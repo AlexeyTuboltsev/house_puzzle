@@ -17,6 +17,7 @@ axum = "0.7"
 tower-http = { version = "0.5", features = ["fs"] }
 rand = "0.9"
 rand_chacha = "0.9"
+rayon = "1"
 
 [[bin]]
 name = "hp-snapshot"

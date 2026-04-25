@@ -266,50 +266,58 @@ pub fn build_adjacency_bezier(
         }
     }
 
-    let mut adj: HashMap<String, HashSet<String>> = HashMap::new();
+    use rayon::prelude::*;
     let n = bricks.len();
-    for i in 0..n {
-        let a_id = bricks[i].id.as_str();
-        let a_edges = match brick_edges.get(a_id) { Some(v) => v, None => continue };
-        let abb = brick_bbox.get(a_id).copied().unwrap_or((0.0, 0.0, 0.0, 0.0));
-        for j in (i + 1)..n {
-            let b_id = bricks[j].id.as_str();
-            let b_edges = match brick_edges.get(b_id) { Some(v) => v, None => continue };
-            let bbb = brick_bbox.get(b_id).copied().unwrap_or((0.0, 0.0, 0.0, 0.0));
-
-            // Bbox pre-filter — bricks can only share an edge if their
-            // bboxes touch or overlap.
-            let slack = ENDPOINT_TOL;
-            if abb.2 + slack < bbb.0 || bbb.2 + slack < abb.0
-                || abb.3 + slack < bbb.1 || bbb.3 + slack < abb.1
-            {
-                continue;
-            }
-
-            let mut total_shared = 0.0;
-            for ea in a_edges {
-                for eb in b_edges {
-                    let share = match (ea.cp, eb.cp) {
-                        (None, None) => {
-                            line_line_overlap(ea.from, ea.to, eb.from, eb.to)
-                        }
-                        (Some((ac1, ac2)), Some((bc1, bc2))) => {
-                            cubic_cubic_shared(
-                                ea.from, ac1, ac2, ea.to,
-                                eb.from, bc1, bc2, eb.to,
-                            )
-                        }
-                        _ => 0.0, // line vs cubic — no shared length
+    // Parallel sweep: each row (i) computes its set of neighbours j > i,
+    // then we sequentially fold the results into the adjacency map.
+    let pairs: Vec<(String, String)> = (0..n)
+        .into_par_iter()
+        .flat_map_iter(|i| {
+            let a_id = bricks[i].id.as_str();
+            let a_edges = brick_edges.get(a_id);
+            let abb = brick_bbox.get(a_id).copied().unwrap_or((0.0, 0.0, 0.0, 0.0));
+            let mut local: Vec<(String, String)> = Vec::new();
+            if let Some(a_edges) = a_edges {
+                for j in (i + 1)..n {
+                    let b_id = bricks[j].id.as_str();
+                    let b_edges = match brick_edges.get(b_id) {
+                        Some(v) => v,
+                        None => continue,
                     };
-                    total_shared += share;
+                    let bbb = brick_bbox.get(b_id).copied().unwrap_or((0.0, 0.0, 0.0, 0.0));
+                    let slack = ENDPOINT_TOL;
+                    if abb.2 + slack < bbb.0 || bbb.2 + slack < abb.0
+                        || abb.3 + slack < bbb.1 || bbb.3 + slack < abb.1
+                    {
+                        continue;
+                    }
+                    let mut total_shared = 0.0;
+                    for ea in a_edges {
+                        for eb in b_edges {
+                            let share = match (ea.cp, eb.cp) {
+                                (None, None) => line_line_overlap(ea.from, ea.to, eb.from, eb.to),
+                                (Some((ac1, ac2)), Some((bc1, bc2))) => cubic_cubic_shared(
+                                    ea.from, ac1, ac2, ea.to,
+                                    eb.from, bc1, bc2, eb.to,
+                                ),
+                                _ => 0.0,
+                            };
+                            total_shared += share;
+                        }
+                    }
+                    if total_shared >= min_border {
+                        local.push((a_id.to_string(), b_id.to_string()));
+                    }
                 }
             }
+            local
+        })
+        .collect();
 
-            if total_shared >= min_border {
-                adj.entry(a_id.to_string()).or_default().insert(b_id.to_string());
-                adj.entry(b_id.to_string()).or_default().insert(a_id.to_string());
-            }
-        }
+    let mut adj: HashMap<String, HashSet<String>> = HashMap::new();
+    for (a, b) in pairs {
+        adj.entry(a.clone()).or_default().insert(b.clone());
+        adj.entry(b).or_default().insert(a);
     }
     adj
 }

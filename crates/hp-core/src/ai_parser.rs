@@ -113,16 +113,22 @@ pub fn decompress_ai_data(ai_path: &Path) -> Result<AiPrivateData> {
 /// Parse `%AI5_BeginLayer` / `%AI5_EndLayer` pairs into a nested tree.
 /// Operates on raw bytes — all offsets are byte positions.
 pub fn parse_layer_tree(data: &[u8]) -> Vec<LayerBlock> {
-    let begin_re = Regex::new(r"%AI5_BeginLayer").expect("static regex pattern is valid");
-    let end_re = Regex::new(r"%AI5_EndLayer").expect("static regex pattern is valid");
-    let name_re = Regex::new(r"Lb[\r\n]+\(([^)]*)\)").expect("static regex pattern is valid");
+    // memmem byte-search is ~50× faster than the regex DFA for these
+    // literal needles, and that's the dominant cost on a typical AI
+    // (~50 MB of decompressed PostScript).
+    let begin_finder = memchr::memmem::Finder::new(b"%AI5_BeginLayer");
+    let end_finder = memchr::memmem::Finder::new(b"%AI5_EndLayer");
+    static NAME_RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
+    let name_re = NAME_RE.get_or_init(|| {
+        Regex::new(r"Lb[\r\n]+\(([^)]*)\)").expect("static regex pattern is valid")
+    });
 
     let mut events: Vec<(char, usize)> = Vec::new();
-    for m in begin_re.find_iter(data) {
-        events.push(('B', m.start()));
+    for pos in begin_finder.find_iter(data) {
+        events.push(('B', pos));
     }
-    for m in end_re.find_iter(data) {
-        events.push(('E', m.start()));
+    for pos in end_finder.find_iter(data) {
+        events.push(('E', pos));
     }
     events.sort_by_key(|e| e.1);
 
@@ -226,12 +232,17 @@ fn has_gradient(block_data: &[u8]) -> bool {
 /// Extract the raster placement matrix from an Xh operator.
 /// Returns (tx, ty, w_pts, h_pts) in AI coordinate space.
 fn extract_raster_matrix(block_data: &[u8]) -> Option<(f64, f64, f64, f64)> {
-    let num = r"-?\d+(?:\.\d+)?";
-    let pattern = format!(
-        r"\[\s*({n})\s+{n}\s+{n}\s+({n})\s+({n})\s+({n})\s*\]\s+(\d+)\s+(\d+)\s+\d+\s+Xh",
-        n = num
-    );
-    let re = Regex::new(&pattern).expect("static regex pattern is valid");
+    // Compile this regex once across all calls — we hit it on every brick
+    // (~600× per AI), and `regex::Regex::new` is multi-millisecond.
+    static RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
+    let re = RE.get_or_init(|| {
+        let num = r"-?\d+(?:\.\d+)?";
+        let pattern = format!(
+            r"\[\s*({n})\s+{n}\s+{n}\s+({n})\s+({n})\s+({n})\s*\]\s+(\d+)\s+(\d+)\s+\d+\s+Xh",
+            n = num
+        );
+        Regex::new(&pattern).expect("static regex pattern is valid")
+    });
     let m = re.captures(block_data)?;
 
     let a: f64 = bstr(&m[1]).parse().ok()?;
@@ -924,7 +935,8 @@ pub fn parse_ai(
     let (offset_x, y_base) = compute_ai_transform(bg, data, &page, artbox);
     eprintln!("[parse_ai] transform: {:?}", t0.elapsed());
 
-    // Step 4: collect brick placements (PyMuPDF y-down coords)
+    // Step 4: collect brick placements (PyMuPDF y-down coords).
+    // Each child's classification is independent — fan out via rayon.
     let t0 = std::time::Instant::now();
     struct RawPlacement<'a> {
         child: &'a LayerBlock,
@@ -932,44 +944,47 @@ pub fn parse_ai(
         layer_type: String,
     }
 
-    let mut placements: Vec<RawPlacement> = Vec::new();
-    for child in &bricks_node.children {
-        let block_data = &data[child.begin..child.end];
-        let is_gradient = has_gradient(block_data);
-        let mat = extract_raster_matrix(block_data);
+    use rayon::prelude::*;
+    let placements: Vec<RawPlacement> = bricks_node
+        .children
+        .par_iter()
+        .filter_map(|child| {
+            let block_data = &data[child.begin..child.end];
+            let is_gradient = has_gradient(block_data);
+            let mat = extract_raster_matrix(block_data);
 
-        if let Some((tx, ty, w_pts, h_pts)) = mat {
-            if !is_gradient {
-                let pymu_x0 = tx + offset_x;
-                let pymu_y_top = y_base - ty;
-                let pymu_x1 = tx + w_pts + offset_x;
-                let pymu_y_bottom = y_base - ty + h_pts;
-                let has_vector = extract_plain_path_bbox(child, data).is_some();
-                let ltype = if has_vector { "mixed_brick" } else { "brick" };
-                placements.push(RawPlacement {
+            if let Some((tx, ty, w_pts, h_pts)) = mat {
+                if !is_gradient {
+                    let pymu_x0 = tx + offset_x;
+                    let pymu_y_top = y_base - ty;
+                    let pymu_x1 = tx + w_pts + offset_x;
+                    let pymu_y_bottom = y_base - ty + h_pts;
+                    let has_vector = extract_plain_path_bbox(child, data).is_some();
+                    let ltype = if has_vector { "mixed_brick" } else { "brick" };
+                    return Some(RawPlacement {
+                        child,
+                        pymu_bbox: (pymu_x0, pymu_y_top, pymu_x1, pymu_y_bottom),
+                        layer_type: ltype.to_string(),
+                    });
+                }
+            }
+            // Gradient/vector-only brick
+            if let Some((ai_xmin, ai_ymin, ai_xmax, ai_ymax)) =
+                extract_plain_path_bbox(child, data)
+            {
+                let pymu_x0 = ai_xmin + offset_x;
+                let pymu_x1 = ai_xmax + offset_x;
+                let pymu_y_top = y_base - ai_ymax;
+                let pymu_y_bottom = y_base - ai_ymin;
+                return Some(RawPlacement {
                     child,
                     pymu_bbox: (pymu_x0, pymu_y_top, pymu_x1, pymu_y_bottom),
-                    layer_type: ltype.to_string(),
+                    layer_type: "vector_brick".to_string(),
                 });
-                continue;
             }
-        }
-
-        // Gradient/vector-only brick
-        // Use plain path bbox as baseline, then expand with %_ vector path bbox
-        if let Some((ai_xmin, ai_ymin, ai_xmax, ai_ymax)) = extract_plain_path_bbox(child, data) {
-            let pymu_x0 = ai_xmin + offset_x;
-            let pymu_x1 = ai_xmax + offset_x;
-            let pymu_y_top = y_base - ai_ymax;
-            let pymu_y_bottom = y_base - ai_ymin;
-
-            placements.push(RawPlacement {
-                child,
-                pymu_bbox: (pymu_x0, pymu_y_top, pymu_x1, pymu_y_bottom),
-                layer_type: "vector_brick".to_string(),
-            });
-        }
-    }
+            None
+        })
+        .collect();
 
     if placements.is_empty() {
         bail!("No brick rasters found in 'bricks' layer");
@@ -1030,27 +1045,51 @@ pub fn parse_ai(
     let expected_brick_min_x = ((all_x0.iter().cloned().fold(f64::INFINITY, f64::min) - clip_x0) * scale).round() as i32;
     let expected_brick_min_y = ((all_y0.iter().cloned().fold(f64::INFINITY, f64::min) - clip_y0) * scale).round() as i32;
 
-    // Build BrickPlacements — deduplicate by bbox, extract polygons
+    // Build BrickPlacements — deduplicate by bbox, extract polygons.
+    //
+    // The expensive part is `extract_vector_path` (PostScript parsing per
+    // brick).  Run that in parallel for every placement that survives the
+    // bbox dedup, then assemble the final list sequentially so we keep
+    // deterministic ordering.
     let t0 = std::time::Instant::now();
     let mut seen_bbox = std::collections::HashSet::new();
-    let mut results: Vec<BrickPlacement> = Vec::new();
-    let mut skipped_bricks: Vec<String> = Vec::new();
-    let mut warnings: Vec<String> = Vec::new();
-
-    for p in &placements {
+    let mut keep_idx: Vec<usize> = Vec::with_capacity(placements.len());
+    let mut bbox_px: Vec<(i32, i32, i32, i32)> = Vec::with_capacity(placements.len());
+    for (i, p) in placements.iter().enumerate() {
         let px = ((p.pymu_bbox.0 - clip_x0) * scale).round() as i32;
         let py = ((p.pymu_bbox.1 - clip_y0) * scale).round() as i32;
         let pw = ((p.pymu_bbox.2 - p.pymu_bbox.0) * scale).round().max(1.0) as i32;
         let ph = ((p.pymu_bbox.3 - p.pymu_bbox.1) * scale).round().max(1.0) as i32;
-
-        let bbox_key = (px, py, pw, ph);
-        if seen_bbox.contains(&bbox_key) {
-            continue;
+        let key = (px, py, pw, ph);
+        if seen_bbox.insert(key) {
+            keep_idx.push(i);
+            bbox_px.push(key);
         }
-        seen_bbox.insert(bbox_key);
+    }
 
-        // Extract vector polygon
-        let poly_pymu = extract_vector_path(p.child, data, offset_x, y_base, &mut warnings);
+    // Parallel polygon extraction.
+    let polys_with_warnings: Vec<(Vec<[f64; 2]>, Vec<String>)> = keep_idx
+        .par_iter()
+        .map(|&i| {
+            let mut local_warnings: Vec<String> = Vec::new();
+            let poly = extract_vector_path(
+                placements[i].child, data, offset_x, y_base, &mut local_warnings,
+            );
+            (poly, local_warnings)
+        })
+        .collect();
+
+    let mut results: Vec<BrickPlacement> = Vec::with_capacity(keep_idx.len());
+    let mut skipped_bricks: Vec<String> = Vec::new();
+    let mut warnings: Vec<String> = Vec::new();
+
+    for (slot, &orig_i) in keep_idx.iter().enumerate() {
+        let p = &placements[orig_i];
+        let (px, py, pw, ph) = bbox_px[slot];
+        let (poly_pymu, local_warnings) = &polys_with_warnings[slot];
+        warnings.extend(local_warnings.iter().cloned());
+        let _ = px; let _ = py; let _ = pw; let _ = ph;
+        // (Re-bind below to keep the rest of the original block unchanged.)
         let polygon: Option<Vec<[f64; 2]>> = if poly_pymu.len() >= 3 {
             Some(
                 poly_pymu.iter().map(|pt| {
