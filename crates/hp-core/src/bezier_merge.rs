@@ -403,23 +403,62 @@ fn edges_of(paths: &[BezierPath]) -> Vec<Edge> {
 /// zero-length (degenerate) segments that sometimes appear at a closing
 /// `to == start` point.
 fn dedup_subpaths(paths: &[BezierPath]) -> Vec<BezierPath> {
-    use std::collections::BTreeSet;
-    let mut seen: Vec<BTreeSet<EdgeKey>> = Vec::new();
+    // Tolerances for shape-signature matching.
+    const BBOX_TOL: f64 = 6.0;
+    const AREA_REL_TOL: f64 = 0.05;
+    const PERIMETER_REL_TOL: f64 = 0.05;
+    const MIN_BBOX_SIDE: f64 = 3.0;
+    const TESS_SAMPLES: usize = 12;
+
+    struct Sig {
+        bbox: [f64; 4], // min_x, min_y, max_x, max_y
+        area: f64,      // unsigned tessellated polygon area
+        perimeter: f64, // tessellated polyline length
+    }
+
+    let signature = |path: &BezierPath| -> Option<Sig> {
+        let poly = path.tessellate(TESS_SAMPLES);
+        if poly.len() < 3 { return None; }
+        let (mut x0, mut y0) = (f64::INFINITY, f64::INFINITY);
+        let (mut x1, mut y1) = (f64::NEG_INFINITY, f64::NEG_INFINITY);
+        for v in &poly {
+            x0 = x0.min(v[0]); y0 = y0.min(v[1]);
+            x1 = x1.max(v[0]); y1 = y1.max(v[1]);
+        }
+        if x1 - x0 < MIN_BBOX_SIDE && y1 - y0 < MIN_BBOX_SIDE {
+            return None; // degenerate sub-path
+        }
+        let mut area2 = 0.0_f64;
+        let mut perim = 0.0_f64;
+        for i in 0..poly.len() {
+            let a = poly[i];
+            let b = poly[(i + 1) % poly.len()];
+            area2 += a[0] * b[1] - a[1] * b[0];
+            let dx = b[0] - a[0]; let dy = b[1] - a[1];
+            perim += (dx * dx + dy * dy).sqrt();
+        }
+        Some(Sig { bbox: [x0, y0, x1, y1], area: area2.abs() * 0.5, perimeter: perim })
+    };
+
+    let mut seen: Vec<Sig> = Vec::new();
     let mut out: Vec<BezierPath> = Vec::with_capacity(paths.len());
     for path in paths {
-        let single = std::slice::from_ref(path);
-        let key_set: BTreeSet<EdgeKey> = edges_of(single)
-            .into_iter()
-            .filter(|e| {
-                let dx = e.to[0] - e.from[0];
-                let dy = e.to[1] - e.from[1];
-                dx * dx + dy * dy > BEZIER_TOL * BEZIER_TOL
-            })
-            .map(|e| e.key(BEZIER_TOL))
-            .collect();
-        if key_set.is_empty() { continue; }
-        if !seen.iter().any(|s| *s == key_set) {
-            seen.push(key_set);
+        let Some(sig) = signature(path) else { continue; };
+        let dup = seen.iter().any(|s| {
+            // bbox match: every corner within BBOX_TOL.
+            let bbox_match = (sig.bbox[0] - s.bbox[0]).abs() < BBOX_TOL
+                && (sig.bbox[1] - s.bbox[1]).abs() < BBOX_TOL
+                && (sig.bbox[2] - s.bbox[2]).abs() < BBOX_TOL
+                && (sig.bbox[3] - s.bbox[3]).abs() < BBOX_TOL;
+            if !bbox_match { return false; }
+            let area_max = sig.area.max(s.area).max(1e-6);
+            let area_match = (sig.area - s.area).abs() / area_max < AREA_REL_TOL;
+            let perim_max = sig.perimeter.max(s.perimeter).max(1e-6);
+            let perim_match = (sig.perimeter - s.perimeter).abs() / perim_max < PERIMETER_REL_TOL;
+            area_match && perim_match
+        });
+        if !dup {
+            seen.push(sig);
             out.push(path.clone());
         }
     }
