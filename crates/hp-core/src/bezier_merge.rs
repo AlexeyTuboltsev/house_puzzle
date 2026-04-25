@@ -391,6 +391,41 @@ fn edges_of(paths: &[BezierPath]) -> Vec<Edge> {
     out
 }
 
+/// Drop near-identical sub-paths from a flat list of bezier paths.
+///
+/// Some AI sources duplicate a brick's outer outline as a separate sub-path
+/// (e.g. NY7's compound bricks have ≥ 2 copies of the outline plus an inner
+/// frame). Without dedup, those duplicate edges appear ≥ 2× in the bucket
+/// counter and get marked "internal", erasing the brick from the outline.
+///
+/// Two sub-paths are considered equivalent if their canonical edge sets
+/// match — direction-insensitive, rotation-insensitive, and ignoring
+/// zero-length (degenerate) segments that sometimes appear at a closing
+/// `to == start` point.
+fn dedup_subpaths(paths: &[BezierPath]) -> Vec<BezierPath> {
+    use std::collections::BTreeSet;
+    let mut seen: Vec<BTreeSet<EdgeKey>> = Vec::new();
+    let mut out: Vec<BezierPath> = Vec::with_capacity(paths.len());
+    for path in paths {
+        let single = std::slice::from_ref(path);
+        let key_set: BTreeSet<EdgeKey> = edges_of(single)
+            .into_iter()
+            .filter(|e| {
+                let dx = e.to[0] - e.from[0];
+                let dy = e.to[1] - e.from[1];
+                dx * dx + dy * dy > BEZIER_TOL * BEZIER_TOL
+            })
+            .map(|e| e.key(BEZIER_TOL))
+            .collect();
+        if key_set.is_empty() { continue; }
+        if !seen.iter().any(|s| *s == key_set) {
+            seen.push(key_set);
+            out.push(path.clone());
+        }
+    }
+    out
+}
+
 // ── Cubic helpers ────────────────────────────────────────────────────
 fn cubic_at(p0: [f64; 2], cp1: [f64; 2], cp2: [f64; 2], p3: [f64; 2], t: f64) -> [f64; 2] {
     let u = 1.0 - t;
@@ -688,6 +723,12 @@ pub fn merge_piece_bezier(brick_paths: &[BezierPath]) -> Vec<BezierPath> {
         return Vec::new();
     }
 
+    // Drop sub-paths that are duplicates of others in the input. Some AI
+    // bricks store their outer outline twice; without this pre-pass every
+    // edge appears ≥ 2× and gets dropped as "internal".
+    let deduped = dedup_subpaths(brick_paths);
+    let brick_paths: &[BezierPath] = &deduped;
+
     let raw: Vec<Edge> = edges_of(brick_paths);
     if raw.is_empty() {
         return Vec::new();
@@ -923,31 +964,78 @@ fn loop_bbox(bp: &BezierPath) -> [f64; 4] {
     [mn[0], mn[1], mx[0], mx[1]]
 }
 
+/// Drop interior-hole loops via point-in-polygon containment.
+///
+/// A loop `j` is dropped if a representative point on `j` (its average
+/// vertex) lies strictly inside some other loop `i`. This is the right
+/// check for compound bricks where an inner frame's bbox is almost equal
+/// to the outer's bbox (so a strict-bbox-inside test would miss it) yet
+/// the inner shape sits geometrically within the outer.
+///
+/// The polygon containment uses ray casting against a tessellation of the
+/// reference loop. Bezier curves are sampled densely enough (16 points per
+/// cubic) for the ray cast to be accurate to ≪ 1 pymu — way below the
+/// scale of any feature that matters.
 fn drop_contained_loops(loops: Vec<BezierPath>) -> Vec<BezierPath> {
     if loops.len() < 2 { return loops; }
+
+    // Pre-compute one tessellated polygon and one representative interior
+    // point per loop. The "representative" is the centroid of the
+    // tessellation, which lands inside any simple non-self-intersecting
+    // polygon for our purposes (brick outlines + inner frames).
+    let polys: Vec<Vec<[f64; 2]>> = loops.iter().map(|l| l.tessellate(16)).collect();
     let bboxes: Vec<[f64; 4]> = loops.iter().map(loop_bbox).collect();
-    let eps = BEZIER_TOL;
+    let reps: Vec<[f64; 2]> = polys
+        .iter()
+        .map(|pts| {
+            if pts.is_empty() { return [0.0, 0.0]; }
+            let mut sx = 0.0;
+            let mut sy = 0.0;
+            for p in pts { sx += p[0]; sy += p[1]; }
+            [sx / pts.len() as f64, sy / pts.len() as f64]
+        })
+        .collect();
+
     let mut keep: Vec<bool> = vec![true; loops.len()];
-    for i in 0..loops.len() {
-        if !keep[i] { continue; }
-        let ai = &bboxes[i];
-        for j in 0..loops.len() {
-            if i == j || !keep[j] { continue; }
-            let aj = &bboxes[j];
-            // Is aj strictly inside ai (with slack)?
-            if aj[0] >= ai[0] - eps
-                && aj[1] >= ai[1] - eps
-                && aj[2] <= ai[2] + eps
-                && aj[3] <= ai[3] + eps
-                && (aj[0] > ai[0] + eps
-                    || aj[1] > ai[1] + eps
-                    || aj[2] < ai[2] - eps
-                    || aj[3] < ai[3] - eps)
+    for j in 0..loops.len() {
+        if !keep[j] { continue; }
+        let pt = reps[j];
+        let bj = &bboxes[j];
+        for i in 0..loops.len() {
+            if i == j || !keep[i] { continue; }
+            // A loop can only contain another whose bbox is fully inside
+            // its own — cheap reject before the ray cast.
+            let bi = &bboxes[i];
+            if bj[0] < bi[0] - BEZIER_TOL || bj[1] < bi[1] - BEZIER_TOL
+                || bj[2] > bi[2] + BEZIER_TOL || bj[3] > bi[3] + BEZIER_TOL
             {
+                continue;
+            }
+            if point_in_ring(pt, &polys[i]) {
                 keep[j] = false;
+                break;
             }
         }
     }
     loops.into_iter().zip(keep.into_iter()).filter_map(|(bp, k)| k.then_some(bp)).collect()
+}
+
+/// Standard even-odd ray casting from `p` along +x. `ring` is treated as a
+/// closed polyline (last vertex connects back to first).
+fn point_in_ring(p: [f64; 2], ring: &[[f64; 2]]) -> bool {
+    let n = ring.len();
+    if n < 3 { return false; }
+    let mut inside = false;
+    let mut j = n - 1;
+    for i in 0..n {
+        let (xi, yi) = (ring[i][0], ring[i][1]);
+        let (xj, yj) = (ring[j][0], ring[j][1]);
+        if (yi > p[1]) != (yj > p[1]) {
+            let x_cross = (xj - xi) * (p[1] - yi) / (yj - yi) + xi;
+            if p[0] < x_cross { inside = !inside; }
+        }
+        j = i;
+    }
+    inside
 }
 
