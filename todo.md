@@ -132,6 +132,27 @@ Create a standalone validation script that runs inside Adobe Illustrator
 - Brick containment (one brick fully inside another)
 - Multi-object layers with independent sub-paths
 - Degenerate paths (< 3 points, zero area)
+- Intentional sub-pymu staircases — single sub-path edges < ~1 pymu long
+  used to interlock with neighbour notches (NY5: b022/b027 etc have
+  ~0.55-pymu vertical "step" edges). The bezier merge has to fuse
+  cross-brick drift while preserving these intra-brick steps; flagging
+  them in Illustrator lets the artist either snap the steps to
+  meaningful values or remove them.
+- Multi-grid drift across bricks — bricks within a single piece drawn on
+  >1 y-grid (NY5 p21/p51: rows of bricks sit on `.85`, `.86`, and `.41`
+  y-grids that are 0.55 pymu apart instead of one shared grid). The
+  artist patches the seam with sub-pymu staircase edges, which then
+  defeats the bezier merge: collapsing the staircase makes the outer
+  bottom of one brick indistinguishable from the interior of an
+  adjacent brick's notch. The validator should detect ≥3 distinct
+  y-cluster centres within < 1 pymu of each other and warn.
+
+When fixing a merge bug, always ask: "does this look like an AI-source
+artifact that a future validator could catch?" If yes, file the case
+here so we (a) keep an inventory of regression test grounds for the
+validator and (b) recognise the pattern next time we see a related
+issue. Each entry should describe the symptom, the AI pattern, and
+which file/piece/brick reproduces it.
 
 The Rust backend already validates these on load (see `ai_parser.rs`),
 but catching errors in Illustrator is faster feedback for the artist.

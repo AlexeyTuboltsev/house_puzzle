@@ -231,6 +231,13 @@ struct Edge {
     to: [f64; 2],
     /// `None` → straight line, `Some((cp1, cp2))` → cubic in the from→to direction.
     cp: Option<([f64; 2], [f64; 2])>,
+    /// Index of the sub-path this edge originated from, preserved across
+    /// canonicalize and T-split. Used to distinguish bucket contributors:
+    /// if one source contributes ≥2 edges to a bucket, the edge represents
+    /// an artist-created seam that coincides geometrically but is actually
+    /// outer (e.g., NY5 b027's outer-bottom and notch-interior collapse to
+    /// the same canonical edge after the multi-grid axis-snap).
+    source: u32,
 }
 
 impl Edge {
@@ -239,6 +246,7 @@ impl Edge {
             from: self.to,
             to: self.from,
             cp: self.cp.map(|(a, b)| (b, a)),
+            source: self.source,
         }
     }
 
@@ -308,6 +316,88 @@ fn key_variants(k: &EdgeKey) -> Vec<EdgeKey> {
 ///
 /// Only endpoints are fused — control points of cubics are left alone
 /// (their precision doesn't participate in the shared-edge key).
+/// Snap each axis independently: cluster all x-values within `tol` of each
+/// other into a single canonical x (and same for y). Catches multi-grid
+/// drift where the artist drew two brick rows on grids offset by < tol
+/// (e.g., NY5's `.85` and `.41` y-grids have ~0.55 pymu gap, with tiny
+/// staircase edges patching the seam — those edges collapse here, which
+/// is exactly what we want, and the next pass drops them).
+///
+/// This runs before `canonicalize_endpoints` so the 2D fuse sees an
+/// already-aligned grid; the existing `VERTEX_FUSE_TOL` then only handles
+/// 2D corner drift that doesn't decompose into a single-axis offset.
+fn snap_axes(edges: Vec<Edge>, tol: f64) -> Vec<Edge> {
+    if edges.is_empty() { return edges; }
+
+    // Greedy 1D clustering: sort the unique values along an axis, then
+    // group consecutive entries whose gap is < tol into one cluster.
+    // Per-cluster representative = median of the cluster (stable choice
+    // that doesn't drift with cluster size).
+    let cluster_axis = |vals: Vec<f64>| -> BTreeMap<i64, f64> {
+        let mut sorted: Vec<f64> = vals;
+        sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        sorted.dedup_by(|a, b| (*a - *b).abs() < 1e-9);
+
+        let mut clusters: Vec<Vec<f64>> = Vec::new();
+        for v in sorted {
+            let new_cluster = match clusters.last() {
+                Some(c) => match c.last() {
+                    Some(&prev) => (v - prev).abs() >= tol,
+                    None => true,
+                },
+                None => true,
+            };
+            if new_cluster {
+                clusters.push(vec![v]);
+            } else {
+                clusters.last_mut().unwrap().push(v);
+            }
+        }
+        let mut map: BTreeMap<i64, f64> = BTreeMap::new();
+        for c in clusters {
+            // Use min — sorted[0] is the smallest. Stable, deterministic,
+            // avoids cluster-size dependence.
+            let rep = c[0];
+            for v in c {
+                let key = (v * 1e6).round() as i64;
+                map.insert(key, rep);
+            }
+        }
+        map
+    };
+
+    let mut xs: Vec<f64> = Vec::with_capacity(edges.len() * 2);
+    let mut ys: Vec<f64> = Vec::with_capacity(edges.len() * 2);
+    for e in &edges {
+        xs.push(e.from[0]); xs.push(e.to[0]);
+        ys.push(e.from[1]); ys.push(e.to[1]);
+    }
+    let x_map = cluster_axis(xs);
+    let y_map = cluster_axis(ys);
+    let snap = |p: [f64; 2]| -> [f64; 2] {
+        let kx = (p[0] * 1e6).round() as i64;
+        let ky = (p[1] * 1e6).round() as i64;
+        [
+            x_map.get(&kx).copied().unwrap_or(p[0]),
+            y_map.get(&ky).copied().unwrap_or(p[1]),
+        ]
+    };
+
+    edges
+        .into_iter()
+        .map(|e| Edge { from: snap(e.from), to: snap(e.to), cp: e.cp, source: e.source })
+        .filter(|e| {
+            let dx = e.to[0] - e.from[0];
+            let dy = e.to[1] - e.from[1];
+            dx * dx + dy * dy > BEZIER_TOL * BEZIER_TOL
+        })
+        .collect()
+}
+
+/// Tolerance for `snap_axes`. Catches NY5's multi-grid 0.55-pymu offsets
+/// while leaving any genuinely distinct brick row (≥ 25 pymu apart) alone.
+const AXIS_SNAP_TOL: f64 = 1.0;
+
 fn canonicalize_endpoints(edges: Vec<Edge>, tol: f64) -> Vec<Edge> {
     if edges.is_empty() { return edges; }
     // Collect unique endpoints.
@@ -371,21 +461,23 @@ fn canonicalize_endpoints(edges: Vec<Edge>, tol: f64) -> Vec<Edge> {
             from: lookup(e.from),
             to: lookup(e.to),
             cp: e.cp,
+            source: e.source,
         })
         .collect()
 }
 
 /// Flatten a brick's bezier paths into directed edges (one per segment).
+/// `source` records which sub-path each edge came from.
 fn edges_of(paths: &[BezierPath]) -> Vec<Edge> {
     let mut out = Vec::new();
-    for path in paths {
+    for (idx, path) in paths.iter().enumerate() {
         let mut prev = path.start;
         for seg in &path.segments {
             let (to, cp) = match *seg {
                 Segment::Line { to } => (to, None),
                 Segment::Cubic { cp1, cp2, to } => (to, Some((cp1, cp2))),
             };
-            out.push(Edge { from: prev, to, cp });
+            out.push(Edge { from: prev, to, cp, source: idx as u32 });
             prev = to;
         }
     }
@@ -626,10 +718,10 @@ fn split_lines_at_vertices(edges: Vec<Edge>) -> Vec<Edge> {
 
         let mut prev = e.from;
         for (_t, pt) in &splits {
-            out.push(Edge { from: prev, to: *pt, cp: None });
+            out.push(Edge { from: prev, to: *pt, cp: None, source: e.source });
             prev = *pt;
         }
-        out.push(Edge { from: prev, to: e.to, cp: None });
+        out.push(Edge { from: prev, to: e.to, cp: None, source: e.source });
     }
     out
 }
@@ -708,7 +800,7 @@ fn split_cubics_at_vertices(edges: Vec<Edge>) -> Vec<Edge> {
                 cubic_split(cur_p0, cur_cp1, cur_cp2, cur_p3, local_t);
             // Emit left piece. Snap its end to the actual vertex so
             // adjacent bricks share bit-identical endpoints.
-            out.push(Edge { from: lp0, to: *pt, cp: Some((lcp1, lcp2)) });
+            out.push(Edge { from: lp0, to: *pt, cp: Some((lcp1, lcp2)), source: e.source });
             let _ = lp3;
             // Right piece becomes the current cubic for next iteration.
             cur_p0 = *pt;
@@ -723,6 +815,7 @@ fn split_cubics_at_vertices(edges: Vec<Edge>) -> Vec<Edge> {
             from: cur_p0,
             to: cur_p3,
             cp: Some((cur_cp1, cur_cp2)),
+            source: e.source,
         });
     }
     out
@@ -768,7 +861,8 @@ pub fn merge_piece_bezier_post_split(brick_paths: &[BezierPath])
     let deduped = dedup_subpaths(brick_paths);
     let raw: Vec<Edge> = edges_of(&deduped);
     if raw.is_empty() { return Vec::new(); }
-    let all = canonicalize_endpoints(raw, VERTEX_FUSE_TOL);
+    let snapped = snap_axes(raw, AXIS_SNAP_TOL);
+    let all = canonicalize_endpoints(snapped, VERTEX_FUSE_TOL);
     let mut all = split_lines_at_vertices(all);
     all = split_cubics_at_vertices(all);
     all = split_lines_at_vertices(all);
@@ -800,10 +894,11 @@ pub fn merge_piece_bezier(brick_paths: &[BezierPath]) -> Vec<BezierPath> {
     if raw.is_empty() {
         return Vec::new();
     }
-    // Canonicalize near-duplicate vertices (hand-drawn bricks frequently
-    // have sub-pixel drift between neighbours — e.g. one at y=.59, the
-    // next at y=.35). Up to VERTEX_FUSE_TOL apart → fused to one position.
-    let all = canonicalize_endpoints(raw, VERTEX_FUSE_TOL);
+    // Snap each axis to handle multi-grid drift (NY5 has rows on `.85`,
+    // `.86`, `.41` y-grids with 0.55-pymu gaps), then 2D-canonicalize for
+    // any remaining cross-corner drift.
+    let snapped = snap_axes(raw, AXIS_SNAP_TOL);
+    let all = canonicalize_endpoints(snapped, VERTEX_FUSE_TOL);
 
     // T-junctions: split LINE edges at midway vertices (staircase tiling),
     // then CUBIC edges at vertices lying on the curve (arch-on-arch cases).
@@ -815,30 +910,63 @@ pub fn merge_piece_bezier(brick_paths: &[BezierPath]) -> Vec<BezierPath> {
     all = split_lines_at_vertices(all);
     all = split_cubics_at_vertices(all);
 
-    // Bucket by canonical key; any bucket of size ≥ 2 is internal. For
-    // each edge we also probe the 8 neighbour midpoint cells so that two
-    // near-duplicate curves whose midpoints sit just across a quantization
-    // boundary still pair up.
-    use std::collections::BTreeMap;
-    let mut buckets: BTreeMap<EdgeKey, usize> = BTreeMap::new();
+    // Bucket by canonical key; track each source's signed winding
+    // contribution. An edge contributes +1 if its from→to direction goes
+    // LO→HI in the canonical key's endpoint order, else -1. Within a
+    // single source, opposite-direction contributions cancel — that's
+    // exactly what we want for the artist's notch seams (NY5 b027/b028,
+    // NY7 b027) where after axis-snap a single sub-path traces the same
+    // canonical line in both directions. Same-direction repetitions are
+    // unusual but DON'T cancel (preserves NY9n's compound-brick cases).
+    use std::collections::{BTreeMap, BTreeSet};
+    let mut bucket_sources: BTreeMap<EdgeKey, BTreeMap<u32, i32>> = BTreeMap::new();
+    let direction_sign = |e: &Edge| -> i32 {
+        let a = qp(e.from, BEZIER_TOL);
+        let b = qp(e.to, BEZIER_TOL);
+        if a <= b { 1 } else { -1 }
+    };
     for e in &all {
-        *buckets.entry(e.key(BEZIER_TOL)).or_insert(0) += 1;
+        let entry = bucket_sources
+            .entry(e.key(BEZIER_TOL))
+            .or_insert_with(BTreeMap::new);
+        *entry.entry(e.source).or_insert(0) += direction_sign(e);
     }
 
-    let is_internal = |e: &Edge| -> bool {
-        let primary = e.key(BEZIER_TOL);
-        let total: usize = key_variants(&primary)
-            .into_iter()
-            .map(|k| buckets.get(&k).copied().unwrap_or(0))
-            .sum();
-        // `key_variants` always includes `primary`, which counted this edge.
-        // Shared → at least one other edge contributes.
-        total >= 2
-    };
+    // Per bucket, decide outer or shared and emit at most ONE
+    // representative edge per non-shared bucket. For a bucket with
+    // multiple contributions but effective=1 (e.g., NY7 b027 where
+    // b027's outer-bottom and notch-interior cancel within b027,
+    // leaving b022's contribution), we emit just one edge — the next
+    // walk needs a single canonical edge per geometric line, not the
+    // raw set of contributions from every source.
+    let mut bucket_decision: BTreeMap<EdgeKey, bool /* keep as outer */> = BTreeMap::new();
+    let mut all_keys: Vec<EdgeKey> = bucket_sources.keys().cloned().collect();
+    all_keys.sort();
+    for k in &all_keys {
+        let mut combined: BTreeMap<u32, i32> = BTreeMap::new();
+        for kv in key_variants(k) {
+            if let Some(srcs) = bucket_sources.get(&kv) {
+                for (src, net) in srcs {
+                    *combined.entry(*src).or_insert(0) += net;
+                }
+            }
+        }
+        let effective: u32 = combined.values().map(|n| n.unsigned_abs()).sum();
+        bucket_decision.insert(*k, effective < 2);
+    }
 
+    let mut emitted_buckets: BTreeSet<EdgeKey> = BTreeSet::new();
     let outer: Vec<Edge> = all
         .into_iter()
-        .filter(|e| !is_internal(e))
+        .filter(|e| {
+            let k = e.key(BEZIER_TOL);
+            // Drop if bucket decided as shared.
+            if !bucket_decision.get(&k).copied().unwrap_or(true) { return false; }
+            // Outer bucket: emit only the FIRST edge encountered.
+            if emitted_buckets.contains(&k) { return false; }
+            emitted_buckets.insert(k);
+            true
+        })
         .collect();
     if outer.is_empty() {
         return Vec::new();
