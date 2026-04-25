@@ -200,10 +200,11 @@ const SPLIT_TOL: f64 = BEZIER_TOL;
 const LINE_PROJECT_TOL: f64 = 1.0;
 
 /// Maximum distance between two endpoint positions that should be treated
-/// as the same vertex. Hand-drawn bricks often drift by up to ~1 pymu
-/// (~0.4 canvas-px) between neighbours; fuse aggressively so the shared-
-/// edge key matches anyway.
-const VERTEX_FUSE_TOL: f64 = 1.5;
+/// as the same vertex. Hand-drawn bricks drift by up to ~2.5 pymu between
+/// neighbours (e.g. NY7 has b250/b368 corners 1.56 pymu apart and b177's
+/// duplicate-outer endpoints 2.4 pymu apart). Fuse aggressively so the
+/// shared-edge key matches anyway.
+const VERTEX_FUSE_TOL: f64 = 3.0;
 
 /// Tolerance for comparing a curve's midpoint-at-t=0.5 to another's. Two
 /// adjacent arch bricks often describe the same arc with slightly different
@@ -407,7 +408,10 @@ fn dedup_subpaths(paths: &[BezierPath]) -> Vec<BezierPath> {
     const BBOX_TOL: f64 = 6.0;
     const AREA_REL_TOL: f64 = 0.05;
     const PERIMETER_REL_TOL: f64 = 0.05;
-    const MIN_BBOX_SIDE: f64 = 3.0;
+    // Drop sub-paths smaller than this — they are AI artifacts (zero-length
+    // closing segments, sub-pixel triangles between two near-equal corners
+    // of duplicated outlines). A real outline is always > 100 pymu².
+    const MIN_AREA: f64 = 10.0;
     const TESS_SAMPLES: usize = 12;
 
     struct Sig {
@@ -425,9 +429,6 @@ fn dedup_subpaths(paths: &[BezierPath]) -> Vec<BezierPath> {
             x0 = x0.min(v[0]); y0 = y0.min(v[1]);
             x1 = x1.max(v[0]); y1 = y1.max(v[1]);
         }
-        if x1 - x0 < MIN_BBOX_SIDE && y1 - y0 < MIN_BBOX_SIDE {
-            return None; // degenerate sub-path
-        }
         let mut area2 = 0.0_f64;
         let mut perim = 0.0_f64;
         for i in 0..poly.len() {
@@ -437,7 +438,9 @@ fn dedup_subpaths(paths: &[BezierPath]) -> Vec<BezierPath> {
             let dx = b[0] - a[0]; let dy = b[1] - a[1];
             perim += (dx * dx + dy * dy).sqrt();
         }
-        Some(Sig { bbox: [x0, y0, x1, y1], area: area2.abs() * 0.5, perimeter: perim })
+        let area = area2.abs() * 0.5;
+        if area < MIN_AREA { return None; }
+        Some(Sig { bbox: [x0, y0, x1, y1], area, perimeter: perim })
     };
 
     let mut seen: Vec<Sig> = Vec::new();
@@ -745,6 +748,31 @@ pub fn merge_piece_bezier_edges(brick_paths: &[BezierPath])
     -> Vec<(([f64;2], [f64;2]), usize, bool /* has_cp */)>
 {
     let all: Vec<Edge> = edges_of(brick_paths);
+    use std::collections::BTreeMap;
+    let mut buckets: BTreeMap<EdgeKey, (usize, [f64;2], [f64;2], bool)> = BTreeMap::new();
+    for e in &all {
+        let k = e.key(BEZIER_TOL);
+        let entry = buckets.entry(k).or_insert((0, e.from, e.to, e.cp.is_some()));
+        entry.0 += 1;
+    }
+    let mut out: Vec<_> = buckets.into_iter().map(|(_, (c, f, t, cp))| ((f, t), c, cp)).collect();
+    out.sort_by(|a, b| b.1.cmp(&a.1));
+    out
+}
+
+/// Diagnostic: run dedup + canonicalize + T-splits and return the
+/// per-edge bucket count list (after all splits). `bool` is true for cubic.
+pub fn merge_piece_bezier_post_split(brick_paths: &[BezierPath])
+    -> Vec<(([f64;2], [f64;2]), usize, bool)>
+{
+    let deduped = dedup_subpaths(brick_paths);
+    let raw: Vec<Edge> = edges_of(&deduped);
+    if raw.is_empty() { return Vec::new(); }
+    let all = canonicalize_endpoints(raw, VERTEX_FUSE_TOL);
+    let mut all = split_lines_at_vertices(all);
+    all = split_cubics_at_vertices(all);
+    all = split_lines_at_vertices(all);
+    all = split_cubics_at_vertices(all);
     use std::collections::BTreeMap;
     let mut buckets: BTreeMap<EdgeKey, (usize, [f64;2], [f64;2], bool)> = BTreeMap::new();
     for e in &all {
