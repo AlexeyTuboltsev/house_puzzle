@@ -16,6 +16,7 @@
 #include "lib/json2.jsx"
 #include "lib/walk_paths.jsx"
 #include "lib/checks.jsx"
+#include "lib/fixes.jsx"
 #include "lib/render_md.jsx"
 
 (function main() {
@@ -30,6 +31,7 @@
         file: null,
         findings: [],
         summary: null,
+        fixes: null,
         snapshot: null,
         error: null
     };
@@ -51,8 +53,14 @@
         report.summary  = summarize(report.findings);
 
         if (report.mode === "fix") {
-            // Phase 2 will populate this; stays a no-op for now.
-            report.error = "fix mode not implemented yet (phase 2)";
+            // Apply deterministic fixes against the pre-fix findings,
+            // then re-walk + re-check so the report reflects the
+            // post-fix state. The list of fixes applied lives in
+            // report.fixes; report.findings is "what's left".
+            report.fixes    = runFixes(doc, report.snapshot, report.findings);
+            report.snapshot = walkPaths(doc);
+            report.findings = runChecks(report.snapshot);
+            report.summary  = summarize(report.findings);
         }
     } catch (e) {
         report.error = String(e) + (e.line ? " (line " + e.line + ")" : "");
