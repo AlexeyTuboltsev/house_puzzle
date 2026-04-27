@@ -14,6 +14,7 @@
 #target illustrator
 
 #include "lib/json2.jsx"
+#include "lib/log.jsx"
 #include "lib/walk_paths.jsx"
 #include "lib/checks.jsx"
 #include "lib/fixes.jsx"
@@ -36,21 +37,39 @@
         error: null
     };
 
+    logReset();
+    logInfo("validate.jsx: start", { mode: report.mode });
+
     try {
         var target = readTrimmed(TARGET_PATH);
+        logInfo("target read", { target: target });
         var doc = pickDocument(target);
         if (!doc) {
             report.error = target
                 ? ("could not find or open: " + target)
                 : "no document open and no target file specified";
+            logError("no document selected", { error: report.error });
             writeReport(REPORT_PATH, report);
             return;
         }
         report.file = doc.fullName ? doc.fullName.fsName : doc.name;
+        logInfo("document selected", { file: report.file });
 
+        logInfo("walk_paths: begin");
         report.snapshot = walkPaths(doc);
+        logInfo("walk_paths: end", {
+            bricks: report.snapshot.bricks ? report.snapshot.bricks.length : 0,
+            top_layers: doc.layers.length
+        });
+
+        logInfo("runChecks: begin");
         report.findings = runChecks(report.snapshot);
         report.summary  = summarize(report.findings);
+        logInfo("runChecks: end", {
+            findings: report.findings.length,
+            errors: report.summary.by_severity.error || 0,
+            warnings: report.summary.by_severity.warning || 0
+        });
 
         if (report.mode === "fix") {
             // Convergence loop: a single pass of fixes can create new
@@ -61,18 +80,34 @@
             var iterations = [];
             var MAX_ITER = 5;
             for (var iter = 0; iter < MAX_ITER; iter++) {
+                logInfo("fix iter: begin", { iter: iter });
                 var pass = runFixes(doc, report.snapshot, report.findings);
                 iterations.push(pass);
                 report.snapshot = walkPaths(doc);
                 report.findings = runChecks(report.snapshot);
+                logInfo("fix iter: end", {
+                    iter: iter,
+                    applied: pass.applied.length,
+                    skipped: pass.skipped.length,
+                    error: pass.error,
+                    remaining_findings: report.findings.length
+                });
                 if (!pass.applied || pass.applied.length === 0) break;
             }
             report.summary = summarize(report.findings);
             report.fixes   = collapseIterations(iterations);
+            logInfo("fix mode: converged", {
+                iterations: report.fixes.iterations,
+                total_applied: report.fixes.applied.length,
+                remaining: report.findings.length
+            });
         }
     } catch (e) {
-        report.error = String(e) + (e.line ? " (line " + e.line + ")" : "");
+        var msg = String(e) + (e.line ? " (line " + e.line + ")" : "");
+        report.error = msg;
+        logError("validate.jsx: top-level exception", { error: msg });
     }
+    logInfo("validate.jsx: end", { error: report.error });
 
     writeReport(REPORT_PATH, report);
     writeMarkdown(report);

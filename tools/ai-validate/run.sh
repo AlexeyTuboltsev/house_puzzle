@@ -56,16 +56,20 @@ end tell
 EOF
 
 REPORT_JSON=/tmp/ai-validate-report.json
+DEBUG_LOG=/tmp/ai-validate-debug.log
 NEXT_TO_AI="${TARGET%.*}.report.md"
 
 if [[ ! -f "$REPORT_JSON" ]]; then
   echo "[!] no report written — check Illustrator's JavaScript Console" >&2
+  echo "[!] last lines of debug log ($DEBUG_LOG):" >&2
+  tail -n 20 "$DEBUG_LOG" 2>&1 >&2 || true
   exit 1
 fi
 
 # Echo the artist-facing report path. Print its head so the caller
 # sees the headline numbers without opening the file.
 echo "[*] report: $NEXT_TO_AI"
+echo "[*] debug:  $DEBUG_LOG"
 echo
 if [[ -f "$NEXT_TO_AI" ]]; then
   head -n 8 "$NEXT_TO_AI"
