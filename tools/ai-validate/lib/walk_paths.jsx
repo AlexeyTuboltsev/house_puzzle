@@ -83,9 +83,30 @@ function extractSubPaths(layer) {
             var pt = p.pathPoints[k];
             anchors.push([pt.anchor[0], pt.anchor[1]]);
         }
+
+        // Some pathItems throw on .area / .geometricBounds (degenerate
+        // shapes, single-anchor paths). Tolerate failures — Phase 1
+        // checks treat null as "unknown" and skip that branch.
+        var area = null;
+        try { area = p.area; } catch (e) { area = null; }
+
+        var bbox = null;
+        try {
+            var b = p.geometricBounds;
+            // Normalise to [xmin, ymin, xmax, ymax] regardless of
+            // ruler orientation (y-up vs y-down).
+            var x0 = Math.min(b[0], b[2]);
+            var x1 = Math.max(b[0], b[2]);
+            var y0 = Math.min(b[1], b[3]);
+            var y1 = Math.max(b[1], b[3]);
+            bbox = [x0, y0, x1, y1];
+        } catch (e) { bbox = null; }
+
         out.push({
             closed: !!p.closed,
             anchor_count: anchors.length,
+            area: area,
+            bbox: bbox,
             anchors: anchors
         });
     }
