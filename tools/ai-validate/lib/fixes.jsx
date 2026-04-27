@@ -7,38 +7,50 @@
 // Hard rules (see ../CLAUDE.md):
 //   - Never auto-fix kinds the artist must judge:
 //     brick_bbox_contained, multi_object_layer, missing_top_layer,
-//     empty_top_layer, intra_brick_drift (judgement-call), corner_jitter
-//     (Phase 2.4 only after we have vector-adjacency).
+//     empty_top_layer, intra_brick_drift, corner_jitter (Phase 2.4
+//     only after vector-adjacency).
 //   - Vector and raster move together for any anchor shifts
-//     (Phase 2.3 onward — not relevant for close-path which doesn't
-//     move anchors).
+//     (snap_drift_cluster: brick raster shifts by centroid Δ).
 //   - Idempotent: running --fix twice in a row produces the same
 //     end state as running it once.
+//
+// Defensive coding (Adobe JS runtime is buggy):
+//   - Each individual mutation is wrapped in a try/catch so one
+//     failure (locked layer, hidden item, ...) doesn't kill the
+//     whole pass.
+//   - Every fix attempt and outcome is logged via lib/log.jsx so
+//     a crash leaves a clear last-known-good marker on disk.
 
 function runFixes(doc, snapshot, findings) {
     var result = { applied: [], skipped: [], error: null };
+    logInfo("runFixes: begin", { findings: findings.length });
+
     try {
-        // Pass 1: close_path (no anchor changes).
+        // Pass 1 — close_path. No anchor changes.
+        logDebug("pass 1: close_path");
         for (var i = 0; i < findings.length; i++) {
             var f = findings[i];
             if (f.kind === "unclosed_path" || f.kind === "unclosed_path_zero_gap") {
                 applyClosePath(doc, f, i, result);
             }
         }
-        // Pass 2: merge_subpymu (mutates pathPoints arrays — process in
-        // reverse so later removals don't invalidate earlier indices).
+
+        // Pass 2 — merge_subpymu. Mutates pathPoints arrays; iterate
+        // in reverse so later removals don't invalidate earlier indices.
+        logDebug("pass 2: merge_subpymu");
         for (var j = findings.length - 1; j >= 0; j--) {
             var g = findings[j];
             if (g.kind === "sub_pymu_edge") {
                 applyMergeSubPymu(doc, g, j, result);
             }
         }
-        // Pass 3: snap_drift_clusters (position-based; immune to prior
-        // index changes). Anchor shifts accumulated per brick, then
-        // each brick's rasters move by the centroid shift.
+
+        // Pass 3 — snap_drift_clusters. Position-based, immune to
+        // index changes from pass 2.
+        logDebug("pass 3: snap_drift_clusters");
         applySnapDriftClusters(doc, findings, result);
 
-        // Anything else: warning-only or future phase. Mark skipped.
+        // Mark warning-only / not-yet-implemented kinds as skipped.
         for (var k = 0; k < findings.length; k++) {
             var h = findings[k];
             if (h.kind !== "unclosed_path" &&
@@ -54,144 +66,209 @@ function runFixes(doc, snapshot, findings) {
             }
         }
     } catch (e) {
-        result.error = String(e) + (e.line ? " (line " + e.line + ")" : "");
+        // Last-resort guard — individual fix functions should already
+        // catch their own errors. Anything reaching here is a bug in
+        // the orchestration code.
+        var msg = String(e) + (e.line ? " (line " + e.line + ")" : "");
+        result.error = msg;
+        logError("runFixes: orchestration crash", { error: msg });
     }
+
+    logInfo("runFixes: end", {
+        applied: result.applied.length,
+        skipped: result.skipped.length,
+        error: result.error
+    });
     return result;
 }
 
-// Close an open sub-path. Illustrator implicitly draws the closing
-// segment from last anchor to first when `closed` is set to true,
-// which matches the plan's "append a single straight closing line"
-// requirement.
+// ----- per-fix helpers --------------------------------------------------
+
+function skipFinding(result, ctx, reason) {
+    result.skipped.push({
+        finding_index: ctx.idx,
+        kind: ctx.kind,
+        brick: ctx.brick,
+        layer_path: ctx.layer_path,
+        sub_path: ctx.sub_path,
+        reason: reason
+    });
+    logDebug("skip", { reason: reason, ctx: ctx });
+}
+
+// A layer is editable iff it AND all its ancestor layers are unlocked.
+// In Illustrator, locking a parent layer effectively locks all children
+// regardless of the children's own .locked state.
+function isLayerEditable(layer) {
+    var L = layer;
+    while (L && L.typename === "Layer") {
+        try {
+            if (L.locked) return false;
+        } catch (e) {
+            // If we can't even read .locked, treat as non-editable to
+            // stay on the safe side.
+            return false;
+        }
+        try { L = L.parent; }
+        catch (e) { L = null; }
+    }
+    return true;
+}
+
+// Wrap a single in-Illustrator mutation with try/catch + logging.
+// Returns true on success, false (with a log line) on failure.
+function tryMutate(label, ctx, fn) {
+    try {
+        fn();
+        return true;
+    } catch (e) {
+        var msg = String(e) + (e.line ? " (line " + e.line + ")" : "");
+        logError("mutate failed: " + label, { error: msg, ctx: ctx });
+        return false;
+    }
+}
+
+// ----- 1. close_path ---------------------------------------------------
+
 function applyClosePath(doc, finding, idx, result) {
-    var layer = findLayer(doc, finding.layer_path);
-    if (!layer) {
-        result.skipped.push({
-            finding_index: idx, kind: finding.kind, brick: finding.brick,
-            reason: "layer not found: " + finding.layer_path
+    var ctx = {
+        idx: idx, kind: finding.kind, brick: finding.brick,
+        layer_path: finding.layer_path, sub_path: finding.sub_path
+    };
+    logDebug("close_path: begin", ctx);
+
+    try {
+        var layer = findLayer(doc, finding.layer_path);
+        if (!layer) {
+            skipFinding(result, ctx, "layer not found: " + finding.layer_path);
+            return;
+        }
+        if (!isLayerEditable(layer)) {
+            skipFinding(result, ctx, "layer or ancestor is locked");
+            return;
+        }
+        if (finding.sub_path == null ||
+            finding.sub_path < 0 ||
+            finding.sub_path >= layer.pathItems.length) {
+            skipFinding(result, ctx, "sub_path index out of range");
+            return;
+        }
+        var p = layer.pathItems[finding.sub_path];
+        if (p.closed) {
+            skipFinding(result, ctx, "already closed (idempotent re-run)");
+            return;
+        }
+
+        var ok = tryMutate("p.closed = true", ctx, function () { p.closed = true; });
+        if (!ok) {
+            skipFinding(result, ctx, "set closed flag threw");
+            return;
+        }
+
+        result.applied.push({
+            finding_index: idx,
+            kind: finding.kind,
+            brick: finding.brick,
+            layer_path: finding.layer_path,
+            sub_path: finding.sub_path,
+            action: "close_path",
+            gap_pymu: finding.gap_pymu
         });
-        return;
+        logDebug("close_path: applied", ctx);
+    } catch (e) {
+        var msg = String(e) + (e.line ? " (line " + e.line + ")" : "");
+        skipFinding(result, ctx, "outer exception: " + msg);
+        logError("close_path: outer exception", { error: msg, ctx: ctx });
     }
-    if (finding.sub_path == null ||
-        finding.sub_path < 0 ||
-        finding.sub_path >= layer.pathItems.length) {
-        result.skipped.push({
-            finding_index: idx, kind: finding.kind, brick: finding.brick,
-            reason: "sub_path index out of range"
-        });
-        return;
-    }
-    var p = layer.pathItems[finding.sub_path];
-    if (p.closed) {
-        result.skipped.push({
-            finding_index: idx, kind: finding.kind, brick: finding.brick,
-            reason: "already closed (idempotent re-run)"
-        });
-        return;
-    }
-    p.closed = true;
-    result.applied.push({
-        finding_index: idx,
-        kind: finding.kind,
-        brick: finding.brick,
-        layer_path: finding.layer_path,
-        sub_path: finding.sub_path,
-        action: "close_path",
-        gap_pymu: finding.gap_pymu
-    });
 }
 
-// Merge two anchors on a sub-pymu edge. The survivor is the anchor
-// whose (x, y) coordinates appear most often elsewhere in the same
-// brick — that's the canonical position the artist meant to put the
-// extra anchor on. Tie → keep the first anchor.
-//
-// Skip if the path has < 4 anchors (merge would leave a degenerate
-// shape) or if the live edge length is no longer < 1 pymu (a previous
-// run already fixed it, or the finding is stale).
+// ----- 2. merge_subpymu ------------------------------------------------
+
 function applyMergeSubPymu(doc, finding, idx, result) {
-    var layer = findLayer(doc, finding.layer_path);
-    if (!layer) {
-        result.skipped.push({
-            finding_index: idx, kind: finding.kind, brick: finding.brick,
-            reason: "layer not found: " + finding.layer_path
-        });
-        return;
-    }
-    if (finding.sub_path == null ||
-        finding.sub_path < 0 ||
-        finding.sub_path >= layer.pathItems.length) {
-        result.skipped.push({
-            finding_index: idx, kind: finding.kind, brick: finding.brick,
-            reason: "sub_path index out of range"
-        });
-        return;
-    }
-    var p = layer.pathItems[finding.sub_path];
-    if (p.pathPoints.length < 4) {
-        result.skipped.push({
-            finding_index: idx, kind: finding.kind, brick: finding.brick,
-            reason: "path has < 4 anchors; merge would leave it degenerate"
-        });
-        return;
-    }
-    var i = finding.edge_index;
-    if (i == null || i < 0 || i >= p.pathPoints.length) {
-        result.skipped.push({
-            finding_index: idx, kind: finding.kind, brick: finding.brick,
-            reason: "edge_index out of range"
-        });
-        return;
-    }
-    var nextI = (i + 1 < p.pathPoints.length) ? i + 1 : 0;
+    var ctx = {
+        idx: idx, kind: finding.kind, brick: finding.brick,
+        layer_path: finding.layer_path, sub_path: finding.sub_path
+    };
+    logDebug("merge_subpymu: begin", ctx);
 
-    var aA = p.pathPoints[i].anchor;
-    var aB = p.pathPoints[nextI].anchor;
-    var dx = aB[0] - aA[0];
-    var dy = aB[1] - aA[1];
-    var len = Math.sqrt(dx * dx + dy * dy);
-    if (len >= 1.0) {
-        result.skipped.push({
-            finding_index: idx, kind: finding.kind, brick: finding.brick,
-            reason: "edge already >= 1.0 pymu (idempotent re-run?)"
+    try {
+        var layer = findLayer(doc, finding.layer_path);
+        if (!layer) {
+            skipFinding(result, ctx, "layer not found: " + finding.layer_path);
+            return;
+        }
+        if (!isLayerEditable(layer)) {
+            skipFinding(result, ctx, "layer or ancestor is locked");
+            return;
+        }
+        if (finding.sub_path == null ||
+            finding.sub_path < 0 ||
+            finding.sub_path >= layer.pathItems.length) {
+            skipFinding(result, ctx, "sub_path index out of range");
+            return;
+        }
+        var p = layer.pathItems[finding.sub_path];
+        if (p.pathPoints.length < 4) {
+            skipFinding(result, ctx, "path has < 4 anchors; merge would leave it degenerate");
+            return;
+        }
+        var i = finding.edge_index;
+        if (i == null || i < 0 || i >= p.pathPoints.length) {
+            skipFinding(result, ctx, "edge_index out of range");
+            return;
+        }
+        var nextI = (i + 1 < p.pathPoints.length) ? i + 1 : 0;
+
+        var aA = p.pathPoints[i].anchor;
+        var aB = p.pathPoints[nextI].anchor;
+        var dx = aB[0] - aA[0];
+        var dy = aB[1] - aA[1];
+        var len = Math.sqrt(dx * dx + dy * dy);
+        if (len >= 1.0) {
+            skipFinding(result, ctx, "edge already >= 1.0 pymu (idempotent re-run?)");
+            return;
+        }
+
+        var scoreA = anchorPopularity(aA, layer);
+        var scoreB = anchorPopularity(aB, layer);
+
+        var dropIndex, droppedAnchor, keptAnchor;
+        if ((scoreA - 1) >= (scoreB - 1)) {
+            dropIndex = nextI;
+            droppedAnchor = [aB[0], aB[1]];
+            keptAnchor = [aA[0], aA[1]];
+        } else {
+            dropIndex = i;
+            droppedAnchor = [aA[0], aA[1]];
+            keptAnchor = [aB[0], aB[1]];
+        }
+
+        var pp = p.pathPoints[dropIndex];
+        var ok = tryMutate("pathPoint.remove()", ctx, function () { pp.remove(); });
+        if (!ok) {
+            skipFinding(result, ctx, "pathPoint.remove() threw");
+            return;
+        }
+
+        result.applied.push({
+            finding_index: idx,
+            kind: "sub_pymu_edge",
+            brick: finding.brick,
+            layer_path: finding.layer_path,
+            sub_path: finding.sub_path,
+            action: "merge_subpymu",
+            edge_len_pymu: len,
+            kept_anchor: keptAnchor,
+            dropped_anchor: droppedAnchor
         });
-        return;
+        logDebug("merge_subpymu: applied", ctx);
+    } catch (e) {
+        var msg = String(e) + (e.line ? " (line " + e.line + ")" : "");
+        skipFinding(result, ctx, "outer exception: " + msg);
+        logError("merge_subpymu: outer exception", { error: msg, ctx: ctx });
     }
-
-    var scoreA = anchorPopularity(aA, layer);
-    var scoreB = anchorPopularity(aB, layer);
-
-    // Subtract self-counts so each anchor is compared on its
-    // popularity *elsewhere* in the brick.
-    var dropIndex, droppedAnchor, keptAnchor;
-    if ((scoreA - 1) >= (scoreB - 1)) {
-        dropIndex = nextI;
-        droppedAnchor = [aB[0], aB[1]];
-        keptAnchor = [aA[0], aA[1]];
-    } else {
-        dropIndex = i;
-        droppedAnchor = [aA[0], aA[1]];
-        keptAnchor = [aB[0], aB[1]];
-    }
-
-    p.pathPoints[dropIndex].remove();
-
-    result.applied.push({
-        finding_index: idx,
-        kind: "sub_pymu_edge",
-        brick: finding.brick,
-        layer_path: finding.layer_path,
-        sub_path: finding.sub_path,
-        action: "merge_subpymu",
-        edge_len_pymu: len,
-        kept_anchor: keptAnchor,
-        dropped_anchor: droppedAnchor
-    });
 }
 
-// Count anchors anywhere in `layer` whose (x, y) match the given
-// position within EPS_MATCH. Includes the anchor itself, so callers
-// subtract 1 when comparing.
 function anchorPopularity(anchor, layer) {
     var EPS = 0.001;
     var n = 0;
@@ -207,146 +284,186 @@ function anchorPopularity(anchor, layer) {
     return n;
 }
 
-// Snap multi-grid-drift clusters. For each cluster, the "winner" is
-// the most-popular value (median on tie). Any anchor whose value falls
-// in the cluster range but isn't at the winner gets shifted to the
-// winner — anchor + leftDirection + rightDirection all by the same Δ.
-//
-// After all anchor shifts, each affected brick's rasters move by the
-// brick's centroid shift: sum of per-anchor deltas / total anchor count.
-// For "1 corner drifted in a 4-corner brick" this is Δ/4 (raster
-// tracks centroid). For "whole brick shifted" it's Δ (raster moves
-// with the brick).
-//
-// Position-based: doesn't use sub_path / anchor indices, so prior
-// merge_subpymu fixes don't invalidate the inputs.
+// ----- 3. snap_drift_cluster (+ raster centroid track) ----------------
+
 function applySnapDriftClusters(doc, findings, result) {
     var EPS = 0.001;
-    var brickDeltaSum = {}; // layer_path -> { sx: 0, sy: 0, shifted_x: 0, shifted_y: 0 }
+    var brickDeltaSum = {}; // layer_path -> { sx, sy, shifted_x, shifted_y, anchor_failures }
 
     for (var f = 0; f < findings.length; f++) {
         var fnd = findings[f];
         if (fnd.kind !== "multi_grid_drift") continue;
-        if (!fnd.member_layer_paths || fnd.member_layer_paths.length === 0) {
-            result.skipped.push({
-                finding_index: f, kind: fnd.kind, brick: null,
-                reason: "no member_layer_paths recorded on finding"
-            });
-            continue;
-        }
 
-        var winner = pickWinner(fnd.distinct_values);
-        if (winner == null) {
-            result.skipped.push({
-                finding_index: f, kind: fnd.kind, brick: null,
-                reason: "could not determine cluster winner"
-            });
-            continue;
-        }
-        var axisIdx = (fnd.axis === "x") ? 0 : 1;
-        var lo = fnd.cluster_min - EPS;
-        var hi = fnd.cluster_max + EPS;
+        var ctxFinding = {
+            idx: f, kind: fnd.kind, brick: null,
+            layer_path: null, sub_path: null,
+            axis: fnd.axis, cluster_min: fnd.cluster_min, cluster_max: fnd.cluster_max
+        };
+        logDebug("snap_drift_cluster: begin", ctxFinding);
 
-        var anchorsShifted = 0;
-        var bricksTouched = 0;
-
-        for (var bi = 0; bi < fnd.member_layer_paths.length; bi++) {
-            var lp = fnd.member_layer_paths[bi];
-            var layer = findLayer(doc, lp);
-            if (!layer) continue;
-            var brickShiftedHere = 0;
-
-            for (var pi = 0; pi < layer.pathItems.length; pi++) {
-                var path = layer.pathItems[pi];
-                for (var pt = 0; pt < path.pathPoints.length; pt++) {
-                    var pp = path.pathPoints[pt];
-                    var anchor = pp.anchor;
-                    var v = anchor[axisIdx];
-                    if (v < lo || v > hi) continue;
-                    if (Math.abs(v - winner) < EPS) continue;
-
-                    var delta = winner - v;
-                    var newAnchor = [anchor[0], anchor[1]];
-                    newAnchor[axisIdx] = winner;
-                    pp.anchor = newAnchor;
-
-                    var ld = pp.leftDirection;
-                    var rd = pp.rightDirection;
-                    var newLd = [ld[0], ld[1]];
-                    var newRd = [rd[0], rd[1]];
-                    newLd[axisIdx] += delta;
-                    newRd[axisIdx] += delta;
-                    pp.leftDirection = newLd;
-                    pp.rightDirection = newRd;
-
-                    if (!brickDeltaSum[lp]) {
-                        brickDeltaSum[lp] = { sx: 0, sy: 0, shifted_x: 0, shifted_y: 0 };
-                    }
-                    if (axisIdx === 0) {
-                        brickDeltaSum[lp].sx += delta;
-                        brickDeltaSum[lp].shifted_x++;
-                    } else {
-                        brickDeltaSum[lp].sy += delta;
-                        brickDeltaSum[lp].shifted_y++;
-                    }
-                    anchorsShifted++;
-                    brickShiftedHere++;
-                }
+        try {
+            if (!fnd.member_layer_paths || fnd.member_layer_paths.length === 0) {
+                skipFinding(result, ctxFinding, "no member_layer_paths recorded on finding");
+                continue;
             }
-            if (brickShiftedHere > 0) bricksTouched++;
-        }
+            var winner = pickWinner(fnd.distinct_values);
+            if (winner == null) {
+                skipFinding(result, ctxFinding, "could not determine cluster winner");
+                continue;
+            }
+            var axisIdx = (fnd.axis === "x") ? 0 : 1;
+            var lo = fnd.cluster_min - EPS;
+            var hi = fnd.cluster_max + EPS;
 
-        result.applied.push({
-            finding_index: f,
-            kind: "multi_grid_drift",
-            action: "snap_drift_cluster",
-            axis: fnd.axis,
-            winner: winner,
-            cluster_range: [fnd.cluster_min, fnd.cluster_max],
-            anchors_shifted: anchorsShifted,
-            bricks_touched: bricksTouched
-        });
+            var anchorsShifted = 0;
+            var bricksTouched = 0;
+            var lockedSkips = 0;
+            var anchorFailures = 0;
+
+            for (var bi = 0; bi < fnd.member_layer_paths.length; bi++) {
+                var lp = fnd.member_layer_paths[bi];
+                var layer = findLayer(doc, lp);
+                if (!layer) {
+                    logWarn("snap_drift_cluster: brick layer missing", { layer_path: lp });
+                    continue;
+                }
+                if (!isLayerEditable(layer)) {
+                    lockedSkips++;
+                    logWarn("snap_drift_cluster: brick layer locked, skipping", { layer_path: lp });
+                    continue;
+                }
+                var brickShiftedHere = 0;
+
+                for (var pi = 0; pi < layer.pathItems.length; pi++) {
+                    var path = layer.pathItems[pi];
+                    for (var pt = 0; pt < path.pathPoints.length; pt++) {
+                        var pp = path.pathPoints[pt];
+                        var anchor;
+                        try { anchor = pp.anchor; }
+                        catch (e) {
+                            anchorFailures++;
+                            logError("snap_drift_cluster: read anchor failed", { layer_path: lp, pi: pi, pt: pt, error: String(e) });
+                            continue;
+                        }
+                        var v = anchor[axisIdx];
+                        if (v < lo || v > hi) continue;
+                        if (Math.abs(v - winner) < EPS) continue;
+
+                        var delta = winner - v;
+                        var ok = tryMutate(
+                            "snap_drift anchor+handles",
+                            { layer_path: lp, pi: pi, pt: pt, axis: fnd.axis, delta: delta },
+                            function () {
+                                var newAnchor = [anchor[0], anchor[1]];
+                                newAnchor[axisIdx] = winner;
+                                pp.anchor = newAnchor;
+                                var ld = pp.leftDirection;
+                                var rd = pp.rightDirection;
+                                var newLd = [ld[0], ld[1]];
+                                var newRd = [rd[0], rd[1]];
+                                newLd[axisIdx] += delta;
+                                newRd[axisIdx] += delta;
+                                pp.leftDirection = newLd;
+                                pp.rightDirection = newRd;
+                            }
+                        );
+                        if (!ok) { anchorFailures++; continue; }
+
+                        if (!brickDeltaSum[lp]) {
+                            brickDeltaSum[lp] = { sx: 0, sy: 0, shifted_x: 0, shifted_y: 0 };
+                        }
+                        if (axisIdx === 0) {
+                            brickDeltaSum[lp].sx += delta;
+                            brickDeltaSum[lp].shifted_x++;
+                        } else {
+                            brickDeltaSum[lp].sy += delta;
+                            brickDeltaSum[lp].shifted_y++;
+                        }
+                        anchorsShifted++;
+                        brickShiftedHere++;
+                    }
+                }
+                if (brickShiftedHere > 0) bricksTouched++;
+            }
+
+            result.applied.push({
+                finding_index: f,
+                kind: "multi_grid_drift",
+                action: "snap_drift_cluster",
+                axis: fnd.axis,
+                winner: winner,
+                cluster_range: [fnd.cluster_min, fnd.cluster_max],
+                anchors_shifted: anchorsShifted,
+                bricks_touched: bricksTouched,
+                locked_layers_skipped: lockedSkips,
+                anchor_failures: anchorFailures
+            });
+            logDebug("snap_drift_cluster: end", { idx: f, anchors_shifted: anchorsShifted, bricks_touched: bricksTouched, locked_skips: lockedSkips, anchor_failures: anchorFailures });
+        } catch (e) {
+            var msg = String(e) + (e.line ? " (line " + e.line + ")" : "");
+            skipFinding(result, ctxFinding, "outer exception: " + msg);
+            logError("snap_drift_cluster: outer exception", { error: msg, ctx: ctxFinding });
+        }
     }
 
-    // Move rasters by per-brick centroid shift.
+    // ---- Raster centroid track --------------------------------------
     for (var lpKey in brickDeltaSum) {
         if (!brickDeltaSum.hasOwnProperty(lpKey)) continue;
-        var layer2 = findLayer(doc, lpKey);
-        if (!layer2 || layer2.rasterItems.length === 0) continue;
+        var ctxRaster = { idx: null, kind: "raster_track", brick: null, layer_path: lpKey };
+        try {
+            var layer2 = findLayer(doc, lpKey);
+            if (!layer2 || layer2.rasterItems.length === 0) continue;
+            if (!isLayerEditable(layer2)) {
+                logWarn("move_raster: layer locked, skipping", { layer_path: lpKey });
+                continue;
+            }
 
-        var totalAnchors = 0;
-        for (var p2 = 0; p2 < layer2.pathItems.length; p2++) {
-            totalAnchors += layer2.pathItems[p2].pathPoints.length;
+            var totalAnchors = 0;
+            for (var p2 = 0; p2 < layer2.pathItems.length; p2++) {
+                totalAnchors += layer2.pathItems[p2].pathPoints.length;
+            }
+            if (totalAnchors === 0) continue;
+
+            var dx = brickDeltaSum[lpKey].sx / totalAnchors;
+            var dy = brickDeltaSum[lpKey].sy / totalAnchors;
+            if (Math.abs(dx) < 1e-9 && Math.abs(dy) < 1e-9) continue;
+
+            var rasterFailures = 0;
+            for (var ri = 0; ri < layer2.rasterItems.length; ri++) {
+                var r = layer2.rasterItems[ri];
+                var ok = tryMutate(
+                    "raster.position += delta",
+                    { layer_path: lpKey, ri: ri, dx: dx, dy: dy },
+                    function () {
+                        var pos = r.position;
+                        r.position = [pos[0] + dx, pos[1] + dy];
+                    }
+                );
+                if (!ok) rasterFailures++;
+            }
+
+            result.applied.push({
+                finding_index: null,
+                kind: "raster_track",
+                action: "move_raster",
+                brick: lpKey.substring(lpKey.lastIndexOf("/") + 1),
+                layer_path: lpKey,
+                delta_x: dx,
+                delta_y: dy,
+                shifted_x_count: brickDeltaSum[lpKey].shifted_x,
+                shifted_y_count: brickDeltaSum[lpKey].shifted_y,
+                total_anchors: totalAnchors,
+                rasters_moved: layer2.rasterItems.length - rasterFailures,
+                raster_failures: rasterFailures
+            });
+            logDebug("move_raster: applied", { layer_path: lpKey, dx: dx, dy: dy });
+        } catch (e) {
+            var msg = String(e) + (e.line ? " (line " + e.line + ")" : "");
+            logError("move_raster: outer exception", { error: msg, ctx: ctxRaster });
         }
-        if (totalAnchors === 0) continue;
-
-        var dx = brickDeltaSum[lpKey].sx / totalAnchors;
-        var dy = brickDeltaSum[lpKey].sy / totalAnchors;
-        if (Math.abs(dx) < 1e-9 && Math.abs(dy) < 1e-9) continue;
-
-        for (var ri = 0; ri < layer2.rasterItems.length; ri++) {
-            var r = layer2.rasterItems[ri];
-            var pos = r.position;
-            r.position = [pos[0] + dx, pos[1] + dy];
-        }
-        result.applied.push({
-            finding_index: null,
-            kind: "raster_track",
-            action: "move_raster",
-            brick: lpKey.substring(lpKey.lastIndexOf("/") + 1),
-            layer_path: lpKey,
-            delta_x: dx,
-            delta_y: dy,
-            shifted_x_count: brickDeltaSum[lpKey].shifted_x,
-            shifted_y_count: brickDeltaSum[lpKey].shifted_y,
-            total_anchors: totalAnchors,
-            rasters_moved: layer2.rasterItems.length
-        });
     }
 }
 
-// Pick the most-popular value from a {valueString: count} map. Ties
-// resolve to the median (matching plan.md's "median if it ties" rule).
 function pickWinner(distinct) {
     var entries = [];
     var maxCount = 0;
@@ -368,8 +485,6 @@ function pickWinner(distinct) {
     return (winners[mid - 1] + winners[mid]) / 2;
 }
 
-// Walk doc.layers by name, descending into sub-layers. Returns the
-// layer object or null if any segment isn't found.
 function findLayer(doc, layerPath) {
     var parts = layerPath.split("/");
     var coll = doc.layers;
