@@ -36,41 +36,37 @@ fi
 echo "[*] target: $TARGET"
 echo "[*] mode:   $MODE"
 
-# Pass the mode through a tmp file — ExtendScript's `do javascript file`
-# argument-passing has version-specific quirks; a file is bulletproof.
-echo "$MODE" > /tmp/ai-validate-mode.txt
-
-# Make sure Illustrator is running and has the file open.
-osascript <<EOF >/dev/null
-tell application "Adobe Illustrator"
-  if not running then
-    activate
-    delay 1
-  end if
-  open POSIX file "$TARGET"
-  activate
-end tell
-EOF
+# Pass mode + target through tmp files — ExtendScript's `do javascript
+# file` argument-passing has version-specific quirks; files are
+# bulletproof. validate.jsx switches to the right document itself
+# (matching by fsName), or opens the file if it isn't open. We do NOT
+# pre-`open POSIX file` here because the artist may have ~20 docs open
+# already and we don't want AppleScript fighting JSX over which one is
+# active.
+echo "$MODE"   > /tmp/ai-validate-mode.txt
+echo "$TARGET" > /tmp/ai-validate-target.txt
 
 # Run validate.jsx. Illustrator re-reads it (and its #includes) every
 # call, so iterating doesn't need a restart.
 osascript <<EOF >/dev/null
 tell application "Adobe Illustrator"
+  activate
   do javascript file "$SCRIPT_DIR/validate.jsx"
 end tell
 EOF
 
-REPORT=/tmp/ai-validate-report.json
-echo "[*] report: $REPORT"
+REPORT_JSON=/tmp/ai-validate-report.json
+NEXT_TO_AI="${TARGET%.*}.report.md"
 
-if [[ ! -f "$REPORT" ]]; then
+if [[ ! -f "$REPORT_JSON" ]]; then
   echo "[!] no report written — check Illustrator's JavaScript Console" >&2
   exit 1
 fi
 
-# Pretty-print if jq is available; otherwise raw cat.
-if command -v jq >/dev/null 2>&1; then
-  jq '.' "$REPORT"
-else
-  cat "$REPORT"
+# Echo the artist-facing report path. Print its head so the caller
+# sees the headline numbers without opening the file.
+echo "[*] report: $NEXT_TO_AI"
+echo
+if [[ -f "$NEXT_TO_AI" ]]; then
+  head -n 8 "$NEXT_TO_AI"
 fi
