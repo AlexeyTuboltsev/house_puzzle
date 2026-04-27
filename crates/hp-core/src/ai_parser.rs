@@ -1020,8 +1020,10 @@ pub fn parse_ai(
     let clip_w_pts = clip_x1 - clip_x0;
 
     // Screen frame height in PDF points — determines the rendering scale.
-    // 15.5 Unity units = screen frame height. 1 unit = PIXELS_PER_UNIT pixels.
-    const PIXELS_PER_UNIT: f64 = 900.0 / 15.5; // ~58.06 px per unit
+    // The artist draws a `screen` layer rectangle representing
+    // `HOUSE_UNITS_HIGH` Unity units; we render at the DPI that makes
+    // that frame `CANVAS_HEIGHT_PX` pixels tall.
+    let pixels_per_unit: f64 = crate::CANVAS_HEIGHT_PX as f64 / crate::HOUSE_UNITS_HIGH;
     let screen_node = roots.iter().find(|r| r.name.eq_ignore_ascii_case("screen"));
     let mut screen_frame_h_pts: f64 = 0.0;
     if let Some(sn) = screen_node {
@@ -1034,9 +1036,10 @@ pub fn parse_ai(
         }
     }
 
-    // DPI from screen frame: 15.5 units = screen_frame_h_pts PDF points = 15.5 * PIXELS_PER_UNIT pixels
+    // DPI from screen frame: HOUSE_UNITS_HIGH units = screen_frame_h_pts
+    // PDF points = HOUSE_UNITS_HIGH * pixels_per_unit pixels.
     let dpi = if screen_frame_h_pts > 0.0 {
-        PIXELS_PER_UNIT * 15.5 / screen_frame_h_pts * 72.0
+        pixels_per_unit * crate::HOUSE_UNITS_HIGH / screen_frame_h_pts * 72.0
     } else if clip_h_pts > 0.0 {
         // Fallback: fit canvas_height
         canvas_height as f64 / clip_h_pts * 72.0
@@ -1372,7 +1375,7 @@ mod tests {
             None => { eprintln!("Skipping: in/_NY1.ai not found"); return; }
         };
 
-        let (bricks, meta, _ai_data) = parse_ai(&path, 900).unwrap();
+        let (bricks, meta, _ai_data) = parse_ai(&path, crate::CANVAS_HEIGHT_PX as i32).unwrap();
 
         eprintln!("Canvas: {}x{}", meta.canvas_width, meta.canvas_height);
         eprintln!("DPI: {:.2}", meta.render_dpi);
@@ -1383,7 +1386,7 @@ mod tests {
         // Python produces 183 bricks for NY1 at canvas_height=900
         assert_eq!(bricks.len(), 183, "Expected 183 bricks, got {}", bricks.len());
         assert_eq!(meta.canvas_width, 494);
-        assert_eq!(meta.canvas_height, 900);
+        assert_eq!(meta.canvas_height as u32, crate::CANVAS_HEIGHT_PX);
         assert!(meta.render_dpi > 0.0);
         assert!(meta.screen_frame_height_px > 0.0);
 

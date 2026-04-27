@@ -112,7 +112,7 @@ pub async fn load_pdf(
     canvas_height: Option<i32>,
     deterministic_ids: Option<bool>,
 ) -> Result<Value, String> {
-    let canvas_height = canvas_height.unwrap_or(900);
+    let canvas_height = canvas_height.unwrap_or(hp_core::CANVAS_HEIGHT_PX as i32);
     let deterministic = deterministic_ids.unwrap_or(false);
 
     let t_total = std::time::Instant::now();

@@ -861,7 +861,8 @@ mod tests {
             return;
         }
 
-        let (placements, _meta, _ai_data) = ai_parser::parse_ai(&ai_path, 900).unwrap();
+        let (placements, _meta, _ai_data) =
+            ai_parser::parse_ai(&ai_path, crate::CANVAS_HEIGHT_PX as i32).unwrap();
 
         // Convert to Brick + polygons
         let mut bricks: Vec<Brick> = Vec::new();

@@ -93,6 +93,42 @@
   #info .brick .bname { color: #ddd; margin-left: 6px; }
   #info .empty { color: #666; font-style: italic; }
   #zoom-hint { position: absolute; bottom: 8px; right: 8px; color: #555; font-size: 11px; user-select: none; }
+
+  /* Piece-raster popup */
+  #pieceModal {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.78);
+    display: none; align-items: center; justify-content: center;
+    z-index: 10;
+  }
+  #pieceModal.visible { display: flex; }
+  #pieceModalInner {
+    background: #161616; border: 1px solid #333; border-radius: 6px;
+    padding: 12px; max-width: 92vw; max-height: 92vh;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  #pieceModalHeader {
+    display: flex; justify-content: space-between; align-items: center;
+    color: #ffe066; font-size: 13px;
+  }
+  #pieceModalClose {
+    background: #222; color: #eee; border: 1px solid #444;
+    padding: 4px 10px; cursor: pointer; font-size: 13px;
+  }
+  #pieceModalClose:hover { background: #2a2a2a; }
+  #pieceModalCanvas {
+    background: #0d0d0d url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16'><rect width='8' height='8' fill='%23222'/><rect x='8' y='8' width='8' height='8' fill='%23222'/></svg>");
+    overflow: hidden; cursor: grab; user-select: none;
+    width: min(80vw, 800px); height: min(80vh, 800px);
+    display: flex; align-items: center; justify-content: center;
+    border: 1px solid #2a2a2a;
+  }
+  #pieceModalCanvas.grabbing { cursor: grabbing; }
+  #pieceModalImg {
+    image-rendering: pixelated;
+    transform-origin: 0 0;
+    transform: translate(0, 0) scale(1);
+    pointer-events: none;
+  }
 </style>
 </head>
 <body>
@@ -104,6 +140,7 @@
       <select id="pieceSelect"><option value="">(all)</option></select>
     </label>
     <label><input type="checkbox" id="showBricks" checked> show brick outlines</label>
+    <label><input type="checkbox" id="showRaster"> show raster</label>
     <span style="margin-left:12px; border-left:1px solid #333; padding-left:12px;">
       Pieces:
       <button id="targetDown" title="fewer">−</button>
@@ -134,11 +171,25 @@
     </aside>
   </div>
 
+  <div id="pieceModal">
+    <div id="pieceModalInner">
+      <div id="pieceModalHeader">
+        <span id="pieceModalTitle">piece</span>
+        <span id="pieceModalHint" style="color:#888;">wheel: zoom · drag: pan</span>
+        <button id="pieceModalClose">close</button>
+      </div>
+      <div id="pieceModalCanvas">
+        <img id="pieceModalImg" alt="piece raster">
+      </div>
+    </div>
+  </div>
+
 <script>
 (async () => {
   const $ = (sel) => document.querySelector(sel);
   const sel = $('#pieceSelect');
   const showBricks = $('#showBricks');
+  const showRaster = $('#showRaster');
   const status = $('#status');
   const viewport = $('#viewport');
   const svg = $('#svg');
@@ -234,6 +285,24 @@
     // Build the SVG contents.
     svg.innerHTML = '';
 
+    // Raster underlay (the artist's house composite). Hidden by default;
+    // toggled by the "show raster" checkbox. Cache-busted by file id so
+    // switching files always fetches fresh bytes.
+    const rasterImg = document.createElementNS(svgNS, 'image');
+    rasterImg.setAttribute('id', 'rasterLayer');
+    rasterImg.setAttribute('x', '0');
+    rasterImg.setAttribute('y', '0');
+    rasterImg.setAttribute('width', String(state.canvas.w));
+    rasterImg.setAttribute('height', String(state.canvas.h));
+    rasterImg.setAttribute('preserveAspectRatio', 'none');
+    rasterImg.setAttribute('pointer-events', 'none');
+    if (!showRaster.checked) rasterImg.setAttribute('visibility', 'hidden');
+    rasterImg.setAttribute(
+      'href',
+      `/api/composite?file=${encodeURIComponent(data.file || '')}`,
+    );
+    svg.appendChild(rasterImg);
+
     // Bricks first, as transparent-fill click targets covering the whole house.
     const bricksGroup = document.createElementNS(svgNS, 'g');
     bricksGroup.setAttribute('id', 'brickLayer');
@@ -247,6 +316,7 @@
         p.addEventListener('click', (e) => {
           e.stopPropagation();
           selectBrick(brick.id);
+          if (window.__openBrickModal) window.__openBrickModal(brick.id);
         });
         bricksGroup.appendChild(p);
       }
@@ -539,6 +609,110 @@
     }
   }
 
+  function applyRasterVisibility() {
+    const layer = svg.querySelector('#rasterLayer');
+    if (!layer) return;
+    if (showRaster.checked) layer.removeAttribute('visibility');
+    else layer.setAttribute('visibility', 'hidden');
+  }
+
+  // Piece-raster popup. Clicking a piece (or any of its bricks) opens a
+  // modal showing /api/piece-png clipped to the piece outline. Wheel
+  // zoom + drag pan inside the modal canvas.
+  function setupPieceModal() {
+    const modal = $('#pieceModal');
+    const img = $('#pieceModalImg');
+    const canvas = $('#pieceModalCanvas');
+    const title = $('#pieceModalTitle');
+    let scale = 1, tx = 0, ty = 0;
+    let dragging = false, sx = 0, sy = 0, dx = 0, dy = 0;
+
+    const apply = () => {
+      img.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
+    };
+    const reset = () => { scale = 1; tx = 0; ty = 0; apply(); };
+
+    const openPiece = (pieceId) => {
+      const file = currentFile() || '';
+      const seed = currentSeed();
+      const target = currentTarget();
+      const url = `/api/piece-png?file=${encodeURIComponent(file)}&piece=${encodeURIComponent(pieceId)}&seed=${seed}&target=${target}&v=${Date.now()}`;
+      title.textContent = `${file} · ${pieceId}`;
+      img.src = url;
+      reset();
+      modal.classList.add('visible');
+    };
+
+    const openBrick = (brickId) => {
+      const file = currentFile() || '';
+      const url = `/api/brick-png?file=${encodeURIComponent(file)}&brick=${encodeURIComponent(brickId)}&v=${Date.now()}`;
+      const pid = state.brickToPiece && state.brickToPiece.get(brickId);
+      title.textContent = `${file} · ${brickId}` + (pid ? ` (in ${pid})` : '');
+      img.src = url;
+      reset();
+      modal.classList.add('visible');
+    };
+    const close = () => {
+      modal.classList.remove('visible');
+      img.src = '';
+    };
+
+    $('#pieceModalClose').addEventListener('click', close);
+    modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+    window.addEventListener('keydown', (e) => {
+      if (modal.classList.contains('visible') && e.key === 'Escape') close();
+    });
+
+    canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const cx = e.clientX - rect.left;
+      const cy = e.clientY - rect.top;
+      const factor = e.deltaY < 0 ? 1.18 : 1 / 1.18;
+      // Zoom around the cursor: keep cursor-relative point fixed.
+      tx = cx - (cx - tx) * factor;
+      ty = cy - (cy - ty) * factor;
+      scale = Math.max(0.1, Math.min(40, scale * factor));
+      apply();
+    }, { passive: false });
+
+    canvas.addEventListener('pointerdown', (e) => {
+      dragging = true; sx = e.clientX; sy = e.clientY; dx = tx; dy = ty;
+      canvas.classList.add('grabbing');
+      canvas.setPointerCapture(e.pointerId);
+    });
+    canvas.addEventListener('pointermove', (e) => {
+      if (!dragging) return;
+      tx = dx + (e.clientX - sx);
+      ty = dy + (e.clientY - sy);
+      apply();
+    });
+    const endDrag = (e) => {
+      if (!dragging) return;
+      dragging = false;
+      canvas.classList.remove('grabbing');
+      try { canvas.releasePointerCapture(e.pointerId); } catch {}
+    };
+    canvas.addEventListener('pointerup', endDrag);
+    canvas.addEventListener('pointercancel', endDrag);
+
+    // Sized so the image initially fits its container; runs after load.
+    img.addEventListener('load', () => {
+      const cw = canvas.clientWidth, ch = canvas.clientHeight;
+      const iw = img.naturalWidth, ih = img.naturalHeight;
+      if (!iw || !ih) return;
+      const fit = Math.min(cw / iw, ch / ih) * 0.95;
+      scale = fit;
+      tx = (cw - iw * fit) / 2;
+      ty = (ch - ih * fit) / 2;
+      apply();
+    });
+
+    // Expose for the brick click handler.
+    window.__openPieceModal = openPiece;
+    window.__openBrickModal = openBrick;
+  }
+
   async function populatePieceSelector(data) {
     sel.innerHTML = '<option value="">(all)</option>';
     for (const p of data.pieces) {
@@ -583,8 +757,10 @@
 
   sel.addEventListener('change', refresh);
   showBricks.addEventListener('change', applyBrickVisibility);
+  showRaster.addEventListener('change', applyRasterVisibility);
   $('#fit').addEventListener('click', fitView);
   $('#reload').addEventListener('click', refresh);
+  setupPieceModal();
   fileSelect.addEventListener('change', async () => {
     // New file: clear selection state and piece dropdown. The piece
     // dropdown will be rebuilt by refresh() once the data returns.

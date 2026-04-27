@@ -478,6 +478,30 @@ pub fn render_ocg_layer_image(
     Some(canvas)
 }
 
+/// Render the AI file as a single all-layers-visible composite at the
+/// given DPI, then crop to the canvas (clip rect) and overlay onto a
+/// canvas-sized RGBA. Used by the testbed to show the house artwork as
+/// a raster background behind the bezier outlines.
+pub fn render_composite_image(
+    ai_path: &Path,
+    dpi: f64,
+    clip_rect: (f64, f64, f64, f64),
+    canvas_width: u32,
+    canvas_height: u32,
+    pdf_offset_px: (i32, i32),
+) -> Option<RgbaImage> {
+    let (rgba, pw, ph) = crate::mupdf_ffi::render_page_composite(ai_path.to_str()?, dpi)?;
+    let full_img = RgbaImage::from_raw(pw, ph, rgba)?;
+    let scale = dpi / 72.0;
+    let cx = (clip_rect.0 * scale).round() as i64;
+    let cy = (clip_rect.1 * scale).round() as i64;
+    let dx = pdf_offset_px.0 as i64;
+    let dy = pdf_offset_px.1 as i64;
+    let mut canvas = RgbaImage::new(canvas_width, canvas_height);
+    image::imageops::overlay(&mut canvas, &full_img, -(cx - dx), -(cy - dy));
+    Some(canvas)
+}
+
 /// Render OCG layer and save to PNG file.
 pub fn render_ocg_layer(
     ai_path: &Path,

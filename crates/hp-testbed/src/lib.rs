@@ -39,7 +39,7 @@ pub struct Snapshot {
 /// full parse + bezier adjacency + merge pipeline. Slow on first call
 /// because `parse_ai` takes ~90s for a typical NY house.
 pub fn build_snapshot(ai_path: &Path, target: usize, seed: u64) -> Result<Snapshot> {
-    let canvas_height = 900;
+    let canvas_height = hp_core::CANVAS_HEIGHT_PX as i32;
     let (placements, metadata, ai_data) = ai_parser::parse_ai(ai_path, canvas_height)?;
     let (clip_x0, clip_y0, _, _) = metadata.clip_rect;
     let scale = metadata.render_dpi / 72.0;

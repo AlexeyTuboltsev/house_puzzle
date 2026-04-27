@@ -233,6 +233,73 @@ pub fn render_page_with_ocg(
     }
 }
 
+/// Render page 0 of an AI file with the document's default OCG layer
+/// state (all-visible composite). Returns RGBA pixel buffer + dimensions.
+/// Used by the testbed to show the artist's house artwork as a single
+/// raster underneath the bezier outlines.
+pub fn render_page_composite(
+    path: &str,
+    dpi: f64,
+) -> Option<(Vec<u8>, u32, u32)> {
+    let _lock = ffi_lock();
+    unsafe {
+        use std::ffi::CString;
+        let c_path = CString::new(path).ok()?;
+        let doc = fz_open_document(ctx(), c_path.as_ptr());
+        if doc.is_null() { return None; }
+
+        // Select every OCG UI entry so all artist layers (background,
+        // bricks, lights, etc.) composite together. Without this the
+        // page renders only with the "default" config which can omit
+        // bricks in some AI sources.
+        let pdf_doc = doc as *mut pdf_document;
+        let layer_count = pdf_count_layer_config_ui(ctx(), pdf_doc);
+        for i in 0..layer_count {
+            pdf_select_layer_config_ui(ctx(), pdf_doc, i);
+        }
+        if layer_count > 0 {
+            pdf_set_layer_config_as_default(ctx(), pdf_doc);
+        }
+
+        let scale = dpi as f32 / 72.0;
+        let ctm = fz_matrix { a: scale, b: 0.0, c: 0.0, d: scale, e: 0.0, f: 0.0 };
+        let cs = fz_device_rgb(ctx());
+        let page = fz_load_page(ctx(), doc, 0);
+        if page.is_null() {
+            fz_drop_document(ctx(), doc);
+            return None;
+        }
+        let pix = fz_new_pixmap_from_page(ctx(), page, ctm, cs, 1);
+        if pix.is_null() {
+            fz_drop_page(ctx(), page);
+            fz_drop_document(ctx(), doc);
+            return None;
+        }
+        let w = fz_pixmap_width(ctx(), pix) as u32;
+        let h = fz_pixmap_height(ctx(), pix) as u32;
+        let n = fz_pixmap_components(ctx(), pix) as u32;
+        let samples_ptr = fz_pixmap_samples(ctx(), pix);
+        let total = (w * h * n) as usize;
+        let pixels = if !samples_ptr.is_null() && total > 0 {
+            std::slice::from_raw_parts(samples_ptr, total).to_vec()
+        } else { vec![0u8; total] };
+        fz_drop_pixmap(ctx(), pix);
+        fz_drop_page(ctx(), page);
+        fz_drop_document(ctx(), doc);
+
+        let mut rgba = vec![0u8; (w * h * 4) as usize];
+        for i in 0..(w * h) as usize {
+            let src = i * n as usize;
+            let dst = i * 4;
+            rgba[dst] = pixels[src];
+            rgba[dst + 1] = pixels[src + 1];
+            rgba[dst + 2] = pixels[src + 2];
+            rgba[dst + 3] = if n >= 4 { pixels[src + 3] } else { 255 };
+        }
+        Some((rgba, w, h))
+    }
+}
+
 // ---------------------------------------------------------------------------
 // xref / stream access (for AIPrivateData extraction)
 // ---------------------------------------------------------------------------

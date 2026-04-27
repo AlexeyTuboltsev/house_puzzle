@@ -147,14 +147,58 @@ Create a standalone validation script that runs inside Adobe Illustrator
   cross-brick drift while preserving these intra-brick steps; flagging
   them in Illustrator lets the artist either snap the steps to
   meaningful values or remove them.
-- Multi-grid drift across bricks — bricks within a single piece drawn on
-  >1 y-grid (NY5 p21/p51: rows of bricks sit on `.85`, `.86`, and `.41`
-  y-grids that are 0.55 pymu apart instead of one shared grid). The
-  artist patches the seam with sub-pymu staircase edges, which then
-  defeats the bezier merge: collapsing the staircase makes the outer
-  bottom of one brick indistinguishable from the interior of an
-  adjacent brick's notch. The validator should detect ≥3 distinct
-  y-cluster centres within < 1 pymu of each other and warn.
+- Multi-grid drift across bricks — bricks within a house drawn on >1
+  axis-grid, separated by < 1 pymu (so they look adjacent, but their
+  shared edges don't actually meet). Two known instances:
+  - NY5 p21/p51 — rows of bricks on `.85`, `.86`, and `.41` y-grids
+    (0.55 pymu apart). The artist tried to patch the seam with sub-pymu
+    staircase edges, which then defeats the bezier merge: collapsing
+    the staircase makes the outer bottom of one brick indistinguishable
+    from the interior of an adjacent brick's notch.
+  - NY1 b172/b173/b154-159 — x-coords on two grids: `.7462` (b172,
+    b173) and `.0085` (b154-b159), 0.7377 pymu apart. b172's right
+    edge and b173's left edge align perfectly (both `.7462`), but b172
+    and b159 (in the same piece) don't tile cleanly. The merge can
+    either (a) snap to a single grid and lose vector↔raster alignment,
+    or (b) keep coords and emit a piece outline with a 0.7-pymu
+    cross-piece gap. Neither is acceptable for production; only an
+    upstream fix is.
+  Validator/normalisation: detect ≥2 distinct cluster centres on
+  either axis within < 1 pymu of each other across all brick vertices
+  in the file, and **fix it in Illustrator with a script** that snaps
+  every drift cluster to a single representative position (most-popular
+  value in the cluster, falling back to median). The brick raster has
+  to be re-snapped along with the vector vertices in the AI source so
+  vectors and raster stay aligned. After the script runs, the runtime
+  merge has nothing left to do for multi-grid — `snap_axes` /
+  `canonicalize_endpoints` only have to handle ≤ 0.1-pymu artist
+  sub-pixel jitter, never multi-grid offsets. Until the upstream
+  script lands, mark these files as known-bad in the validator.
+
+### Remove runtime workarounds once AI normalisation is in place
+Several runtime fixes in `crates/hp-core/src/bezier_merge.rs` and
+`crates/hp-core/src/ai_parser.rs` exist purely to mask AI-source bugs
+that the future Illustrator validator/normalisation script should
+catch and fix at the source. Once the script is in production and all
+shipped AI files have been run through it, these belong in a single
+"clean up workarounds" PR:
+- `snap_axes` (`bezier_merge.rs`, `AXIS_SNAP_TOL = 1.0`) — masks the
+  multi-grid drift documented above (NY5, NY1). Side effect: moves
+  vectors per-piece, breaking vector↔raster alignment and creating
+  cross-piece gaps when neighbouring pieces' constituent bricks differ.
+- Auto-close in `ai_parser.rs` — appends an implicit closing line when
+  a brick sub-path is geometrically open at `f`/`n`/end-of-block.
+  Masks NY9n's 4 unclosed bricks (b012 / b020 / b022 / b026). The
+  validator already plans to flag these.
+- `VERTEX_FUSE_TOL = 3.0` (was 1.5) and the per-source signed-winding
+  bucketing rule — both adapted to tolerate larger cross-brick drift
+  than a clean AI source should ever produce; can be tightened back
+  toward sub-pixel artist jitter once normalisation guarantees clean
+  inputs.
+
+When removing each, also remove the corresponding test-case rows
+above and rerun the testbed against every shipped AI to confirm the
+normalisation script handled them.
 
 When fixing a merge bug, always ask: "does this look like an AI-source
 artifact that a future validator could catch?" If yes, file the case
