@@ -53,14 +53,22 @@
         report.summary  = summarize(report.findings);
 
         if (report.mode === "fix") {
-            // Apply deterministic fixes against the pre-fix findings,
-            // then re-walk + re-check so the report reflects the
-            // post-fix state. The list of fixes applied lives in
-            // report.fixes; report.findings is "what's left".
-            report.fixes    = runFixes(doc, report.snapshot, report.findings);
-            report.snapshot = walkPaths(doc);
-            report.findings = runChecks(report.snapshot);
-            report.summary  = summarize(report.findings);
+            // Convergence loop: a single pass of fixes can create new
+            // findings (e.g. snap_drift_cluster shortens an edge below
+            // 1 pymu, which becomes a new sub_pymu_edge). Re-walk and
+            // re-fix until no more fixes are applied, capped at 5
+            // iterations as a safety against pathological cycles.
+            var iterations = [];
+            var MAX_ITER = 5;
+            for (var iter = 0; iter < MAX_ITER; iter++) {
+                var pass = runFixes(doc, report.snapshot, report.findings);
+                iterations.push(pass);
+                report.snapshot = walkPaths(doc);
+                report.findings = runChecks(report.snapshot);
+                if (!pass.applied || pass.applied.length === 0) break;
+            }
+            report.summary = summarize(report.findings);
+            report.fixes   = collapseIterations(iterations);
         }
     } catch (e) {
         report.error = String(e) + (e.line ? " (line " + e.line + ")" : "");
@@ -91,6 +99,38 @@ function writeText(path, body) {
     f.open("w");
     f.write(body);
     f.close();
+}
+
+// Combine the per-iteration fix results into a single block. We keep
+// every applied fix (so the artist sees the full chain of edits) but
+// only the LAST iteration's skipped list (earlier skips often resolve
+// in a later pass once a prerequisite fix has been applied).
+function collapseIterations(iters) {
+    var applied = [];
+    var errors = [];
+    var perIterCounts = [];
+    for (var i = 0; i < iters.length; i++) {
+        if (iters[i].applied) {
+            for (var a = 0; a < iters[i].applied.length; a++) {
+                applied.push(iters[i].applied[a]);
+            }
+            perIterCounts.push(iters[i].applied.length);
+        } else {
+            perIterCounts.push(0);
+        }
+        if (iters[i].error) errors.push("iter " + i + ": " + iters[i].error);
+    }
+    // Earlier iterations' skipped lists often resolve in later passes
+    // once a prerequisite fix has run; the last iteration is the only
+    // one whose skipped list reflects the converged state.
+    var lastSkipped = iters.length > 0 ? (iters[iters.length - 1].skipped || []) : [];
+    return {
+        applied: applied,
+        skipped: lastSkipped,
+        iterations: iters.length,
+        per_iteration_applied: perIterCounts,
+        error: errors.length ? errors.join("; ") : null
+    };
 }
 
 function summarize(findings) {

@@ -28,7 +28,9 @@ function renderMarkdown(report) {
                nErr + " errors, " + nWarn + " warnings");
     if (isFix && report.fixes) {
         var nApplied = report.fixes.applied ? report.fixes.applied.length : 0;
-        lines.push("- **Fixes applied:** " + nApplied);
+        var iters = report.fixes.iterations || 1;
+        var iterTag = (iters > 1) ? (" (in " + iters + " iterations)") : "";
+        lines.push("- **Fixes applied:** " + nApplied + iterTag);
     }
     lines.push("");
 
@@ -135,6 +137,30 @@ function renderFixesSection(lines, fixes) {
                 var len = (g.edge_len_pymu == null) ? "—" : g.edge_len_pymu.toFixed(3);
                 lines.push("| `" + g.brick + "` | " + g.sub_path + " | " + len +
                            " | " + fmtPt(g.kept_anchor) + " | " + fmtPt(g.dropped_anchor) + " |");
+            }
+        } else if (action === "snap_drift_cluster") {
+            lines.push("Anchors in a multi-grid-drift cluster snapped to the most-popular value (median on tie). Each shift updates the anchor and both Bezier handles by the same Δ; rasters track via centroid shift in the next section.");
+            lines.push("");
+            lines.push("| Axis | Range | Winner | Anchors shifted | Bricks touched |");
+            lines.push("|---|---|---|---|---|");
+            for (var sd = 0; sd < arr.length; sd++) {
+                var c = arr[sd];
+                var rng = c.cluster_range[0].toFixed(3) + " .. " + c.cluster_range[1].toFixed(3);
+                lines.push("| " + c.axis + " | " + rng + " | " + c.winner.toFixed(4) +
+                           " | " + c.anchors_shifted + " | " + c.bricks_touched + " |");
+            }
+        } else if (action === "move_raster") {
+            lines.push("Brick rasters shifted by the brick's centroid Δ (sum of per-anchor deltas / total anchor count). Keeps each brick's raster aligned with its centroid as the vector outline shifts.");
+            lines.push("");
+            lines.push("| Brick | Δx (pymu) | Δy (pymu) | Anchors shifted (x/y) | Total anchors | Rasters |");
+            lines.push("|---|---|---|---|---|---|");
+            for (var mr = 0; mr < arr.length; mr++) {
+                var rm = arr[mr];
+                lines.push("| `" + rm.brick + "` | " + rm.delta_x.toFixed(4) +
+                           " | " + rm.delta_y.toFixed(4) +
+                           " | " + rm.shifted_x_count + " / " + rm.shifted_y_count +
+                           " | " + rm.total_anchors +
+                           " | " + rm.rasters_moved + " |");
             }
         } else {
             lines.push("| Brick | Sub-path |");

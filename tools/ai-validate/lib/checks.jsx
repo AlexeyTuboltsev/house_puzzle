@@ -326,13 +326,16 @@ function flagAxisDrift(bricks, axisIdx, axisName, findings) {
         if (span <= MULTI_GRID_TOL) continue;
 
         var bricksInCluster = {};
+        var pathsInCluster = {};
         var distinctVals = {};
         for (var m = 0; m < cl.members.length; m++) {
             bricksInCluster[cl.members[m].brick] = true;
+            pathsInCluster[cl.members[m].layer_path] = true;
             var key = cl.members[m].v.toFixed(4);
             distinctVals[key] = (distinctVals[key] || 0) + 1;
         }
         var bricksList = objectKeys(bricksInCluster);
+        var pathsList  = objectKeys(pathsInCluster);
         if (bricksList.length < 2) continue; // intra-brick drift handles this
 
         findings.push({
@@ -346,6 +349,7 @@ function flagAxisDrift(bricks, axisIdx, axisName, findings) {
             cluster_max: cl.last,
             span_pymu: span,
             bricks: bricksList,
+            member_layer_paths: pathsList,
             distinct_values: distinctVals,
             message: axisName + "-axis cluster spans " + span.toFixed(3) +
                      " pymu (" + cl.min.toFixed(3) + ".." + cl.last.toFixed(3) +
