@@ -149,7 +149,7 @@ Create a standalone validation script that runs inside Adobe Illustrator
   meaningful values or remove them.
 - Multi-grid drift across bricks — bricks within a house drawn on >1
   axis-grid, separated by < 1 pymu (so they look adjacent, but their
-  shared edges don't actually meet). Two known instances:
+  shared edges don't actually meet). Three known instances:
   - NY5 p21/p51 — rows of bricks on `.85`, `.86`, and `.41` y-grids
     (0.55 pymu apart). The artist tried to patch the seam with sub-pymu
     staircase edges, which then defeats the bezier merge: collapsing
@@ -163,6 +163,15 @@ Create a standalone validation script that runs inside Adobe Illustrator
     or (b) keep coords and emit a piece outline with a 0.7-pymu
     cross-piece gap. Neither is acceptable for production; only an
     upstream fix is.
+  - NY7 b334 — intra-brick variant. The compound brick's outer
+    top-left corner sits at `y = 520.0049`; the brick's own inner
+    cutout starts at `y = 519.1425`. The two are 0.86 pymu apart,
+    completely unrelated geometry, but `snap_axes` lumps them into a
+    single cluster and shifts the outer corner down to 519.14 — the
+    rendered p114 outline at this corner drifts 0.35 canvas-px below
+    where the raster has it. Same brick has another 0.29-pymu
+    artist-jitter mismatch with its neighbour b366 (b366 v1 vs b334
+    outer-top-left), which the script should also snap.
   Validator/normalisation: detect ≥2 distinct cluster centres on
   either axis within < 1 pymu of each other across all brick vertices
   in the file, and **fix it in Illustrator with a script** that snaps
