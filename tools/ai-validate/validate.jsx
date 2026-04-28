@@ -72,6 +72,23 @@
         });
 
         if (report.mode === "fix") {
+            // Pre-pass: unlock every locked layer AND every locked
+            // pageItem AND make hidden layers visible — Illustrator's
+            // pathItem.editable is false if any of those are set.
+            // Per artist instruction, we do NOT re-lock / re-hide
+            // afterwards. Recorded in report.unlocked so the .md
+            // surfaces exactly what changed.
+            report.unlocked = unlockAllLayers(doc);
+            logInfo("fix mode: pre-unlock", {
+                layers: report.unlocked.layers.length,
+                page_items: report.unlocked.page_items,
+                hidden_shown: report.unlocked.hidden_layers_shown.length
+            });
+            // Re-walk + re-check after the unlock so subsequent
+            // findings reflect the now-editable layers.
+            report.snapshot = walkPaths(doc);
+            report.findings = runChecks(report.snapshot);
+
             // Convergence loop: a single pass of fixes can create new
             // findings (e.g. snap_drift_cluster shortens an edge below
             // 1 pymu, which becomes a new sub_pymu_edge). Re-walk and
