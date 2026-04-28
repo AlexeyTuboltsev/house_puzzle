@@ -184,6 +184,17 @@ function renderFixesSection(lines, fixes) {
                 lines.push("| `" + g.brick + "` | " + g.sub_path + " | " + len +
                            " | " + fmtPt(g.kept_anchor) + " | " + fmtPt(g.dropped_anchor) + " |");
             }
+        } else if (action === "resolve_brick_overlap") {
+            lines.push("Polygon-overlapping brick pairs were resolved by snapping the closer pair of corners together (loser → winner). Same vector + raster move-together rule as the other snap passes. Pairs whose closest anchors were more than 100 pymu apart were left in the report as unfixable errors.");
+            lines.push("");
+            lines.push("| Loser brick | Target | Snap distance (pymu) | Anchors moved |");
+            lines.push("|---|---|---|---|");
+            for (var ro = 0; ro < arr.length; ro++) {
+                var ros = arr[ro];
+                lines.push("| `" + ros.loser_brick + "` | " + fmtPt(ros.target) +
+                           " | " + ros.snap_distance_pymu.toFixed(3) +
+                           " | " + (ros.anchors_moved || 0) + " |");
+            }
         } else if (action === "snap_corner_jitter") {
             lines.push("Two near-coincident corners across different bricks were snapped to whichever position was more popular across the document. Each shift updates the anchor and both Bezier handles by the same Δ; raster moves go in the per-brick centroid section below.");
             lines.push("");
