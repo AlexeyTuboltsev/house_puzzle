@@ -21,9 +21,10 @@
 //   - Every fix attempt and outcome is logged via lib/log.jsx so
 //     a crash leaves a clear last-known-good marker on disk.
 
-function runFixes(doc, snapshot, findings) {
+function runFixes(doc, snapshot, findings, failedFixes) {
     var result = { applied: [], skipped: [], error: null };
-    logInfo("runFixes: begin", { findings: findings.length });
+    failedFixes = failedFixes || {};  // cross-iteration blacklist
+    logInfo("runFixes: begin", { findings: findings.length, blacklisted: countKeys(failedFixes) });
 
     try {
         // Pass 1 — close_path. No anchor changes.
@@ -31,7 +32,7 @@ function runFixes(doc, snapshot, findings) {
         for (var i = 0; i < findings.length; i++) {
             var f = findings[i];
             if (f.kind === "unclosed_path" || f.kind === "unclosed_path_zero_gap") {
-                applyClosePath(doc, f, i, result);
+                applyClosePath(doc, f, i, result, failedFixes);
             }
         }
 
@@ -41,14 +42,14 @@ function runFixes(doc, snapshot, findings) {
         for (var j = findings.length - 1; j >= 0; j--) {
             var g = findings[j];
             if (g.kind === "sub_pymu_edge") {
-                applyMergeSubPymu(doc, g, j, result);
+                applyMergeSubPymu(doc, g, j, result, failedFixes);
             }
         }
 
         // Pass 3 — snap_drift_clusters. Position-based, immune to
         // index changes from pass 2.
         logDebug("pass 3: snap_drift_clusters");
-        applySnapDriftClusters(doc, findings, result);
+        applySnapDriftClusters(doc, findings, result, failedFixes);
 
         // Mark warning-only / not-yet-implemented kinds as skipped.
         for (var k = 0; k < findings.length; k++) {
@@ -115,6 +116,33 @@ function isLayerEditable(layer) {
     return true;
 }
 
+// Canonical "can I touch this pageItem" check. The DOM's `editable`
+// flag reflects ALL non-mutability conditions: own lock, ancestor
+// layer lock, template, clip path membership, hidden ancestor, etc.
+// Use this BEFORE every mutation to keep Illustrator from raising
+// "Target layer cannot be modified" — even when caught, those raises
+// appear to leave the renderer / AppleScript bridge in a broken
+// state on some files (observed on _NY7.ai).
+function isPathItemEditable(p) {
+    try { return !!p.editable; }
+    catch (e) { return false; }
+}
+
+// Cross-iteration blacklist key. Convergence retries the same
+// findings each iteration; once a fix has provably failed (e.g.
+// because of a deep lock condition), don't keep poking it.
+function fixKey(finding) {
+    return finding.kind + "|" + (finding.layer_path || "") +
+           "|" + (finding.sub_path == null ? "?" : finding.sub_path) +
+           "|" + (finding.edge_index == null ? "" : finding.edge_index);
+}
+
+function countKeys(obj) {
+    var n = 0;
+    for (var k in obj) { if (obj.hasOwnProperty(k)) n++; }
+    return n;
+}
+
 // Wrap a single in-Illustrator mutation with try/catch + logging.
 // Returns true on success, false (with a log line) on failure.
 function tryMutate(label, ctx, fn) {
@@ -130,11 +158,16 @@ function tryMutate(label, ctx, fn) {
 
 // ----- 1. close_path ---------------------------------------------------
 
-function applyClosePath(doc, finding, idx, result) {
+function applyClosePath(doc, finding, idx, result, failedFixes) {
     var ctx = {
         idx: idx, kind: finding.kind, brick: finding.brick,
         layer_path: finding.layer_path, sub_path: finding.sub_path
     };
+    var bk = fixKey(finding);
+    if (failedFixes[bk]) {
+        skipFinding(result, ctx, "blacklisted (prior iteration failed: " + failedFixes[bk] + ")");
+        return;
+    }
     logDebug("close_path: begin", ctx);
 
     try {
@@ -144,7 +177,8 @@ function applyClosePath(doc, finding, idx, result) {
             return;
         }
         if (!isLayerEditable(layer)) {
-            skipFinding(result, ctx, "layer or ancestor is locked");
+            failedFixes[bk] = "layer or ancestor is locked";
+            skipFinding(result, ctx, failedFixes[bk]);
             return;
         }
         if (finding.sub_path == null ||
@@ -158,10 +192,18 @@ function applyClosePath(doc, finding, idx, result) {
             skipFinding(result, ctx, "already closed (idempotent re-run)");
             return;
         }
+        if (!isPathItemEditable(p)) {
+            // Pre-flight: avoid even attempting the mutation. Caught
+            // throws appear to leave Illustrator unstable on some files.
+            failedFixes[bk] = "pathItem.editable is false";
+            skipFinding(result, ctx, failedFixes[bk]);
+            return;
+        }
 
         var ok = tryMutate("p.closed = true", ctx, function () { p.closed = true; });
         if (!ok) {
-            skipFinding(result, ctx, "set closed flag threw");
+            failedFixes[bk] = "set closed flag threw";
+            skipFinding(result, ctx, failedFixes[bk]);
             return;
         }
 
@@ -177,18 +219,24 @@ function applyClosePath(doc, finding, idx, result) {
         logDebug("close_path: applied", ctx);
     } catch (e) {
         var msg = String(e) + (e.line ? " (line " + e.line + ")" : "");
-        skipFinding(result, ctx, "outer exception: " + msg);
+        failedFixes[bk] = "outer exception: " + msg;
+        skipFinding(result, ctx, failedFixes[bk]);
         logError("close_path: outer exception", { error: msg, ctx: ctx });
     }
 }
 
 // ----- 2. merge_subpymu ------------------------------------------------
 
-function applyMergeSubPymu(doc, finding, idx, result) {
+function applyMergeSubPymu(doc, finding, idx, result, failedFixes) {
     var ctx = {
         idx: idx, kind: finding.kind, brick: finding.brick,
         layer_path: finding.layer_path, sub_path: finding.sub_path
     };
+    var bk = fixKey(finding);
+    if (failedFixes[bk]) {
+        skipFinding(result, ctx, "blacklisted (prior iteration failed: " + failedFixes[bk] + ")");
+        return;
+    }
     logDebug("merge_subpymu: begin", ctx);
 
     try {
@@ -198,7 +246,8 @@ function applyMergeSubPymu(doc, finding, idx, result) {
             return;
         }
         if (!isLayerEditable(layer)) {
-            skipFinding(result, ctx, "layer or ancestor is locked");
+            failedFixes[bk] = "layer or ancestor is locked";
+            skipFinding(result, ctx, failedFixes[bk]);
             return;
         }
         if (finding.sub_path == null ||
@@ -208,8 +257,14 @@ function applyMergeSubPymu(doc, finding, idx, result) {
             return;
         }
         var p = layer.pathItems[finding.sub_path];
+        if (!isPathItemEditable(p)) {
+            failedFixes[bk] = "pathItem.editable is false";
+            skipFinding(result, ctx, failedFixes[bk]);
+            return;
+        }
         if (p.pathPoints.length < 4) {
-            skipFinding(result, ctx, "path has < 4 anchors; merge would leave it degenerate");
+            failedFixes[bk] = "path has < 4 anchors; merge would leave it degenerate";
+            skipFinding(result, ctx, failedFixes[bk]);
             return;
         }
         var i = finding.edge_index;
@@ -246,7 +301,8 @@ function applyMergeSubPymu(doc, finding, idx, result) {
         var pp = p.pathPoints[dropIndex];
         var ok = tryMutate("pathPoint.remove()", ctx, function () { pp.remove(); });
         if (!ok) {
-            skipFinding(result, ctx, "pathPoint.remove() threw");
+            failedFixes[bk] = "pathPoint.remove() threw";
+            skipFinding(result, ctx, failedFixes[bk]);
             return;
         }
 
@@ -286,7 +342,7 @@ function anchorPopularity(anchor, layer) {
 
 // ----- 3. snap_drift_cluster (+ raster centroid track) ----------------
 
-function applySnapDriftClusters(doc, findings, result) {
+function applySnapDriftClusters(doc, findings, result, failedFixes) {
     var EPS = 0.001;
     var brickDeltaSum = {}; // layer_path -> { sx, sy, shifted_x, shifted_y, anchor_failures }
 
@@ -299,6 +355,11 @@ function applySnapDriftClusters(doc, findings, result) {
             layer_path: null, sub_path: null,
             axis: fnd.axis, cluster_min: fnd.cluster_min, cluster_max: fnd.cluster_max
         };
+        var fbk = fixKey(fnd);
+        if (failedFixes[fbk]) {
+            skipFinding(result, ctxFinding, "blacklisted (prior iteration failed: " + failedFixes[fbk] + ")");
+            continue;
+        }
         logDebug("snap_drift_cluster: begin", ctxFinding);
 
         try {
@@ -336,6 +397,15 @@ function applySnapDriftClusters(doc, findings, result) {
 
                 for (var pi = 0; pi < layer.pathItems.length; pi++) {
                     var path = layer.pathItems[pi];
+                    if (!isPathItemEditable(path)) {
+                        // Per-path lock check inside the inner loop —
+                        // a brick layer can be unlocked overall while
+                        // a single pathItem inside it is locked or
+                        // template'd. Skip silently; the brick-level
+                        // skip already noted any layer-wide locks.
+                        logWarn("snap_drift_cluster: pathItem not editable, skipping", { layer_path: lp, pi: pi });
+                        continue;
+                    }
                     for (var pt = 0; pt < path.pathPoints.length; pt++) {
                         var pp = path.pathPoints[pt];
                         var anchor;
