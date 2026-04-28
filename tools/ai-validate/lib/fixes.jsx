@@ -49,8 +49,10 @@ function runFixes(doc, snapshot, findings, failedFixes) {
             }
         }
 
-        // Pass 2 — merge_subpymu. Mutates pathPoints arrays; iterate
-        // in reverse so later removals don't invalidate earlier indices.
+        // Pass 2 — merge_subpymu. Mutates pathPoints arrays (not
+        // pathItem indices), so subsequent passes' sub_path indices
+        // stay valid. Iterate in reverse so later removals don't
+        // invalidate earlier pathPoint indices in the same path.
         logDebug("pass 2: merge_subpymu");
         for (var j = findings.length - 1; j >= 0; j--) {
             var g = findings[j];
@@ -64,6 +66,25 @@ function runFixes(doc, snapshot, findings, failedFixes) {
         logDebug("pass 3: snap_drift_clusters");
         applySnapDriftClusters(doc, findings, result, failedFixes);
 
+        // Pass 4 — snap_corner_jitter. 2D version of pass 3: two
+        // anchors on near-coincident corners across different bricks
+        // get snapped to whichever position is most popular across
+        // the whole document. Position-based, also immune to prior
+        // index changes.
+        logDebug("pass 4: snap_corner_jitter");
+        applySnapCornerJitter(doc, snapshot, findings, result, failedFixes);
+
+        // Pass 5 — delete_degenerate. Removes pathItems with < 3
+        // anchors (degenerate_path, error) or area < MIN_AREA_PYMU2
+        // (also degenerate_path post-unification). Runs LAST among
+        // mutations because removing pathItems shifts sub_path
+        // indices for every other finding in the same layer; nothing
+        // after this pass cares about those indices. Within this
+        // pass, group by layer and process highest sub_path first so
+        // earlier deletes in the same layer don't shift later targets.
+        logDebug("pass 5: delete_degenerate");
+        applyDeleteDegenerate(doc, findings, result, failedFixes);
+
         // Mark warning-only / not-yet-implemented kinds as skipped.
         for (var k = 0; k < findings.length; k++) {
             var h = findings[k];
@@ -71,7 +92,10 @@ function runFixes(doc, snapshot, findings, failedFixes) {
                 h.kind !== "unclosed_path_zero_gap" &&
                 h.kind !== "sub_pymu_edge" &&
                 h.kind !== "multi_grid_drift" &&
-                h.kind !== "tiny_brick") {
+                h.kind !== "tiny_brick" &&
+                h.kind !== "degenerate_path" &&
+                h.kind !== "degenerate_area" &&
+                h.kind !== "corner_jitter") {
                 result.skipped.push({
                     finding_index: k,
                     kind: h.kind,
@@ -610,6 +634,206 @@ function applySnapDriftClusters(doc, findings, result, failedFixes) {
     }
 }
 
+// ----- 4. snap_corner_jitter -------------------------------------------
+//
+// Two near-coincident corners across different bricks get snapped to
+// whichever position is most popular across the whole snapshot.
+// Position-based, immune to prior index shifts. Same vector + raster
+// move-together rule as snap_drift_cluster: each affected brick's
+// rasters track the centroid shift.
+//
+// Pairwise resolution (per-finding). When the two anchors have equal
+// popularity, the convergence loop relies on the second iteration's
+// freshly-recomputed findings to settle any remainder; one iteration
+// is rarely enough for transitive jitter (A near B near C).
+
+function applySnapCornerJitter(doc, snapshot, findings, result, failedFixes) {
+    var EPS = 0.001;
+    var freq = buildAnchorFrequency(snapshot);
+    var brickDeltaSum = {};
+
+    for (var f = 0; f < findings.length; f++) {
+        var fnd = findings[f];
+        if (fnd.kind !== "corner_jitter") continue;
+
+        var ctx = {
+            idx: f, kind: fnd.kind, brick: fnd.brick,
+            layer_path: fnd.layer_path, sub_path: fnd.sub_path
+        };
+        var bk = fixKey(fnd);
+        if (failedFixes[bk]) {
+            skipFinding(result, ctx, "blacklisted (prior iteration failed: " + failedFixes[bk] + ")");
+            continue;
+        }
+        logDebug("snap_corner_jitter: begin", ctx);
+
+        try {
+            var ka = anchorKey(fnd.anchor);
+            var kb = anchorKey(fnd.other_anchor);
+            var fa = freq[ka] || 0;
+            var fb = freq[kb] || 0;
+
+            var loserPath, loserAnchor, target;
+            if (fa > fb) {
+                loserPath = fnd.other_layer_path;
+                loserAnchor = fnd.other_anchor;
+                target = fnd.anchor;
+            } else if (fb > fa) {
+                loserPath = fnd.layer_path;
+                loserAnchor = fnd.anchor;
+                target = fnd.other_anchor;
+            } else {
+                // Tied frequencies — pick `other_anchor` as loser by
+                // convention. Convergence iteration handles the rest.
+                loserPath = fnd.other_layer_path;
+                loserAnchor = fnd.other_anchor;
+                target = fnd.anchor;
+            }
+
+            var loserLayer = findLayer(doc, loserPath);
+            if (!loserLayer) {
+                skipFinding(result, ctx, "loser layer not found: " + loserPath);
+                continue;
+            }
+            if (!isLayerEditable(loserLayer)) {
+                failedFixes[bk] = "loser layer locked";
+                skipFinding(result, ctx, failedFixes[bk]);
+                continue;
+            }
+
+            var dx = target[0] - loserAnchor[0];
+            var dy = target[1] - loserAnchor[1];
+            var moved = 0;
+
+            for (var pi = 0; pi < loserLayer.pathItems.length; pi++) {
+                var path = loserLayer.pathItems[pi];
+                if (!isPathItemEditable(path)) continue;
+                for (var pt = 0; pt < path.pathPoints.length; pt++) {
+                    var pp = path.pathPoints[pt];
+                    var pa;
+                    try { pa = pp.anchor; } catch (e) { continue; }
+                    if (Math.abs(pa[0] - loserAnchor[0]) >= EPS) continue;
+                    if (Math.abs(pa[1] - loserAnchor[1]) >= EPS) continue;
+                    var ok = tryMutate(
+                        "snap_corner_jitter anchor+handles",
+                        { layer_path: loserPath, pi: pi, pt: pt, dx: dx, dy: dy },
+                        function () {
+                            pp.anchor = [target[0], target[1]];
+                            var ld = pp.leftDirection;
+                            var rd = pp.rightDirection;
+                            pp.leftDirection = [ld[0] + dx, ld[1] + dy];
+                            pp.rightDirection = [rd[0] + dx, rd[1] + dy];
+                        }
+                    );
+                    if (ok) moved++;
+                }
+            }
+
+            if (moved === 0) {
+                skipFinding(result, ctx, "loser anchor not found in layer (already moved?)");
+                continue;
+            }
+
+            if (!brickDeltaSum[loserPath]) {
+                brickDeltaSum[loserPath] = { sx: 0, sy: 0, anchors_moved: 0 };
+            }
+            brickDeltaSum[loserPath].sx += dx * moved;
+            brickDeltaSum[loserPath].sy += dy * moved;
+            brickDeltaSum[loserPath].anchors_moved += moved;
+
+            result.applied.push({
+                finding_index: f,
+                kind: "corner_jitter",
+                action: "snap_corner_jitter",
+                loser_brick: loserPath.substring(loserPath.lastIndexOf("/") + 1),
+                loser_layer_path: loserPath,
+                target: target,
+                jitter_pymu: fnd.jitter_pymu,
+                anchors_moved: moved
+            });
+            logDebug("snap_corner_jitter: applied", ctx);
+        } catch (e) {
+            var msg = String(e) + (e.line ? " (line " + e.line + ")" : "");
+            failedFixes[bk] = "outer exception: " + msg;
+            skipFinding(result, ctx, failedFixes[bk]);
+            logError("snap_corner_jitter: outer exception", { error: msg, ctx: ctx });
+        }
+    }
+
+    // Per-brick raster move (centroid shift). Same rule as
+    // snap_drift_cluster. Tag with source so the report can
+    // attribute which fix caused which raster movement.
+    for (var lpKey in brickDeltaSum) {
+        if (!brickDeltaSum.hasOwnProperty(lpKey)) continue;
+        try {
+            var L = findLayer(doc, lpKey);
+            if (!L || L.rasterItems.length === 0) continue;
+            if (!isLayerEditable(L)) {
+                logWarn("move_raster (corner): layer locked", { layer_path: lpKey });
+                continue;
+            }
+            var totalAnchors = 0;
+            for (var p2 = 0; p2 < L.pathItems.length; p2++) {
+                totalAnchors += L.pathItems[p2].pathPoints.length;
+            }
+            if (totalAnchors === 0) continue;
+            var rdx = brickDeltaSum[lpKey].sx / totalAnchors;
+            var rdy = brickDeltaSum[lpKey].sy / totalAnchors;
+            if (Math.abs(rdx) < 1e-9 && Math.abs(rdy) < 1e-9) continue;
+
+            var rasterFailures = 0;
+            for (var ri = 0; ri < L.rasterItems.length; ri++) {
+                var r = L.rasterItems[ri];
+                var ok = tryMutate(
+                    "raster.position += delta (corner)",
+                    { layer_path: lpKey, ri: ri, dx: rdx, dy: rdy },
+                    function () {
+                        var pos = r.position;
+                        r.position = [pos[0] + rdx, pos[1] + rdy];
+                    }
+                );
+                if (!ok) rasterFailures++;
+            }
+            result.applied.push({
+                finding_index: null,
+                kind: "raster_track",
+                action: "move_raster",
+                source: "corner_jitter",
+                brick: lpKey.substring(lpKey.lastIndexOf("/") + 1),
+                layer_path: lpKey,
+                delta_x: rdx,
+                delta_y: rdy,
+                anchors_moved: brickDeltaSum[lpKey].anchors_moved,
+                total_anchors: totalAnchors,
+                rasters_moved: L.rasterItems.length - rasterFailures,
+                raster_failures: rasterFailures
+            });
+        } catch (e) {
+            logError("move_raster (corner): outer exception", { error: String(e), layer_path: lpKey });
+        }
+    }
+}
+
+function buildAnchorFrequency(snapshot) {
+    var freq = {};
+    for (var bi = 0; bi < snapshot.bricks.length; bi++) {
+        var b = snapshot.bricks[bi];
+        if (!b.layer_path || b.layer_path.indexOf("bricks/") !== 0) continue;
+        for (var sp = 0; sp < b.sub_paths.length; sp++) {
+            var anchors = b.sub_paths[sp].anchors;
+            for (var ai = 0; ai < anchors.length; ai++) {
+                var k = anchorKey(anchors[ai]);
+                freq[k] = (freq[k] || 0) + 1;
+            }
+        }
+    }
+    return freq;
+}
+
+function anchorKey(p) {
+    return p[0].toFixed(4) + "," + p[1].toFixed(4);
+}
+
 function pickWinner(distinct) {
     var entries = [];
     var maxCount = 0;
@@ -629,6 +853,184 @@ function pickWinner(distinct) {
     var mid = Math.floor(winners.length / 2);
     if (winners.length % 2 === 1) return winners[mid];
     return (winners[mid - 1] + winners[mid]) / 2;
+}
+
+// Per-sub-path deletion for degenerate sub-paths. Targets findings of
+// kind `degenerate_path` (anchor_count < 3 OR area < MIN_AREA_PYMU2).
+// Runs LAST among mutating passes because removing pathItems shifts
+// sub_path indices for every other finding in the same layer.
+//
+// Within a single pass, group findings by layer and process highest
+// sub_path first so earlier deletes in the same layer don't shift
+// later targets.
+function applyDeleteDegenerate(doc, findings, result, failedFixes) {
+    var perLayer = {};
+    for (var i = 0; i < findings.length; i++) {
+        var f = findings[i];
+        if (f.kind !== "degenerate_path") continue;
+        if (!perLayer[f.layer_path]) perLayer[f.layer_path] = [];
+        perLayer[f.layer_path].push({ idx: i, finding: f });
+    }
+    for (var lp in perLayer) {
+        if (!perLayer.hasOwnProperty(lp)) continue;
+        perLayer[lp].sort(function (a, b) {
+            var sa = a.finding.sub_path == null ? -1 : a.finding.sub_path;
+            var sb = b.finding.sub_path == null ? -1 : b.finding.sub_path;
+            return sb - sa;
+        });
+        for (var k = 0; k < perLayer[lp].length; k++) {
+            applyDeleteDegenerateOne(doc, perLayer[lp][k].finding, perLayer[lp][k].idx, result, failedFixes);
+        }
+    }
+}
+
+function applyDeleteDegenerateOne(doc, finding, idx, result, failedFixes) {
+    var ctx = {
+        idx: idx, kind: finding.kind, brick: finding.brick,
+        layer_path: finding.layer_path, sub_path: finding.sub_path
+    };
+    var bk = fixKey(finding);
+    if (failedFixes[bk]) {
+        skipFinding(result, ctx, "blacklisted (prior iteration failed: " + failedFixes[bk] + ")");
+        return;
+    }
+    logDebug("delete_degenerate: begin", ctx);
+
+    try {
+        var layer = findLayer(doc, finding.layer_path);
+        if (!layer) {
+            skipFinding(result, ctx, "layer not found (already deleted by tiny_brick?)");
+            return;
+        }
+        if (!isLayerEditable(layer)) {
+            failedFixes[bk] = "layer or ancestor is locked";
+            skipFinding(result, ctx, failedFixes[bk]);
+            return;
+        }
+        if (finding.sub_path == null ||
+            finding.sub_path < 0 ||
+            finding.sub_path >= layer.pathItems.length) {
+            skipFinding(result, ctx, "sub_path index out of range (layer changed?)");
+            return;
+        }
+        var p = layer.pathItems[finding.sub_path];
+        if (!isPathItemEditable(p)) {
+            failedFixes[bk] = "pathItem.editable is false";
+            skipFinding(result, ctx, failedFixes[bk]);
+            return;
+        }
+
+        var ok = tryMutate("pathItem.remove()", ctx, function () { p.remove(); });
+        if (!ok) {
+            failedFixes[bk] = "pathItem.remove() threw";
+            skipFinding(result, ctx, failedFixes[bk]);
+            return;
+        }
+
+        result.applied.push({
+            finding_index: idx,
+            kind: "degenerate_path",
+            brick: finding.brick,
+            layer_path: finding.layer_path,
+            sub_path: finding.sub_path,
+            action: "delete_degenerate",
+            anchor_count: finding.anchor_count,
+            area_pymu2: finding.area_pymu2,
+            reason: finding.reason
+        });
+        logDebug("delete_degenerate: applied", ctx);
+    } catch (e) {
+        var msg = String(e) + (e.line ? " (line " + e.line + ")" : "");
+        failedFixes[bk] = "outer exception: " + msg;
+        skipFinding(result, ctx, failedFixes[bk]);
+        logError("delete_degenerate: outer exception", { error: msg, ctx: ctx });
+    }
+}
+
+// Unlock every locked layer AND every locked pageItem (pathItems,
+// rasterItems, ...) in the document. Lock state at the pageItem
+// level is independent of layer-level lock — Illustrator's
+// `pathItem.editable` flag returns false if EITHER is set. Also
+// makes hidden layers visible, since invisible layers also report
+// `editable = false` even if everything else is fine.
+//
+// Called once before the convergence loop so fixes can reach
+// everything. Per artist instruction we do not restore the original
+// lock / visibility state — they can re-lock / re-hide manually
+// after review.
+function unlockAllLayers(doc) {
+    var changes = { layers: [], page_items: 0, hidden_layers_shown: [] };
+    unlockLayerColl(doc.layers, changes);
+    return changes;
+}
+
+function unlockLayerColl(coll, changes) {
+    for (var i = 0; i < coll.length; i++) {
+        var L = coll[i];
+        var lp = layerPathOf(L);
+        try {
+            if (L.locked) {
+                L.locked = false;
+                changes.layers.push(lp);
+                logInfo("unlocked layer", { layer: lp });
+            }
+        } catch (e) {
+            logError("unlockAllLayers: layer failed", { layer: lp, error: String(e) });
+        }
+        try {
+            if (!L.visible) {
+                L.visible = true;
+                changes.hidden_layers_shown.push(lp);
+                logInfo("made layer visible", { layer: lp });
+            }
+        } catch (e) {
+            logError("unlockAllLayers: visibility failed", { layer: lp, error: String(e) });
+        }
+        // Walk this layer's pageItems and unlock any individually-
+        // locked items. pageItems includes pathItems, rasterItems,
+        // groupItems, compoundPathItems, and so on — and crucially
+        // includes items at any depth of group nesting inside this
+        // layer (Illustrator returns them flat).
+        try {
+            for (var j = 0; j < L.pageItems.length; j++) {
+                var item = L.pageItems[j];
+                try {
+                    if (item.locked) {
+                        item.locked = false;
+                        changes.page_items++;
+                    }
+                } catch (eItem) {
+                    logError("unlockAllLayers: pageItem failed", {
+                        layer: lp, item_index: j, error: String(eItem)
+                    });
+                }
+                try {
+                    if (item.hidden) {
+                        item.hidden = false;
+                    }
+                } catch (eHidden) { /* not all pageItems have .hidden */ }
+            }
+        } catch (eItems) {
+            logError("unlockAllLayers: pageItems iteration failed", {
+                layer: lp, error: String(eItems)
+            });
+        }
+        try {
+            if (L.layers && L.layers.length > 0) {
+                unlockLayerColl(L.layers, changes);
+            }
+        } catch (eSub) { /* ignore */ }
+    }
+}
+
+function layerPathOf(layer) {
+    var parts = [];
+    var L = layer;
+    while (L && L.typename === "Layer") {
+        parts.unshift(L.name);
+        try { L = L.parent; } catch (e) { L = null; }
+    }
+    return parts.join("/");
 }
 
 function findLayer(doc, layerPath) {

@@ -27,19 +27,18 @@
 
 var EPS_CLOSED         = 0.001;  // first==last considered "zero gap"
 var MIN_ANCHORS        = 3;      // <3 anchors → degenerate
-var MIN_BRICK_AREA     = 1.0;    // pymu² — degenerate per-sub-path area
-var MIN_BRICK_TOTAL_AREA = 100.0; // pymu² — whole-brick area floor; anything
-                                  // smaller is treated as an artist error.
-                                  // Empirical distribution across 10 fixtures:
-                                  //   - 3 artifacts at 0.000–0.091 pymu²
-                                  //     (NY8 Layer 353, NY7 Layer 376/379)
-                                  //   - 5,000× gap, then real bricks start
-                                  //     at 486.9 pymu² (intentional 37×29
-                                  //     decorative triangles, confirmed by
-                                  //     artist).
-                                  // 100 sits ~1100× above the artifacts and
-                                  // ~4.87× below the smallest legitimate
-                                  // brick — wide margin both directions.
+
+// Project floor for any geometry — both for whole-brick total area
+// (tiny_brick check) and for per-sub-path area (degenerate_path
+// check). Empirical distribution across 10 fixtures showed an
+// unambiguous cliff: 3 artifacts at 0.000–0.091 pymu² (NY8 Layer 353,
+// NY7 Layer 376/379), then a 5,000× gap before real bricks start at
+// 486.9 pymu² (intentional 37×29 decorative triangles, confirmed by
+// artist). 100 pymu² sits ~1100× above the artifacts and ~4.87×
+// below the smallest legitimate brick.
+var MIN_AREA_PYMU2     = 100.0;
+var MIN_BRICK_AREA     = MIN_AREA_PYMU2;  // alias kept for backwards compat
+var MIN_BRICK_TOTAL_AREA = MIN_AREA_PYMU2;
 var MIN_EDGE_LEN       = 1.0;    // pymu  — sub-pymu staircase
 var MULTI_GRID_TOL     = 0.1;    // pymu  — cluster span tolerance
 var GRID_CLUSTER_RADIUS = 1.0;   // pymu  — single-link cluster radius
@@ -181,6 +180,18 @@ function anchorCounts(b) {
 function checkUnclosedAndDegenerate(bricks, findings) {
     for (var i = 0; i < bricks.length; i++) {
         var b = bricks[i];
+
+        // If the whole brick is below the floor, tiny_brick will
+        // handle it via whole-layer delete. Don't double-flag every
+        // sub-path with a redundant degenerate_path warning.
+        var brickTotalArea = 0;
+        var allHaveArea = true;
+        for (var ts = 0; ts < b.sub_paths.length; ts++) {
+            if (b.sub_paths[ts].area === null) { allHaveArea = false; break; }
+            brickTotalArea += Math.abs(b.sub_paths[ts].area);
+        }
+        var brickIsTiny = allHaveArea && brickTotalArea < MIN_BRICK_TOTAL_AREA;
+
         for (var s = 0; s < b.sub_paths.length; s++) {
             var sp = b.sub_paths[s];
 
@@ -218,6 +229,11 @@ function checkUnclosedAndDegenerate(bricks, findings) {
                 }
             }
 
+            if (brickIsTiny) {
+                // tiny_brick will delete the whole layer; nothing to
+                // add per sub-path.
+                continue;
+            }
             if (sp.anchor_count < MIN_ANCHORS) {
                 findings.push({
                     severity: "error",
@@ -226,18 +242,22 @@ function checkUnclosedAndDegenerate(bricks, findings) {
                     layer_path: b.layer_path,
                     sub_path: s,
                     anchor_count: sp.anchor_count,
+                    area_pymu2: sp.area,
+                    reason: "anchor_count < " + MIN_ANCHORS,
                     message: "sub-path has " + sp.anchor_count + " anchors (< " + MIN_ANCHORS + ")"
                 });
-            } else if (sp.area !== null && Math.abs(sp.area) < MIN_BRICK_AREA) {
+            } else if (sp.area !== null && Math.abs(sp.area) < MIN_AREA_PYMU2) {
                 findings.push({
-                    severity: "warning",
-                    kind: "degenerate_area",
+                    severity: "error",
+                    kind: "degenerate_path",
                     brick: b.id,
                     layer_path: b.layer_path,
                     sub_path: s,
+                    anchor_count: sp.anchor_count,
                     area_pymu2: sp.area,
-                    message: "sub-path signed area " + sp.area.toFixed(3) +
-                             " pymu² is below " + MIN_BRICK_AREA + " pymu²"
+                    reason: "area < " + MIN_AREA_PYMU2,
+                    message: "sub-path area " + sp.area.toFixed(3) +
+                             " pymu² is below " + MIN_AREA_PYMU2 + " pymu²"
                 });
             }
         }

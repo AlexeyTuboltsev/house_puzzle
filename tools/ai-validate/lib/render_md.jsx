@@ -32,6 +32,20 @@ function renderMarkdown(report) {
         var iterTag = (iters > 1) ? (" (in " + iters + " iterations)") : "";
         lines.push("- **Fixes applied:** " + nApplied + iterTag);
     }
+    if (isFix && report.unlocked) {
+        var u = report.unlocked;
+        var parts = [];
+        if (u.layers && u.layers.length) {
+            parts.push(u.layers.length + " layer(s) unlocked: " + u.layers.join(", "));
+        }
+        if (u.page_items) parts.push(u.page_items + " pageItem(s) unlocked");
+        if (u.hidden_layers_shown && u.hidden_layers_shown.length) {
+            parts.push(u.hidden_layers_shown.length + " layer(s) made visible: " + u.hidden_layers_shown.join(", "));
+        }
+        if (parts.length) {
+            lines.push("- **Pre-fix unlocks (left unlocked):** " + parts.join("; "));
+        }
+    }
     lines.push("");
 
     if (report.error) {
@@ -117,7 +131,19 @@ function renderFixesSection(lines, fixes) {
         var arr = byAction[action];
         lines.push("### `" + action + "` × " + arr.length);
         lines.push("");
-        if (action === "delete_tiny_brick") {
+        if (action === "delete_degenerate") {
+            lines.push("Sub-path deletion for paths with < 3 anchors or area < 100 pymu². These cannot form a valid brick component.");
+            lines.push("");
+            lines.push("| Brick | Sub-path | Anchors | Area (pymu²) | Reason |");
+            lines.push("|---|---|---|---|---|");
+            for (var dd = 0; dd < arr.length; dd++) {
+                var dde = arr[dd];
+                var area = (dde.area_pymu2 == null) ? "—" : dde.area_pymu2.toFixed(3);
+                lines.push("| `" + dde.brick + "` | " + dde.sub_path + " | " +
+                           (dde.anchor_count == null ? "—" : dde.anchor_count) +
+                           " | " + area + " | " + (dde.reason || "—") + " |");
+            }
+        } else if (action === "delete_tiny_brick") {
             lines.push("Whole-layer deletion for bricks whose total area is below the project floor (100 pymu²). These are artist-confirmed stray-click artifacts.");
             lines.push("");
             lines.push("| Brick | Pre-fix area (pymu²) | Sub-paths |");
@@ -147,6 +173,17 @@ function renderFixesSection(lines, fixes) {
                 var len = (g.edge_len_pymu == null) ? "—" : g.edge_len_pymu.toFixed(3);
                 lines.push("| `" + g.brick + "` | " + g.sub_path + " | " + len +
                            " | " + fmtPt(g.kept_anchor) + " | " + fmtPt(g.dropped_anchor) + " |");
+            }
+        } else if (action === "snap_corner_jitter") {
+            lines.push("Two near-coincident corners across different bricks were snapped to whichever position was more popular across the document. Each shift updates the anchor and both Bezier handles by the same Δ; raster moves go in the per-brick centroid section below.");
+            lines.push("");
+            lines.push("| Loser brick | Target | Jitter (pymu) | Anchors moved |");
+            lines.push("|---|---|---|---|");
+            for (var cj = 0; cj < arr.length; cj++) {
+                var sj = arr[cj];
+                lines.push("| `" + sj.loser_brick + "` | " + fmtPt(sj.target) +
+                           " | " + sj.jitter_pymu.toFixed(3) +
+                           " | " + (sj.anchors_moved || 0) + " |");
             }
         } else if (action === "snap_drift_cluster") {
             lines.push("Anchors in a multi-grid-drift cluster snapped to the most-popular value (median on tie). Each shift updates the anchor and both Bezier handles by the same Δ; rasters track via centroid shift in the next section.");
@@ -218,10 +255,10 @@ function kindBlurb(kind) {
             "Sub-path is visually closed (start == end anchor) but Illustrator's `closed` " +
             "flag is `false`. Phase 2 `--fix` will set the flag with no shape change.",
         degenerate_path:
-            "Sub-path has fewer than 3 anchors — cannot form a brick polygon.",
+            "Sub-path has fewer than 3 anchors, or its area is below the project floor (100 pymu²). Either way it cannot be a real brick component. Auto-fix removes the sub-path.",
         degenerate_area:
             "Sub-path's signed area is below 1 pymu² — likely a stray click or " +
-            "near-collapsed shape.",
+            "near-collapsed shape. (Superseded by degenerate_path's unified threshold; this kind is no longer emitted.)",
         sub_pymu_edge:
             "Sub-path contains an edge shorter than 1 pymu — usually a staircase " +
             "artefact from imprecise snapping. The artist must decide whether to merge " +
@@ -280,11 +317,13 @@ TABLE_RENDERERS.unclosed_path = function (lines, arr) {
 TABLE_RENDERERS.unclosed_path_zero_gap = TABLE_RENDERERS.unclosed_path;
 
 TABLE_RENDERERS.degenerate_path = function (lines, arr) {
-    lines.push("| Brick | Sub-path | Anchors |");
-    lines.push("|---|---|---|");
+    lines.push("| Brick | Sub-path | Anchors | Area (pymu²) | Reason |");
+    lines.push("|---|---|---|---|---|");
     for (var i = 0; i < arr.length; i++) {
         var f = arr[i];
-        lines.push("| `" + f.brick + "` | " + f.sub_path + " | " + f.anchor_count + " |");
+        var area = (f.area_pymu2 == null) ? "—" : f.area_pymu2.toFixed(3);
+        lines.push("| `" + f.brick + "` | " + f.sub_path + " | " + f.anchor_count +
+                   " | " + area + " | " + (f.reason || "—") + " |");
     }
 };
 
