@@ -79,9 +79,16 @@
             // iterations as a safety against pathological cycles.
             var iterations = [];
             var MAX_ITER = 5;
+            // Cross-iteration blacklist — once a fix has provably
+            // failed (locked layer, non-editable path, ...), don't
+            // retry it on subsequent iterations. Earlier we observed
+            // _NY7's locked Layer 4 having close_path attempted three
+            // times across iterations, each one apparently leaving
+            // Illustrator in worse shape; one attempt is plenty.
+            var failedFixes = {};
             for (var iter = 0; iter < MAX_ITER; iter++) {
-                logInfo("fix iter: begin", { iter: iter });
-                var pass = runFixes(doc, report.snapshot, report.findings);
+                logInfo("fix iter: begin", { iter: iter, blacklisted: countKeys(failedFixes) });
+                var pass = runFixes(doc, report.snapshot, report.findings, failedFixes);
                 iterations.push(pass);
                 report.snapshot = walkPaths(doc);
                 report.findings = runChecks(report.snapshot);
