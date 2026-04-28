@@ -953,20 +953,28 @@ function applySnapCornerJitter(doc, snapshot, findings, result, failedFixes) {
 
 // ----- 4.5. resolve_brick_overlap -------------------------------------
 //
-// When two bricks have crossing polygon edges, look at the CLOSEST
-// pair of anchors between them. If that pair is within
-// MAX_OVERLAP_AUTOFIX_PYMU of each other, treat them as a wide
-// corner_jitter pair: snap the loser (less-popular position) to the
-// winner. If they're farther apart than the threshold, leave the
-// overlap in the report as an error — those are real artist-decision
-// cases (a brick deeply embedded inside another, etc.).
+// When two bricks have crossing polygon edges, find the offending
+// vertex (a vertex of one strictly inside the other's polygon) and
+// snap it to the closest vertex of the other brick — provided the
+// snap is small enough that it can't distort the loser brick's
+// shape.
 //
-// Threshold (per artist) = 100 pymu. Empirically this fits because
-// typical brick edges are 50 pymu, so a corner mismatch of ~16 pymu
-// (NY5's macro overlap depth) is well inside the autofixable band,
-// while a 100+ pymu mismatch is large enough that any auto-fix would
-// be a guess.
-var MAX_OVERLAP_AUTOFIX_PYMU = 100.0;
+// Tight threshold (1 pymu) because a single-vertex snap is a
+// LOCAL move: nudging one corner of a rectangle by 1 pymu still
+// looks like a rectangle, but nudging it by half the brick's edge
+// length collapses two corners onto each other and turns the
+// rectangle into a triangle. Larger overlap distances stay in the
+// report as unfixable errors — the artist has to translate the
+// whole brick or restructure.
+//
+// Plus a defensive coincidence check: if the snap target would
+// coincide (within COINCIDENCE_EPS) with another existing anchor
+// of the loser brick, abort the snap. The Layer 7 ↔ Layer 35 case
+// in NY5 hit exactly this: the closest vertex of Layer 35 was the
+// shared corner that already existed as a vertex of Layer 7, so
+// snapping put two of Layer 7's corners on top of each other.
+var MAX_OVERLAP_AUTOFIX_PYMU = 1.0;
+var COINCIDENCE_EPS = 0.01;
 
 function applyResolveBrickOverlap(doc, snapshot, findings, result, failedFixes) {
     var EPS = 0.001;
@@ -1021,8 +1029,10 @@ function applyResolveBrickOverlap(doc, snapshot, findings, result, failedFixes) 
                 continue;
             }
             if (best.dist > MAX_OVERLAP_AUTOFIX_PYMU) {
-                skipFinding(result, ctx, "best offender snap distance " +
-                            best.dist.toFixed(2) + " > " + MAX_OVERLAP_AUTOFIX_PYMU + " pymu");
+                failedFixes[bk] = "best offender snap distance " +
+                                  best.dist.toFixed(2) + " > " +
+                                  MAX_OVERLAP_AUTOFIX_PYMU + " pymu (would risk distorting the loser brick)";
+                skipFinding(result, ctx, failedFixes[bk]);
                 continue;
             }
             if (best.dist < EPS) {
@@ -1034,6 +1044,18 @@ function applyResolveBrickOverlap(doc, snapshot, findings, result, failedFixes) 
             var loserPath = best.owner === "A" ? fnd.layer_path : fnd.other_layer_path;
             var loserAnchor = best.offender;
             var target = best.target;
+
+            // Coincidence safety: if the target overlaps any OTHER
+            // existing anchor of the loser brick, this snap would
+            // collapse two vertices into one and probably degenerate
+            // the brick (rectangle → triangle, etc.). Refuse and
+            // leave for the artist.
+            var loserBrick = best.owner === "A" ? bA : bB;
+            if (wouldCoincideWithOtherAnchor(loserBrick, loserAnchor, target, COINCIDENCE_EPS)) {
+                failedFixes[bk] = "snap would collapse two anchors onto each other (loser brick would distort)";
+                skipFinding(result, ctx, failedFixes[bk]);
+                continue;
+            }
 
             var loserLayer = findLayer(doc, loserPath);
             if (!loserLayer) {
@@ -1097,6 +1119,16 @@ function applyResolveBrickOverlap(doc, snapshot, findings, result, failedFixes) 
                 snap_distance_pymu: best.dist,
                 anchors_moved: moved
             });
+            // Blacklist this overlap pair AFTER a successful apply so
+            // the next convergence iteration doesn't re-detect the
+            // same pair and snap again. Without this, snap_corner_jitter
+            // and resolve_brick_overlap can flip-flop the same anchor
+            // back and forth — observed on _NY5.ai with Layer 243's
+            // (6291.55, 4471.41) anchor, snapped 4× across iterations
+            // to identical target. One attempt per pair is plenty;
+            // unresolved overlap stays in the report as a remaining
+            // finding for the artist.
+            failedFixes[bk] = "applied once (cross-iter oscillation safety)";
             logDebug("resolve_brick_overlap: applied", ctx);
         } catch (e) {
             var msg = String(e) + (e.line ? " (line " + e.line + ")" : "");
@@ -1221,6 +1253,29 @@ function accumulateOffenders(srcBrick, otherPoly, otherBrick, ownerTag, push) {
             });
         }
     }
+}
+
+// True if `target` is within `eps` of any anchor of `brick` OTHER
+// than the offender we're trying to move (identified by `oldPos`).
+// Used as a safety guard: a snap that lands on top of an existing
+// vertex of the same brick collapses two vertices into one and
+// distorts the polygon (e.g. rectangle → triangle).
+function wouldCoincideWithOtherAnchor(brick, oldPos, target, eps) {
+    for (var s = 0; s < brick.sub_paths.length; s++) {
+        var anchors = brick.sub_paths[s].anchors;
+        if (!anchors) continue;
+        for (var i = 0; i < anchors.length; i++) {
+            var a = anchors[i];
+            // Skip the anchor we're about to move.
+            if (Math.abs(a[0] - oldPos[0]) < eps &&
+                Math.abs(a[1] - oldPos[1]) < eps) continue;
+            if (Math.abs(a[0] - target[0]) < eps &&
+                Math.abs(a[1] - target[1]) < eps) {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 function closestAnchorInBrick(p, brick) {
