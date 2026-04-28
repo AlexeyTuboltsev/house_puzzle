@@ -354,11 +354,13 @@ function checkUnclosedAndDegenerate(bricks, findings) {
 // --- 3. Sub-pymu staircase edge ----------------------------------------
 
 function checkSubPymuEdges(bricks, findings) {
+    var EPS_H = 0.001;
     for (var i = 0; i < bricks.length; i++) {
         var b = bricks[i];
         for (var s = 0; s < b.sub_paths.length; s++) {
             var sp = b.sub_paths[s];
             var anchors = sp.anchors;
+            var pps = sp.path_points;  // null on older snapshots
             for (var k = 0; k < anchors.length; k++) {
                 var nextK = k + 1;
                 if (nextK >= anchors.length) {
@@ -366,21 +368,43 @@ function checkSubPymuEdges(bricks, findings) {
                     nextK = 0;
                 }
                 var len = dist(anchors[k], anchors[nextK]);
-                if (len > 0 && len < MIN_EDGE_LEN) {
-                    findings.push({
-                        severity: "warning",
-                        kind: "sub_pymu_edge",
-                        brick: b.id,
-                        layer_path: b.layer_path,
-                        sub_path: s,
-                        edge_index: k,
-                        edge_len_pymu: len,
-                        from: anchors[k],
-                        to: anchors[nextK],
-                        message: "sub-pymu edge " + len.toFixed(3) +
-                                 " pymu between anchor " + k + " and " + nextK
-                    });
+                if (len <= 0 || len >= MIN_EDGE_LEN) continue;
+
+                // Bezier safety: when two adjacent pathPoints share
+                // an anchor (within ~1e-5 pymu) but bracket NON-trivial
+                // Bezier handles, they're encoding a SHARP CORNER —
+                // pp[k] holds the incoming-direction handle on its
+                // .leftDirection, and pp[nextK] holds the outgoing-
+                // direction handle on its .rightDirection. The
+                // near-zero edge between them is intentional. Merging
+                // them would discard one set of handles and destroy
+                // the corner. Skip the finding.
+                //
+                // Safe merge case: both bracketing handles are at
+                // their anchors (no curve continuation on either
+                // side); the near-zero edge is just a redundant
+                // straight-line vertex pair and removing one is fine.
+                if (pps && pps.length === anchors.length) {
+                    var ppk = pps[k];
+                    var ppn = pps[nextK];
+                    var leftIsAnchor  = handleAtAnchor(ppk.left,  ppk.anchor, EPS_H);
+                    var rightIsAnchor = handleAtAnchor(ppn.right, ppn.anchor, EPS_H);
+                    if (!leftIsAnchor || !rightIsAnchor) continue;
                 }
+
+                findings.push({
+                    severity: "warning",
+                    kind: "sub_pymu_edge",
+                    brick: b.id,
+                    layer_path: b.layer_path,
+                    sub_path: s,
+                    edge_index: k,
+                    edge_len_pymu: len,
+                    from: anchors[k],
+                    to: anchors[nextK],
+                    message: "sub-pymu edge " + len.toFixed(3) +
+                             " pymu between anchor " + k + " and " + nextK
+                });
             }
         }
     }
