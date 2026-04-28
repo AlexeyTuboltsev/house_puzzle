@@ -117,7 +117,17 @@ function renderFixesSection(lines, fixes) {
         var arr = byAction[action];
         lines.push("### `" + action + "` × " + arr.length);
         lines.push("");
-        if (action === "close_path") {
+        if (action === "delete_tiny_brick") {
+            lines.push("Whole-layer deletion for bricks whose total area is below the project floor (100 pymu²). These are artist-confirmed stray-click artifacts.");
+            lines.push("");
+            lines.push("| Brick | Pre-fix area (pymu²) | Sub-paths |");
+            lines.push("|---|---|---|");
+            for (var dt = 0; dt < arr.length; dt++) {
+                var d = arr[dt];
+                lines.push("| `" + d.brick + "` | " + d.total_area_pymu2.toFixed(3) +
+                           " | " + d.sub_path_count + " |");
+            }
+        } else if (action === "close_path") {
             lines.push("Set `pathItem.closed = true`. Illustrator draws an implicit straight closing segment for any non-zero gap.");
             lines.push("");
             lines.push("| Brick | Sub-path | Pre-fix gap (pymu) |");
@@ -198,6 +208,8 @@ function renderKindSection(lines, kind, arr) {
 
 function kindBlurb(kind) {
     var blurbs = {
+        tiny_brick:
+            "Brick total area is below the project floor (100 pymu²). Empirically — across the current 10 fixtures — anything this small is a stray-click artifact, not a real brick. Auto-fix deletes the entire layer.",
         unclosed_path:
             "Open sub-paths whose start anchor doesn't meet the last segment endpoint. " +
             "Currently masked by the `ai_parser` auto-close workaround (commit f22a52c); " +
@@ -243,6 +255,17 @@ function kindBlurb(kind) {
 // --- per-kind table renderers ------------------------------------------
 
 var TABLE_RENDERERS = {};
+
+TABLE_RENDERERS.tiny_brick = function (lines, arr) {
+    lines.push("| Brick | Total area (pymu²) | Sub-paths | Anchor counts |");
+    lines.push("|---|---|---|---|");
+    for (var i = 0; i < arr.length; i++) {
+        var f = arr[i];
+        var ac = f.anchor_counts ? "[" + f.anchor_counts.join(",") + "]" : "—";
+        lines.push("| `" + f.brick + "` | " + f.total_area_pymu2.toFixed(3) +
+                   " | " + f.sub_path_count + " | " + ac + " |");
+    }
+};
 
 TABLE_RENDERERS.unclosed_path = function (lines, arr) {
     lines.push("| Brick | Sub-path | Anchors | Gap (pymu) | First | Last |");
