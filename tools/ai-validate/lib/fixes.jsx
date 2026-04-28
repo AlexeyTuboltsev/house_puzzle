@@ -979,6 +979,9 @@ var COINCIDENCE_EPS = 0.01;
 function applyResolveBrickOverlap(doc, snapshot, findings, result, failedFixes) {
     var EPS = 0.001;
     var brickDeltaSum = {};
+    var freq = null;  // built lazily on first finding (most invocations
+                      // have no brick_overlap findings, so skip the
+                      // ~hundreds-of-bricks scan when we don't need it)
 
     // Index bricks by layer_path for O(1) lookup.
     var bricksByPath = {};
@@ -1025,7 +1028,13 @@ function applyResolveBrickOverlap(doc, snapshot, findings, result, failedFixes) 
             // the oscillation blacklist.
             var polyA = flattenPolygon(bA);
             var polyB = flattenPolygon(bB);
-            var offenders = collectOffenders(bA, polyB, bB, polyA);
+            // Build (or reuse) the doc-wide anchor-frequency table
+            // so we can resolve reciprocal offenders by popularity.
+            // When A's vertex X is near B's vertex Y AND B's Y is
+            // near A's X (the "swap" trap), only the less-popular
+            // side snaps.
+            if (!freq) freq = buildAnchorFrequency(snapshot);
+            var offenders = collectOffenders(bA, polyB, bB, polyA, freq);
 
             if (offenders.length === 0) {
                 failedFixes[bk] = "no offending vertex (polygons cross by edges only — manual fix required)";
@@ -1214,13 +1223,18 @@ function pointInPolygon(p, polygon) {
     return inside;
 }
 
-// For an overlapping pair (A, B), collect EVERY vertex of either
-// brick that lies strictly inside the other's polygon, paired with
-// its closest target vertex in the other brick.
-function collectOffenders(bA, polyB, bB, polyA) {
+// For an overlapping pair (A, B), collect every vertex of either
+// brick whose closest neighbour in the other brick is within
+// MAX_OVERLAP_AUTOFIX_PYMU. Each candidate is filtered by anchor-
+// position popularity: the source position must be strictly LESS
+// popular than the target. This prevents the reciprocal-snap trap
+// where A's vertex X snaps to B's vertex Y while B's vertex Y
+// snaps to A's vertex X — net effect is just a swap, the overlap
+// persists.
+function collectOffenders(bA, polyB, bB, polyA, freq) {
     var out = [];
-    accumulateOffenders(bA, polyB, bB, "A", function (cand) { out.push(cand); });
-    accumulateOffenders(bB, polyA, bA, "B", function (cand) { out.push(cand); });
+    accumulateOffenders(bA, bB, "A", freq, function (cand) { out.push(cand); });
+    accumulateOffenders(bB, bA, "B", freq, function (cand) { out.push(cand); });
     return out;
 }
 
@@ -1257,21 +1271,47 @@ function snapAnchorAt(loserLayer, offenderPos, targetPos, dx, dy, EPS, layerPath
     return moved;
 }
 
-function accumulateOffenders(srcBrick, otherPoly, otherBrick, ownerTag, push) {
+// Proximity-based offender detection. We're already inside an
+// established brick_overlap pair so we know the polygons cross
+// somehow; the question is which vertex pair, if any, can we snap
+// to repair it. A vertex is a candidate if there's an anchor of the
+// OTHER brick within MAX_OVERLAP_AUTOFIX_PYMU of it — that covers
+// both:
+//   (a) Vertices strictly INSIDE the other polygon by < 1 pymu
+//       (the corner-mismatch-within-polygon case).
+//   (b) Vertices just OUTSIDE the other polygon by < 1 pymu (the
+//       "edges cross without any vertex inside" case, where two
+//       bricks have nominally-shared corners that drifted apart).
+// Distances above the threshold are skipped — those represent real
+// artist-source errors where a single-vertex snap would distort the
+// brick. Distance ≈ 0 (already coincident) is also skipped — no-op.
+function accumulateOffenders(srcBrick, otherBrick, ownerTag, freq, push) {
     for (var s = 0; s < srcBrick.sub_paths.length; s++) {
         var anchors = srcBrick.sub_paths[s].anchors;
         if (!anchors) continue;
         for (var i = 0; i < anchors.length; i++) {
-            if (!pointInPolygon(anchors[i], otherPoly)) continue;
             var t = closestAnchorInBrick(anchors[i], otherBrick);
             if (!t) continue;
             var dx = t[0] - anchors[i][0];
             var dy = t[1] - anchors[i][1];
+            var d = Math.sqrt(dx * dx + dy * dy);
+            if (d <= 0.001) continue;
+            if (d > MAX_OVERLAP_AUTOFIX_PYMU) continue;
+
+            // Popularity filter: only snap if the source position is
+            // less popular than the target. Equal popularity falls
+            // back to a deterministic owner-tag tiebreak so we never
+            // generate two reciprocal snaps for the same near-pair.
+            var srcPop = freq[anchorKey(anchors[i])] || 0;
+            var tgtPop = freq[anchorKey(t)] || 0;
+            if (srcPop > tgtPop) continue;
+            if (srcPop === tgtPop && ownerTag === "B") continue;
+
             push({
                 owner: ownerTag,
                 offender: [anchors[i][0], anchors[i][1]],
                 target: [t[0], t[1]],
-                dist: Math.sqrt(dx * dx + dy * dy)
+                dist: d
             });
         }
     }
