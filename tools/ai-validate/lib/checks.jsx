@@ -755,11 +755,28 @@ function minDistanceToEnds(p, a, b) {
 // opposite sides of the other segment. Endpoint-touching and
 // collinear-overlap return false on purpose so adjacency between
 // bricks isn't flagged as overlap.
+//
+// Floating-point note: ccw values for a real geometric crossing are
+// at least edge_length × crossing_depth, so even sub-pymu real
+// crossings produce values >> 0.01 (e.g. 50 × 0.005 = 0.25). Pairs
+// where ALL ccw values are below SEGMENT_COLLINEAR_EPS_CCW are
+// numerically near-collinear; calling them a "crossing" is just
+// float noise and produces phantom brick_overlap findings on
+// adjacent bricks that share an edge.
+var SEGMENT_COLLINEAR_EPS_CCW = 0.01;
+
 function segmentsCrossProper(p1, p2, p3, p4) {
     var d1 = ccw(p3, p4, p1);
     var d2 = ccw(p3, p4, p2);
     var d3 = ccw(p1, p2, p3);
     var d4 = ccw(p1, p2, p4);
+
+    // Both endpoints of one segment within EPS of the other segment's
+    // line ⇒ near-collinear. Skip — these aren't real crossings.
+    var e = SEGMENT_COLLINEAR_EPS_CCW;
+    if (Math.abs(d1) < e && Math.abs(d2) < e) return false;
+    if (Math.abs(d3) < e && Math.abs(d4) < e) return false;
+
     if (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) &&
         ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))) {
         return true;
