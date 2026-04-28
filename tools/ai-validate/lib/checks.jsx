@@ -27,7 +27,19 @@
 
 var EPS_CLOSED         = 0.001;  // first==last considered "zero gap"
 var MIN_ANCHORS        = 3;      // <3 anchors → degenerate
-var MIN_BRICK_AREA     = 1.0;    // pymu² — degenerate area
+var MIN_BRICK_AREA     = 1.0;    // pymu² — degenerate per-sub-path area
+var MIN_BRICK_TOTAL_AREA = 100.0; // pymu² — whole-brick area floor; anything
+                                  // smaller is treated as an artist error.
+                                  // Empirical distribution across 10 fixtures:
+                                  //   - 3 artifacts at 0.000–0.091 pymu²
+                                  //     (NY8 Layer 353, NY7 Layer 376/379)
+                                  //   - 5,000× gap, then real bricks start
+                                  //     at 486.9 pymu² (intentional 37×29
+                                  //     decorative triangles, confirmed by
+                                  //     artist).
+                                  // 100 sits ~1100× above the artifacts and
+                                  // ~4.87× below the smallest legitimate
+                                  // brick — wide margin both directions.
 var MIN_EDGE_LEN       = 1.0;    // pymu  — sub-pymu staircase
 var MULTI_GRID_TOL     = 0.1;    // pymu  — cluster span tolerance
 var GRID_CLUSTER_RADIUS = 1.0;   // pymu  — single-link cluster radius
@@ -43,6 +55,7 @@ function runChecks(snapshot) {
     var findings = [];
     var bricks = brickLayers(snapshot);
     checkLayerStructure(snapshot, findings);
+    checkTinyBricks(bricks, findings);
     checkUnclosedAndDegenerate(bricks, findings);
     checkSubPymuEdges(bricks, findings);
     checkMultiObjectLayer(bricks, findings);
@@ -125,6 +138,42 @@ function checkLayerStructure(snapshot, findings) {
             });
         }
     }
+}
+
+// --- 1.5 Tiny brick (whole-layer area below threshold) ----------------
+
+function checkTinyBricks(bricks, findings) {
+    for (var i = 0; i < bricks.length; i++) {
+        var b = bricks[i];
+        var total = 0;
+        var hasArea = false;
+        for (var s = 0; s < b.sub_paths.length; s++) {
+            if (b.sub_paths[s].area === null) continue;
+            total += Math.abs(b.sub_paths[s].area);
+            hasArea = true;
+        }
+        if (!hasArea) continue;
+        if (total >= MIN_BRICK_TOTAL_AREA) continue;
+        findings.push({
+            severity: "error",
+            kind: "tiny_brick",
+            brick: b.id,
+            layer_path: b.layer_path,
+            sub_path: null,
+            total_area_pymu2: total,
+            sub_path_count: b.sub_paths.length,
+            anchor_counts: anchorCounts(b),
+            message: "brick total area " + total.toFixed(3) +
+                     " pymu² is below " + MIN_BRICK_TOTAL_AREA +
+                     " — almost certainly an artist artifact"
+        });
+    }
+}
+
+function anchorCounts(b) {
+    var out = [];
+    for (var s = 0; s < b.sub_paths.length; s++) out.push(b.sub_paths[s].anchor_count);
+    return out;
 }
 
 // --- 2. Unclosed + degenerate ------------------------------------------

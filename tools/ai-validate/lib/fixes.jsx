@@ -27,6 +27,19 @@ function runFixes(doc, snapshot, findings, failedFixes) {
     logInfo("runFixes: begin", { findings: findings.length, blacklisted: countKeys(failedFixes) });
 
     try {
+        // Pass 0 — delete_tiny_brick. Run BEFORE everything else so
+        // we never waste work snapping anchors on a layer we're about
+        // to delete; more importantly, snapping a 0.1-pymu² triangle
+        // collapses its 3 anchors onto one point, and that's what
+        // hung Illustrator's renderer on _NY7.ai.
+        logDebug("pass 0: delete_tiny_brick");
+        for (var t = 0; t < findings.length; t++) {
+            var ft = findings[t];
+            if (ft.kind === "tiny_brick") {
+                applyDeleteTinyBrick(doc, ft, t, result, failedFixes);
+            }
+        }
+
         // Pass 1 — close_path. No anchor changes.
         logDebug("pass 1: close_path");
         for (var i = 0; i < findings.length; i++) {
@@ -57,7 +70,8 @@ function runFixes(doc, snapshot, findings, failedFixes) {
             if (h.kind !== "unclosed_path" &&
                 h.kind !== "unclosed_path_zero_gap" &&
                 h.kind !== "sub_pymu_edge" &&
-                h.kind !== "multi_grid_drift") {
+                h.kind !== "multi_grid_drift" &&
+                h.kind !== "tiny_brick") {
                 result.skipped.push({
                     finding_index: k,
                     kind: h.kind,
@@ -222,6 +236,68 @@ function applyClosePath(doc, finding, idx, result, failedFixes) {
         failedFixes[bk] = "outer exception: " + msg;
         skipFinding(result, ctx, failedFixes[bk]);
         logError("close_path: outer exception", { error: msg, ctx: ctx });
+    }
+}
+
+// ----- 1.5. delete_tiny_brick -----------------------------------------
+//
+// Whole-layer removal for bricks whose total geometry is so small it
+// can only be an artist artifact (stray click, anchor merge gone
+// wrong). The artist confirmed the threshold MIN_BRICK_TOTAL_AREA in
+// checks.jsx — anything below it is wrong.
+//
+// Run BEFORE snap_drift_clusters: snapping the 3 anchors of a 0.1-
+// pymu² triangle to a single grid value collapses them onto one
+// point, which appeared to be what crashed Illustrator's renderer
+// on _NY7.ai.
+
+function applyDeleteTinyBrick(doc, finding, idx, result, failedFixes) {
+    var ctx = {
+        idx: idx, kind: finding.kind, brick: finding.brick,
+        layer_path: finding.layer_path, sub_path: null
+    };
+    var bk = fixKey(finding);
+    if (failedFixes[bk]) {
+        skipFinding(result, ctx, "blacklisted (prior iteration failed: " + failedFixes[bk] + ")");
+        return;
+    }
+    logDebug("delete_tiny_brick: begin", ctx);
+
+    try {
+        var layer = findLayer(doc, finding.layer_path);
+        if (!layer) {
+            skipFinding(result, ctx, "layer not found (already deleted?)");
+            return;
+        }
+        if (!isLayerEditable(layer)) {
+            failedFixes[bk] = "layer or ancestor is locked";
+            skipFinding(result, ctx, failedFixes[bk]);
+            return;
+        }
+
+        var ok = tryMutate("layer.remove()", ctx, function () { layer.remove(); });
+        if (!ok) {
+            failedFixes[bk] = "layer.remove() threw";
+            skipFinding(result, ctx, failedFixes[bk]);
+            return;
+        }
+
+        result.applied.push({
+            finding_index: idx,
+            kind: "tiny_brick",
+            brick: finding.brick,
+            layer_path: finding.layer_path,
+            action: "delete_tiny_brick",
+            total_area_pymu2: finding.total_area_pymu2,
+            sub_path_count: finding.sub_path_count,
+            anchor_counts: finding.anchor_counts
+        });
+        logDebug("delete_tiny_brick: applied", ctx);
+    } catch (e) {
+        var msg = String(e) + (e.line ? " (line " + e.line + ")" : "");
+        failedFixes[bk] = "outer exception: " + msg;
+        skipFinding(result, ctx, failedFixes[bk]);
+        logError("delete_tiny_brick: outer exception", { error: msg, ctx: ctx });
     }
 }
 
