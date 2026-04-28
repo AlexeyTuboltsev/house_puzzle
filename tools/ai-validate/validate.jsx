@@ -95,7 +95,7 @@
             // re-fix until no more fixes are applied, capped at 5
             // iterations as a safety against pathological cycles.
             var iterations = [];
-            var MAX_ITER = 5;
+            var MAX_ITER = 8;
             // Cross-iteration blacklist — once a fix has provably
             // failed (locked layer, non-editable path, ...), don't
             // retry it on subsequent iterations. Earlier we observed

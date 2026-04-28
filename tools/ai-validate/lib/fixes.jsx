@@ -82,6 +82,16 @@ function runFixes(doc, snapshot, findings, failedFixes) {
         logDebug("pass 4: snap_corner_jitter");
         applySnapCornerJitter(doc, snapshot, findings, result, failedFixes);
 
+        // Pass 4.5 — resolve_brick_overlap. Generalisation of pass 4
+        // for overlap pairs: when two bricks have crossing polygon
+        // edges, the closest pair of anchors is treated as a wide
+        // corner_jitter and snapped (loser → winner). Threshold:
+        // anchor pair distance ≤ MAX_OVERLAP_AUTOFIX_PYMU. Above that,
+        // the overlap stays in the report as an error for the artist
+        // to resolve by hand.
+        logDebug("pass 4.5: resolve_brick_overlap");
+        applyResolveBrickOverlap(doc, snapshot, findings, result, failedFixes);
+
         // Pass 5 — delete_degenerate. Removes pathItems with < 3
         // anchors (degenerate_path, error) or area < MIN_AREA_PYMU2
         // (also degenerate_path post-unification). Runs LAST among
@@ -104,7 +114,8 @@ function runFixes(doc, snapshot, findings, failedFixes) {
                 h.kind !== "degenerate_path" &&
                 h.kind !== "degenerate_area" &&
                 h.kind !== "corner_jitter" &&
-                h.kind !== "path_spur") {
+                h.kind !== "path_spur" &&
+                h.kind !== "brick_overlap") {
                 result.skipped.push({
                     finding_index: k,
                     kind: h.kind,
@@ -938,6 +949,293 @@ function applySnapCornerJitter(doc, snapshot, findings, result, failedFixes) {
             logError("move_raster (corner): outer exception", { error: String(e), layer_path: lpKey });
         }
     }
+}
+
+// ----- 4.5. resolve_brick_overlap -------------------------------------
+//
+// When two bricks have crossing polygon edges, look at the CLOSEST
+// pair of anchors between them. If that pair is within
+// MAX_OVERLAP_AUTOFIX_PYMU of each other, treat them as a wide
+// corner_jitter pair: snap the loser (less-popular position) to the
+// winner. If they're farther apart than the threshold, leave the
+// overlap in the report as an error — those are real artist-decision
+// cases (a brick deeply embedded inside another, etc.).
+//
+// Threshold (per artist) = 100 pymu. Empirically this fits because
+// typical brick edges are 50 pymu, so a corner mismatch of ~16 pymu
+// (NY5's macro overlap depth) is well inside the autofixable band,
+// while a 100+ pymu mismatch is large enough that any auto-fix would
+// be a guess.
+var MAX_OVERLAP_AUTOFIX_PYMU = 100.0;
+
+function applyResolveBrickOverlap(doc, snapshot, findings, result, failedFixes) {
+    var EPS = 0.001;
+    var brickDeltaSum = {};
+
+    // Index bricks by layer_path for O(1) lookup.
+    var bricksByPath = {};
+    for (var bi = 0; bi < snapshot.bricks.length; bi++) {
+        var b = snapshot.bricks[bi];
+        if (b.layer_path) bricksByPath[b.layer_path] = b;
+    }
+
+    for (var f = 0; f < findings.length; f++) {
+        var fnd = findings[f];
+        if (fnd.kind !== "brick_overlap") continue;
+
+        var ctx = {
+            idx: f, kind: fnd.kind, brick: fnd.brick,
+            layer_path: fnd.layer_path, sub_path: null
+        };
+        var bk = fixKey(fnd) + "|" + (fnd.other_layer_path || "");
+        if (failedFixes[bk]) {
+            skipFinding(result, ctx, "blacklisted (prior iteration failed: " + failedFixes[bk] + ")");
+            continue;
+        }
+        logDebug("resolve_brick_overlap: begin", ctx);
+
+        try {
+            var bA = bricksByPath[fnd.layer_path];
+            var bB = bricksByPath[fnd.other_layer_path];
+            if (!bA || !bB) {
+                skipFinding(result, ctx, "brick missing from snapshot (already deleted?)");
+                continue;
+            }
+
+            // Real fix: find the offending vertex (a vertex of one
+            // brick that lies STRICTLY inside the other's polygon).
+            // Snap that vertex to the closest vertex of the other
+            // brick, IF the snap distance is within threshold.
+            //
+            // This handles macro overlaps where two bricks share one
+            // or more corners but disagree elsewhere — a closest-
+            // anchor-pair approach would no-op there because the
+            // shared corners give distance 0.
+            var polyA = flattenPolygon(bA);
+            var polyB = flattenPolygon(bB);
+
+            var best = pickBestOffender(bA, polyB, bB, polyA);
+            if (!best) {
+                failedFixes[bk] = "no offending vertex (polygons cross by edges only — manual fix required)";
+                skipFinding(result, ctx, failedFixes[bk]);
+                continue;
+            }
+            if (best.dist > MAX_OVERLAP_AUTOFIX_PYMU) {
+                skipFinding(result, ctx, "best offender snap distance " +
+                            best.dist.toFixed(2) + " > " + MAX_OVERLAP_AUTOFIX_PYMU + " pymu");
+                continue;
+            }
+            if (best.dist < EPS) {
+                failedFixes[bk] = "offender already at target — would be a no-op snap";
+                skipFinding(result, ctx, failedFixes[bk]);
+                continue;
+            }
+
+            var loserPath = best.owner === "A" ? fnd.layer_path : fnd.other_layer_path;
+            var loserAnchor = best.offender;
+            var target = best.target;
+
+            var loserLayer = findLayer(doc, loserPath);
+            if (!loserLayer) {
+                skipFinding(result, ctx, "loser layer not found: " + loserPath);
+                continue;
+            }
+            if (!isLayerEditable(loserLayer)) {
+                failedFixes[bk] = "loser layer locked";
+                skipFinding(result, ctx, failedFixes[bk]);
+                continue;
+            }
+
+            var dx = target[0] - loserAnchor[0];
+            var dy = target[1] - loserAnchor[1];
+            var moved = 0;
+
+            for (var pi = 0; pi < loserLayer.pathItems.length; pi++) {
+                var path = loserLayer.pathItems[pi];
+                if (!isPathItemEditable(path)) continue;
+                for (var pt = 0; pt < path.pathPoints.length; pt++) {
+                    var pp = path.pathPoints[pt];
+                    var pa;
+                    try { pa = pp.anchor; } catch (e) { continue; }
+                    if (Math.abs(pa[0] - loserAnchor[0]) >= EPS) continue;
+                    if (Math.abs(pa[1] - loserAnchor[1]) >= EPS) continue;
+                    var ok = tryMutate(
+                        "resolve_brick_overlap anchor+handles",
+                        { layer_path: loserPath, pi: pi, pt: pt, dx: dx, dy: dy },
+                        function () {
+                            pp.anchor = [target[0], target[1]];
+                            var ld = pp.leftDirection;
+                            var rd = pp.rightDirection;
+                            pp.leftDirection  = [ld[0] + dx, ld[1] + dy];
+                            pp.rightDirection = [rd[0] + dx, rd[1] + dy];
+                        }
+                    );
+                    if (ok) moved++;
+                }
+            }
+
+            if (moved === 0) {
+                skipFinding(result, ctx, "loser anchor not found in layer (already moved?)");
+                continue;
+            }
+
+            if (!brickDeltaSum[loserPath]) {
+                brickDeltaSum[loserPath] = { sx: 0, sy: 0, anchors_moved: 0 };
+            }
+            brickDeltaSum[loserPath].sx += dx * moved;
+            brickDeltaSum[loserPath].sy += dy * moved;
+            brickDeltaSum[loserPath].anchors_moved += moved;
+
+            result.applied.push({
+                finding_index: f,
+                kind: "brick_overlap",
+                action: "resolve_brick_overlap",
+                loser_brick: loserPath.substring(loserPath.lastIndexOf("/") + 1),
+                loser_layer_path: loserPath,
+                offender: loserAnchor,
+                target: target,
+                snap_distance_pymu: best.dist,
+                anchors_moved: moved
+            });
+            logDebug("resolve_brick_overlap: applied", ctx);
+        } catch (e) {
+            var msg = String(e) + (e.line ? " (line " + e.line + ")" : "");
+            failedFixes[bk] = "outer exception: " + msg;
+            skipFinding(result, ctx, failedFixes[bk]);
+            logError("resolve_brick_overlap: outer exception", { error: msg, ctx: ctx });
+        }
+    }
+
+    // Per-brick raster centroid track (same rule as the other snap
+    // passes).
+    for (var lpKey in brickDeltaSum) {
+        if (!brickDeltaSum.hasOwnProperty(lpKey)) continue;
+        try {
+            var L = findLayer(doc, lpKey);
+            if (!L || L.rasterItems.length === 0) continue;
+            if (!isLayerEditable(L)) continue;
+            var totalAnchors = 0;
+            for (var p2 = 0; p2 < L.pathItems.length; p2++) {
+                totalAnchors += L.pathItems[p2].pathPoints.length;
+            }
+            if (totalAnchors === 0) continue;
+            var rdx = brickDeltaSum[lpKey].sx / totalAnchors;
+            var rdy = brickDeltaSum[lpKey].sy / totalAnchors;
+            if (Math.abs(rdx) < 1e-9 && Math.abs(rdy) < 1e-9) continue;
+            var failures = 0;
+            for (var ri = 0; ri < L.rasterItems.length; ri++) {
+                var r = L.rasterItems[ri];
+                var ok = tryMutate(
+                    "raster.position += delta (overlap)",
+                    { layer_path: lpKey, ri: ri },
+                    function () {
+                        var pos = r.position;
+                        r.position = [pos[0] + rdx, pos[1] + rdy];
+                    }
+                );
+                if (!ok) failures++;
+            }
+            result.applied.push({
+                finding_index: null,
+                kind: "raster_track",
+                action: "move_raster",
+                source: "brick_overlap",
+                brick: lpKey.substring(lpKey.lastIndexOf("/") + 1),
+                layer_path: lpKey,
+                delta_x: rdx, delta_y: rdy,
+                anchors_moved: brickDeltaSum[lpKey].anchors_moved,
+                total_anchors: totalAnchors,
+                rasters_moved: L.rasterItems.length - failures,
+                raster_failures: failures
+            });
+        } catch (e) {
+            logError("move_raster (overlap): outer exception", { error: String(e), layer_path: lpKey });
+        }
+    }
+}
+
+// Flatten a brick into a single-loop polygon (concat all sub_paths).
+// Approximate for compound paths but good enough for point-in-polygon
+// when the artist's bricks are typically single-loop.
+function flattenPolygon(brick) {
+    var poly = [];
+    for (var s = 0; s < brick.sub_paths.length; s++) {
+        var anchors = brick.sub_paths[s].anchors;
+        if (!anchors) continue;
+        for (var i = 0; i < anchors.length; i++) {
+            poly.push(anchors[i]);
+        }
+    }
+    return poly;
+}
+
+// Standard ray-casting point-in-polygon. Boundary points may report
+// either way (we don't care — we want strict-interior offenders).
+function pointInPolygon(p, polygon) {
+    if (polygon.length < 3) return false;
+    var inside = false;
+    var n = polygon.length;
+    for (var i = 0, j = n - 1; i < n; j = i++) {
+        var xi = polygon[i][0], yi = polygon[i][1];
+        var xj = polygon[j][0], yj = polygon[j][1];
+        if (((yi > p[1]) !== (yj > p[1])) &&
+            (p[0] < (xj - xi) * (p[1] - yi) / (yj - yi) + xi)) {
+            inside = !inside;
+        }
+    }
+    return inside;
+}
+
+// For an overlapping pair (A, B), find the vertex of A that's inside
+// B (or vice versa) with the SMALLEST snap distance to the closest
+// vertex of the other brick. That's our best candidate offender to
+// move. Returns null if neither brick has a vertex strictly inside
+// the other (the "edges-cross-only" case, e.g. two narrow bars that
+// overlap in the middle without any vertex inside).
+function pickBestOffender(bA, polyB, bB, polyA) {
+    var best = null;
+    accumulateOffenders(bA, polyB, bB, "A", function (cand) {
+        if (!best || cand.dist < best.dist) best = cand;
+    });
+    accumulateOffenders(bB, polyA, bA, "B", function (cand) {
+        if (!best || cand.dist < best.dist) best = cand;
+    });
+    return best;
+}
+
+function accumulateOffenders(srcBrick, otherPoly, otherBrick, ownerTag, push) {
+    for (var s = 0; s < srcBrick.sub_paths.length; s++) {
+        var anchors = srcBrick.sub_paths[s].anchors;
+        if (!anchors) continue;
+        for (var i = 0; i < anchors.length; i++) {
+            if (!pointInPolygon(anchors[i], otherPoly)) continue;
+            var t = closestAnchorInBrick(anchors[i], otherBrick);
+            if (!t) continue;
+            var dx = t[0] - anchors[i][0];
+            var dy = t[1] - anchors[i][1];
+            push({
+                owner: ownerTag,
+                offender: [anchors[i][0], anchors[i][1]],
+                target: [t[0], t[1]],
+                dist: Math.sqrt(dx * dx + dy * dy)
+            });
+        }
+    }
+}
+
+function closestAnchorInBrick(p, brick) {
+    var minD2 = Infinity, best = null;
+    for (var s = 0; s < brick.sub_paths.length; s++) {
+        var anchors = brick.sub_paths[s].anchors;
+        if (!anchors) continue;
+        for (var i = 0; i < anchors.length; i++) {
+            var dx = anchors[i][0] - p[0];
+            var dy = anchors[i][1] - p[1];
+            var d2 = dx * dx + dy * dy;
+            if (d2 < minD2) { minD2 = d2; best = anchors[i]; }
+        }
+    }
+    return best;
 }
 
 function buildAnchorFrequency(snapshot) {
