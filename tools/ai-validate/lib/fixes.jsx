@@ -61,6 +61,14 @@ function runFixes(doc, snapshot, findings, failedFixes) {
             }
         }
 
+        // Pass 2.5 — remove_spur. Same kind of mutation as
+        // merge_subpymu (drops a single pathPoint). Group findings
+        // by (layer_path, sub_path) and process highest anchor_index
+        // first within each so earlier removals don't shift later
+        // targets in the same path.
+        logDebug("pass 2.5: remove_spur");
+        applyRemoveSpurs(doc, findings, result, failedFixes);
+
         // Pass 3 — snap_drift_clusters. Position-based, immune to
         // index changes from pass 2.
         logDebug("pass 3: snap_drift_clusters");
@@ -95,7 +103,8 @@ function runFixes(doc, snapshot, findings, failedFixes) {
                 h.kind !== "tiny_brick" &&
                 h.kind !== "degenerate_path" &&
                 h.kind !== "degenerate_area" &&
-                h.kind !== "corner_jitter") {
+                h.kind !== "corner_jitter" &&
+                h.kind !== "path_spur") {
                 result.skipped.push({
                     finding_index: k,
                     kind: h.kind,
@@ -422,6 +431,123 @@ function applyMergeSubPymu(doc, finding, idx, result, failedFixes) {
         var msg = String(e) + (e.line ? " (line " + e.line + ")" : "");
         skipFinding(result, ctx, "outer exception: " + msg);
         logError("merge_subpymu: outer exception", { error: msg, ctx: ctx });
+    }
+}
+
+// ----- 2.5. remove_spur -----------------------------------------------
+//
+// A spur anchor (collinear with neighbors, polygon backtracks through
+// it) gets removed via pathPoint.remove(). Removing the anchor
+// preserves the polygon's shape — the adjacent edges B-C and C-D
+// collapse into a single forward edge B-D plus the remaining path.
+//
+// Group findings by (layer_path, sub_path) and process the highest
+// anchor_index first within each path so earlier removals don't
+// invalidate later anchor_indices in the same path.
+
+function applyRemoveSpurs(doc, findings, result, failedFixes) {
+    var perPath = {};
+    for (var i = 0; i < findings.length; i++) {
+        var f = findings[i];
+        if (f.kind !== "path_spur") continue;
+        var key = f.layer_path + "|" + f.sub_path;
+        if (!perPath[key]) perPath[key] = [];
+        perPath[key].push({ idx: i, finding: f });
+    }
+    for (var k in perPath) {
+        if (!perPath.hasOwnProperty(k)) continue;
+        perPath[k].sort(function (a, b) {
+            return (b.finding.anchor_index || 0) - (a.finding.anchor_index || 0);
+        });
+        for (var m = 0; m < perPath[k].length; m++) {
+            applyRemoveSpurOne(doc, perPath[k][m].finding, perPath[k][m].idx, result, failedFixes);
+        }
+    }
+}
+
+function applyRemoveSpurOne(doc, finding, idx, result, failedFixes) {
+    var ctx = {
+        idx: idx, kind: finding.kind, brick: finding.brick,
+        layer_path: finding.layer_path, sub_path: finding.sub_path
+    };
+    var bk = fixKey(finding) + "|" + (finding.anchor_index == null ? "?" : finding.anchor_index);
+    if (failedFixes[bk]) {
+        skipFinding(result, ctx, "blacklisted (prior iteration failed: " + failedFixes[bk] + ")");
+        return;
+    }
+    logDebug("remove_spur: begin", ctx);
+
+    try {
+        var layer = findLayer(doc, finding.layer_path);
+        if (!layer) {
+            skipFinding(result, ctx, "layer not found");
+            return;
+        }
+        if (!isLayerEditable(layer)) {
+            failedFixes[bk] = "layer or ancestor is locked";
+            skipFinding(result, ctx, failedFixes[bk]);
+            return;
+        }
+        if (finding.sub_path == null ||
+            finding.sub_path < 0 ||
+            finding.sub_path >= layer.pathItems.length) {
+            skipFinding(result, ctx, "sub_path out of range");
+            return;
+        }
+        var p = layer.pathItems[finding.sub_path];
+        if (!isPathItemEditable(p)) {
+            failedFixes[bk] = "pathItem.editable is false";
+            skipFinding(result, ctx, failedFixes[bk]);
+            return;
+        }
+        if (p.pathPoints.length < 4) {
+            // Removing an anchor would leave < 3, no longer a polygon.
+            skipFinding(result, ctx, "path has < 4 anchors; remove would leave it degenerate");
+            return;
+        }
+        var ai = finding.anchor_index;
+        if (ai == null || ai < 0 || ai >= p.pathPoints.length) {
+            skipFinding(result, ctx, "anchor_index out of range");
+            return;
+        }
+        // Confirm the live pathPoint still matches the spur position
+        // — if a prior fix already moved it, skip.
+        var pp = p.pathPoints[ai];
+        var live;
+        try { live = pp.anchor; } catch (e) {
+            skipFinding(result, ctx, "could not read anchor: " + String(e));
+            return;
+        }
+        var EPS = 0.01;
+        if (Math.abs(live[0] - finding.anchor[0]) > EPS ||
+            Math.abs(live[1] - finding.anchor[1]) > EPS) {
+            skipFinding(result, ctx, "live anchor moved away from spur position");
+            return;
+        }
+
+        var ok = tryMutate("pathPoint.remove() (spur)", ctx, function () { pp.remove(); });
+        if (!ok) {
+            failedFixes[bk] = "pathPoint.remove() threw";
+            skipFinding(result, ctx, failedFixes[bk]);
+            return;
+        }
+
+        result.applied.push({
+            finding_index: idx,
+            kind: "path_spur",
+            brick: finding.brick,
+            layer_path: finding.layer_path,
+            sub_path: finding.sub_path,
+            anchor_index: finding.anchor_index,
+            action: "remove_spur",
+            removed_anchor: finding.anchor
+        });
+        logDebug("remove_spur: applied", ctx);
+    } catch (e) {
+        var msg = String(e) + (e.line ? " (line " + e.line + ")" : "");
+        failedFixes[bk] = "outer exception: " + msg;
+        skipFinding(result, ctx, failedFixes[bk]);
+        logError("remove_spur: outer exception", { error: msg, ctx: ctx });
     }
 }
 

@@ -55,6 +55,7 @@ function runChecks(snapshot) {
     var bricks = brickLayers(snapshot);
     checkLayerStructure(snapshot, findings);
     checkTinyBricks(bricks, findings);
+    checkPathSpurs(bricks, findings);
     checkUnclosedAndDegenerate(bricks, findings);
     checkSubPymuEdges(bricks, findings);
     checkMultiObjectLayer(bricks, findings);
@@ -62,6 +63,7 @@ function runChecks(snapshot) {
     checkIntraBrickDrift(bricks, findings);
     checkCornerJitter(bricks, findings);
     checkBboxContainment(bricks, findings);
+    checkBrickOverlap(bricks, findings);
     return findings;
 }
 
@@ -179,6 +181,85 @@ function anchorCounts(b) {
     var out = [];
     for (var s = 0; s < b.sub_paths.length; s++) out.push(b.sub_paths[s].anchor_count);
     return out;
+}
+
+// --- 1.6 Path spurs (collinear back-track anchors) --------------------
+//
+// A "spur" is an anchor C such that the polygon goes from B to C and
+// then immediately back along the same line (C→D, with B-C-D
+// collinear and the C→D vector antiparallel to B→C). The polygon
+// visits C and comes back; C is a degenerate vertex that creates an
+// out-and-back protrusion in the rendered shape (or a self-overlap
+// in fill).
+//
+// Auto-fixable by removing C — the polygon's shape doesn't change
+// after removal.
+
+var SPUR_COLLINEAR_EPS = 1.0;  // |cross product| upper bound. For
+                                // 50-pymu edges this corresponds to
+                                // ~0.02 pymu off the prev/next line.
+
+function checkPathSpurs(bricks, findings) {
+    var EPS_H = 0.001;
+    for (var i = 0; i < bricks.length; i++) {
+        var b = bricks[i];
+        for (var s = 0; s < b.sub_paths.length; s++) {
+            var sp = b.sub_paths[s];
+            if (!sp.closed) continue; // spurs are a closed-path concept
+            var anchors = sp.anchors;
+            if (!anchors || anchors.length < 4) continue;
+            var pps = sp.path_points;  // null on older snapshots
+            var n = anchors.length;
+            for (var k = 0; k < n; k++) {
+                var pi = (k - 1 + n) % n, ni = (k + 1) % n;
+                var prev = anchors[pi], curr = anchors[k], next = anchors[ni];
+                var v1x = curr[0] - prev[0], v1y = curr[1] - prev[1];
+                var v2x = next[0] - curr[0], v2y = next[1] - curr[1];
+                var cross = v1x * v2y - v1y * v2x;
+                if (Math.abs(cross) >= SPUR_COLLINEAR_EPS) continue;
+                var dot = v1x * v2x + v1y * v2y;
+                if (dot >= 0) continue; // not antiparallel
+
+                // Bezier safety net. A linear "B-C-D collinear and
+                // antiparallel" pattern can still be a real curve if
+                // either segment uses Bezier handles — the rendered
+                // shape is determined by the handles, not the
+                // anchor positions. Only flag the spur if BOTH
+                // adjacent segments are straight, i.e. the relevant
+                // handles coincide with their anchors:
+                //   - B's right handle ≈ B (B→C is straight outbound)
+                //   - C's left handle  ≈ C (B→C is straight inbound)
+                //   - C's right handle ≈ C (C→D is straight outbound)
+                //   - D's left handle  ≈ D (C→D is straight inbound)
+                if (pps && pps.length === n) {
+                    var prevPP = pps[pi], currPP = pps[k], nextPP = pps[ni];
+                    if (!handleAtAnchor(prevPP.right, prev, EPS_H)) continue;
+                    if (!handleAtAnchor(currPP.left,  curr, EPS_H)) continue;
+                    if (!handleAtAnchor(currPP.right, curr, EPS_H)) continue;
+                    if (!handleAtAnchor(nextPP.left,  next, EPS_H)) continue;
+                }
+
+                findings.push({
+                    severity: "error",
+                    kind: "path_spur",
+                    brick: b.id,
+                    layer_path: b.layer_path,
+                    sub_path: s,
+                    anchor_index: k,
+                    anchor: [curr[0], curr[1]],
+                    prev: [prev[0], prev[1]],
+                    next: [next[0], next[1]],
+                    message: "anchor " + k + " is a spur — collinear with " +
+                             "neighbors, polygon backtracks through it, " +
+                             "both adjacent segments are straight"
+                });
+            }
+        }
+    }
+}
+
+function handleAtAnchor(h, a, eps) {
+    return Math.abs(h[0] - a[0]) < eps && Math.abs(h[1] - a[1]) < eps;
 }
 
 // --- 2. Unclosed + degenerate ------------------------------------------
@@ -561,6 +642,133 @@ function checkCornerJitter(bricks, findings) {
 function bboxContains(outer, inner) {
     return outer[0] <= inner[0] && outer[1] <= inner[1] &&
            outer[2] >= inner[2] && outer[3] >= inner[3];
+}
+
+// Polygon-level overlap check. For every pair of bricks whose bboxes
+// overlap (and where one doesn't fully contain the other — that's
+// brick_bbox_contained's job), test for *proper* segment crossings:
+// the segments of two edges have to cross in their interiors. This
+// excludes shared edges and corner-touching adjacency.
+//
+// Severity: error. Polygon overlap is the biggest source of
+// downstream render bugs and the artist must resolve it by hand.
+
+function checkBrickOverlap(bricks, findings) {
+    var preps = [];
+    for (var i = 0; i < bricks.length; i++) {
+        var bb = brickBbox(bricks[i]);
+        if (!bb) continue;
+        preps.push({
+            idx: i,
+            brick: bricks[i],
+            bbox: bb,
+            edges: brickEdges(bricks[i])
+        });
+    }
+
+    for (var a = 0; a < preps.length; a++) {
+        for (var c = a + 1; c < preps.length; c++) {
+            var pA = preps[a], pB = preps[c];
+            // Bbox quick reject — most pairs are bbox-disjoint.
+            if (!bboxesOverlap(pA.bbox, pB.bbox)) continue;
+            // Skip pure containment cases — brick_bbox_contained
+            // already flags them at warning severity.
+            if (bboxContains(pA.bbox, pB.bbox) || bboxContains(pB.bbox, pA.bbox)) {
+                continue;
+            }
+            var crossing = findFirstCrossing(pA.edges, pB.edges);
+            if (!crossing) continue;
+            findings.push({
+                severity: "error",
+                kind: "brick_overlap",
+                brick: pA.brick.id,
+                layer_path: pA.brick.layer_path,
+                other_brick: pB.brick.id,
+                other_layer_path: pB.brick.layer_path,
+                sub_path: null,
+                edge_a: crossing.a,
+                edge_b: crossing.b,
+                message: "bricks '" + pA.brick.id + "' and '" + pB.brick.id +
+                         "' have crossing edges"
+            });
+        }
+    }
+}
+
+function brickEdges(b) {
+    var edges = [];
+    for (var s = 0; s < b.sub_paths.length; s++) {
+        var anchors = b.sub_paths[s].anchors;
+        if (!anchors || anchors.length < 2) continue;
+        for (var i = 0; i < anchors.length; i++) {
+            var p1 = anchors[i];
+            var p2 = anchors[(i + 1) % anchors.length];
+            edges.push([p1, p2]);
+        }
+    }
+    return edges;
+}
+
+// Anything deeper than this in BOTH segments counts as real overlap.
+// Effectively a floating-point noise filter only — every overlap of
+// any meaningful magnitude is reported. The artist resolves them by
+// hand; this kind is not auto-fixable.
+var MIN_OVERLAP_DEPTH_PYMU = 1e-6;
+
+function findFirstCrossing(edgesA, edgesB) {
+    for (var i = 0; i < edgesA.length; i++) {
+        var ea = edgesA[i];
+        for (var j = 0; j < edgesB.length; j++) {
+            var eb = edgesB[j];
+            if (!segmentsCrossProper(ea[0], ea[1], eb[0], eb[1])) continue;
+            var xp = segmentIntersection(ea[0], ea[1], eb[0], eb[1]);
+            if (!xp) continue;
+            var dA = minDistanceToEnds(xp, ea[0], ea[1]);
+            var dB = minDistanceToEnds(xp, eb[0], eb[1]);
+            if (dA < MIN_OVERLAP_DEPTH_PYMU || dB < MIN_OVERLAP_DEPTH_PYMU) continue;
+            return { a: ea, b: eb, point: xp, depth_a: dA, depth_b: dB };
+        }
+    }
+    return null;
+}
+
+function segmentIntersection(p1, p2, p3, p4) {
+    var x1 = p1[0], y1 = p1[1];
+    var x2 = p2[0], y2 = p2[1];
+    var x3 = p3[0], y3 = p3[1];
+    var x4 = p4[0], y4 = p4[1];
+    var denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+    if (Math.abs(denom) < 1e-12) return null;
+    var t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denom;
+    return [x1 + t * (x2 - x1), y1 + t * (y2 - y1)];
+}
+
+function minDistanceToEnds(p, a, b) {
+    var dxA = p[0] - a[0], dyA = p[1] - a[1];
+    var dxB = p[0] - b[0], dyB = p[1] - b[1];
+    var dA = Math.sqrt(dxA * dxA + dyA * dyA);
+    var dB = Math.sqrt(dxB * dxB + dyB * dyB);
+    return dA < dB ? dA : dB;
+}
+
+// Strict (proper) segment crossing: each segment's endpoints lie on
+// opposite sides of the other segment. Endpoint-touching and
+// collinear-overlap return false on purpose so adjacency between
+// bricks isn't flagged as overlap.
+function segmentsCrossProper(p1, p2, p3, p4) {
+    var d1 = ccw(p3, p4, p1);
+    var d2 = ccw(p3, p4, p2);
+    var d3 = ccw(p1, p2, p3);
+    var d4 = ccw(p1, p2, p4);
+    if (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) &&
+        ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))) {
+        return true;
+    }
+    return false;
+}
+
+function ccw(a, b, c) {
+    return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
 }
 
 function brickBbox(b) {

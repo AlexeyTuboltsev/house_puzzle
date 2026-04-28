@@ -83,25 +83,43 @@ function collectBricks(layer, parentPath, bricks) {
 
 function extractSubPaths(layer) {
     var out = [];
+    var EPS_H = 0.001;  // handle-coincident-with-anchor tolerance
     for (var i = 0; i < layer.pathItems.length; i++) {
         var p = layer.pathItems[i];
         var anchors = [];
+        var path_points = [];
+        var has_curves = false;
         for (var k = 0; k < p.pathPoints.length; k++) {
             var pt = p.pathPoints[k];
-            anchors.push([pt.anchor[0], pt.anchor[1]]);
+            var a = pt.anchor;
+            anchors.push([a[0], a[1]]);
+            var ld, rd;
+            try {
+                ld = pt.leftDirection;
+                rd = pt.rightDirection;
+            } catch (e) { ld = a; rd = a; }
+            path_points.push({
+                anchor: [a[0], a[1]],
+                left:   [ld[0], ld[1]],
+                right:  [rd[0], rd[1]]
+            });
+            // A handle that's not coincident with its anchor signals
+            // an active Bezier curve at this anchor. Spur detection
+            // must skip these.
+            if (Math.abs(ld[0] - a[0]) > EPS_H || Math.abs(ld[1] - a[1]) > EPS_H ||
+                Math.abs(rd[0] - a[0]) > EPS_H || Math.abs(rd[1] - a[1]) > EPS_H) {
+                has_curves = true;
+            }
         }
 
         // Some pathItems throw on .area / .geometricBounds (degenerate
-        // shapes, single-anchor paths). Tolerate failures — Phase 1
-        // checks treat null as "unknown" and skip that branch.
+        // shapes, single-anchor paths). Tolerate failures.
         var area = null;
         try { area = p.area; } catch (e) { area = null; }
 
         var bbox = null;
         try {
             var b = p.geometricBounds;
-            // Normalise to [xmin, ymin, xmax, ymax] regardless of
-            // ruler orientation (y-up vs y-down).
             var x0 = Math.min(b[0], b[2]);
             var x1 = Math.max(b[0], b[2]);
             var y0 = Math.min(b[1], b[3]);
@@ -114,7 +132,9 @@ function extractSubPaths(layer) {
             anchor_count: anchors.length,
             area: area,
             bbox: bbox,
-            anchors: anchors
+            anchors: anchors,
+            path_points: path_points,
+            has_curves: has_curves
         });
     }
     return out;

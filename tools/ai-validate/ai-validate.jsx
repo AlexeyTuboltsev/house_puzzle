@@ -44,12 +44,18 @@
     writeText("/tmp/ai-validate-mode.txt", mode);
     writeText("/tmp/ai-validate-target.txt", doc.fullName.fsName);
 
+    // Try the sibling location first (works when running this file
+    // straight from the project tree, e.g. via File → Scripts →
+    // Other Script…). If that fails, fall back to the absolute
+    // project path so an installed copy in Illustrator's Scripts
+    // folder still finds the rest of the codebase.
     var here = File($.fileName).parent;
-    var validateJsx = File(here.fsName + "/validate.jsx");
+    var sibling = File(here.fsName + "/validate.jsx");
+    var fallback = File("/Users/varya/house_puzzle/tools/ai-validate/validate.jsx");
+    var validateJsx = sibling.exists ? sibling : fallback;
     if (!validateJsx.exists) {
-        alert("ai-validate: can't find validate.jsx next to this script\n(" +
-              validateJsx.fsName + ").\n\nMake sure the whole tools/ai-validate/ " +
-              "folder is symlinked, not just this single file.");
+        alert("ai-validate: can't find validate.jsx.\n\nTried:\n  " +
+              sibling.fsName + "\n  " + fallback.fsName);
         return;
     }
     $.evalFile(validateJsx);
