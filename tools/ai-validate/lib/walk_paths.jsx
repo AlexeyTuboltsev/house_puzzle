@@ -42,10 +42,17 @@ function describeLayer(layer, depth) {
         path_items: layer.pathItems.length,
         sub_layers: layer.layers.length,
         raster_items: 0,
+        page_item_count: 0,
         children: []
     };
     try { node.raster_items = layer.placedItems.length + layer.rasterItems.length; }
     catch (e) { /* some doc versions lack placedItems */ }
+    // pageItems counts EVERYTHING inside this layer (paths, rasters,
+    // groups, compound paths, text frames, placed images, ...) at any
+    // nesting depth within the layer but not crossing into sub-layers.
+    // This is the canonical "is this layer empty" total.
+    try { node.page_item_count = layer.pageItems.length; }
+    catch (e) { node.page_item_count = node.path_items + node.raster_items; }
 
     for (var i = 0; i < layer.layers.length; i++) {
         node.children.push(describeLayer(layer.layers[i], depth + 1));
