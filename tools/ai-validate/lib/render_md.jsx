@@ -131,7 +131,17 @@ function renderFixesSection(lines, fixes) {
         var arr = byAction[action];
         lines.push("### `" + action + "` × " + arr.length);
         lines.push("");
-        if (action === "delete_degenerate") {
+        if (action === "remove_spur") {
+            lines.push("Spur anchors removed. The remaining geometry is unchanged because the spurs were collinear with their neighbours and the path was retracing the same straight line through them.");
+            lines.push("");
+            lines.push("| Brick | Sub-path | Anchor # | Removed at |");
+            lines.push("|---|---|---|---|");
+            for (var rs = 0; rs < arr.length; rs++) {
+                var sa = arr[rs];
+                lines.push("| `" + sa.brick + "` | " + sa.sub_path + " | " +
+                           sa.anchor_index + " | " + fmtPt(sa.removed_anchor) + " |");
+            }
+        } else if (action === "delete_degenerate") {
             lines.push("Sub-path deletion for paths with < 3 anchors or area < 100 pymu². These cannot form a valid brick component.");
             lines.push("");
             lines.push("| Brick | Sub-path | Anchors | Area (pymu²) | Reason |");
@@ -256,6 +266,8 @@ function kindBlurb(kind) {
             "flag is `false`. Phase 2 `--fix` will set the flag with no shape change.",
         degenerate_path:
             "Sub-path has fewer than 3 anchors, or its area is below the project floor (100 pymu²). Either way it cannot be a real brick component. Auto-fix removes the sub-path.",
+        path_spur:
+            "Anchor is collinear with its neighbours AND the polygon goes back along the same line through it (antiparallel adjacent edges). Both adjacent segments are confirmed straight (no Bezier handles), so the anchor is geometrically redundant. Auto-fix removes it.",
         degenerate_area:
             "Sub-path's signed area is below 1 pymu² — likely a stray click or " +
             "near-collapsed shape. (Superseded by degenerate_path's unified threshold; this kind is no longer emitted.)",
@@ -279,8 +291,9 @@ function kindBlurb(kind) {
             "— they nominally share a corner but disagree by enough to drift the " +
             "runtime mesh.",
         brick_bbox_contained:
-            "One brick's bounding box is fully inside another's. May be intentional " +
-            "(window in wall) or a stray duplicate; review by hand.",
+            "One brick's bounding box is fully inside another's. Empirically intentional in 100% of cases (window in wall, decorative inset). Surfaced as a warning so the artist can confirm.",
+        brick_overlap:
+            "Two bricks have overlapping interiors — their polygon edges cross. This is the biggest source of downstream render bugs and the artist must resolve by hand (decide which brick is wrong; trim or move). No auto-fix.",
         missing_top_layer:
             "Expected top-level layer is absent from the document.",
         empty_top_layer:
@@ -315,6 +328,16 @@ TABLE_RENDERERS.unclosed_path = function (lines, arr) {
     }
 };
 TABLE_RENDERERS.unclosed_path_zero_gap = TABLE_RENDERERS.unclosed_path;
+
+TABLE_RENDERERS.path_spur = function (lines, arr) {
+    lines.push("| Brick | Sub-path | Anchor # | At |");
+    lines.push("|---|---|---|---|");
+    for (var i = 0; i < arr.length; i++) {
+        var f = arr[i];
+        lines.push("| `" + f.brick + "` | " + f.sub_path + " | " + f.anchor_index +
+                   " | " + fmtPt(f.anchor) + " |");
+    }
+};
 
 TABLE_RENDERERS.degenerate_path = function (lines, arr) {
     lines.push("| Brick | Sub-path | Anchors | Area (pymu²) | Reason |");
@@ -394,6 +417,15 @@ TABLE_RENDERERS.brick_bbox_contained = function (lines, arr) {
     for (var i = 0; i < arr.length; i++) {
         var f = arr[i];
         lines.push("| `" + f.brick + "` | `" + f.container_brick + "` |");
+    }
+};
+
+TABLE_RENDERERS.brick_overlap = function (lines, arr) {
+    lines.push("| Brick A | Brick B |");
+    lines.push("|---|---|");
+    for (var i = 0; i < arr.length; i++) {
+        var f = arr[i];
+        lines.push("| `" + f.brick + "` | `" + f.other_brick + "` |");
     }
 };
 
