@@ -126,7 +126,13 @@ function checkLayerStructure(snapshot, findings) {
             });
             continue;
         }
-        if (L.path_items === 0 && L.sub_layers === 0 && L.raster_items === 0) {
+        // page_item_count covers paths, rasters, groups, compound
+        // paths, text frames, placed images — everything in the
+        // layer except sub-layer structure. A layer is empty iff
+        // it has no items AND no sub-layers.
+        var pageCount = (L.page_item_count != null) ? L.page_item_count
+                      : (L.path_items + L.raster_items);
+        if (pageCount === 0 && L.sub_layers === 0) {
             findings.push({
                 severity: "warning",
                 kind: "empty_top_layer",
