@@ -6374,7 +6374,7 @@ var $author$project$Main$fetchPdfList = function (isTauri) {
 var $elm$browser$Browser$Dom$getViewport = _Browser_withWindow(_Browser_getViewport);
 var $author$project$Main$init = function (flags) {
 	return _Utils_Tuple2(
-		{appMode: $author$project$Main$ModeInit, appVersion: flags.version, availableH: 900.0, bricksById: $elm$core$Dict$empty, colorPicking: $elm$core$Maybe$Nothing, dragInsertBeforeId: $elm$core$Maybe$Nothing, dragOverGroupId: $elm$core$Maybe$Nothing, dragOverWaveId: $elm$core$Maybe$Nothing, draggingPieceId: $elm$core$Maybe$Nothing, editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, editOriginalGroups: _List_Nil, editOriginalPieces: _List_Nil, editOriginalWaves: _List_Nil, exportCanvasHeight: '900', exportHouseName: 'NewHouse', exportLocation: 'Rome', exportPosition: '0', exportSpacing: '12.0', exporting: false, generateState: $author$project$Main$NotGenerated, gridHue: 35.0, groups: _List_Nil, houseUnitsHigh: 15.5, hoveredBrickId: $elm$core$Maybe$Nothing, hoveredPieceId: $elm$core$Maybe$Nothing, isTauri: flags.isTauri, lasso: $elm$core$Maybe$Nothing, loadState: $author$project$Main$Idle, minBorder: 10, nextGroupId: 1, nextSessionId: 1, nextWaveId: 1, outlineHue: 210.0, pdfFiles: _List_Nil, pieceGeneration: 0, pieces: _List_Nil, recomputing: false, redoHistory: _List_Nil, seed: 42, selectedFileName: '', selectedGroupId: $elm$core$Maybe$Nothing, selectedPieceId: $elm$core$Maybe$Nothing, selectedWaveId: $elm$core$Maybe$Nothing, sessionKey: '', showGrid: false, showGroupOverlay: true, showLights: false, showNumbers: true, showOnlyBlueprint: false, showOutlines: true, showWaveOverlay: true, svgScale: 1.0, targetCount: 60, undoHistory: _List_Nil, waves: _List_Nil, zoomGridActive: false, zoomLevel: 1.0},
+		{appMode: $author$project$Main$ModeInit, appVersion: flags.version, availableH: 900.0, blueprintBgUrl: $elm$core$Maybe$Nothing, bricksById: $elm$core$Dict$empty, colorPicking: $elm$core$Maybe$Nothing, dragInsertBeforeId: $elm$core$Maybe$Nothing, dragOverGroupId: $elm$core$Maybe$Nothing, dragOverWaveId: $elm$core$Maybe$Nothing, draggingPieceId: $elm$core$Maybe$Nothing, editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, editOriginalGroups: _List_Nil, editOriginalPieces: _List_Nil, editOriginalWaves: _List_Nil, exportCanvasHeight: '900', exportHouseName: 'NewHouse', exportLocation: 'Rome', exportPosition: '0', exportSpacing: '12.0', exporting: false, generateState: $author$project$Main$NotGenerated, gridHue: 35.0, groups: _List_Nil, houseUnitsHigh: 15.5, hoveredBrickId: $elm$core$Maybe$Nothing, hoveredPieceId: $elm$core$Maybe$Nothing, isTauri: flags.isTauri, lasso: $elm$core$Maybe$Nothing, lightsUrl: $elm$core$Maybe$Nothing, loadState: $author$project$Main$Idle, minBorder: 10, nextGroupId: 1, nextSessionId: 1, nextWaveId: 1, outlineHue: 210.0, pdfFiles: _List_Nil, pieceGeneration: 0, pieces: _List_Nil, recomputing: false, redoHistory: _List_Nil, seed: 42, selectedFileName: '', selectedGroupId: $elm$core$Maybe$Nothing, selectedPieceId: $elm$core$Maybe$Nothing, selectedWaveId: $elm$core$Maybe$Nothing, sessionKey: '', showGrid: false, showGroupOverlay: true, showLights: false, showNumbers: true, showOnlyBlueprint: false, showOutlines: true, showWaveOverlay: true, svgScale: 1.0, targetCount: 60, undoHistory: _List_Nil, waves: _List_Nil, zoomGridActive: false, zoomLevel: 1.0},
 		$elm$core$Platform$Cmd$batch(
 			_List_fromArray(
 				[
@@ -6848,12 +6848,10 @@ var $author$project$Main$LoadResponse = function (canvas) {
 					return function (warnings) {
 						return function (outlinesUrl) {
 							return function (compositeUrl) {
-								return function (blueprintBgUrl) {
-									return function (lightsUrl) {
-										return function (houseUnitsHigh) {
-											return function (key) {
-												return {blueprintBgUrl: blueprintBgUrl, bricks: bricks, canvas: canvas, compositeUrl: compositeUrl, hasBase: hasBase, hasComposite: hasComposite, houseUnitsHigh: houseUnitsHigh, key: key, lightsUrl: lightsUrl, outlinesUrl: outlinesUrl, renderDpi: renderDpi, warnings: warnings};
-											};
+								return function (hasLights) {
+									return function (houseUnitsHigh) {
+										return function (key) {
+											return {bricks: bricks, canvas: canvas, compositeUrl: compositeUrl, hasBase: hasBase, hasComposite: hasComposite, hasLights: hasLights, houseUnitsHigh: houseUnitsHigh, key: key, outlinesUrl: outlinesUrl, renderDpi: renderDpi, warnings: warnings};
 										};
 									};
 								};
@@ -6976,52 +6974,43 @@ var $author$project$Main$decodeLoadResponse = A2(
 				return A2(
 					$elm$json$Json$Decode$map,
 					f,
-					$elm$json$Json$Decode$maybe(
-						A2($elm$json$Json$Decode$field, 'lights_url', $elm$json$Json$Decode$string)));
+					A2(
+						$elm$json$Json$Decode$map,
+						$elm$core$Maybe$withDefault(false),
+						$elm$json$Json$Decode$maybe(
+							A2($elm$json$Json$Decode$field, 'has_lights', $elm$json$Json$Decode$bool))));
 			},
-			A2(
-				$elm$json$Json$Decode$andThen,
-				function (f) {
-					return A2(
-						$elm$json$Json$Decode$map,
-						f,
-						$elm$json$Json$Decode$maybe(
-							A2($elm$json$Json$Decode$field, 'blueprint_bg_url', $elm$json$Json$Decode$string)));
-				},
-				A9(
-					$elm$json$Json$Decode$map8,
-					F8(
-						function (canvas, bricks, hasComposite, hasBase, renderDpi, warnings, outlinesUrl, compositeUrl) {
-							return F2(
-								function (blueprintBgUrl, lightsUrl) {
-									return F2(
-										function (houseUnitsHigh, key) {
-											return $author$project$Main$LoadResponse(canvas)(bricks)(hasComposite)(hasBase)(renderDpi)(warnings)(outlinesUrl)(compositeUrl)(blueprintBgUrl)(lightsUrl)(houseUnitsHigh)(key);
-										});
-								});
-						}),
-					A2($elm$json$Json$Decode$field, 'canvas', $author$project$Main$decodeCanvas),
-					A2(
-						$elm$json$Json$Decode$field,
-						'bricks',
-						$elm$json$Json$Decode$list($author$project$Main$decodeBrick)),
-					A2($elm$json$Json$Decode$field, 'has_composite', $elm$json$Json$Decode$bool),
-					A2($elm$json$Json$Decode$field, 'has_base', $elm$json$Json$Decode$bool),
-					A2($elm$json$Json$Decode$field, 'render_dpi', $elm$json$Json$Decode$float),
-					A2(
-						$elm$json$Json$Decode$field,
-						'warnings',
-						$elm$json$Json$Decode$list($elm$json$Json$Decode$string)),
-					A2(
-						$elm$json$Json$Decode$map,
-						$elm$core$Maybe$withDefault('/api/outlines.png'),
-						$elm$json$Json$Decode$maybe(
-							A2($elm$json$Json$Decode$field, 'outlines_url', $elm$json$Json$Decode$string))),
-					A2(
-						$elm$json$Json$Decode$map,
-						$elm$core$Maybe$withDefault('/api/composite.png'),
-						$elm$json$Json$Decode$maybe(
-							A2($elm$json$Json$Decode$field, 'composite_url', $elm$json$Json$Decode$string))))))));
+			A9(
+				$elm$json$Json$Decode$map8,
+				F8(
+					function (canvas, bricks, hasComposite, hasBase, renderDpi, warnings, outlinesUrl, compositeUrl) {
+						return F3(
+							function (hasLights, houseUnitsHigh, key) {
+								return $author$project$Main$LoadResponse(canvas)(bricks)(hasComposite)(hasBase)(renderDpi)(warnings)(outlinesUrl)(compositeUrl)(hasLights)(houseUnitsHigh)(key);
+							});
+					}),
+				A2($elm$json$Json$Decode$field, 'canvas', $author$project$Main$decodeCanvas),
+				A2(
+					$elm$json$Json$Decode$field,
+					'bricks',
+					$elm$json$Json$Decode$list($author$project$Main$decodeBrick)),
+				A2($elm$json$Json$Decode$field, 'has_composite', $elm$json$Json$Decode$bool),
+				A2($elm$json$Json$Decode$field, 'has_base', $elm$json$Json$Decode$bool),
+				A2($elm$json$Json$Decode$field, 'render_dpi', $elm$json$Json$Decode$float),
+				A2(
+					$elm$json$Json$Decode$field,
+					'warnings',
+					$elm$json$Json$Decode$list($elm$json$Json$Decode$string)),
+				A2(
+					$elm$json$Json$Decode$map,
+					$elm$core$Maybe$withDefault('/api/outlines.png'),
+					$elm$json$Json$Decode$maybe(
+						A2($elm$json$Json$Decode$field, 'outlines_url', $elm$json$Json$Decode$string))),
+				A2(
+					$elm$json$Json$Decode$map,
+					$elm$core$Maybe$withDefault('/api/composite.png'),
+					$elm$json$Json$Decode$maybe(
+						A2($elm$json$Json$Decode$field, 'composite_url', $elm$json$Json$Decode$string)))))));
 var $author$project$Main$MergeResponse = function (pieces) {
 	return {pieces: pieces};
 };
@@ -7139,6 +7128,21 @@ var $elm$core$List$drop = F2(
 			}
 		}
 	});
+var $elm$core$Platform$Cmd$none = $elm$core$Platform$Cmd$batch(_List_Nil);
+var $author$project$Main$ensureBackgroundCmd = function (model) {
+	return (_Utils_eq(model.blueprintBgUrl, $elm$core$Maybe$Nothing) && (model.isTauri && (!$elm$core$String$isEmpty(model.sessionKey)))) ? $author$project$Main$tauriInvoke(
+		{
+			args: $elm$json$Json$Encode$object(
+				_List_fromArray(
+					[
+						_Utils_Tuple2(
+						'key',
+						$elm$json$Json$Encode$string(model.sessionKey))
+					])),
+			command: 'ensure_background_image',
+			requestId: 'ensure_background'
+		}) : $elm$core$Platform$Cmd$none;
+};
 var $elm$http$Http$expectBytesResponse = F2(
 	function (toMsg, toResult) {
 		return A3(
@@ -7352,7 +7356,6 @@ var $elm$core$Basics$min = F2(
 	});
 var $elm$file$File$name = _File_name;
 var $elm$core$Basics$neq = _Utils_notEqual;
-var $elm$core$Platform$Cmd$none = $elm$core$Platform$Cmd$batch(_List_Nil);
 var $elm$json$Json$Encode$null = _Json_encodeNull;
 var $elm$json$Json$Decode$null = _Json_decodeNull;
 var $elm$json$Json$Decode$nullable = function (decoder) {
@@ -7760,6 +7763,7 @@ var $author$project$Main$update = F2(
 						model,
 						{
 							appMode: $author$project$Main$ModeInit,
+							blueprintBgUrl: $elm$core$Maybe$Nothing,
 							editBrickIds: _List_Nil,
 							editMode: false,
 							editOriginalBrickIds: _List_Nil,
@@ -7767,6 +7771,7 @@ var $author$project$Main$update = F2(
 							editOriginalPieces: _List_Nil,
 							editOriginalWaves: _List_Nil,
 							generateState: $author$project$Main$NotGenerated,
+							lightsUrl: $elm$core$Maybe$Nothing,
 							loadState: $author$project$Main$Loading,
 							nextWaveId: 1,
 							pieceGeneration: 0,
@@ -7810,7 +7815,7 @@ var $author$project$Main$update = F2(
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
-							{appMode: $author$project$Main$ModeInit, editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, editOriginalGroups: _List_Nil, editOriginalPieces: _List_Nil, editOriginalWaves: _List_Nil, generateState: $author$project$Main$NotGenerated, loadState: $author$project$Main$Idle, nextWaveId: 1, pieceGeneration: 0, pieces: _List_Nil, recomputing: false, selectedFileName: '', selectedPieceId: $elm$core$Maybe$Nothing, selectedWaveId: $elm$core$Maybe$Nothing, sessionKey: '', waves: _List_Nil}),
+							{appMode: $author$project$Main$ModeInit, blueprintBgUrl: $elm$core$Maybe$Nothing, editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, editOriginalGroups: _List_Nil, editOriginalPieces: _List_Nil, editOriginalWaves: _List_Nil, generateState: $author$project$Main$NotGenerated, lightsUrl: $elm$core$Maybe$Nothing, loadState: $author$project$Main$Idle, nextWaveId: 1, pieceGeneration: 0, pieces: _List_Nil, recomputing: false, selectedFileName: '', selectedPieceId: $elm$core$Maybe$Nothing, selectedWaveId: $elm$core$Maybe$Nothing, sessionKey: '', waves: _List_Nil}),
 						$author$project$Main$fetchPdfList(model.isTauri));
 				case 'LoadFile':
 					var path = msg.a;
@@ -7988,6 +7993,7 @@ var $author$project$Main$update = F2(
 						model,
 						{appMode: mode, editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, editOriginalGroups: _List_Nil, editOriginalPieces: _List_Nil, editOriginalWaves: _List_Nil});
 					if (_Utils_eq(mode, $author$project$Main$ModeWaves)) {
+						var bgCmd = $author$project$Main$ensureBackgroundCmd(model);
 						var _v9 = model.waves;
 						if (!_v9.b) {
 							var newWave = {
@@ -8008,7 +8014,9 @@ var $author$project$Main$update = F2(
 										waves: _List_fromArray(
 											[newWave])
 									}),
-								recomputeViewport);
+								$elm$core$Platform$Cmd$batch(
+									_List_fromArray(
+										[recomputeViewport, bgCmd])));
 						} else {
 							var first = _v9.a;
 							return _Utils_Tuple2(
@@ -8017,7 +8025,9 @@ var $author$project$Main$update = F2(
 									{
 										selectedWaveId: _Utils_eq(baseModel.selectedWaveId, $elm$core$Maybe$Nothing) ? $elm$core$Maybe$Just(first.id) : baseModel.selectedWaveId
 									}),
-								recomputeViewport);
+								$elm$core$Platform$Cmd$batch(
+									_List_fromArray(
+										[recomputeViewport, bgCmd])));
 						}
 					} else {
 						if (_Utils_eq(mode, $author$project$Main$ModeGroups)) {
@@ -8077,11 +8087,23 @@ var $author$project$Main$update = F2(
 						$elm$core$Platform$Cmd$none);
 				case 'ToggleLights':
 					var checked = msg.a;
+					var cmd = (checked && (_Utils_eq(model.lightsUrl, $elm$core$Maybe$Nothing) && model.isTauri)) ? $author$project$Main$tauriInvoke(
+						{
+							args: $elm$json$Json$Encode$object(
+								_List_fromArray(
+									[
+										_Utils_Tuple2(
+										'key',
+										$elm$json$Json$Encode$string(model.sessionKey))
+									])),
+							command: 'ensure_lights_image',
+							requestId: 'ensure_lights'
+						}) : $elm$core$Platform$Cmd$none;
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
 							{showLights: checked}),
-						$elm$core$Platform$Cmd$none);
+						cmd);
 				case 'ToggleGroupOverlay':
 					var checked = msg.a;
 					return _Utils_Tuple2(
@@ -8185,11 +8207,12 @@ var $author$project$Main$update = F2(
 							$elm$core$Platform$Cmd$none));
 				case 'ToggleOnlyBlueprint':
 					var checked = msg.a;
+					var cmd = checked ? $author$project$Main$ensureBackgroundCmd(model) : $elm$core$Platform$Cmd$none;
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
 							{showOnlyBlueprint: checked}),
-						$elm$core$Platform$Cmd$none);
+						cmd);
 				case 'ToggleWaveVisibility':
 					var waveId = msg.a;
 					return A2(
@@ -10066,13 +10089,43 @@ var $author$project$Main$update = F2(
 										model,
 										{exporting: false}),
 									$elm$core$Platform$Cmd$none);
-							case 'pick_file':
+							case 'ensure_lights':
 								var _v57 = A2(
 									$elm$json$Json$Decode$decodeValue,
 									$elm$json$Json$Decode$nullable($elm$json$Json$Decode$string),
 									dataVal);
-								if ((_v57.$ === 'Ok') && (_v57.a.$ === 'Just')) {
-									var path = _v57.a.a;
+								if (_v57.$ === 'Ok') {
+									var url = _v57.a;
+									return _Utils_Tuple2(
+										_Utils_update(
+											model,
+											{lightsUrl: url}),
+										$elm$core$Platform$Cmd$none);
+								} else {
+									return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
+								}
+							case 'ensure_background':
+								var _v58 = A2(
+									$elm$json$Json$Decode$decodeValue,
+									$elm$json$Json$Decode$nullable($elm$json$Json$Decode$string),
+									dataVal);
+								if (_v58.$ === 'Ok') {
+									var url = _v58.a;
+									return _Utils_Tuple2(
+										_Utils_update(
+											model,
+											{blueprintBgUrl: url}),
+										$elm$core$Platform$Cmd$none);
+								} else {
+									return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
+								}
+							case 'pick_file':
+								var _v59 = A2(
+									$elm$json$Json$Decode$decodeValue,
+									$elm$json$Json$Decode$nullable($elm$json$Json$Decode$string),
+									dataVal);
+								if ((_v59.$ === 'Ok') && (_v59.a.$ === 'Just')) {
+									var path = _v59.a.a;
 									var key = $elm$core$String$fromInt(model.nextSessionId);
 									var fileName = function (n) {
 										return A2(
@@ -10090,7 +10143,7 @@ var $author$project$Main$update = F2(
 													A2($elm$core$String$split, '/', path)))));
 									var baseModel = _Utils_update(
 										model,
-										{appMode: $author$project$Main$ModeInit, editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, editOriginalGroups: _List_Nil, editOriginalPieces: _List_Nil, editOriginalWaves: _List_Nil, generateState: $author$project$Main$NotGenerated, loadState: $author$project$Main$Loading, nextSessionId: model.nextSessionId + 1, nextWaveId: 1, pieceGeneration: 0, pieces: _List_Nil, recomputing: false, selectedFileName: fileName, selectedPieceId: $elm$core$Maybe$Nothing, selectedWaveId: $elm$core$Maybe$Nothing, sessionKey: key, waves: _List_Nil});
+										{appMode: $author$project$Main$ModeInit, blueprintBgUrl: $elm$core$Maybe$Nothing, editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, editOriginalGroups: _List_Nil, editOriginalPieces: _List_Nil, editOriginalWaves: _List_Nil, generateState: $author$project$Main$NotGenerated, lightsUrl: $elm$core$Maybe$Nothing, loadState: $author$project$Main$Loading, nextSessionId: model.nextSessionId + 1, nextWaveId: 1, pieceGeneration: 0, pieces: _List_Nil, recomputing: false, selectedFileName: fileName, selectedPieceId: $elm$core$Maybe$Nothing, selectedWaveId: $elm$core$Maybe$Nothing, sessionKey: key, waves: _List_Nil});
 									return _Utils_Tuple2(
 										baseModel,
 										A4($author$project$Main$loadPdf, true, key, path, model.availableH));
@@ -10116,12 +10169,12 @@ var $author$project$Main$update = F2(
 							command: 'log_to_stderr',
 							requestId: 'log'
 						}) : $elm$core$Platform$Cmd$none;
-					var _v58 = A2($elm$core$Debug$log, '[elm] TestSetValue', testId + ('=' + value));
+					var _v60 = A2($elm$core$Debug$log, '[elm] TestSetValue', testId + ('=' + value));
 					switch (testId) {
 						case 'target-pieces':
-							var _v60 = $elm$core$String$toInt(value);
-							if (_v60.$ === 'Just') {
-								var n = _v60.a;
+							var _v62 = $elm$core$String$toInt(value);
+							if (_v62.$ === 'Just') {
+								var n = _v62.a;
 								return _Utils_Tuple2(
 									_Utils_update(
 										model,
@@ -10133,9 +10186,9 @@ var $author$project$Main$update = F2(
 								return _Utils_Tuple2(model, logCmd);
 							}
 						case 'min-border':
-							var _v61 = $elm$core$String$toInt(value);
-							if (_v61.$ === 'Just') {
-								var n = _v61.a;
+							var _v63 = $elm$core$String$toInt(value);
+							if (_v63.$ === 'Just') {
+								var n = _v63.a;
 								return _Utils_Tuple2(
 									_Utils_update(
 										model,
@@ -10147,9 +10200,9 @@ var $author$project$Main$update = F2(
 								return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 							}
 						case 'zoom':
-							var _v62 = $elm$core$String$toFloat(value);
-							if (_v62.$ === 'Just') {
-								var z = _v62.a;
+							var _v64 = $elm$core$String$toFloat(value);
+							if (_v64.$ === 'Just') {
+								var z = _v64.a;
 								return _Utils_Tuple2(
 									_Utils_update(
 										model,
@@ -11613,7 +11666,7 @@ var $author$project$Main$viewMainSvg = F2(
 			model.houseUnitsHigh) : _List_Nil;
 		var h = $elm$core$String$fromFloat(ch);
 		var lightsLayer = function () {
-			var _v1 = _Utils_Tuple2(model.showLights, response.lightsUrl);
+			var _v1 = _Utils_Tuple2(model.showLights, model.lightsUrl);
 			if (_v1.a && (_v1.b.$ === 'Just')) {
 				var url = _v1.b.a;
 				return _List_fromArray(
@@ -11679,7 +11732,7 @@ var $author$project$Main$viewMainSvg = F2(
 			visiblePieces) : _List_Nil);
 		var blueprintLayer = (isGenerated && ((!model.editMode) || blueprintMode)) ? A2($elm$core$List$map, $author$project$Main$viewPieceBlueprintPath, model.pieces) : _List_Nil;
 		var bgImageLayer = function () {
-			var _v0 = response.blueprintBgUrl;
+			var _v0 = model.blueprintBgUrl;
 			if (_v0.$ === 'Just') {
 				var url = _v0.a;
 				return (blueprintMode || _Utils_eq(model.appMode, $author$project$Main$ModeWaves)) ? _List_fromArray(
@@ -12864,7 +12917,7 @@ var $author$project$Main$viewGenerateTools = F2(
 		}();
 		var isGenerating = _Utils_eq(model.generateState, $author$project$Main$Compositing);
 		var isBusy = _Utils_eq(model.loadState, $author$project$Main$Loading) || (model.recomputing || model.exporting);
-		var hasLights = !_Utils_eq(response.lightsUrl, $elm$core$Maybe$Nothing);
+		var hasLights = response.hasLights;
 		return A2(
 			$elm$html$Html$div,
 			_List_fromArray(

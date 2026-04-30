@@ -1193,6 +1193,14 @@ if (window.Elm && window.Elm.Main) { (async function() {
         if (request.command === 'load_pdf' || request.command === 'merge_pieces') {
           convertImagePaths(result);
         }
+        // ensure_*_image returns a single Option<String> path. Convert
+        // it to an asset:// URL when present so Elm can drop it
+        // straight into an <img> tag.
+        if ((request.command === 'ensure_lights_image' || request.command === 'ensure_background_image')
+            && typeof result === 'string' && result.length > 0
+            && !result.startsWith('data:') && !result.startsWith('http')) {
+          result = toAssetUrl(result);
+        }
         app.ports.tauriResponse.send({
           requestId: request.requestId,
           ok: true,

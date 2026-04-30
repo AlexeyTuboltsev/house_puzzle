@@ -91,8 +91,10 @@ type alias LoadResponse =
     , warnings : List String
     , outlinesUrl : String
     , compositeUrl : String
-    , blueprintBgUrl : Maybe String
-    , lightsUrl : Maybe String
+    , {- Lights are rendered lazily on the backend; this flag tells the
+         frontend whether the AI file even declares a `lights` layer so
+         the toggle can be hidden when there's nothing to show. -}
+      hasLights : Bool
     , houseUnitsHigh : Float
     , key : String
     }
@@ -188,6 +190,12 @@ type alias Model =
     , showGrid : Bool
     , showNumbers : Bool
     , showLights : Bool
+    , {- Lazily-fetched OCG layer URLs. Backend renders on first use
+         via `ensure_lights_image` / `ensure_background_image` and
+         echoes the path back; we cache in the model so further toggles
+         are free. -}
+      lightsUrl : Maybe String
+    , blueprintBgUrl : Maybe String
     , showGroupOverlay : Bool
     , showWaveOverlay : Bool
     , showOnlyBlueprint : Bool
@@ -252,6 +260,8 @@ init flags =
       , showGrid = False
       , showNumbers = True
       , showLights = False
+      , lightsUrl = Nothing
+      , blueprintBgUrl = Nothing
       , showGroupOverlay = True
       , showWaveOverlay = True
       , showOnlyBlueprint = False
@@ -426,6 +436,23 @@ scrollToBottom =
         )
 
 
+{-| Fire the ensure_background_image command when entering a mode that
+needs the blueprint backdrop and we haven't fetched the URL yet. The
+backend renders on-demand and echoes the asset path back as
+`requestId = "ensure_background"`. -}
+ensureBackgroundCmd : Model -> Cmd Msg
+ensureBackgroundCmd model =
+    if model.blueprintBgUrl == Nothing && model.isTauri && not (String.isEmpty model.sessionKey) then
+        tauriInvoke
+            { command = "ensure_background_image"
+            , args = E.object [ ( "key", E.string model.sessionKey ) ]
+            , requestId = "ensure_background"
+            }
+
+    else
+        Cmd.none
+
+
 scrollTrayToEnd : Cmd Msg
 scrollTrayToEnd =
     Task.attempt (\_ -> NoOp)
@@ -522,6 +549,8 @@ update msg model =
                         , editOriginalGroups = []
                         , recomputing = False
                         , appMode = ModeInit
+                        , lightsUrl = Nothing
+                        , blueprintBgUrl = Nothing
                     }
             in
             if model.isTauri then
@@ -571,6 +600,8 @@ update msg model =
                 , recomputing = False
                 , appMode = ModeInit
                 , sessionKey = ""
+                , lightsUrl = Nothing
+                , blueprintBgUrl = Nothing
               }
             , fetchPdfList model.isTauri
             )
@@ -741,6 +772,10 @@ update msg model =
                     Task.perform GotViewport Browser.Dom.getViewport
             in
             if mode == ModeWaves then
+                let
+                    bgCmd =
+                        ensureBackgroundCmd model
+                in
                 case model.waves of
                     [] ->
                         let
@@ -754,11 +789,13 @@ update msg model =
                                 , opacity = 0.3
                                 }
                         in
-                        ( { baseModel | waves = [ newWave ], nextWaveId = model.nextWaveId + 1, selectedWaveId = Just newWave.id }, recomputeViewport )
+                        ( { baseModel | waves = [ newWave ], nextWaveId = model.nextWaveId + 1, selectedWaveId = Just newWave.id }
+                        , Cmd.batch [ recomputeViewport, bgCmd ]
+                        )
 
                     first :: _ ->
                         ( { baseModel | selectedWaveId = if baseModel.selectedWaveId == Nothing then Just first.id else baseModel.selectedWaveId }
-                        , recomputeViewport
+                        , Cmd.batch [ recomputeViewport, bgCmd ]
                         )
 
             else if mode == ModeGroups then
@@ -793,7 +830,22 @@ update msg model =
             ( { model | showNumbers = checked }, Cmd.none )
 
         ToggleLights checked ->
-            ( { model | showLights = checked }, Cmd.none )
+            -- Lights are rendered lazily on the backend. Fire the ensure
+            -- command the first time the user wants them; subsequent
+            -- toggles use the URL we cached on the model.
+            let
+                cmd =
+                    if checked && model.lightsUrl == Nothing && model.isTauri then
+                        tauriInvoke
+                            { command = "ensure_lights_image"
+                            , args = E.object [ ( "key", E.string model.sessionKey ) ]
+                            , requestId = "ensure_lights"
+                            }
+
+                    else
+                        Cmd.none
+            in
+            ( { model | showLights = checked }, cmd )
 
         ToggleGroupOverlay checked ->
             ( { model | showGroupOverlay = checked }, Cmd.none )
@@ -872,7 +924,18 @@ update msg model =
                 )
 
         ToggleOnlyBlueprint checked ->
-            ( { model | showOnlyBlueprint = checked }, Cmd.none )
+            -- Blueprint mode shows the blue bg + white outlines on the
+            -- canvas; fire ensure_background_image the first time it's
+            -- enabled so the backdrop is ready when needed.
+            let
+                cmd =
+                    if checked then
+                        ensureBackgroundCmd model
+
+                    else
+                        Cmd.none
+            in
+            ( { model | showOnlyBlueprint = checked }, cmd )
 
         ToggleWaveVisibility waveId ->
             withUndo model
@@ -2086,6 +2149,22 @@ update msg model =
                     "export" ->
                         ( { model | exporting = False }, Cmd.none )
 
+                    "ensure_lights" ->
+                        case D.decodeValue (D.nullable D.string) dataVal of
+                            Ok url ->
+                                ( { model | lightsUrl = url }, Cmd.none )
+
+                            Err _ ->
+                                ( model, Cmd.none )
+
+                    "ensure_background" ->
+                        case D.decodeValue (D.nullable D.string) dataVal of
+                            Ok url ->
+                                ( { model | blueprintBgUrl = url }, Cmd.none )
+
+                            Err _ ->
+                                ( model, Cmd.none )
+
                     "pick_file" ->
                         -- Native dialog result: null when cancelled, path string when selected.
                         case D.decodeValue (D.nullable D.string) dataVal of
@@ -2128,6 +2207,8 @@ update msg model =
                                             , recomputing = False
                                             , appMode = ModeInit
                                             , sessionKey = key
+                                            , lightsUrl = Nothing
+                                            , blueprintBgUrl = Nothing
                                             , nextSessionId = model.nextSessionId + 1
                                         }
                                 in
@@ -2401,9 +2482,8 @@ decodeLoadResponse : D.Decoder LoadResponse
 decodeLoadResponse =
     D.map8
         (\canvas bricks hasComposite hasBase renderDpi warnings outlinesUrl compositeUrl ->
-            \blueprintBgUrl lightsUrl ->
-                \houseUnitsHigh key ->
-                    LoadResponse canvas bricks hasComposite hasBase renderDpi warnings outlinesUrl compositeUrl blueprintBgUrl lightsUrl houseUnitsHigh key
+            \hasLights houseUnitsHigh key ->
+                LoadResponse canvas bricks hasComposite hasBase renderDpi warnings outlinesUrl compositeUrl hasLights houseUnitsHigh key
         )
         (D.field "canvas" decodeCanvas)
         (D.field "bricks" (D.list decodeBrick))
@@ -2413,8 +2493,7 @@ decodeLoadResponse =
         (D.field "warnings" (D.list D.string))
         (D.field "outlines_url" D.string |> D.maybe |> D.map (Maybe.withDefault "/api/outlines.png"))
         (D.field "composite_url" D.string |> D.maybe |> D.map (Maybe.withDefault "/api/composite.png"))
-        |> D.andThen (\f -> D.map f (D.field "blueprint_bg_url" D.string |> D.maybe))
-        |> D.andThen (\f -> D.map f (D.field "lights_url" D.string |> D.maybe))
+        |> D.andThen (\f -> D.map f (D.field "has_lights" D.bool |> D.maybe |> D.map (Maybe.withDefault False)))
         |> D.andThen (\f -> D.map f (D.field "houseUnitsHigh" D.float |> D.maybe |> D.map (Maybe.withDefault 15.5)))
         |> D.andThen (\f -> D.map f (D.field "key" D.string))
 
@@ -3064,7 +3143,7 @@ viewGenerateTools model response =
             model.generateState == Compositing
 
         hasLights =
-            response.lightsUrl /= Nothing
+            response.hasLights
     in
     div [ class "tools-pane" ]
         [ viewTogglesBox [ viewCheckboxLights model, viewCheckboxGrid model ]
@@ -3755,7 +3834,7 @@ viewMainSvg response model =
         -- blueprint" is on (the new toggle that hides the composite and
         -- leaves just blue bg + white outlines).
         bgImageLayer =
-            case response.blueprintBgUrl of
+            case model.blueprintBgUrl of
                 Just url ->
                     if blueprintMode || model.appMode == ModeWaves then
                         [ Svg.image
@@ -3777,7 +3856,7 @@ viewMainSvg response model =
 
         -- Lights overlay (toggleable, shown when showLights is True and lightsUrl is available)
         lightsLayer =
-            case ( model.showLights, response.lightsUrl ) of
+            case ( model.showLights, model.lightsUrl ) of
                 ( True, Just url ) ->
                     [ Svg.image
                         [ SA.x "0"

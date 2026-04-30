@@ -1293,6 +1293,7 @@ pub fn parse_ai(
         }
     }
 
+    let has_lights_layer = root_names.contains(&"lights");
     let metadata = ParsedAiMetadata {
         canvas_width: canvas_w_px,
         canvas_height: canvas_h_px,
@@ -1304,6 +1305,7 @@ pub fn parse_ai(
         warnings,
         offset_x,
         y_base,
+        has_lights_layer,
     };
 
     Ok((results, metadata, ai_data))
@@ -1325,6 +1327,11 @@ pub struct ParsedAiMetadata {
     /// bytes from the raw AI without redoing the artbox probe.
     pub offset_x: f64,
     pub y_base: f64,
+    /// Whether the AI file declares a `lights` OCG layer. Used by the
+    /// lazy lights renderer in hp-tauri so the frontend knows whether
+    /// to expose the "Show lights" control without a probe round-trip.
+    #[serde(default)]
+    pub has_lights_layer: bool,
 }
 
 #[cfg(test)]

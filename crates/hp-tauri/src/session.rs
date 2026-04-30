@@ -30,6 +30,13 @@ pub struct Session {
     pub brick_images: HashMap<String, Arc<Vec<u8>>>,
     /// Per-brick RGBA images for piece composition.
     pub brick_rgba: HashMap<String, Arc<RgbaImage>>,
+    /// Original AI file path — kept so the lazy lights / background
+    /// renderers can re-open the document without parsing it again.
+    pub ai_path: PathBuf,
+    /// PDF coordinate-system offset detected at load time (pixels).
+    /// Lights / background OCG renders apply the same shift so they
+    /// align with the bricks layer.
+    pub pdf_offset: (i32, i32),
 }
 
 /// Thread-safe session store.

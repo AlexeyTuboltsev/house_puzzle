@@ -154,6 +154,8 @@ fn main() {
             commands::get_brick_image,
             commands::get_piece_image,
             commands::get_piece_outline_image,
+            commands::ensure_lights_image,
+            commands::ensure_background_image,
             commands::export_data,
             commands::check_for_updates,
             commands::save_screenshot,

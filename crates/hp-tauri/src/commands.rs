@@ -528,43 +528,27 @@ pub async fn load_pdf(
         .map(|(id, img)| (id, Arc::new(img)))
         .collect();
 
-    // Render composite + outlines + OCG layers in parallel
+    // Render composite + outlines in parallel. Lights and background are
+    // rendered lazily on first use (see `ensure_lights_image` /
+    // `ensure_background_image`) — most loads never enter waves /
+    // blueprint mode or toggle lights, so paying for those MuPDF
+    // renders eagerly is wasted work.
     let t0 = std::time::Instant::now();
-    let fp1 = file_path.clone();
-    let fp2 = file_path.clone();
-    let ed1 = extract_dir.clone();
-    let ed2 = extract_dir.clone();
     let ed3 = extract_dir.clone();
     let ed4 = extract_dir.clone();
     let rb = render_bricks.clone();
     let bla = bricks_layer_arc.clone();
-    let (_, _, has_lights, has_background) = tokio::join!(
+    let _ = tokio::join!(
         tokio::task::spawn_blocking(move || {
             render::save_composite(&bla, &ed4.join("composite.png"));
         }),
         tokio::task::spawn_blocking(move || {
             render::render_outlines_png(&rb, cw, ch, &ed3.join("outlines.png"));
         }),
-        tokio::task::spawn_blocking(move || {
-            render::render_ocg_layer(&fp1, "lights", &ed1.join("lights.png"), dpi, clip, cw, ch, pdf_offset)
-        }),
-        tokio::task::spawn_blocking(move || {
-            render::render_ocg_layer(
-                &fp2,
-                "background",
-                &ed2.join("background.png"),
-                dpi,
-                clip,
-                cw,
-                ch,
-                pdf_offset,
-            )
-        }),
     );
-    let has_lights = has_lights.unwrap_or(false);
-    let has_background = has_background.unwrap_or(false);
+    let has_lights = metadata.has_lights_layer;
     eprintln!(
-        "[profile] composite+outlines+lights+bg (parallel): {:?}",
+        "[profile] composite+outlines (parallel): {:?}",
         t0.elapsed()
     );
 
@@ -634,21 +618,20 @@ pub async fn load_pdf(
                 bricks_layer_img: bricks_layer_arc,
                 brick_images: HashMap::new(),
                 brick_rgba,
+                ai_path: file_path.clone(),
+                pdf_offset,
             },
         );
     }
 
     eprintln!("[profile] TOTAL load: {:?}", t_total.elapsed());
 
-    // Return file paths — the JS side converts to asset:// URLs via convertFileSrc()
+    // Return file paths — the JS side converts to asset:// URLs via
+    // convertFileSrc(). Lights and background are NOT in this response;
+    // the frontend invokes `ensure_lights_image` / `ensure_background_image`
+    // when it actually needs them and gets a path back then.
     let composite_path = extract_dir.join("composite.png").to_string_lossy().to_string();
     let outlines_path = extract_dir.join("outlines.png").to_string_lossy().to_string();
-    let lights_path = if has_lights {
-        Some(extract_dir.join("lights.png").to_string_lossy().to_string())
-    } else { None };
-    let bg_path = if has_background {
-        Some(extract_dir.join("background.png").to_string_lossy().to_string())
-    } else { None };
 
     Ok(json!({
         "key": key,
@@ -663,9 +646,84 @@ pub async fn load_pdf(
         "houseUnitsHigh": house_units_high,
         "composite_url": composite_path,
         "outlines_url": outlines_path,
-        "lights_url": lights_path,
-        "blueprint_bg_url": bg_path,
+        "has_lights": has_lights,
     }))
+}
+
+// ---------------------------------------------------------------------------
+// Lazy OCG layer renders (lights + blueprint background)
+// ---------------------------------------------------------------------------
+//
+// Both layers used to be rendered eagerly inside `load_pdf` even though
+// most loads don't enter waves / blueprint mode and don't toggle
+// "Show lights". The frontend now invokes one of these commands the
+// first time it needs the image; we render-once-and-cache to disk so
+// subsequent toggles are free.
+
+async fn ensure_ocg_layer_image(
+    sessions: tauri::State<'_, SessionStore>,
+    key: &str,
+    layer_name: &'static str,
+    file_name: &str,
+) -> Result<Option<String>, String> {
+    let (extract_dir, file_path, dpi, clip, cw, ch, pdf_offset) = {
+        let store = sessions.lock();
+        let session = store
+            .get(key)
+            .ok_or_else(|| format!("Session not found: {key}"))?;
+        (
+            session.extract_dir.clone(),
+            session.ai_path.clone(),
+            session.metadata.render_dpi,
+            session.metadata.clip_rect,
+            session.metadata.canvas_width as u32,
+            session.metadata.canvas_height as u32,
+            session.pdf_offset,
+        )
+    };
+
+    let out_path = extract_dir.join(file_name);
+    if out_path.exists() {
+        return Ok(Some(out_path.to_string_lossy().to_string()));
+    }
+
+    let out = out_path.clone();
+    let fp = file_path.clone();
+    let ok = tokio::task::spawn_blocking(move || {
+        let t0 = std::time::Instant::now();
+        let r = render::render_ocg_layer(&fp, layer_name, &out, dpi, clip, cw, ch, pdf_offset);
+        eprintln!(
+            "[profile] lazy render_ocg_layer({}): {:?} -> {}",
+            layer_name,
+            t0.elapsed(),
+            r
+        );
+        r
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    if ok {
+        Ok(Some(out_path.to_string_lossy().to_string()))
+    } else {
+        Ok(None)
+    }
+}
+
+#[tauri::command]
+pub async fn ensure_lights_image(
+    sessions: tauri::State<'_, SessionStore>,
+    key: String,
+) -> Result<Option<String>, String> {
+    ensure_ocg_layer_image(sessions, &key, "lights", "lights.png").await
+}
+
+#[tauri::command]
+pub async fn ensure_background_image(
+    sessions: tauri::State<'_, SessionStore>,
+    key: String,
+) -> Result<Option<String>, String> {
+    ensure_ocg_layer_image(sessions, &key, "background", "background.png").await
 }
 
 // ---------------------------------------------------------------------------
