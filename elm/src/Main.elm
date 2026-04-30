@@ -3686,9 +3686,12 @@ viewMainSvg response model =
                 Nothing ->
                     filtered
 
-        -- Blueprint layer: always shown post-gen (underneath everything) so hidden-wave gaps show piece outlines
+        -- Blueprint layer: always shown post-gen (underneath everything) so
+        -- hidden-wave gaps show piece outlines. Also kept in edit mode when
+        -- "Only blueprint" is on, so the editor still has the blue+white
+        -- backdrop while the green selection overlays render on top.
         blueprintLayer =
-            if (not model.editMode) && isGenerated then
+            if isGenerated && ((not model.editMode) || model.showOnlyBlueprint) then
                 List.map viewPieceBlueprintPath model.pieces
 
             else
@@ -4097,7 +4100,13 @@ viewMainSvg response model =
             ++ lassoSvgAttrs
         )
         (if model.editMode then
-            [ Svg.g [] baseLayer
+            -- In edit mode the green selection overlays must stay on top.
+            -- bgImageLayer + blueprintLayer go beneath baseLayer so the
+            -- blue-blueprint backdrop shows through when "Only blueprint"
+            -- is on (baseLayer is empty in that case anyway).
+            [ Svg.g [] bgImageLayer
+            , Svg.g [] blueprintLayer
+            , Svg.g [] baseLayer
             , Svg.g [] editOverlays
             , Svg.g [] outlineLayer
             , Svg.g [] editActivePieceOverlay

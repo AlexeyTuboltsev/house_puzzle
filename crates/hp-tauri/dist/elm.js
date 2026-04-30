@@ -11658,7 +11658,7 @@ var $author$project$Main$viewMainSvg = F2(
 					]),
 				_List_Nil)
 			]) : _List_Nil;
-		var blueprintLayer = ((!model.editMode) && isGenerated) ? A2($elm$core$List$map, $author$project$Main$viewPieceBlueprintPath, model.pieces) : _List_Nil;
+		var blueprintLayer = (isGenerated && ((!model.editMode) || model.showOnlyBlueprint)) ? A2($elm$core$List$map, $author$project$Main$viewPieceBlueprintPath, model.pieces) : _List_Nil;
 		var bgImageLayer = function () {
 			var _v0 = response.blueprintBgUrl;
 			if (_v0.$ === 'Just') {
@@ -11728,6 +11728,8 @@ var $author$project$Main$viewMainSvg = F2(
 				lassoSvgAttrs),
 			model.editMode ? _List_fromArray(
 				[
+					A2($elm$svg$Svg$g, _List_Nil, bgImageLayer),
+					A2($elm$svg$Svg$g, _List_Nil, blueprintLayer),
 					A2($elm$svg$Svg$g, _List_Nil, baseLayer),
 					A2($elm$svg$Svg$g, _List_Nil, editOverlays),
 					A2($elm$svg$Svg$g, _List_Nil, outlineLayer),
