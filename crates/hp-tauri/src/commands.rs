@@ -3,13 +3,66 @@
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use hp_core::{ai_parser, bezier::BezierPath, bezier_merge, puzzle, render, types::Brick};
 use rayon::prelude::*;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::session::{Session, SessionStore};
+
+// ---------------------------------------------------------------------------
+// Parse cache — reuses the expensive parse_ai + bezier extraction output
+// across loads of the same AI file. Keyed by file size + mtime + path so
+// edits to the file naturally invalidate the entry.
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize, Deserialize)]
+struct CachedParse {
+    placements: Vec<ai_parser::BrickPlacement>,
+    metadata: ai_parser::ParsedAiMetadata,
+    bezier_per_brick: Vec<Vec<BezierPath>>,
+}
+
+const PARSE_CACHE_VERSION: u32 = 1;
+
+fn parse_cache_dir() -> Option<PathBuf> {
+    let d = std::env::temp_dir().join("house_puzzle_parse_cache");
+    std::fs::create_dir_all(&d).ok()?;
+    Some(d)
+}
+
+fn parse_cache_key(ai_path: &Path) -> Option<String> {
+    use std::hash::{Hash, Hasher};
+    let meta = std::fs::metadata(ai_path).ok()?;
+    let size = meta.len();
+    let mtime = meta
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs())?;
+    let path_str = ai_path.to_string_lossy().to_string();
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    PARSE_CACHE_VERSION.hash(&mut h);
+    size.hash(&mut h);
+    mtime.hash(&mut h);
+    path_str.hash(&mut h);
+    Some(format!("{:016x}", h.finish()))
+}
+
+fn parse_cache_read(key: &str) -> Option<CachedParse> {
+    let path = parse_cache_dir()?.join(format!("{}.bin", key));
+    let bytes = std::fs::read(&path).ok()?;
+    bincode::deserialize::<CachedParse>(&bytes).ok()
+}
+
+fn parse_cache_write(key: &str, value: &CachedParse) {
+    let Some(dir) = parse_cache_dir() else { return };
+    let path = dir.join(format!("{}.bin", key));
+    if let Ok(bytes) = bincode::serialize(value) {
+        let _ = std::fs::write(&path, bytes);
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Version
@@ -162,79 +215,177 @@ pub async fn load_pdf(
     // Generate a short session key
     let key = uuid::Uuid::new_v4().to_string()[..8].to_string();
 
-    // Parse AI file in blocking thread
-    let path_clone = file_path.clone();
-    let t0 = std::time::Instant::now();
-    let parse_result = tokio::task::spawn_blocking(move || {
-        ai_parser::parse_ai(&path_clone, canvas_height)
-    })
-    .await
-    .map_err(|e| e.to_string())?
-    .map_err(|e| e.to_string())?;
-    eprintln!("[profile] parse_ai: {:?}", t0.elapsed());
+    // ── Parse + bezier extraction (cache-aware) ────────────────────────
+    //
+    // Cache hit: the expensive AI parse + bezier extraction are reused
+    // from disk. We still need ai_data.raw for hybrid brick rendering, so
+    // a fast `decompress_ai_data` runs in parallel with the bricks OCG
+    // render. Both are blocking; tokio::join! overlaps them.
+    //
+    // Cache miss: full `parse_ai` (sequential — its phases need each
+    // other's output), then bezier extraction overlapped with the bricks
+    // OCG render via tokio::join!. The completed parse output is then
+    // written to disk for next time.
+    let cache_key = parse_cache_key(&file_path);
+    let cached: Option<CachedParse> = cache_key
+        .as_ref()
+        .and_then(|k| parse_cache_read(k));
 
-    let (placements, metadata, ai_data) = parse_result;
+    let cw;
+    let ch;
+    let clip;
+    let dpi;
+    let expected_min;
 
-    // Bezier extraction (per-brick PostScript reparse, rayon-parallel) and
-    // the bricks OCG MuPDF render don't depend on each other — both feed
-    // into the response but neither needs the other's output. Run them as
-    // concurrent tokio tasks and wait once. On a typical NY house this
-    // overlaps two ~1-second blocking phases that used to be sequential.
-    let t_parallel = std::time::Instant::now();
-    let ai_raw_for_beziers = ai_data.raw.clone();
-    let placements_for_beziers: Vec<ai_parser::BrickPlacement> = placements.clone();
-    let metadata_for_beziers = metadata.clone();
-    let bezier_fut = tokio::task::spawn_blocking(move || {
-        let t0 = std::time::Instant::now();
-        let res: Vec<Vec<BezierPath>> = placements_for_beziers
-            .par_iter()
-            .map(|p| {
-                let block = ai_parser::LayerBlock {
-                    name: p.name.clone(),
-                    begin: p.block_begin,
-                    end: p.block_end,
-                    depth: 0,
-                    children: Vec::new(),
-                };
-                ai_parser::extract_vector_path_bezier(
-                    &block,
-                    &ai_raw_for_beziers,
-                    metadata_for_beziers.offset_x,
-                    metadata_for_beziers.y_base,
-                )
-            })
-            .collect();
+    let (placements, metadata, ai_data, bezier_per_brick, bricks_no_offset) = if let Some(cached)
+        = cached
+    {
+        eprintln!("[profile] parse cache HIT (key={})", cache_key.as_deref().unwrap_or("?"));
+        cw = cached.metadata.canvas_width as u32;
+        ch = cached.metadata.canvas_height as u32;
+        clip = cached.metadata.clip_rect;
+        dpi = cached.metadata.render_dpi;
+        expected_min = cached.metadata.expected_brick_min;
+
+        let t_parallel = std::time::Instant::now();
+        let path_for_decompress = file_path.clone();
+        let decompress_fut = tokio::task::spawn_blocking(move || {
+            let t0 = std::time::Instant::now();
+            let r = ai_parser::decompress_ai_data(&path_for_decompress);
+            eprintln!("[profile] decompress (cache hit): {:?}", t0.elapsed());
+            r
+        });
+
+        let fp_bricks = file_path.clone();
+        let bricks_render_fut = tokio::task::spawn_blocking(move || {
+            let t0 = std::time::Instant::now();
+            let res = render::render_ocg_layer_image(
+                &fp_bricks, "bricks", dpi, clip, cw, ch, (0, 0),
+            );
+            eprintln!("[profile] OCG bricks render (initial): {:?}", t0.elapsed());
+            res
+        });
+
+        let (decompress_res, bricks_res) = tokio::join!(decompress_fut, bricks_render_fut);
+        let ai_data = decompress_res
+            .map_err(|e| e.to_string())?
+            .map_err(|e| e.to_string())?;
+        let bricks_no_offset = bricks_res
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| "Failed to render bricks layer".to_string())?;
         eprintln!(
-            "[profile] extract_vector_path_bezier (parallel): {:?}",
-            t0.elapsed()
+            "[profile] decompress+bricks_OCG (overlapped, cache hit): {:?}",
+            t_parallel.elapsed()
         );
-        res
-    });
 
-    let cw = metadata.canvas_width as u32;
-    let ch = metadata.canvas_height as u32;
-    let fp_bricks = file_path.clone();
-    let clip = metadata.clip_rect;
-    let dpi = metadata.render_dpi;
-    let expected_min = metadata.expected_brick_min;
-    let bricks_render_fut = tokio::task::spawn_blocking(move || {
+        (
+            cached.placements,
+            cached.metadata,
+            ai_data,
+            cached.bezier_per_brick,
+            bricks_no_offset,
+        )
+    } else {
+        eprintln!("[profile] parse cache MISS (key={})", cache_key.as_deref().unwrap_or("?"));
+
+        let path_for_parse = file_path.clone();
         let t0 = std::time::Instant::now();
-        let res = render::render_ocg_layer_image(
-            &fp_bricks, "bricks", dpi, clip, cw, ch, (0, 0),
-        );
-        eprintln!("[profile] OCG bricks render (initial): {:?}", t0.elapsed());
-        res
-    });
-
-    let (bezier_per_brick, bricks_no_offset) = tokio::join!(bezier_fut, bricks_render_fut);
-    let bezier_per_brick = bezier_per_brick.map_err(|e| e.to_string())?;
-    let bricks_no_offset = bricks_no_offset
+        let parse_result = tokio::task::spawn_blocking(move || {
+            ai_parser::parse_ai(&path_for_parse, canvas_height)
+        })
+        .await
         .map_err(|e| e.to_string())?
-        .ok_or_else(|| "Failed to render bricks layer".to_string())?;
-    eprintln!(
-        "[profile] bezier+bricks_OCG (overlapped): {:?}",
-        t_parallel.elapsed()
-    );
+        .map_err(|e| e.to_string())?;
+        eprintln!("[profile] parse_ai: {:?}", t0.elapsed());
+
+        let (placements, metadata, ai_data) = parse_result;
+
+        cw = metadata.canvas_width as u32;
+        ch = metadata.canvas_height as u32;
+        clip = metadata.clip_rect;
+        dpi = metadata.render_dpi;
+        expected_min = metadata.expected_brick_min;
+
+        // Bezier extraction (per-brick PostScript reparse, rayon-parallel)
+        // and the bricks OCG MuPDF render don't depend on each other —
+        // both feed into the response but neither needs the other's
+        // output. Overlap them on real cores.
+        let t_parallel = std::time::Instant::now();
+        let ai_raw_for_beziers = ai_data.raw.clone();
+        let placements_for_beziers: Vec<ai_parser::BrickPlacement> = placements.clone();
+        let metadata_for_beziers = metadata.clone();
+        let bezier_fut = tokio::task::spawn_blocking(move || {
+            let t0 = std::time::Instant::now();
+            let res: Vec<Vec<BezierPath>> = placements_for_beziers
+                .par_iter()
+                .map(|p| {
+                    let block = ai_parser::LayerBlock {
+                        name: p.name.clone(),
+                        begin: p.block_begin,
+                        end: p.block_end,
+                        depth: 0,
+                        children: Vec::new(),
+                    };
+                    ai_parser::extract_vector_path_bezier(
+                        &block,
+                        &ai_raw_for_beziers,
+                        metadata_for_beziers.offset_x,
+                        metadata_for_beziers.y_base,
+                    )
+                })
+                .collect();
+            eprintln!(
+                "[profile] extract_vector_path_bezier (parallel): {:?}",
+                t0.elapsed()
+            );
+            res
+        });
+
+        let fp_bricks = file_path.clone();
+        let bricks_render_fut = tokio::task::spawn_blocking(move || {
+            let t0 = std::time::Instant::now();
+            let res = render::render_ocg_layer_image(
+                &fp_bricks, "bricks", dpi, clip, cw, ch, (0, 0),
+            );
+            eprintln!("[profile] OCG bricks render (initial): {:?}", t0.elapsed());
+            res
+        });
+
+        let (bezier_per_brick, bricks_no_offset) =
+            tokio::join!(bezier_fut, bricks_render_fut);
+        let bezier_per_brick = bezier_per_brick.map_err(|e| e.to_string())?;
+        let bricks_no_offset = bricks_no_offset
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| "Failed to render bricks layer".to_string())?;
+        eprintln!(
+            "[profile] bezier+bricks_OCG (overlapped, cache miss): {:?}",
+            t_parallel.elapsed()
+        );
+
+        // Persist the parse output for the next load. Writes are
+        // best-effort — failures don't affect this load's success.
+        if let Some(k) = cache_key.as_deref() {
+            let to_write = CachedParse {
+                placements: placements.clone(),
+                metadata: metadata.clone(),
+                bezier_per_brick: bezier_per_brick.clone(),
+            };
+            let key_owned = k.to_string();
+            tokio::task::spawn_blocking(move || {
+                let t0 = std::time::Instant::now();
+                parse_cache_write(&key_owned, &to_write);
+                eprintln!("[profile] parse_cache_write: {:?}", t0.elapsed());
+            });
+        }
+
+        (
+            placements,
+            metadata,
+            ai_data,
+            bezier_per_brick,
+            bricks_no_offset,
+        )
+    };
 
     // Assign brick IDs
     let mut bricks: Vec<Brick> = Vec::new();

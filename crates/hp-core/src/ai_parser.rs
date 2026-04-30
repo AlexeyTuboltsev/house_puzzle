@@ -887,7 +887,7 @@ fn extract_vector_path(
 // ---------------------------------------------------------------------------
 
 /// A brick placement extracted from the AI file.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct BrickPlacement {
     pub name: String,
     pub layer_type: String,
@@ -1310,7 +1310,7 @@ pub fn parse_ai(
 }
 
 /// Metadata from AI parsing (canvas geometry, DPI, etc.)
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ParsedAiMetadata {
     pub canvas_width: i32,
     pub canvas_height: i32,
