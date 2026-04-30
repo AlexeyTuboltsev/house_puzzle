@@ -259,6 +259,10 @@ pub async fn load_pdf(
     if !file_path.exists() {
         return Err(format!("File not found: {path}"));
     }
+    eprintln!(
+        "[profile] load_pdf START: {} (canvas_height={canvas_height})",
+        file_path.display()
+    );
 
     // Generate a short session key
     let key = uuid::Uuid::new_v4().to_string()[..8].to_string();
