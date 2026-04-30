@@ -1,6 +1,7 @@
 //! In-memory session management.
 
 use hp_core::ai_parser::{AiPrivateData, BrickPlacement, LayerBlock, ParsedAiMetadata};
+use hp_core::bezier::BezierPath;
 use hp_core::types::{Brick, PuzzlePiece};
 use image::RgbaImage;
 use parking_lot::Mutex;
@@ -13,6 +14,10 @@ pub struct Session {
     pub bricks: Vec<Brick>,
     pub brick_placements: Vec<BrickPlacement>,
     pub brick_polygons: HashMap<String, Vec<[f64; 2]>>,
+    /// Bezier paths per brick in PyMuPDF coords (y-down). Source of
+    /// truth for brick / piece / blueprint outlines — preserves cubic
+    /// curves through the merge instead of tessellating to polygons.
+    pub brick_beziers: HashMap<String, Vec<BezierPath>>,
     pub brick_areas: HashMap<String, f64>,
     pub pieces: Vec<PuzzlePiece>,
     pub metadata: ParsedAiMetadata,

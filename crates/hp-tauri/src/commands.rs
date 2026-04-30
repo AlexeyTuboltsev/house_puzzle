@@ -1,7 +1,8 @@
 //! Tauri commands for the House Puzzle editor.
 
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
-use hp_core::{ai_parser, puzzle, render, types::Brick};
+use hp_core::{ai_parser, bezier::BezierPath, bezier_merge, puzzle, render, types::Brick};
+use rayon::prelude::*;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -137,13 +138,46 @@ pub async fn load_pdf(
 
     let (placements, metadata, ai_data) = parse_result;
 
+    // Bezier extraction is the per-brick bottleneck (PostScript path
+    // reparse per layer); run in parallel via rayon. Keeps cubic curves
+    // intact — required for the bezier merge to preserve arches and
+    // gradients on window/door bricks. Same pattern as the testbed.
+    let t0 = std::time::Instant::now();
+    let ai_raw_for_beziers = ai_data.raw.clone();
+    let placements_for_beziers: Vec<ai_parser::BrickPlacement> = placements.clone();
+    let metadata_for_beziers = metadata.clone();
+    let bezier_per_brick: Vec<Vec<BezierPath>> = tokio::task::spawn_blocking(move || {
+        placements_for_beziers
+            .par_iter()
+            .map(|p| {
+                let block = ai_parser::LayerBlock {
+                    name: p.name.clone(),
+                    begin: p.block_begin,
+                    end: p.block_end,
+                    depth: 0,
+                    children: Vec::new(),
+                };
+                ai_parser::extract_vector_path_bezier(
+                    &block,
+                    &ai_raw_for_beziers,
+                    metadata_for_beziers.offset_x,
+                    metadata_for_beziers.y_base,
+                )
+            })
+            .collect()
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    eprintln!("[profile] extract_vector_path_bezier (parallel): {:?}", t0.elapsed());
+
     // Assign brick IDs
     let mut bricks: Vec<Brick> = Vec::new();
     let mut brick_polygons: HashMap<String, Vec<[f64; 2]>> = HashMap::new();
+    let mut brick_beziers: HashMap<String, Vec<BezierPath>> = HashMap::new();
     let layer_blocks: HashMap<String, ai_parser::LayerBlock> = HashMap::new();
     let mut brick_layer_names: HashMap<String, String> = HashMap::new();
 
-    for p in placements.iter() {
+    for (i, p) in placements.iter().enumerate() {
         let id = if deterministic {
             use std::hash::{Hash, Hasher};
             let mut hasher = std::collections::hash_map::DefaultHasher::new();
@@ -164,6 +198,7 @@ pub async fn load_pdf(
         if let Some(poly) = &p.polygon {
             brick_polygons.insert(id.clone(), poly.clone());
         }
+        brick_beziers.insert(id.clone(), bezier_per_brick[i].clone());
         brick_layer_names.insert(id, p.name.clone());
     }
 
@@ -268,12 +303,17 @@ pub async fn load_pdf(
         render_bricks.retain(|(id, _)| !covered_ids.contains(id));
         for id in &covered_ids {
             brick_polygons.remove(id);
+            brick_beziers.remove(id);
         }
     }
 
-    // Recompute adjacency and areas
-    let adj = puzzle::build_adjacency_vector(&bricks, &brick_polygons, 15.0, 5.0, 2.0);
-    let brick_areas = puzzle::compute_polygon_areas(&bricks, &brick_polygons);
+    // Bezier-native adjacency + areas. `min_border` is in canvas pixels
+    // for UI consistency; convert to PyMu units for `build_adjacency_bezier`.
+    let scale = if metadata.render_dpi > 0.0 { metadata.render_dpi / 72.0 } else { 1.0 };
+    let min_border_px = 5.0;
+    let min_border_pymu = min_border_px / scale;
+    let adj = puzzle::build_adjacency_bezier(&bricks, &brick_beziers, min_border_pymu);
+    let brick_areas = puzzle::compute_bezier_areas(&bricks, &brick_beziers);
 
     let bricks_layer_arc = Arc::new(bricks_layer_img);
 
@@ -323,7 +363,11 @@ pub async fn load_pdf(
         t0.elapsed()
     );
 
-    // Build brick response data
+    // Build brick response data. `polygon` (legacy, brick-local px) stays
+    // for any consumers that haven't switched yet; `outline_paths` is the
+    // bezier-derived set of SVG path `d=` strings in canvas pixels.
+    let clip_x0 = metadata.clip_rect.0;
+    let clip_y0 = metadata.clip_rect.1;
     let brick_data: Vec<Value> = bricks
         .iter()
         .map(|b| {
@@ -335,6 +379,15 @@ pub async fn load_pdf(
                 .get(&b.id)
                 .map(|p| p.iter().map(|pt| json!([pt[0], pt[1]])).collect::<Vec<_>>())
                 .unwrap_or_default();
+            let outline_paths: Vec<String> = brick_beziers
+                .get(&b.id)
+                .map(|paths| {
+                    paths
+                        .iter()
+                        .map(|bp| bp.transform([-clip_x0, -clip_y0], scale).to_svg_d())
+                        .collect()
+                })
+                .unwrap_or_default();
             let layer_name = brick_layer_names.get(&b.id).cloned().unwrap_or_default();
             json!({
                 "id": b.id,
@@ -344,6 +397,7 @@ pub async fn load_pdf(
                 "layer_name": layer_name,
                 "neighbors": neighbors,
                 "polygon": polygon,
+                "outline_paths": outline_paths,
             })
         })
         .collect();
@@ -365,6 +419,7 @@ pub async fn load_pdf(
                 bricks,
                 brick_placements: placements,
                 brick_polygons,
+                brick_beziers,
                 brick_areas,
                 pieces: Vec::new(),
                 metadata: metadata.clone(),
@@ -423,18 +478,27 @@ pub async fn merge_pieces(
     // Optional: recompute mode — array of { id, brick_ids } objects.
     pieces: Option<Vec<Value>>,
 ) -> Result<Value, String> {
-    let (bricks, polygons, areas, extract_dir, bricks_layer_img, brick_rgba) = {
+    let (bricks, polygons, beziers, areas, extract_dir, bricks_layer_img, brick_rgba, scale, clip_x0, clip_y0) = {
         let store = sessions.lock();
         let session = store
             .get(&key)
             .ok_or_else(|| format!("Session not found: {key}"))?;
+        let scale = if session.metadata.render_dpi > 0.0 {
+            session.metadata.render_dpi / 72.0
+        } else {
+            1.0
+        };
         (
             session.bricks.clone(),
             session.brick_polygons.clone(),
+            session.brick_beziers.clone(),
             session.brick_areas.clone(),
             session.extract_dir.clone(),
             session.bricks_layer_img.clone(),
             session.brick_rgba.clone(),
+            scale,
+            session.metadata.clip_rect.0,
+            session.metadata.clip_rect.1,
         )
     };
 
@@ -481,16 +545,50 @@ pub async fn merge_pieces(
         // Normal merge
         let target = target_count.unwrap_or(60) as usize;
         let seed_val = seed.unwrap_or(42);
-        let min_b = min_border.unwrap_or(5.0);
-        let b_gap = border_gap.unwrap_or(2.0);
-        eprintln!("[merge] target_count={target} seed={seed_val} min_border={min_b} border_gap={b_gap} bricks={}", bricks.len());
-        let adj = puzzle::build_adjacency_vector(&bricks, &polygons, 15.0, min_b, b_gap);
+        // Bezier adjacency takes a single tolerance (`min_border` in PyMu
+        // units). UI sends pixels for consistency with the canvas; convert.
+        // `border_gap` is no longer used by bezier adjacency — accepted as
+        // a parameter for backward compat with older Elm builds.
+        let _ = border_gap;
+        let min_border_px = min_border.unwrap_or(5.0);
+        let min_border_pymu = min_border_px / scale;
+        eprintln!(
+            "[merge] target_count={target} seed={seed_val} min_border_px={min_border_px} \
+             (pymu={min_border_pymu:.4}) bricks={}",
+            bricks.len(),
+        );
+        let adj = puzzle::build_adjacency_bezier(&bricks, &beziers, min_border_pymu);
         let pieces = puzzle::merge_bricks(&bricks, target, seed_val, &adj, &areas);
         eprintln!("[merge] result: {} pieces", pieces.len());
         pieces
     };
 
-    // Compute piece polygons
+    // Per-piece bezier outlines. `merge_piece_bezier` walks each piece's
+    // brick beziers to a clean closed outline (preserves cubics; drops
+    // shared edges between bricks). Convert PyMu → canvas px and emit
+    // SVG path `d=` strings for the frontend.
+    let piece_outline_paths: HashMap<String, Vec<String>> = computed_pieces
+        .par_iter()
+        .map(|p| {
+            let mut input: Vec<BezierPath> = Vec::new();
+            for bid in &p.brick_ids {
+                if let Some(paths) = beziers.get(bid) {
+                    input.extend(paths.iter().cloned());
+                }
+            }
+            let merged = bezier_merge::merge_piece_bezier(&input);
+            let svg: Vec<String> = merged
+                .iter()
+                .map(|bp| bp.transform([-clip_x0, -clip_y0], scale).to_svg_d())
+                .collect();
+            (p.id.clone(), svg)
+        })
+        .collect();
+
+    // Legacy polygon piece outlines kept for the per-piece PNG renderer
+    // below (it expects flat polygons). The frontend gets `outline_paths`
+    // (bezier-derived) for SVG drawing and `polygon` for legacy click /
+    // hit-test consumers.
     let piece_polys =
         puzzle::compute_piece_polygons(&computed_pieces, &bricks_by_id, &polygons);
 
@@ -532,6 +630,10 @@ pub async fn merge_pieces(
                 .get(&p.id)
                 .map(|pts| pts.iter().map(|pt| json!([pt[0], pt[1]])).collect::<Vec<_>>())
                 .unwrap_or_default();
+            let outline_paths: Vec<&String> = piece_outline_paths
+                .get(&p.id)
+                .map(|v| v.iter().collect())
+                .unwrap_or_default();
             let img_path = extract_dir.join(format!("piece_{}.png", p.id)).to_string_lossy().to_string();
             let outline_path = extract_dir.join(format!("piece_outline_{}.png", p.id)).to_string_lossy().to_string();
             json!({
@@ -541,6 +643,7 @@ pub async fn merge_pieces(
                 "brick_ids": p.brick_ids,
                 "bricks": brick_refs,
                 "polygon": poly,
+                "outline_paths": outline_paths,
                 "img_url": img_path,
                 "outline_url": outline_path,
             })
