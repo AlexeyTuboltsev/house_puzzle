@@ -4722,16 +4722,60 @@ viewPieceOverlay appMode hoveredId selectedId selectedWaveId waves groups select
 
 viewGrid : Float -> Float -> String -> Float -> List (Svg.Svg Msg)
 viewGrid cw ch color houseUnitsHigh =
+    -- Spec (HArt puzzle editor sizes): one grid cell = 100×100 design
+    -- units, i.e. two standard 100×50 bricks stacked. Strong "screen"
+    -- lines every 22 cells = 2200 design units mark the play-field
+    -- boundaries. The export pipeline already speaks in Unity units
+    -- where one screen = 15.5 units, so we derive the pitch from there.
     let
-        gridStep =
-            ch / houseUnitsHigh
+        unityUnitsPerScreen =
+            15.5
 
-        -- Extend 1 unit beyond each side
+        cellsPerScreen =
+            22
+
+        screenStep =
+            if houseUnitsHigh > 0 then
+                ch / (houseUnitsHigh / unityUnitsPerScreen)
+
+            else
+                ch
+
+        gridStep =
+            screenStep / cellsPerScreen
+
+        -- Extend 1 cell beyond each side so the grid bleeds out of the canvas.
         numV =
             floor (cw / gridStep) + 1
 
         numH =
             floor (ch / gridStep) + 1
+
+        isScreenIdx i =
+            modBy cellsPerScreen i == 0
+
+        lineFor isScreen attrs =
+            Svg.line
+                ([ SA.stroke color
+                 , SA.strokeWidth
+                    (if isScreen then
+                        "2.5"
+
+                     else
+                        "1"
+                    )
+                 , SA.strokeOpacity
+                    (if isScreen then
+                        "1"
+
+                     else
+                        "0.45"
+                    )
+                 , attribute "vector-effect" "non-scaling-stroke"
+                 ]
+                    ++ attrs
+                )
+                []
 
         vLines =
             List.map
@@ -4740,16 +4784,12 @@ viewGrid cw ch color houseUnitsHigh =
                         x =
                             toFloat i * gridStep
                     in
-                    Svg.line
+                    lineFor (isScreenIdx i)
                         [ SA.x1 (String.fromFloat x)
                         , SA.y1 (String.fromFloat -gridStep)
                         , SA.x2 (String.fromFloat x)
                         , SA.y2 (String.fromFloat (ch + gridStep))
-                        , SA.stroke color
-                        , SA.strokeWidth "1"
-                        , attribute "vector-effect" "non-scaling-stroke"
                         ]
-                        []
                 )
                 (List.range -1 numV)
 
@@ -4760,16 +4800,12 @@ viewGrid cw ch color houseUnitsHigh =
                         y =
                             ch - toFloat i * gridStep
                     in
-                    Svg.line
+                    lineFor (isScreenIdx i)
                         [ SA.x1 (String.fromFloat -gridStep)
                         , SA.y1 (String.fromFloat y)
                         , SA.x2 (String.fromFloat (cw + gridStep))
                         , SA.y2 (String.fromFloat y)
-                        , SA.stroke color
-                        , SA.strokeWidth "1"
-                        , attribute "vector-effect" "non-scaling-stroke"
                         ]
-                        []
                 )
                 (List.range -1 numH)
     in

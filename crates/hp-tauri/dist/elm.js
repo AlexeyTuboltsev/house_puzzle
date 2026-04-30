@@ -10715,20 +10715,46 @@ var $author$project$Main$viewGreenHoverOverlay = F5(
 		}
 	});
 var $elm$svg$Svg$line = $elm$svg$Svg$trustedNode('line');
+var $elm$svg$Svg$Attributes$strokeOpacity = _VirtualDom_attribute('stroke-opacity');
 var $elm$svg$Svg$Attributes$x1 = _VirtualDom_attribute('x1');
 var $elm$svg$Svg$Attributes$x2 = _VirtualDom_attribute('x2');
 var $elm$svg$Svg$Attributes$y1 = _VirtualDom_attribute('y1');
 var $elm$svg$Svg$Attributes$y2 = _VirtualDom_attribute('y2');
 var $author$project$Main$viewGrid = F4(
 	function (cw, ch, color, houseUnitsHigh) {
-		var gridStep = ch / houseUnitsHigh;
+		var unityUnitsPerScreen = 15.5;
+		var screenStep = (houseUnitsHigh > 0) ? (ch / (houseUnitsHigh / unityUnitsPerScreen)) : ch;
+		var lineFor = F2(
+			function (isScreen, attrs) {
+				return A2(
+					$elm$svg$Svg$line,
+					_Utils_ap(
+						_List_fromArray(
+							[
+								$elm$svg$Svg$Attributes$stroke(color),
+								$elm$svg$Svg$Attributes$strokeWidth(
+								isScreen ? '2.5' : '1'),
+								$elm$svg$Svg$Attributes$strokeOpacity(
+								isScreen ? '1' : '0.45'),
+								A2($elm$html$Html$Attributes$attribute, 'vector-effect', 'non-scaling-stroke')
+							]),
+						attrs),
+					_List_Nil);
+			});
+		var cellsPerScreen = 22;
+		var gridStep = screenStep / cellsPerScreen;
 		var numH = $elm$core$Basics$floor(ch / gridStep) + 1;
+		var numV = $elm$core$Basics$floor(cw / gridStep) + 1;
+		var isScreenIdx = function (i) {
+			return !A2($elm$core$Basics$modBy, cellsPerScreen, i);
+		};
 		var hLines = A2(
 			$elm$core$List$map,
 			function (i) {
 				var y = ch - (i * gridStep);
 				return A2(
-					$elm$svg$Svg$line,
+					lineFor,
+					isScreenIdx(i),
 					_List_fromArray(
 						[
 							$elm$svg$Svg$Attributes$x1(
@@ -10738,21 +10764,17 @@ var $author$project$Main$viewGrid = F4(
 							$elm$svg$Svg$Attributes$x2(
 							$elm$core$String$fromFloat(cw + gridStep)),
 							$elm$svg$Svg$Attributes$y2(
-							$elm$core$String$fromFloat(y)),
-							$elm$svg$Svg$Attributes$stroke(color),
-							$elm$svg$Svg$Attributes$strokeWidth('1'),
-							A2($elm$html$Html$Attributes$attribute, 'vector-effect', 'non-scaling-stroke')
-						]),
-					_List_Nil);
+							$elm$core$String$fromFloat(y))
+						]));
 			},
 			A2($elm$core$List$range, -1, numH));
-		var numV = $elm$core$Basics$floor(cw / gridStep) + 1;
 		var vLines = A2(
 			$elm$core$List$map,
 			function (i) {
 				var x = i * gridStep;
 				return A2(
-					$elm$svg$Svg$line,
+					lineFor,
+					isScreenIdx(i),
 					_List_fromArray(
 						[
 							$elm$svg$Svg$Attributes$x1(
@@ -10762,12 +10784,8 @@ var $author$project$Main$viewGrid = F4(
 							$elm$svg$Svg$Attributes$x2(
 							$elm$core$String$fromFloat(x)),
 							$elm$svg$Svg$Attributes$y2(
-							$elm$core$String$fromFloat(ch + gridStep)),
-							$elm$svg$Svg$Attributes$stroke(color),
-							$elm$svg$Svg$Attributes$strokeWidth('1'),
-							A2($elm$html$Html$Attributes$attribute, 'vector-effect', 'non-scaling-stroke')
-						]),
-					_List_Nil);
+							$elm$core$String$fromFloat(ch + gridStep))
+						]));
 			},
 			A2($elm$core$List$range, -1, numV));
 		return _Utils_ap(vLines, hLines);
