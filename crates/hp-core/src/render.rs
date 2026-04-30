@@ -447,6 +447,55 @@ fn draw_line(img: &mut RgbaImage, x0: i32, y0: i32, x1: i32, y1: i32, color: Rgb
 
 /// Render a specific OCG layer to an RgbaImage (for in-memory use).
 /// Uses pure FFI rendering to ensure OCG layer state is respected.
+/// Render the page with the given OCG layer toggled on, returning the
+/// raw MuPDF pixmap (and its pixel dimensions). The pixmap is what's
+/// expensive — it's the full MuPDF rasterization. The caller can then
+/// compose it onto a canvas at any offset / clip without re-rendering.
+pub fn render_ocg_layer_pixmap(
+    ai_path: &Path,
+    layer_name: &str,
+    dpi: f64,
+) -> Option<(RgbaImage, u32, u32)> {
+    use crate::mupdf_ffi;
+
+    let (rgba, pw, ph) = mupdf_ffi::render_page_with_ocg(
+        ai_path.to_str()?, layer_name, dpi,
+    )?;
+    let full_img = RgbaImage::from_raw(pw, ph, rgba)?;
+    Some((full_img, pw, ph))
+}
+
+/// Cheap step: paste an already-rendered pixmap onto a canvas-sized
+/// RGBA at a given clip + offset. Decoupled from the MuPDF render so
+/// the caller can re-overlay with a corrected `pdf_offset_px` after
+/// detecting it from the first compose, without paying for another
+/// full-page rasterization.
+pub fn compose_ocg_canvas(
+    full_img: &RgbaImage,
+    layer_name: &str,
+    dpi: f64,
+    clip_rect: (f64, f64, f64, f64),
+    canvas_width: u32,
+    canvas_height: u32,
+    pdf_offset_px: (i32, i32),
+) -> RgbaImage {
+    let scale = dpi / 72.0;
+    let cx = (clip_rect.0 * scale).round() as i64;
+    let cy = (clip_rect.1 * scale).round() as i64;
+    let dx = pdf_offset_px.0 as i64;
+    let dy = pdf_offset_px.1 as i64;
+
+    eprintln!("[compose_ocg] layer={layer_name} dpi={dpi:.1} canvas={canvas_width}x{canvas_height} clip_px=({cx},{cy}) offset=({dx},{dy}) overlay_at=({},{})",
+        -(cx - dx), -(cy - dy));
+
+    let mut canvas = RgbaImage::new(canvas_width, canvas_height);
+    image::imageops::overlay(&mut canvas, full_img, -(cx - dx), -(cy - dy));
+    canvas
+}
+
+/// Render-and-compose in one call. Convenience wrapper for callers
+/// that don't need to re-overlay (lights, background — they call this
+/// once with offset already known).
 pub fn render_ocg_layer_image(
     ai_path: &Path,
     layer_name: &str,
@@ -456,26 +505,10 @@ pub fn render_ocg_layer_image(
     canvas_height: u32,
     pdf_offset_px: (i32, i32),
 ) -> Option<RgbaImage> {
-    use crate::mupdf_ffi;
-
-    let (rgba, pw, ph) = mupdf_ffi::render_page_with_ocg(
-        ai_path.to_str()?, layer_name, dpi,
-    )?;
-
-    let full_img = RgbaImage::from_raw(pw, ph, rgba)?;
-
-    let scale = dpi / 72.0;
-    let cx = (clip_rect.0 * scale).round() as i64;
-    let cy = (clip_rect.1 * scale).round() as i64;
-    let dx = pdf_offset_px.0 as i64;
-    let dy = pdf_offset_px.1 as i64;
-
-    eprintln!("[render_ocg] layer={layer_name} dpi={dpi:.1} rendered={pw}x{ph} canvas={canvas_width}x{canvas_height} clip_px=({cx},{cy}) offset=({dx},{dy}) overlay_at=({},{})",
-        -(cx - dx), -(cy - dy));
-
-    let mut canvas = RgbaImage::new(canvas_width, canvas_height);
-    image::imageops::overlay(&mut canvas, &full_img, -(cx - dx), -(cy - dy));
-    Some(canvas)
+    let (full_img, _, _) = render_ocg_layer_pixmap(ai_path, layer_name, dpi)?;
+    Some(compose_ocg_canvas(
+        &full_img, layer_name, dpi, clip_rect, canvas_width, canvas_height, pdf_offset_px,
+    ))
 }
 
 /// Render OCG layer and save to PNG file.
