@@ -11361,11 +11361,6 @@ var $author$project$Main$viewMainSvg = F2(
 					A2($elm$core$Dict$get, piece.id, piecePositions));
 			},
 			visiblePieces) : _List_Nil;
-		var outlineLayer = model.showOnlyBlueprint ? _List_Nil : ((isGenerated && (model.editMode || (model.showOutlines && (_Utils_eq(model.appMode, $author$project$Main$ModePieces) || (_Utils_eq(model.appMode, $author$project$Main$ModeGroups) || (_Utils_eq(model.appMode, $author$project$Main$ModeWaves) || _Utils_eq(model.appMode, $author$project$Main$ModeExport))))))) ? A2(
-			$elm$core$List$map,
-			$author$project$Main$viewPieceOutline(
-				A2($author$project$Main$waveColor, model.outlineHue, 1.0)),
-			visiblePieces) : _List_Nil);
 		var greenPieceOutlineLayer = function () {
 			if (model.editMode) {
 				var _v5 = model.hoveredPieceId;
@@ -11676,12 +11671,18 @@ var $author$project$Main$viewMainSvg = F2(
 					]),
 				_List_Nil)
 			]) : _List_Nil;
-		var blueprintLayer = (isGenerated && ((!model.editMode) || model.showOnlyBlueprint)) ? A2($elm$core$List$map, $author$project$Main$viewPieceBlueprintPath, model.pieces) : _List_Nil;
+		var blueprintMode = isGenerated && model.showOnlyBlueprint;
+		var outlineLayer = blueprintMode ? _List_Nil : ((isGenerated && (model.editMode || (model.showOutlines && (_Utils_eq(model.appMode, $author$project$Main$ModePieces) || (_Utils_eq(model.appMode, $author$project$Main$ModeGroups) || (_Utils_eq(model.appMode, $author$project$Main$ModeWaves) || _Utils_eq(model.appMode, $author$project$Main$ModeExport))))))) ? A2(
+			$elm$core$List$map,
+			$author$project$Main$viewPieceOutline(
+				A2($author$project$Main$waveColor, model.outlineHue, 1.0)),
+			visiblePieces) : _List_Nil);
+		var blueprintLayer = (isGenerated && ((!model.editMode) || blueprintMode)) ? A2($elm$core$List$map, $author$project$Main$viewPieceBlueprintPath, model.pieces) : _List_Nil;
 		var bgImageLayer = function () {
 			var _v0 = response.blueprintBgUrl;
 			if (_v0.$ === 'Just') {
 				var url = _v0.a;
-				return (model.showOnlyBlueprint || _Utils_eq(model.appMode, $author$project$Main$ModeWaves)) ? _List_fromArray(
+				return (blueprintMode || _Utils_eq(model.appMode, $author$project$Main$ModeWaves)) ? _List_fromArray(
 					[
 						A2(
 						$elm$svg$Svg$image,
@@ -11700,7 +11701,7 @@ var $author$project$Main$viewMainSvg = F2(
 				return _List_Nil;
 			}
 		}();
-		var baseLayer = model.showOnlyBlueprint ? _List_Nil : (model.editMode ? (response.hasComposite ? _List_fromArray(
+		var baseLayer = blueprintMode ? _List_Nil : (model.editMode ? (response.hasComposite ? _List_fromArray(
 			[
 				A2(
 				$elm$svg$Svg$image,

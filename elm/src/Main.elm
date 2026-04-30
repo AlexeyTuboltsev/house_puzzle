@@ -3691,17 +3691,23 @@ viewMainSvg response model =
         -- "Only blueprint" is on, so the editor still has the blue+white
         -- backdrop while the green selection overlays render on top.
         blueprintLayer =
-            if isGenerated && ((not model.editMode) || model.showOnlyBlueprint) then
+            if isGenerated && ((not model.editMode) || blueprintMode) then
                 List.map viewPieceBlueprintPath model.pieces
 
             else
                 []
 
-        -- Base layer (on top of blueprint). When `showOnlyBlueprint` is on,
-        -- we skip the composite imagery entirely so just the blueprint
-        -- outlines remain visible (still clickable, draggable, etc.).
+        -- Base layer (on top of blueprint). When `showOnlyBlueprint` is
+        -- on AND the puzzle has been generated, we skip the composite
+        -- imagery so just the blueprint outlines remain (still
+        -- clickable, draggable, etc.). Pre-generation we always show
+        -- the raster composite — there's no blueprint to fall back on
+        -- in the import stage.
+        blueprintMode =
+            isGenerated && model.showOnlyBlueprint
+
         baseLayer =
-            if model.showOnlyBlueprint then
+            if blueprintMode then
                 []
 
             else if model.editMode then
@@ -3744,7 +3750,7 @@ viewMainSvg response model =
         bgImageLayer =
             case response.blueprintBgUrl of
                 Just url ->
-                    if model.showOnlyBlueprint || model.appMode == ModeWaves then
+                    if blueprintMode || model.appMode == ModeWaves then
                         [ Svg.image
                             [ SA.x "0"
                             , SA.y "0"
@@ -3888,7 +3894,7 @@ viewMainSvg response model =
 
         -- Piece outlines (post-gen, pieces/waves mode only; always shown in edit mode so blue outlines stay visible)
         outlineLayer =
-            if model.showOnlyBlueprint then
+            if blueprintMode then
                 -- "Only blueprint" mode: the white blueprint outlines on the
                 -- blue background already represent each piece — colored
                 -- outlines on top would dirty the look, so suppress them.
