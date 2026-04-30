@@ -10221,7 +10221,6 @@ var $author$project$Main$LassoStart = F2(
 	function (a, b) {
 		return {$: 'LassoStart', a: a, b: b};
 	});
-var $author$project$Main$ModeBlueprint = {$: 'ModeBlueprint'};
 var $author$project$Main$ModeExport = {$: 'ModeExport'};
 var $elm$virtual_dom$VirtualDom$attribute = F2(
 	function (key, value) {
@@ -11344,11 +11343,11 @@ var $author$project$Main$viewMainSvg = F2(
 					A2($elm$core$Dict$get, piece.id, piecePositions));
 			},
 			visiblePieces) : _List_Nil;
-		var outlineLayer = (isGenerated && (model.editMode || (model.showOutlines && (_Utils_eq(model.appMode, $author$project$Main$ModePieces) || (_Utils_eq(model.appMode, $author$project$Main$ModeGroups) || (_Utils_eq(model.appMode, $author$project$Main$ModeWaves) || _Utils_eq(model.appMode, $author$project$Main$ModeExport))))))) ? A2(
+		var outlineLayer = model.showOnlyBlueprint ? _List_Nil : ((isGenerated && (model.editMode || (model.showOutlines && (_Utils_eq(model.appMode, $author$project$Main$ModePieces) || (_Utils_eq(model.appMode, $author$project$Main$ModeGroups) || (_Utils_eq(model.appMode, $author$project$Main$ModeWaves) || _Utils_eq(model.appMode, $author$project$Main$ModeExport))))))) ? A2(
 			$elm$core$List$map,
 			$author$project$Main$viewPieceOutline(
 				A2($author$project$Main$waveColor, model.outlineHue, 1.0)),
-			visiblePieces) : _List_Nil;
+			visiblePieces) : _List_Nil);
 		var greenPieceOutlineLayer = function () {
 			if (model.editMode) {
 				var _v5 = model.hoveredPieceId;
@@ -11664,7 +11663,7 @@ var $author$project$Main$viewMainSvg = F2(
 			var _v0 = response.blueprintBgUrl;
 			if (_v0.$ === 'Just') {
 				var url = _v0.a;
-				return (_Utils_eq(model.appMode, $author$project$Main$ModeBlueprint) || _Utils_eq(model.appMode, $author$project$Main$ModeWaves)) ? _List_fromArray(
+				return (model.showOnlyBlueprint || _Utils_eq(model.appMode, $author$project$Main$ModeWaves)) ? _List_fromArray(
 					[
 						A2(
 						$elm$svg$Svg$image,
@@ -12075,12 +12074,30 @@ var $author$project$Main$viewStatusBadge = function (model) {
 					]));
 	}
 };
+var $author$project$Main$RequestExport = {$: 'RequestExport'};
+var $author$project$Main$SetExportHouseName = function (a) {
+	return {$: 'SetExportHouseName', a: a};
+};
+var $author$project$Main$SetExportLocation = function (a) {
+	return {$: 'SetExportLocation', a: a};
+};
+var $author$project$Main$SetExportPosition = function (a) {
+	return {$: 'SetExportPosition', a: a};
+};
+var $author$project$Main$SetExportSpacing = function (a) {
+	return {$: 'SetExportSpacing', a: a};
+};
+var $elm$html$Html$label = _VirtualDom_node('label');
+var $author$project$Main$locations = _List_fromArray(
+	['Tutorial', 'Rome', 'Athens', 'Amsterdam', 'Paris', 'Palermo', 'Venice', 'Frankfurt', 'New York', 'Prague']);
+var $elm$html$Html$select = _VirtualDom_node('select');
+var $elm$html$Html$Attributes$selected = $elm$html$Html$Attributes$boolProperty('selected');
+var $elm$html$Html$Attributes$title = $elm$html$Html$Attributes$stringProperty('title');
 var $author$project$Main$ToggleGrid = function (a) {
 	return {$: 'ToggleGrid', a: a};
 };
 var $elm$html$Html$Attributes$checked = $elm$html$Html$Attributes$boolProperty('checked');
 var $elm$html$Html$Attributes$for = $elm$html$Html$Attributes$stringProperty('htmlFor');
-var $elm$html$Html$label = _VirtualDom_node('label');
 var $elm$html$Html$Events$targetChecked = A2(
 	$elm$json$Json$Decode$at,
 	_List_fromArray(
@@ -12098,7 +12115,6 @@ var $author$project$Main$StartColorPick = F3(
 	});
 var $elm$virtual_dom$VirtualDom$style = _VirtualDom_style;
 var $elm$html$Html$Attributes$style = $elm$virtual_dom$VirtualDom$style;
-var $elm$html$Html$Attributes$title = $elm$html$Html$Attributes$stringProperty('title');
 var $author$project$Main$viewGridColorSwatch = function (model) {
 	return A2(
 		$elm$html$Html$span,
@@ -12192,63 +12208,6 @@ var $author$project$Main$viewCheckboxLights = function (model) {
 					]))
 			]));
 };
-var $elm$html$Html$h3 = _VirtualDom_node('h3');
-var $author$project$Main$viewSectionTitle = function (title) {
-	return A2(
-		$elm$html$Html$h3,
-		_List_fromArray(
-			[
-				$elm$html$Html$Attributes$class('section-title')
-			]),
-		_List_fromArray(
-			[
-				$elm$html$Html$text(title)
-			]));
-};
-var $author$project$Main$viewTogglesBox = function (children) {
-	return A2(
-		$elm$html$Html$div,
-		_List_fromArray(
-			[
-				$elm$html$Html$Attributes$class('toggles-box')
-			]),
-		children);
-};
-var $author$project$Main$viewBlueprintTools = function (model) {
-	return A2(
-		$elm$html$Html$div,
-		_List_fromArray(
-			[
-				$elm$html$Html$Attributes$class('tools-pane')
-			]),
-		_List_fromArray(
-			[
-				$author$project$Main$viewTogglesBox(
-				_List_fromArray(
-					[
-						$author$project$Main$viewCheckboxLights(model),
-						$author$project$Main$viewCheckboxGrid(model)
-					])),
-				$author$project$Main$viewSectionTitle('Blueprint')
-			]));
-};
-var $author$project$Main$RequestExport = {$: 'RequestExport'};
-var $author$project$Main$SetExportHouseName = function (a) {
-	return {$: 'SetExportHouseName', a: a};
-};
-var $author$project$Main$SetExportLocation = function (a) {
-	return {$: 'SetExportLocation', a: a};
-};
-var $author$project$Main$SetExportPosition = function (a) {
-	return {$: 'SetExportPosition', a: a};
-};
-var $author$project$Main$SetExportSpacing = function (a) {
-	return {$: 'SetExportSpacing', a: a};
-};
-var $author$project$Main$locations = _List_fromArray(
-	['Tutorial', 'Rome', 'Athens', 'Amsterdam', 'Paris', 'Palermo', 'Venice', 'Frankfurt', 'New York', 'Prague']);
-var $elm$html$Html$select = _VirtualDom_node('select');
-var $elm$html$Html$Attributes$selected = $elm$html$Html$Attributes$boolProperty('selected');
 var $author$project$Main$ToggleNumbers = function (a) {
 	return {$: 'ToggleNumbers', a: a};
 };
@@ -12320,12 +12279,33 @@ var $author$project$Main$viewCheckboxOnlyBlueprint = function (model) {
 var $author$project$Main$ToggleOutlines = function (a) {
 	return {$: 'ToggleOutlines', a: a};
 };
+var $elm$core$Tuple$second = function (_v0) {
+	var y = _v0.b;
+	return y;
+};
+var $elm$html$Html$Attributes$classList = function (classes) {
+	return $elm$html$Html$Attributes$class(
+		A2(
+			$elm$core$String$join,
+			' ',
+			A2(
+				$elm$core$List$map,
+				$elm$core$Tuple$first,
+				A2($elm$core$List$filter, $elm$core$Tuple$second, classes))));
+};
 var $author$project$Main$viewCheckboxOutlines = function (model) {
 	return A2(
 		$elm$html$Html$div,
 		_List_fromArray(
 			[
-				$elm$html$Html$Attributes$class('checkbox-group')
+				$elm$html$Html$Attributes$classList(
+				_List_fromArray(
+					[
+						_Utils_Tuple2('checkbox-group', true),
+						_Utils_Tuple2('disabled', model.showOnlyBlueprint)
+					])),
+				$elm$html$Html$Attributes$title(
+				model.showOnlyBlueprint ? 'Disabled while \"Only blueprint\" is on' : '')
 			]),
 		_List_fromArray(
 			[
@@ -12336,6 +12316,7 @@ var $author$project$Main$viewCheckboxOutlines = function (model) {
 						$elm$html$Html$Attributes$type_('checkbox'),
 						$elm$html$Html$Attributes$id('cbOutlines'),
 						$elm$html$Html$Attributes$checked(model.showOutlines),
+						$elm$html$Html$Attributes$disabled(model.showOnlyBlueprint),
 						$elm$html$Html$Events$onCheck($author$project$Main$ToggleOutlines)
 					]),
 				_List_Nil),
@@ -12409,6 +12390,28 @@ var $author$project$Main$viewCheckboxWaveOverlay = function (model) {
 						$elm$html$Html$text('Show wave overlays')
 					]))
 			]));
+};
+var $elm$html$Html$h3 = _VirtualDom_node('h3');
+var $author$project$Main$viewSectionTitle = function (title) {
+	return A2(
+		$elm$html$Html$h3,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('section-title')
+			]),
+		_List_fromArray(
+			[
+				$elm$html$Html$text(title)
+			]));
+};
+var $author$project$Main$viewTogglesBox = function (children) {
+	return A2(
+		$elm$html$Html$div,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('toggles-box')
+			]),
+		children);
 };
 var $author$project$Main$viewExportTools = function (model) {
 	var assignedIds = A2(
@@ -13051,20 +13054,6 @@ var $author$project$Main$SelectGroup = function (a) {
 var $author$project$Main$ToggleGroupLock = function (a) {
 	return {$: 'ToggleGroupLock', a: a};
 };
-var $elm$core$Tuple$second = function (_v0) {
-	var y = _v0.b;
-	return y;
-};
-var $elm$html$Html$Attributes$classList = function (classes) {
-	return $elm$html$Html$Attributes$class(
-		A2(
-			$elm$core$String$join,
-			' ',
-			A2(
-				$elm$core$List$map,
-				$elm$core$Tuple$first,
-				A2($elm$core$List$filter, $elm$core$Tuple$second, classes))));
-};
 var $author$project$Main$iconLockClosed = A2(
 	$elm$svg$Svg$svg,
 	_List_fromArray(
@@ -13112,10 +13101,6 @@ var $elm$html$Html$Events$preventDefaultOn = F2(
 			$elm$virtual_dom$VirtualDom$on,
 			event,
 			$elm$virtual_dom$VirtualDom$MayPreventDefault(decoder));
-	});
-var $author$project$Main$thumbUrl = F2(
-	function (showBlueprint, piece) {
-		return (showBlueprint && (!$elm$core$String$isEmpty(piece.outlineUrl))) ? piece.outlineUrl : piece.imgUrl;
 	});
 var $author$project$Main$DragEnterPiece = function (a) {
 	return {$: 'DragEnterPiece', a: a};
@@ -13431,10 +13416,7 @@ var $author$project$Main$viewGroupRow = F3(
 										model.hoveredPieceId,
 										model.selectedPieceId,
 										pid,
-										A2(
-											$author$project$Main$cacheBust,
-											A2($author$project$Main$thumbUrl, model.showOnlyBlueprint, piece),
-											model.pieceGeneration),
+										A2($author$project$Main$cacheBust, piece.imgUrl, model.pieceGeneration),
 										$elm$core$Maybe$Nothing);
 								},
 								$elm$core$List$head(
@@ -13529,10 +13511,7 @@ var $author$project$Main$viewGroupUnassignedRow = F2(
 								model.hoveredPieceId,
 								model.selectedPieceId,
 								p.id,
-								A2(
-									$author$project$Main$cacheBust,
-									A2($author$project$Main$thumbUrl, model.showOnlyBlueprint, p),
-									model.pieceGeneration),
+								A2($author$project$Main$cacheBust, p.imgUrl, model.pieceGeneration),
 								$elm$core$Maybe$Nothing);
 						},
 						unassignedPieces))
@@ -13836,130 +13815,110 @@ var $author$project$Main$DragEnterWave = function (a) {
 var $author$project$Main$DropOnWave = function (a) {
 	return {$: 'DropOnWave', a: a};
 };
-var $author$project$Main$viewGroupThumb = function (maybeWaveId) {
-	return function (hoveredId) {
-		return function (selectedId) {
-			return function (maybeGroup) {
-				return function (piece) {
-					return function (allIds) {
-						return function (generation) {
-							return function (maybePos) {
-								return function (isLocked) {
-									return function (showBlueprint) {
-										var n = $elm$core$List$length(allIds);
-										var isSelected = _Utils_eq(
-											selectedId,
-											$elm$core$Maybe$Just(piece.id));
-										var isHovered = _Utils_eq(
-											hoveredId,
-											$elm$core$Maybe$Just(piece.id));
-										var dragAttrs = isLocked ? _List_Nil : _List_fromArray(
-											[
-												A2($elm$html$Html$Attributes$attribute, 'draggable', 'true'),
-												A2(
-												$elm$html$Html$Events$on,
-												'dragstart',
-												$elm$json$Json$Decode$succeed(
-													$author$project$Main$DragPieceStart(piece.id))),
-												A2(
-												$elm$html$Html$Events$on,
-												'dragend',
-												$elm$json$Json$Decode$succeed($author$project$Main$DragPieceEnd)),
-												A2(
-												$elm$html$Html$Events$stopPropagationOn,
-												'dragenter',
-												$elm$json$Json$Decode$succeed(
-													_Utils_Tuple2(
-														$author$project$Main$DragEnterPiece(piece.id),
-														true)))
-											]);
-										var clickMsg = function () {
-											var _v1 = _Utils_Tuple2(maybeGroup, maybeWaveId);
-											if ((_v1.a.$ === 'Just') && (_v1.b.$ === 'Just')) {
-												var g = _v1.a.a;
-												var wid = _v1.b.a;
-												return A2($author$project$Main$AssignGroupToWave, g.id, wid);
-											} else {
-												return $author$project$Main$NoOp;
-											}
-										}();
-										return A2(
-											$elm$html$Html$div,
-											_Utils_ap(
-												_List_fromArray(
-													[
-														$elm$html$Html$Attributes$classList(
-														_List_fromArray(
-															[
-																_Utils_Tuple2('piece-thumb', true),
-																_Utils_Tuple2('hovered', isHovered),
-																_Utils_Tuple2('selected', isSelected)
-															])),
-														A2($elm$html$Html$Attributes$attribute, 'data-piece-id', piece.id),
-														$elm$html$Html$Events$onMouseEnter(
-														$author$project$Main$SetHoveredPiece(
-															$elm$core$Maybe$Just(piece.id))),
-														$elm$html$Html$Events$onMouseLeave(
-														$author$project$Main$SetHoveredPiece($elm$core$Maybe$Nothing)),
-														$elm$html$Html$Events$onClick(clickMsg)
-													]),
-												dragAttrs),
-											_List_fromArray(
-												[
-													A2(
-													$elm$html$Html$img,
-													_List_fromArray(
-														[
-															$elm$html$Html$Attributes$src(
-															A2(
-																$author$project$Main$cacheBust,
-																A2($author$project$Main$thumbUrl, showBlueprint, piece),
-																generation)),
-															A2($elm$html$Html$Attributes$style, 'max-height', '48px'),
-															A2($elm$html$Html$Attributes$style, 'max-width', '80px'),
-															A2($elm$html$Html$Attributes$style, 'display', 'block')
-														]),
-													_List_Nil),
-													function () {
-													if (maybePos.$ === 'Just') {
-														var pos = maybePos.a;
-														return A2(
-															$elm$html$Html$div,
-															_List_fromArray(
-																[
-																	$elm$html$Html$Attributes$class('piece-thumb-pos')
-																]),
-															_List_fromArray(
-																[
-																	$elm$html$Html$text(
-																	$elm$core$String$fromInt(pos))
-																]));
-													} else {
-														return $elm$html$Html$text('');
-													}
-												}(),
-													(n > 1) ? A2(
-													$elm$html$Html$div,
-													_List_fromArray(
-														[
-															$elm$html$Html$Attributes$class('group-xn-badge group-xn-badge-bottom')
-														]),
-													_List_fromArray(
-														[
-															$elm$html$Html$text(
-															'x' + $elm$core$String$fromInt(n))
-														])) : $elm$html$Html$text('')
-												]));
-									};
-								};
-							};
-						};
-					};
-				};
-			};
-		};
-	};
-};
+var $author$project$Main$viewGroupThumb = F9(
+	function (maybeWaveId, hoveredId, selectedId, maybeGroup, piece, allIds, generation, maybePos, isLocked) {
+		var n = $elm$core$List$length(allIds);
+		var isSelected = _Utils_eq(
+			selectedId,
+			$elm$core$Maybe$Just(piece.id));
+		var isHovered = _Utils_eq(
+			hoveredId,
+			$elm$core$Maybe$Just(piece.id));
+		var dragAttrs = isLocked ? _List_Nil : _List_fromArray(
+			[
+				A2($elm$html$Html$Attributes$attribute, 'draggable', 'true'),
+				A2(
+				$elm$html$Html$Events$on,
+				'dragstart',
+				$elm$json$Json$Decode$succeed(
+					$author$project$Main$DragPieceStart(piece.id))),
+				A2(
+				$elm$html$Html$Events$on,
+				'dragend',
+				$elm$json$Json$Decode$succeed($author$project$Main$DragPieceEnd)),
+				A2(
+				$elm$html$Html$Events$stopPropagationOn,
+				'dragenter',
+				$elm$json$Json$Decode$succeed(
+					_Utils_Tuple2(
+						$author$project$Main$DragEnterPiece(piece.id),
+						true)))
+			]);
+		var clickMsg = function () {
+			var _v1 = _Utils_Tuple2(maybeGroup, maybeWaveId);
+			if ((_v1.a.$ === 'Just') && (_v1.b.$ === 'Just')) {
+				var g = _v1.a.a;
+				var wid = _v1.b.a;
+				return A2($author$project$Main$AssignGroupToWave, g.id, wid);
+			} else {
+				return $author$project$Main$NoOp;
+			}
+		}();
+		return A2(
+			$elm$html$Html$div,
+			_Utils_ap(
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$classList(
+						_List_fromArray(
+							[
+								_Utils_Tuple2('piece-thumb', true),
+								_Utils_Tuple2('hovered', isHovered),
+								_Utils_Tuple2('selected', isSelected)
+							])),
+						A2($elm$html$Html$Attributes$attribute, 'data-piece-id', piece.id),
+						$elm$html$Html$Events$onMouseEnter(
+						$author$project$Main$SetHoveredPiece(
+							$elm$core$Maybe$Just(piece.id))),
+						$elm$html$Html$Events$onMouseLeave(
+						$author$project$Main$SetHoveredPiece($elm$core$Maybe$Nothing)),
+						$elm$html$Html$Events$onClick(clickMsg)
+					]),
+				dragAttrs),
+			_List_fromArray(
+				[
+					A2(
+					$elm$html$Html$img,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$src(
+							A2($author$project$Main$cacheBust, piece.imgUrl, generation)),
+							A2($elm$html$Html$Attributes$style, 'max-height', '48px'),
+							A2($elm$html$Html$Attributes$style, 'max-width', '80px'),
+							A2($elm$html$Html$Attributes$style, 'display', 'block')
+						]),
+					_List_Nil),
+					function () {
+					if (maybePos.$ === 'Just') {
+						var pos = maybePos.a;
+						return A2(
+							$elm$html$Html$div,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('piece-thumb-pos')
+								]),
+							_List_fromArray(
+								[
+									$elm$html$Html$text(
+									$elm$core$String$fromInt(pos))
+								]));
+					} else {
+						return $elm$html$Html$text('');
+					}
+				}(),
+					(n > 1) ? A2(
+					$elm$html$Html$div,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('group-xn-badge group-xn-badge-bottom')
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text(
+							'x' + $elm$core$String$fromInt(n))
+						])) : $elm$html$Html$text('')
+				]));
+	});
 var $author$project$Main$viewUnassignedRow = F2(
 	function (model, unassignedPieces) {
 		return $elm$core$List$isEmpty(model.pieces) ? $elm$html$Html$text('') : A2(
@@ -14046,10 +14005,7 @@ var $author$project$Main$viewUnassignedRow = F2(
 											model.hoveredPieceId,
 											model.selectedPieceId,
 											p.id,
-											A2(
-												$author$project$Main$cacheBust,
-												A2($author$project$Main$thumbUrl, model.showOnlyBlueprint, p),
-												model.pieceGeneration),
+											A2($author$project$Main$cacheBust, p.imgUrl, model.pieceGeneration),
 											$elm$core$Maybe$Nothing);
 									},
 									$elm$core$List$head(
@@ -14065,14 +14021,23 @@ var $author$project$Main$viewUnassignedRow = F2(
 								return A2(
 									$elm$core$Maybe$map,
 									function (p) {
-										return $author$project$Main$viewGroupThumb(model.selectedWaveId)(model.hoveredPieceId)(model.selectedPieceId)(
+										return A9(
+											$author$project$Main$viewGroupThumb,
+											model.selectedWaveId,
+											model.hoveredPieceId,
+											model.selectedPieceId,
 											$elm$core$List$head(
 												A2(
 													$elm$core$List$filter,
 													function (g) {
 														return A2($elm$core$List$member, repId, g.pieceIds);
 													},
-													model.groups)))(p)(allIds)(model.pieceGeneration)($elm$core$Maybe$Nothing)(false)(model.showOnlyBlueprint);
+													model.groups)),
+											p,
+											allIds,
+											model.pieceGeneration,
+											$elm$core$Maybe$Nothing,
+											false);
 									},
 									$elm$core$List$head(
 										A2(
@@ -14652,10 +14617,7 @@ var $author$project$Main$viewWaveRow = F4(
 											model.hoveredPieceId,
 											model.selectedPieceId,
 											pid,
-											A2(
-												$author$project$Main$cacheBust,
-												A2($author$project$Main$thumbUrl, model.showOnlyBlueprint, piece),
-												model.pieceGeneration),
+											A2($author$project$Main$cacheBust, piece.imgUrl, model.pieceGeneration),
 											$elm$core$Maybe$Just(pos));
 									},
 									$elm$core$List$head(
@@ -14671,16 +14633,23 @@ var $author$project$Main$viewWaveRow = F4(
 								return A2(
 									$elm$core$Maybe$map,
 									function (piece) {
-										return $author$project$Main$viewGroupThumb(
-											$elm$core$Maybe$Just(wave.id))(model.hoveredPieceId)(model.selectedPieceId)(
+										return A9(
+											$author$project$Main$viewGroupThumb,
+											$elm$core$Maybe$Just(wave.id),
+											model.hoveredPieceId,
+											model.selectedPieceId,
 											$elm$core$List$head(
 												A2(
 													$elm$core$List$filter,
 													function (g) {
 														return A2($elm$core$List$member, repId, g.pieceIds);
 													},
-													model.groups)))(piece)(allIds)(model.pieceGeneration)(
-											$elm$core$Maybe$Just(pos))(wave.locked)(model.showOnlyBlueprint);
+													model.groups)),
+											piece,
+											allIds,
+											model.pieceGeneration,
+											$elm$core$Maybe$Just(pos),
+											wave.locked);
 									},
 									$elm$core$List$head(
 										A2(
@@ -14833,8 +14802,6 @@ var $author$project$Main$viewToolsCol = F2(
 							return A2($author$project$Main$viewGenerateTools, model, response);
 						case 'ModePieces':
 							return $author$project$Main$viewPiecesTools(model);
-						case 'ModeBlueprint':
-							return $author$project$Main$viewBlueprintTools(model);
 						case 'ModeGroups':
 							return $author$project$Main$viewGroupsTools(model);
 						case 'ModeWaves':
@@ -14939,121 +14906,101 @@ var $author$project$Main$viewBody = function (model) {
 var $author$project$Main$ScrollTrayBy = function (a) {
 	return {$: 'ScrollTrayBy', a: a};
 };
-var $author$project$Main$viewWaveTrayThumb = function (piece) {
-	return function (isLocked) {
-		return function (scale) {
-			return function (hoveredId) {
-				return function (selectedId) {
-					return function (generation) {
-						return function (showNum) {
-							return function (showOnlyBlueprint) {
-								return function (pos) {
-									return function (maybeGroupN) {
-										var widthCss = $elm$core$String$fromFloat(piece.width * scale) + 'px';
-										var isSelected = _Utils_eq(
-											selectedId,
-											$elm$core$Maybe$Just(piece.id));
-										var isHovered = _Utils_eq(
-											hoveredId,
-											$elm$core$Maybe$Just(piece.id));
-										var dragAttrs = isLocked ? _List_Nil : _List_fromArray(
-											[
-												A2($elm$html$Html$Attributes$attribute, 'draggable', 'true'),
-												A2(
-												$elm$html$Html$Events$on,
-												'dragstart',
-												$elm$json$Json$Decode$succeed(
-													$author$project$Main$DragPieceStart(piece.id))),
-												A2(
-												$elm$html$Html$Events$on,
-												'dragend',
-												$elm$json$Json$Decode$succeed($author$project$Main$DragPieceEnd)),
-												A2(
-												$elm$html$Html$Events$stopPropagationOn,
-												'dragenter',
-												$elm$json$Json$Decode$succeed(
-													_Utils_Tuple2(
-														$author$project$Main$DragEnterPiece(piece.id),
-														true)))
-											]);
-										return A2(
-											$elm$html$Html$div,
-											_Utils_ap(
-												_List_fromArray(
-													[
-														$elm$html$Html$Attributes$classList(
-														_List_fromArray(
-															[
-																_Utils_Tuple2('wave-tray-thumb', true),
-																_Utils_Tuple2('hovered', isHovered),
-																_Utils_Tuple2('selected', isSelected)
-															])),
-														A2($elm$html$Html$Attributes$attribute, 'data-piece-id', piece.id),
-														A2($elm$html$Html$Attributes$style, 'width', widthCss),
-														A2(
-														$elm$html$Html$Attributes$style,
-														'aspect-ratio',
-														$elm$core$String$fromFloat(piece.width / piece.height)),
-														$elm$html$Html$Events$onMouseEnter(
-														$author$project$Main$SetHoveredPiece(
-															$elm$core$Maybe$Just(piece.id))),
-														$elm$html$Html$Events$onMouseLeave(
-														$author$project$Main$SetHoveredPiece($elm$core$Maybe$Nothing))
-													]),
-												dragAttrs),
-											_List_fromArray(
-												[
-													A2(
-													$elm$html$Html$img,
-													_List_fromArray(
-														[
-															$elm$html$Html$Attributes$src(
-															A2(
-																$author$project$Main$cacheBust,
-																A2($author$project$Main$thumbUrl, showOnlyBlueprint, piece),
-																generation))
-														]),
-													_List_Nil),
-													showNum ? A2(
-													$elm$html$Html$div,
-													_List_fromArray(
-														[
-															$elm$html$Html$Attributes$class('tray-thumb-num')
-														]),
-													_List_fromArray(
-														[
-															$elm$html$Html$text(
-															$elm$core$String$fromInt(pos))
-														])) : $elm$html$Html$text(''),
-													function () {
-													if (maybeGroupN.$ === 'Just') {
-														var n = maybeGroupN.a;
-														return A2(
-															$elm$html$Html$div,
-															_List_fromArray(
-																[
-																	$elm$html$Html$Attributes$class('group-xn-badge group-xn-badge-bottom')
-																]),
-															_List_fromArray(
-																[
-																	$elm$html$Html$text(
-																	'x' + $elm$core$String$fromInt(n))
-																]));
-													} else {
-														return $elm$html$Html$text('');
-													}
-												}()
-												]));
-									};
-								};
-							};
-						};
-					};
-				};
-			};
-		};
-	};
-};
+var $author$project$Main$viewWaveTrayThumb = F9(
+	function (piece, isLocked, scale, hoveredId, selectedId, generation, showNum, pos, maybeGroupN) {
+		var widthCss = $elm$core$String$fromFloat(piece.width * scale) + 'px';
+		var isSelected = _Utils_eq(
+			selectedId,
+			$elm$core$Maybe$Just(piece.id));
+		var isHovered = _Utils_eq(
+			hoveredId,
+			$elm$core$Maybe$Just(piece.id));
+		var dragAttrs = isLocked ? _List_Nil : _List_fromArray(
+			[
+				A2($elm$html$Html$Attributes$attribute, 'draggable', 'true'),
+				A2(
+				$elm$html$Html$Events$on,
+				'dragstart',
+				$elm$json$Json$Decode$succeed(
+					$author$project$Main$DragPieceStart(piece.id))),
+				A2(
+				$elm$html$Html$Events$on,
+				'dragend',
+				$elm$json$Json$Decode$succeed($author$project$Main$DragPieceEnd)),
+				A2(
+				$elm$html$Html$Events$stopPropagationOn,
+				'dragenter',
+				$elm$json$Json$Decode$succeed(
+					_Utils_Tuple2(
+						$author$project$Main$DragEnterPiece(piece.id),
+						true)))
+			]);
+		return A2(
+			$elm$html$Html$div,
+			_Utils_ap(
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$classList(
+						_List_fromArray(
+							[
+								_Utils_Tuple2('wave-tray-thumb', true),
+								_Utils_Tuple2('hovered', isHovered),
+								_Utils_Tuple2('selected', isSelected)
+							])),
+						A2($elm$html$Html$Attributes$attribute, 'data-piece-id', piece.id),
+						A2($elm$html$Html$Attributes$style, 'width', widthCss),
+						A2(
+						$elm$html$Html$Attributes$style,
+						'aspect-ratio',
+						$elm$core$String$fromFloat(piece.width / piece.height)),
+						$elm$html$Html$Events$onMouseEnter(
+						$author$project$Main$SetHoveredPiece(
+							$elm$core$Maybe$Just(piece.id))),
+						$elm$html$Html$Events$onMouseLeave(
+						$author$project$Main$SetHoveredPiece($elm$core$Maybe$Nothing))
+					]),
+				dragAttrs),
+			_List_fromArray(
+				[
+					A2(
+					$elm$html$Html$img,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$src(
+							A2($author$project$Main$cacheBust, piece.imgUrl, generation))
+						]),
+					_List_Nil),
+					showNum ? A2(
+					$elm$html$Html$div,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('tray-thumb-num')
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text(
+							$elm$core$String$fromInt(pos))
+						])) : $elm$html$Html$text(''),
+					function () {
+					if (maybeGroupN.$ === 'Just') {
+						var n = maybeGroupN.a;
+						return A2(
+							$elm$html$Html$div,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('group-xn-badge group-xn-badge-bottom')
+								]),
+							_List_fromArray(
+								[
+									$elm$html$Html$text(
+									'x' + $elm$core$String$fromInt(n))
+								]));
+					} else {
+						return $elm$html$Html$text('');
+					}
+				}()
+				]));
+	});
 var $author$project$Main$viewWaveTray = F2(
 	function (model, _v0) {
 		var activeWaveId = model.selectedWaveId;
@@ -15202,7 +15149,7 @@ var $author$project$Main$viewWaveTray = F2(
 										}();
 										return _List_fromArray(
 											[
-												$author$project$Main$viewWaveTrayThumb(piece)(isLocked)(model.svgScale)(model.hoveredPieceId)(model.selectedPieceId)(model.pieceGeneration)(model.showNumbers)(model.showOnlyBlueprint)(pos)(groupCount)
+												A9($author$project$Main$viewWaveTrayThumb, piece, isLocked, model.svgScale, model.hoveredPieceId, model.selectedPieceId, model.pieceGeneration, model.showNumbers, pos, groupCount)
 											]);
 									} else {
 										return _List_Nil;
@@ -15461,37 +15408,6 @@ var $author$project$Main$viewTitleBar = function (model) {
 						_List_fromArray(
 							[
 								$elm$html$Html$text('Pieces')
-							])),
-						A2(
-						$elm$html$Html$span,
-						_List_fromArray(
-							[
-								$elm$html$Html$Attributes$class('mode-sep')
-							]),
-						_List_fromArray(
-							[
-								$elm$html$Html$text('\u2195')
-							])),
-						A2(
-						$elm$html$Html$button,
-						_List_fromArray(
-							[
-								$elm$html$Html$Attributes$classList(
-								_List_fromArray(
-									[
-										_Utils_Tuple2('mode-btn', true),
-										_Utils_Tuple2(
-										'active',
-										_Utils_eq(model.appMode, $author$project$Main$ModeBlueprint))
-									])),
-								$elm$html$Html$Attributes$disabled((!isGenerated) || (isBusy || isGenerating)),
-								$elm$html$Html$Events$onClick(
-								$author$project$Main$SetAppMode($author$project$Main$ModeBlueprint)),
-								$author$project$Main$tid('mode-blueprint')
-							]),
-						_List_fromArray(
-							[
-								$elm$html$Html$text('Blueprint')
 							])),
 						A2(
 						$elm$html$Html$span,
