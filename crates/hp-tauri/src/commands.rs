@@ -77,29 +77,66 @@ pub fn list_pdfs() -> Result<Value, String> {
 
 /// Opens a native file-open dialog filtered to `.pdf` and `.ai` files.
 /// Returns the selected file path as a string, or `null` if the user cancelled.
+///
+/// The last successfully picked directory is persisted to the app data
+/// directory (see `last_dir_path`) and re-used as the dialog's start
+/// location on subsequent invocations. Falls back to the OS default if
+/// nothing has been saved yet (or the saved path no longer exists).
 #[tauri::command]
 pub async fn pick_file(app: tauri::AppHandle) -> Result<Option<String>, String> {
     use tauri_plugin_dialog::DialogExt;
 
+    let stored_path = last_dir_path(&app);
+    let default_dir: Option<PathBuf> = stored_path
+        .as_ref()
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .map(|s| PathBuf::from(s.trim().to_string()))
+        .filter(|p| p.is_dir());
+
     // blocking_pick_file must not run on the async executor — use spawn_blocking.
+    let app_for_dialog = app.clone();
+    let default_dir_for_dialog = default_dir.clone();
     let file_path = tokio::task::spawn_blocking(move || {
-        app.dialog()
+        let mut builder = app_for_dialog
+            .dialog()
             .file()
-            .add_filter("PDF / AI Files", &["pdf", "ai"])
-            .blocking_pick_file()
+            .add_filter("PDF / AI Files", &["pdf", "ai"]);
+        if let Some(dir) = default_dir_for_dialog {
+            builder = builder.set_directory(dir);
+        }
+        builder.blocking_pick_file()
     })
     .await
     .map_err(|e| e.to_string())?;
 
     // `FilePath` may be a `file://` URL on Linux (xdg-desktop-portal).
     // `into_path()` converts both variants to a plain `PathBuf`.
-    file_path
+    let result_path = file_path
         .map(|fp| {
             fp.into_path()
                 .map_err(|e| e.to_string())
                 .map(|p| p.to_string_lossy().into_owned())
         })
-        .transpose()
+        .transpose()?;
+
+    // Persist the parent directory so the next dialog opens in the same place.
+    if let (Some(picked), Some(stored)) = (result_path.as_ref(), stored_path.as_ref()) {
+        if let Some(parent) = PathBuf::from(picked).parent() {
+            if let Some(parent_dir) = stored.parent() {
+                let _ = std::fs::create_dir_all(parent_dir);
+            }
+            let _ = std::fs::write(stored, parent.to_string_lossy().as_bytes());
+        }
+    }
+
+    Ok(result_path)
+}
+
+/// Path to the file we use to remember the last directory the user
+/// picked from. `None` when the OS won't give us an app-data dir.
+fn last_dir_path(app: &tauri::AppHandle) -> Option<PathBuf> {
+    use tauri::Manager;
+    app.path().app_data_dir().ok().map(|d| d.join("last_open_dir.txt"))
 }
 
 // ---------------------------------------------------------------------------

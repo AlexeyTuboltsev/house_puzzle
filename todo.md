@@ -122,6 +122,44 @@ Replace our custom test harness with proper WebDriver-based testing:
 When combining pieces in the editor, verify they are adjacent before
 allowing the merge. Currently not enforced.
 
+### OS file picker — remember last location
+The native open dialog should reopen at the last directory the user
+picked from, not the default. Persist the path across sessions so
+repeat loads from the same folder don't require re-navigating.
+
+### Waves — "Last wave" button
+In waves mode, add a button that creates a new wave and assigns every
+currently unassigned piece to it in one click.
+
+### "Big wave" needs a scrollbar
+The full unassigned/preview strip at the bottom should scroll horizontally
+when its contents exceed the viewport instead of overflowing or clipping.
+
+### Stronger selected-piece highlight (canvas + strips)
+The currently selected piece must stand out much more clearly — brighter
+fill, thicker outline, or a glow — and the highlight must be mirrored
+between the main canvas and every wave/group strip simultaneously, so
+it's obvious which piece is selected regardless of which view you're in.
+
+### Selected piece auto-scrolls into view in every strip
+When a piece is selected (from any view), each wave strip — including
+the unassigned/big-wave strip — that contains it should scroll so the
+piece is visible. Selection-driven scroll, independent of which view
+triggered the selection.
+
+### Wave number badge on each wave
+Show the wave's index (1-based ordinal) on the wave row so the user
+can refer to "wave 3" etc. without counting.
+
+### Groups + waves: "Show only blueprint" checkbox
+Add a per-group and per-wave checkbox that swaps the composite render
+for the blueprint render for the pieces in that group/wave. All other
+behaviour (selection, drag, assignment, outlines) stays the same.
+
+### Numeric input next to "Pieces" and "Min border" sliders
+Pair each slider with a small number input bound to the same value, so
+the user can type a precise number instead of (or in addition to) dragging.
+
 ### Adobe Illustrator validation script
 Create a standalone validation script that runs inside Adobe Illustrator
 (ExtendScript / JSX) to check `.ai` files before export. Should detect:

@@ -118,6 +118,7 @@ type alias Wave =
     , pieceIds : List String
     , hue : Float
     , opacity : Float
+    , showBlueprint : Bool
     }
 
 
@@ -127,6 +128,7 @@ type alias Group =
     , pieceIds : List String
     , hue : Float
     , locked : Bool
+    , showBlueprint : Bool
     }
 
 
@@ -332,6 +334,9 @@ type Msg
     | ToggleGroupOverlay Bool
     | ToggleWaveOverlay Bool
     | AddWave
+    | AddLastWave
+    | ToggleWaveBlueprint Int Bool
+    | ToggleGroupBlueprint Int Bool
     | ToggleWaveVisibility Int
     | SetHoveredPiece (Maybe String)
     | SetHoveredBrick (Maybe String)
@@ -404,6 +409,14 @@ port tauriResponse : (D.Value -> msg) -> Sub msg
 
 
 port testSetValue : ({ testId : String, value : String } -> msg) -> Sub msg
+
+
+{-| Scroll every strip thumbnail (and the SVG canvas piece overlay) that
+matches a given piece id into view. Implemented in JS via
+`element.scrollIntoView` since each piece can appear in multiple strips
+simultaneously (wave row, big-wave tray) and Browser.Dom only scrolls
+one viewport at a time. -}
+port scrollPieceIntoView : String -> Cmd msg
 
 
 
@@ -741,6 +754,7 @@ update msg model =
                                 , pieceIds = []
                                 , hue = defaultHue (model.nextWaveId - 1)
                                 , opacity = 0.3
+                                , showBlueprint = False
                                 }
                         in
                         ( { baseModel | waves = [ newWave ], nextWaveId = model.nextWaveId + 1, selectedWaveId = Just newWave.id }, recomputeViewport )
@@ -760,6 +774,7 @@ update msg model =
                                 , pieceIds = []
                                 , hue = defaultHue (model.nextGroupId - 1)
                                 , locked = False
+                                , showBlueprint = False
                                 }
                         in
                         ( { baseModel | groups = [ newGroup ], nextGroupId = model.nextGroupId + 1, selectedGroupId = Just newGroup.id }, recomputeViewport )
@@ -800,6 +815,7 @@ update msg model =
                     , pieceIds = []
                     , hue = defaultHue (model.nextWaveId - 1)
                     , opacity = 0.3
+                    , showBlueprint = False
                     }
 
                 lockedWaves =
@@ -820,6 +836,56 @@ update msg model =
                   }
                 , Cmd.none
                 )
+
+        AddLastWave ->
+            let
+                assignedIds =
+                    List.concatMap .pieceIds model.waves
+
+                unassignedIds =
+                    model.pieces
+                        |> List.filter (\p -> not (List.member p.id assignedIds))
+                        |> List.map .id
+
+                newWave =
+                    { id = model.nextWaveId
+                    , name = "Wave " ++ String.fromInt model.nextWaveId
+                    , visible = True
+                    , locked = False
+                    , pieceIds = unassignedIds
+                    , hue = defaultHue (model.nextWaveId - 1)
+                    , opacity = 0.3
+                    , showBlueprint = False
+                    }
+
+                lockedWaves =
+                    List.map
+                        (\w ->
+                            if Just w.id == model.selectedWaveId then
+                                { w | locked = True }
+                            else
+                                w
+                        )
+                        model.waves
+            in
+            withUndo model
+                ( { model
+                    | waves = [ newWave ] ++ lockedWaves
+                    , nextWaveId = model.nextWaveId + 1
+                    , selectedWaveId = Just newWave.id
+                  }
+                , Cmd.none
+                )
+
+        ToggleWaveBlueprint wid checked ->
+            ( { model | waves = List.map (\w -> if w.id == wid then { w | showBlueprint = checked } else w) model.waves }
+            , Cmd.none
+            )
+
+        ToggleGroupBlueprint gid checked ->
+            ( { model | groups = List.map (\g -> if g.id == gid then { g | showBlueprint = checked } else g) model.groups }
+            , Cmd.none
+            )
 
         ToggleWaveVisibility waveId ->
             withUndo model
@@ -845,15 +911,21 @@ update msg model =
             ( { model | hoveredBrickId = mid }, Cmd.none )
 
         SelectPiece pid ->
-            ( { model
-                | selectedPieceId =
+            let
+                newSelected =
                     if model.selectedPieceId == Just pid then
                         Nothing
 
                     else
                         Just pid
-              }
-            , Cmd.none
+            in
+            ( { model | selectedPieceId = newSelected }
+            , case newSelected of
+                Just sid ->
+                    scrollPieceIntoView sid
+
+                Nothing ->
+                    Cmd.none
             )
 
         SelectWave mwid ->
@@ -1462,6 +1534,7 @@ update msg model =
                     , pieceIds = []
                     , hue = defaultHue (model.nextGroupId - 1)
                     , locked = False
+                    , showBlueprint = False
                     }
             in
             withUndo model
@@ -2128,6 +2201,17 @@ cacheBust url gen =
         url
     else
         url ++ "?v=" ++ String.fromInt gen
+
+
+{-| Pick the thumbnail URL based on a wave/group's "show only blueprint"
+toggle. When checked, swap the composite for the white-on-transparent
+piece outline so the strip mirrors blueprint mode. -}
+thumbUrl : Bool -> Piece -> String
+thumbUrl showBlueprint piece =
+    if showBlueprint && not (String.isEmpty piece.outlineUrl) then
+        piece.outlineUrl
+    else
+        piece.imgUrl
 
 
 withPieceUrls : String -> Piece -> Piece
@@ -2903,7 +2987,7 @@ viewWaveTray model _ =
                                                         SinglePiece _ -> Nothing
                                                         GroupedPiece _ allIds -> Just (List.length allIds)
                                             in
-                                            [ viewWaveTrayThumb piece isLocked model.svgScale model.hoveredPieceId model.pieceGeneration model.showNumbers pos groupCount ]
+                                            [ viewWaveTrayThumb piece isLocked model.svgScale model.hoveredPieceId model.selectedPieceId model.pieceGeneration model.showNumbers pos groupCount ]
 
                                         Nothing ->
                                             []
@@ -2926,11 +3010,14 @@ viewWaveTray model _ =
 
 -- scale: computed from viewport height and SVG natural height (stored in model.svgScale).
 -- Produces exact px dimensions matching how the piece appears in the house view.
-viewWaveTrayThumb : Piece -> Bool -> Float -> Maybe String -> Int -> Bool -> Int -> Maybe Int -> Html Msg
-viewWaveTrayThumb piece isLocked scale hoveredId generation showNum pos maybeGroupN =
+viewWaveTrayThumb : Piece -> Bool -> Float -> Maybe String -> Maybe String -> Int -> Bool -> Int -> Maybe Int -> Html Msg
+viewWaveTrayThumb piece isLocked scale hoveredId selectedId generation showNum pos maybeGroupN =
     let
         isHovered =
             hoveredId == Just piece.id
+
+        isSelected =
+            selectedId == Just piece.id
 
         widthCss =
             String.fromFloat (piece.width * scale) ++ "px"
@@ -2947,7 +3034,12 @@ viewWaveTrayThumb piece isLocked scale hoveredId generation showNum pos maybeGro
                 ]
     in
     div
-        ([ classList [ ( "wave-tray-thumb", True ), ( "hovered", isHovered ) ]
+        ([ classList
+            [ ( "wave-tray-thumb", True )
+            , ( "hovered", isHovered )
+            , ( "selected", isSelected )
+            ]
+         , attribute "data-piece-id" piece.id
          , style "width" widthCss
          , style "aspect-ratio" (String.fromFloat (piece.width / piece.height))
          , onMouseEnter (SetHoveredPiece (Just piece.id))
@@ -3017,12 +3109,18 @@ viewGenerateTools model response =
         , viewStatusBadge model
         , viewSectionTitle "Import"
         , div [ class "param-group" ]
-            [ label [] [ text "Target Pieces ", span [ class "value" ] [ text (String.fromInt model.targetCount) ] ]
-            , input [ type_ "range", Html.Attributes.min "5", Html.Attributes.max "181", value (String.fromInt model.targetCount), onInput SetTargetCount, tid "target-pieces" ] []
+            [ label [] [ text "Target Pieces" ]
+            , div [ class "param-row" ]
+                [ input [ type_ "range", Html.Attributes.min "5", Html.Attributes.max "181", value (String.fromInt model.targetCount), onInput SetTargetCount, tid "target-pieces" ] []
+                , input [ type_ "number", Html.Attributes.min "5", Html.Attributes.max "181", value (String.fromInt model.targetCount), onInput SetTargetCount, class "param-number" ] []
+                ]
             ]
         , div [ class "param-group" ]
-            [ label [] [ text "Min. Common Border Length ", span [ class "value" ] [ text (String.fromInt model.minBorder) ], text "px" ]
-            , input [ type_ "range", Html.Attributes.min "0", Html.Attributes.max "50", value (String.fromInt model.minBorder), onInput SetMinBorder, tid "min-border" ] []
+            [ label [] [ text "Min. Common Border Length (px)" ]
+            , div [ class "param-row" ]
+                [ input [ type_ "range", Html.Attributes.min "0", Html.Attributes.max "50", value (String.fromInt model.minBorder), onInput SetMinBorder, tid "min-border" ] []
+                , input [ type_ "number", Html.Attributes.min "0", Html.Attributes.max "50", value (String.fromInt model.minBorder), onInput SetMinBorder, class "param-number" ] []
+                ]
             ]
         , h2 [] [ text "Import" ]
         , viewImportStats response
@@ -3374,6 +3472,19 @@ viewGroupRow model allGroups group =
             , span [ class "wave-piece-count-label", style "color" (waveColor group.hue 1.0) ]
                 [ text (String.fromInt (List.length group.pieceIds) ++ " pcs") ]
             , span [ class "wave-name-label" ] [ text group.name ]
+            , label
+                [ class "wave-blueprint-toggle"
+                , title "Show only the blueprint outline instead of the composite image"
+                , stopPropagationOn "click" (D.succeed ( NoOp, True ))
+                ]
+                [ input
+                    [ type_ "checkbox"
+                    , checked group.showBlueprint
+                    , onCheck (ToggleGroupBlueprint group.id)
+                    ]
+                    []
+                , text "BP"
+                ]
             , span [ class "wave-row-spacer" ] []
             , span [ class "wave-actions" ]
                 [ button
@@ -3390,7 +3501,7 @@ viewGroupRow model allGroups group =
                     model.pieces
                         |> List.filter (\p -> p.id == pid)
                         |> List.head
-                        |> Maybe.map (\piece -> viewPieceThumb (Just ( group.id, pid )) False model.hoveredPieceId pid (cacheBust piece.imgUrl model.pieceGeneration) Nothing)
+                        |> Maybe.map (\piece -> viewPieceThumb (Just ( group.id, pid )) False model.hoveredPieceId model.selectedPieceId pid (cacheBust (thumbUrl group.showBlueprint piece) model.pieceGeneration) Nothing)
                 )
                 group.pieceIds
             )
@@ -3419,7 +3530,7 @@ viewGroupUnassignedRow model unassignedPieces =
                 ]
             , div [ class "wave-pieces" ]
                 (List.map
-                    (\p -> viewPieceThumb Nothing False model.hoveredPieceId p.id (p.imgUrl ++ "?v=" ++ String.fromInt model.pieceGeneration) Nothing)
+                    (\p -> viewPieceThumb Nothing False model.hoveredPieceId model.selectedPieceId p.id (p.imgUrl ++ "?v=" ++ String.fromInt model.pieceGeneration) Nothing)
                     unassignedPieces
                 )
             ]
@@ -3459,9 +3570,15 @@ viewWavesTools model =
             ]
         , div [ class "wave-toolbar" ]
             [ button [ onClick AddWave ] [ text "New wave" ]
+            , button
+                [ onClick AddLastWave
+                , disabled (List.isEmpty unassignedPieces)
+                , title "Create a new wave and assign every unassigned piece to it"
+                ]
+                [ text "Last wave" ]
             ]
         , div [ class "waves-body" ]
-            (List.map (viewWaveRow model model.waves) model.waves
+            (List.indexedMap (\idx w -> viewWaveRow model model.waves (idx + 1) w) model.waves
                 ++ [ viewUnassignedRow model unassignedPieces ]
             )
         , div [ class "tools-divider" ] []
@@ -4579,6 +4696,7 @@ viewPieceOverlay appMode hoveredId selectedId selectedWaveId waves groups select
         commonAttrs =
             [ SA.class clsStr
             , SA.style (pointerStyle ++ fillStyle)
+            , attribute "data-piece-id" piece.id
             ]
                 ++ (if isLassoing then
                         []
@@ -4697,8 +4815,8 @@ iconLockOpen =
         ]
 
 
-viewWaveRow : Model -> List Wave -> Wave -> Html Msg
-viewWaveRow model allWaves wave =
+viewWaveRow : Model -> List Wave -> Int -> Wave -> Html Msg
+viewWaveRow model allWaves waveNumber wave =
     let
         isSelected =
             model.selectedWaveId == Just wave.id
@@ -4748,6 +4866,8 @@ viewWaveRow model allWaves wave =
                     )
                 ]
                 [ if wave.locked then iconLockClosed else iconLockOpen ]
+            , span [ class "wave-number-badge", title ("Wave " ++ String.fromInt waveNumber) ]
+                [ text (String.fromInt waveNumber) ]
             , span
                 [ class "wave-swatch"
                 , style "background-color" swatchColor
@@ -4761,6 +4881,19 @@ viewWaveRow model allWaves wave =
                 []
             , span [ class "wave-piece-count-label" ]
                 [ text (String.fromInt (List.length wave.pieceIds) ++ " pcs") ]
+            , label
+                [ class "wave-blueprint-toggle"
+                , title "Show only the blueprint outline instead of the composite image"
+                , stopPropagationOn "click" (D.succeed ( NoOp, True ))
+                ]
+                [ input
+                    [ type_ "checkbox"
+                    , checked wave.showBlueprint
+                    , onCheck (ToggleWaveBlueprint wave.id)
+                    ]
+                    []
+                , text "BP"
+                ]
             , span [ class "wave-row-spacer" ] []
             , span [ class "wave-actions" ]
                 [ button
@@ -4779,11 +4912,11 @@ viewWaveRow model allWaves wave =
                         case display of
                             SinglePiece pid ->
                                 model.pieces |> List.filter (\p -> p.id == pid) |> List.head
-                                    |> Maybe.map (\piece -> viewPieceThumb (Just ( wave.id, pid )) wave.locked model.hoveredPieceId pid (cacheBust piece.imgUrl model.pieceGeneration) (Just pos))
+                                    |> Maybe.map (\piece -> viewPieceThumb (Just ( wave.id, pid )) wave.locked model.hoveredPieceId model.selectedPieceId pid (cacheBust (thumbUrl wave.showBlueprint piece) model.pieceGeneration) (Just pos))
 
                             GroupedPiece repId allIds ->
                                 model.pieces |> List.filter (\p -> p.id == repId) |> List.head
-                                    |> Maybe.map (\piece -> viewGroupThumb (Just wave.id) model.hoveredPieceId (model.groups |> List.filter (\g -> List.member repId g.pieceIds) |> List.head) piece allIds model.pieceGeneration (Just pos) wave.locked)
+                                    |> Maybe.map (\piece -> viewGroupThumb (Just wave.id) model.hoveredPieceId model.selectedPieceId (model.groups |> List.filter (\g -> List.member repId g.pieceIds) |> List.head) piece allIds model.pieceGeneration (Just pos) wave.locked wave.showBlueprint)
                     )
             )
         ]
@@ -4816,21 +4949,24 @@ viewUnassignedRow model unassignedPieces =
                             case display of
                                 SinglePiece pid ->
                                     model.pieces |> List.filter (\p -> p.id == pid) |> List.head
-                                        |> Maybe.map (\p -> viewPieceThumb Nothing False model.hoveredPieceId p.id (p.imgUrl ++ "?v=" ++ String.fromInt model.pieceGeneration) Nothing)
+                                        |> Maybe.map (\p -> viewPieceThumb Nothing False model.hoveredPieceId model.selectedPieceId p.id (p.imgUrl ++ "?v=" ++ String.fromInt model.pieceGeneration) Nothing)
 
                                 GroupedPiece repId allIds ->
                                     model.pieces |> List.filter (\p -> p.id == repId) |> List.head
-                                        |> Maybe.map (\p -> viewGroupThumb model.selectedWaveId model.hoveredPieceId (model.groups |> List.filter (\g -> List.member repId g.pieceIds) |> List.head) p allIds model.pieceGeneration Nothing False)
+                                        |> Maybe.map (\p -> viewGroupThumb model.selectedWaveId model.hoveredPieceId model.selectedPieceId (model.groups |> List.filter (\g -> List.member repId g.pieceIds) |> List.head) p allIds model.pieceGeneration Nothing False False)
                         )
                 )
             ]
 
 
-viewPieceThumb : Maybe ( Int, String ) -> Bool -> Maybe String -> String -> String -> Maybe Int -> Html Msg
-viewPieceThumb removeInfo isLocked hoveredId pieceId dataUrl maybePos =
+viewPieceThumb : Maybe ( Int, String ) -> Bool -> Maybe String -> Maybe String -> String -> String -> Maybe Int -> Html Msg
+viewPieceThumb removeInfo isLocked hoveredId selectedId pieceId dataUrl maybePos =
     let
         isHovered =
             hoveredId == Just pieceId
+
+        isSelected =
+            selectedId == Just pieceId
 
         dragAttrs =
             if isLocked then
@@ -4844,7 +4980,12 @@ viewPieceThumb removeInfo isLocked hoveredId pieceId dataUrl maybePos =
                 ]
     in
     div
-        ([ classList [ ( "piece-thumb", True ), ( "hovered", isHovered ) ]
+        ([ classList
+            [ ( "piece-thumb", True )
+            , ( "hovered", isHovered )
+            , ( "selected", isSelected )
+            ]
+         , attribute "data-piece-id" pieceId
          , onMouseEnter (SetHoveredPiece (Just pieceId))
          , onMouseLeave (SetHoveredPiece Nothing)
          ]
@@ -4885,14 +5026,17 @@ viewPieceThumb removeInfo isLocked hoveredId pieceId dataUrl maybePos =
 -- A thumbnail for a group of interchangeable pieces: shows one representative
 -- image with an "xN" badge at the bottom. Clicking assigns/removes the whole group to/from
 -- the wave identified by maybeWaveId. Draggable when not locked.
-viewGroupThumb : Maybe Int -> Maybe String -> Maybe Group -> Piece -> List String -> Int -> Maybe Int -> Bool -> Html Msg
-viewGroupThumb maybeWaveId hoveredId maybeGroup piece allIds generation maybePos isLocked =
+viewGroupThumb : Maybe Int -> Maybe String -> Maybe String -> Maybe Group -> Piece -> List String -> Int -> Maybe Int -> Bool -> Bool -> Html Msg
+viewGroupThumb maybeWaveId hoveredId selectedId maybeGroup piece allIds generation maybePos isLocked showBlueprint =
     let
         n =
             List.length allIds
 
         isHovered =
             hoveredId == Just piece.id
+
+        isSelected =
+            selectedId == Just piece.id
 
         clickMsg =
             case ( maybeGroup, maybeWaveId ) of
@@ -4910,14 +5054,19 @@ viewGroupThumb maybeWaveId hoveredId maybeGroup piece allIds generation maybePos
                 ]
     in
     div
-        ([ classList [ ( "piece-thumb", True ), ( "hovered", isHovered ) ]
+        ([ classList
+            [ ( "piece-thumb", True )
+            , ( "hovered", isHovered )
+            , ( "selected", isSelected )
+            ]
+         , attribute "data-piece-id" piece.id
          , onMouseEnter (SetHoveredPiece (Just piece.id))
          , onMouseLeave (SetHoveredPiece Nothing)
          , onClick clickMsg
          ] ++ dragAttrs
         )
         [ img
-            [ src (cacheBust piece.imgUrl generation)
+            [ src (cacheBust (thumbUrl showBlueprint piece) generation)
             , style "max-height" "48px"
             , style "max-width" "80px"
             , style "display" "block"
