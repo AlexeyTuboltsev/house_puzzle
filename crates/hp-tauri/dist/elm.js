@@ -14782,18 +14782,21 @@ var $author$project$Main$viewWavesTools = function (model) {
 					[
 						$elm$html$Html$Attributes$class('waves-body')
 					]),
-				_Utils_ap(
-					A2(
-						$elm$core$List$indexedMap,
-						F2(
-							function (idx, w) {
-								return A4($author$project$Main$viewWaveRow, model, model.waves, idx + 1, w);
-							}),
-						model.waves),
-					_List_fromArray(
-						[
-							A2($author$project$Main$viewUnassignedRow, model, unassignedPieces)
-						]))),
+				function () {
+					var waveTotal = $elm$core$List$length(model.waves);
+					return _Utils_ap(
+						A2(
+							$elm$core$List$indexedMap,
+							F2(
+								function (idx, w) {
+									return A4($author$project$Main$viewWaveRow, model, model.waves, waveTotal - idx, w);
+								}),
+							model.waves),
+						_List_fromArray(
+							[
+								A2($author$project$Main$viewUnassignedRow, model, unassignedPieces)
+							]));
+				}()),
 				A2(
 				$elm$html$Html$div,
 				_List_fromArray(

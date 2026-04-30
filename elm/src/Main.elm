@@ -3546,7 +3546,14 @@ viewWavesTools model =
                 [ text "Last wave" ]
             ]
         , div [ class "waves-body" ]
-            (List.indexedMap (\idx w -> viewWaveRow model model.waves (idx + 1) w) model.waves
+            (let
+                waveTotal =
+                    List.length model.waves
+             in
+             -- Waves are prepended on creation (newest first), so the
+             -- on-screen order is reverse-chronological. Number them in
+             -- creation order: oldest = 1, newest = N.
+             List.indexedMap (\idx w -> viewWaveRow model model.waves (waveTotal - idx) w) model.waves
                 ++ [ viewUnassignedRow model unassignedPieces ]
             )
         , div [ class "tools-divider" ] []
