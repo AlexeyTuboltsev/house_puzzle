@@ -117,6 +117,244 @@ pub fn build_adjacency_vector(
     adj
 }
 
+/// Build adjacency graph directly from AI-native bezier paths — no
+/// polygon buffering. Two bricks are adjacent iff their combined shared
+/// edge length ≥ `min_border` (in the same AI pymu units the beziers
+/// are expressed in).
+///
+/// A "shared edge" counts:
+///   * Line-line overlap: two line segments that are colinear (within
+///     `colinear_tol` on perpendicular distance) and whose projections
+///     onto the common line overlap. The overlap length is added.
+///   * Cubic-cubic match: two cubics with the same unordered endpoint
+///     pair (within `endpoint_tol`) AND whose midpoints-at-t=0.5 are
+///     within `midpoint_tol`. The cubic's chord length (p0→p3) is added
+///     as an approximation of arc length. Good enough for comparing
+///     against a fixed threshold.
+///
+/// Vertex-only contacts naturally contribute 0 — no edges coincide —
+/// and get rejected when the sum is below `min_border`.
+pub fn build_adjacency_bezier(
+    bricks: &[Brick],
+    brick_beziers: &HashMap<String, Vec<crate::bezier::BezierPath>>,
+    min_border: f64,
+) -> HashMap<String, HashSet<String>> {
+    use crate::bezier::Segment;
+
+    // Per-edge representation: (from, to, Option<(cp1, cp2)>)
+    struct Ed {
+        from: [f64; 2],
+        to: [f64; 2],
+        cp: Option<([f64; 2], [f64; 2])>,
+    }
+    fn edges_of(paths: &[crate::bezier::BezierPath]) -> Vec<Ed> {
+        let mut out = Vec::new();
+        for p in paths {
+            let mut prev = p.start;
+            for s in &p.segments {
+                let (to, cp) = match *s {
+                    Segment::Line { to } => (to, None),
+                    Segment::Cubic { cp1, cp2, to } => (to, Some((cp1, cp2))),
+                };
+                out.push(Ed { from: prev, to, cp });
+                prev = to;
+            }
+        }
+        out
+    }
+
+    // Bbox per brick for a cheap pre-filter.
+    fn bbox(paths: &[crate::bezier::BezierPath]) -> (f64, f64, f64, f64) {
+        let mut x0 = f64::INFINITY;
+        let mut y0 = f64::INFINITY;
+        let mut x1 = f64::NEG_INFINITY;
+        let mut y1 = f64::NEG_INFINITY;
+        let mut consume = |p: [f64; 2]| {
+            if p[0] < x0 { x0 = p[0]; }
+            if p[1] < y0 { y0 = p[1]; }
+            if p[0] > x1 { x1 = p[0]; }
+            if p[1] > y1 { y1 = p[1]; }
+        };
+        for p in paths {
+            consume(p.start);
+            for s in &p.segments { consume(s.end()); }
+        }
+        (x0, y0, x1, y1)
+    }
+
+    fn cubic_mid(p0: [f64; 2], c1: [f64; 2], c2: [f64; 2], p3: [f64; 2]) -> [f64; 2] {
+        // de Casteljau at t=0.5
+        let lerp = |a: [f64; 2], b: [f64; 2]| [(a[0]+b[0])*0.5, (a[1]+b[1])*0.5];
+        let q0 = lerp(p0, c1);
+        let q1 = lerp(c1, c2);
+        let q2 = lerp(c2, p3);
+        let r0 = lerp(q0, q1);
+        let r1 = lerp(q1, q2);
+        lerp(r0, r1)
+    }
+
+    // Tolerances — same scale as the bezier merge so values transfer.
+    const ENDPOINT_TOL: f64 = 1.5;
+    const MIDPOINT_TOL: f64 = 3.0;
+    const COLINEAR_TOL: f64 = 1.0; // perpendicular distance of a line to another's axis
+
+    fn near(a: [f64; 2], b: [f64; 2], tol: f64) -> bool {
+        let dx = a[0] - b[0];
+        let dy = a[1] - b[1];
+        dx * dx + dy * dy <= tol * tol
+    }
+
+    /// Shared length between two line segments if they're colinear-with-overlap.
+    fn line_line_overlap(a1: [f64; 2], a2: [f64; 2], b1: [f64; 2], b2: [f64; 2]) -> f64 {
+        let adx = a2[0] - a1[0];
+        let ady = a2[1] - a1[1];
+        let bdx = b2[0] - b1[0];
+        let bdy = b2[1] - b1[1];
+        // Parallel? cross of direction vectors.
+        let cross = adx * bdy - ady * bdx;
+        let alen2 = adx * adx + ady * ady;
+        let blen2 = bdx * bdx + bdy * bdy;
+        if alen2 < 1e-9 || blen2 < 1e-9 { return 0.0; }
+        // Cross-product magnitude ~ |a| * |b| * sin(theta). Normalise.
+        let sin_theta_sq = cross * cross / (alen2 * blen2);
+        if sin_theta_sq > (COLINEAR_TOL * COLINEAR_TOL) / alen2.min(blen2) {
+            // Not parallel enough
+            return 0.0;
+        }
+        // Check b1 lies near a's line (perpendicular distance).
+        let dx = b1[0] - a1[0];
+        let dy = b1[1] - a1[1];
+        let perp = (dx * ady - dy * adx).abs() / alen2.sqrt();
+        if perp > COLINEAR_TOL { return 0.0; }
+        // Project b1, b2 onto a's parameterisation (0 at a1, 1 at a2).
+        let tb1 = (dx * adx + dy * ady) / alen2;
+        let bx2 = b2[0] - a1[0];
+        let by2 = b2[1] - a1[1];
+        let tb2 = (bx2 * adx + by2 * ady) / alen2;
+        let (lo, hi) = (tb1.min(tb2), tb1.max(tb2));
+        let lo = lo.max(0.0);
+        let hi = hi.min(1.0);
+        if hi <= lo { return 0.0; }
+        (hi - lo) * alen2.sqrt()
+    }
+
+    /// Shared length between two cubic segments if they describe the same curve.
+    fn cubic_cubic_shared(
+        ap0: [f64; 2], ac1: [f64; 2], ac2: [f64; 2], ap3: [f64; 2],
+        bp0: [f64; 2], bc1: [f64; 2], bc2: [f64; 2], bp3: [f64; 2],
+    ) -> f64 {
+        // Either-direction endpoint match + midpoint match.
+        let a_mid = cubic_mid(ap0, ac1, ac2, ap3);
+        let b_mid = cubic_mid(bp0, bc1, bc2, bp3);
+        let endpoints_match = (near(ap0, bp0, ENDPOINT_TOL) && near(ap3, bp3, ENDPOINT_TOL))
+            || (near(ap0, bp3, ENDPOINT_TOL) && near(ap3, bp0, ENDPOINT_TOL));
+        if !endpoints_match { return 0.0; }
+        if !near(a_mid, b_mid, MIDPOINT_TOL) { return 0.0; }
+        // Approximate arc length by chord length (conservative).
+        let dx = ap3[0] - ap0[0];
+        let dy = ap3[1] - ap0[1];
+        (dx * dx + dy * dy).sqrt()
+    }
+
+    // Pre-compute edges and bboxes.
+    let mut brick_edges: HashMap<&str, Vec<Ed>> = HashMap::new();
+    let mut brick_bbox: HashMap<&str, (f64, f64, f64, f64)> = HashMap::new();
+    for b in bricks {
+        if let Some(paths) = brick_beziers.get(&b.id) {
+            brick_edges.insert(b.id.as_str(), edges_of(paths));
+            brick_bbox.insert(b.id.as_str(), bbox(paths));
+        }
+    }
+
+    use rayon::prelude::*;
+    let n = bricks.len();
+    // Parallel sweep: each row (i) computes its set of neighbours j > i,
+    // then we sequentially fold the results into the adjacency map.
+    let pairs: Vec<(String, String)> = (0..n)
+        .into_par_iter()
+        .flat_map_iter(|i| {
+            let a_id = bricks[i].id.as_str();
+            let a_edges = brick_edges.get(a_id);
+            let abb = brick_bbox.get(a_id).copied().unwrap_or((0.0, 0.0, 0.0, 0.0));
+            let mut local: Vec<(String, String)> = Vec::new();
+            if let Some(a_edges) = a_edges {
+                for j in (i + 1)..n {
+                    let b_id = bricks[j].id.as_str();
+                    let b_edges = match brick_edges.get(b_id) {
+                        Some(v) => v,
+                        None => continue,
+                    };
+                    let bbb = brick_bbox.get(b_id).copied().unwrap_or((0.0, 0.0, 0.0, 0.0));
+                    let slack = ENDPOINT_TOL;
+                    if abb.2 + slack < bbb.0 || bbb.2 + slack < abb.0
+                        || abb.3 + slack < bbb.1 || bbb.3 + slack < abb.1
+                    {
+                        continue;
+                    }
+                    let mut total_shared = 0.0;
+                    for ea in a_edges {
+                        for eb in b_edges {
+                            let share = match (ea.cp, eb.cp) {
+                                (None, None) => line_line_overlap(ea.from, ea.to, eb.from, eb.to),
+                                (Some((ac1, ac2)), Some((bc1, bc2))) => cubic_cubic_shared(
+                                    ea.from, ac1, ac2, ea.to,
+                                    eb.from, bc1, bc2, eb.to,
+                                ),
+                                _ => 0.0,
+                            };
+                            total_shared += share;
+                        }
+                    }
+                    if total_shared >= min_border {
+                        local.push((a_id.to_string(), b_id.to_string()));
+                    }
+                }
+            }
+            local
+        })
+        .collect();
+
+    let mut adj: HashMap<String, HashSet<String>> = HashMap::new();
+    for (a, b) in pairs {
+        adj.entry(a.clone()).or_default().insert(b.clone());
+        adj.entry(b).or_default().insert(a);
+    }
+    adj
+}
+
+/// Areas computed from bezier paths directly — matches `build_adjacency_bezier`.
+pub fn compute_bezier_areas(
+    bricks: &[Brick],
+    brick_beziers: &HashMap<String, Vec<crate::bezier::BezierPath>>,
+) -> HashMap<String, f64> {
+    bricks
+        .iter()
+        .map(|b| {
+            let area = brick_beziers
+                .get(&b.id)
+                .map(|paths| {
+                    paths.iter()
+                        .map(|bp| {
+                            // Shoelace on tessellated ring (chord polygon — sufficient
+                            // for relative area comparisons).
+                            let pts = bp.tessellate(8);
+                            if pts.len() < 3 { return 0.0; }
+                            let mut a = 0.0;
+                            let n = pts.len();
+                            for i in 0..n {
+                                let j = (i + 1) % n;
+                                a += pts[i][0] * pts[j][1] - pts[j][0] * pts[i][1];
+                            }
+                            a.abs() / 2.0
+                        })
+                        .sum::<f64>()
+                })
+                .unwrap_or(b.area() as f64);
+            (b.id.clone(), area)
+        })
+        .collect()
+}
+
 /// Compute polygon areas for all bricks.
 pub fn compute_polygon_areas(
     bricks: &[Brick],
@@ -623,7 +861,8 @@ mod tests {
             return;
         }
 
-        let (placements, _meta, _ai_data) = ai_parser::parse_ai(&ai_path, 900).unwrap();
+        let (placements, _meta, _ai_data) =
+            ai_parser::parse_ai(&ai_path, crate::CANVAS_HEIGHT_PX as i32).unwrap();
 
         // Convert to Brick + polygons
         let mut bricks: Vec<Brick> = Vec::new();

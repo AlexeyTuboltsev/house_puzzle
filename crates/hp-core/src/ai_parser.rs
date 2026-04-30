@@ -113,16 +113,22 @@ pub fn decompress_ai_data(ai_path: &Path) -> Result<AiPrivateData> {
 /// Parse `%AI5_BeginLayer` / `%AI5_EndLayer` pairs into a nested tree.
 /// Operates on raw bytes — all offsets are byte positions.
 pub fn parse_layer_tree(data: &[u8]) -> Vec<LayerBlock> {
-    let begin_re = Regex::new(r"%AI5_BeginLayer").expect("static regex pattern is valid");
-    let end_re = Regex::new(r"%AI5_EndLayer").expect("static regex pattern is valid");
-    let name_re = Regex::new(r"Lb[\r\n]+\(([^)]*)\)").expect("static regex pattern is valid");
+    // memmem byte-search is ~50× faster than the regex DFA for these
+    // literal needles, and that's the dominant cost on a typical AI
+    // (~50 MB of decompressed PostScript).
+    let begin_finder = memchr::memmem::Finder::new(b"%AI5_BeginLayer");
+    let end_finder = memchr::memmem::Finder::new(b"%AI5_EndLayer");
+    static NAME_RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
+    let name_re = NAME_RE.get_or_init(|| {
+        Regex::new(r"Lb[\r\n]+\(([^)]*)\)").expect("static regex pattern is valid")
+    });
 
     let mut events: Vec<(char, usize)> = Vec::new();
-    for m in begin_re.find_iter(data) {
-        events.push(('B', m.start()));
+    for pos in begin_finder.find_iter(data) {
+        events.push(('B', pos));
     }
-    for m in end_re.find_iter(data) {
-        events.push(('E', m.start()));
+    for pos in end_finder.find_iter(data) {
+        events.push(('E', pos));
     }
     events.sort_by_key(|e| e.1);
 
@@ -226,12 +232,17 @@ fn has_gradient(block_data: &[u8]) -> bool {
 /// Extract the raster placement matrix from an Xh operator.
 /// Returns (tx, ty, w_pts, h_pts) in AI coordinate space.
 fn extract_raster_matrix(block_data: &[u8]) -> Option<(f64, f64, f64, f64)> {
-    let num = r"-?\d+(?:\.\d+)?";
-    let pattern = format!(
-        r"\[\s*({n})\s+{n}\s+{n}\s+({n})\s+({n})\s+({n})\s*\]\s+(\d+)\s+(\d+)\s+\d+\s+Xh",
-        n = num
-    );
-    let re = Regex::new(&pattern).expect("static regex pattern is valid");
+    // Compile this regex once across all calls — we hit it on every brick
+    // (~600× per AI), and `regex::Regex::new` is multi-millisecond.
+    static RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
+    let re = RE.get_or_init(|| {
+        let num = r"-?\d+(?:\.\d+)?";
+        let pattern = format!(
+            r"\[\s*({n})\s+{n}\s+{n}\s+({n})\s+({n})\s+({n})\s*\]\s+(\d+)\s+(\d+)\s+\d+\s+Xh",
+            n = num
+        );
+        Regex::new(&pattern).expect("static regex pattern is valid")
+    });
     let m = re.captures(block_data)?;
 
     let a: f64 = bstr(&m[1]).parse().ok()?;
@@ -348,6 +359,94 @@ fn polygon_area(pts: &[[f64; 2]]) -> f64 {
     area.abs() / 2.0
 }
 
+/// Parse path operator lines into bezier paths (curves preserved).
+/// Returns (paths, open_path_count). Coords are in PyMuPDF y-down space.
+pub fn parse_path_lines_bezier(
+    lines: &[Vec<&str>],
+    offset_x: f64,
+    y_base: f64,
+) -> (Vec<crate::bezier::BezierPath>, usize) {
+    use crate::bezier::{BezierPath, Segment};
+
+    let to_pymu = |ax: f64, ay: f64| -> [f64; 2] { [ax + offset_x, y_base - ay] };
+
+    let mut start: Option<[f64; 2]> = None;
+    let mut segs: Vec<Segment> = Vec::new();
+    let mut prev: Option<[f64; 2]> = None;
+    let mut paths: Vec<BezierPath> = Vec::new();
+    let mut open_paths = 0usize;
+
+    // Auto-close: if a brick sub-path was drawn open (start ≠ last seg
+    // endpoint), append an implicit Line back to start so the merge sees
+    // a closed outline. NY9n had 4 such bricks (b012, b020, b022, b026)
+    // because the artist forgot the closing edge — every other NY file
+    // has zero. The validator should still flag these so the artist
+    // fixes them at source.
+    let flush_open = |paths: &mut Vec<BezierPath>,
+                      open_paths: &mut usize,
+                      start: Option<[f64; 2]>,
+                      segs: &mut Vec<Segment>| {
+        if let (Some(s), true) = (start, !segs.is_empty()) {
+            let last = segs.last().map(|g| g.end()).unwrap_or(s);
+            let d = ((s[0] - last[0]).powi(2) + (s[1] - last[1]).powi(2)).sqrt();
+            if d >= 1.0 {
+                segs.push(Segment::Line { to: s });
+                *open_paths += 1;
+            }
+            paths.push(BezierPath { start: s, segments: std::mem::take(segs) });
+        }
+    };
+
+    for parts in lines {
+        if parts.is_empty() { continue; }
+        let op = *parts.last().expect("guarded by parts.is_empty() check");
+        match op {
+            "m" if parts.len() >= 3 => {
+                flush_open(&mut paths, &mut open_paths, start, &mut segs);
+                let x: f64 = parts[0].parse().unwrap_or(0.0);
+                let y: f64 = parts[1].parse().unwrap_or(0.0);
+                start = Some(to_pymu(x, y));
+                prev = start;
+                segs.clear();
+            }
+            "L" | "l" if parts.len() >= 3 => {
+                let x: f64 = parts[0].parse().unwrap_or(0.0);
+                let y: f64 = parts[1].parse().unwrap_or(0.0);
+                let to = to_pymu(x, y);
+                segs.push(Segment::Line { to });
+                prev = Some(to);
+            }
+            "C" | "c" if parts.len() >= 7 => {
+                if prev.is_none() { continue; }
+                let cp1 = to_pymu(parts[0].parse().unwrap_or(0.0), parts[1].parse().unwrap_or(0.0));
+                let cp2 = to_pymu(parts[2].parse().unwrap_or(0.0), parts[3].parse().unwrap_or(0.0));
+                let to  = to_pymu(parts[4].parse().unwrap_or(0.0), parts[5].parse().unwrap_or(0.0));
+                segs.push(Segment::Cubic { cp1, cp2, to });
+                prev = Some(to);
+            }
+            "n" | "N" | "f" | "F" | "s" | "S" | "b" | "B" => {
+                // close/fill/stroke — emit whatever we've collected as closed,
+                // auto-closing if start ≠ last segment endpoint.
+                if let (Some(s), false) = (start, segs.is_empty()) {
+                    let last = segs.last().map(|g| g.end()).unwrap_or(s);
+                    let d = ((s[0] - last[0]).powi(2) + (s[1] - last[1]).powi(2)).sqrt();
+                    if d >= 1.0 {
+                        segs.push(Segment::Line { to: s });
+                        open_paths += 1;
+                    }
+                    paths.push(BezierPath { start: s, segments: std::mem::take(&mut segs) });
+                }
+                start = None;
+                prev = None;
+                segs.clear();
+            }
+            _ => {}
+        }
+    }
+    flush_open(&mut paths, &mut open_paths, start, &mut segs);
+    (paths, open_paths)
+}
+
 /// Parse path operator lines into polygons (PyMuPDF y-down coords).
 /// Returns (polygons, open_path_count).
 fn parse_path_lines(
@@ -448,6 +547,55 @@ fn parse_path_lines(
 /// 3. **Adjacent**: objects are separate but within `ADJACENCY_DIST` px → union
 ///    original vectors and bridge gaps with thin rectangles. Outer shapes preserved.
 /// 4. **Independent**: objects are far apart → keep only the largest, log a warning.
+/// Extract all bezier sub-paths for a brick layer, curves preserved,
+/// coordinates in AI PyMuPDF space (y-down). Used by the bezier-merge
+/// testbed; avoids tessellation.
+pub fn extract_vector_path_bezier(
+    block: &LayerBlock,
+    data: &[u8],
+    offset_x: f64,
+    y_base: f64,
+) -> Vec<crate::bezier::BezierPath> {
+    let block_data = &data[block.begin..block.end];
+    let lines: Vec<String> = split_lines(block_data)
+        .iter()
+        .map(|(l, _)| bstr(l).trim().to_string())
+        .collect();
+
+    let mut parsed_lines: Vec<Vec<String>> = Vec::new();
+    for line in &lines {
+        if !line.starts_with("%_") { continue; }
+        let parts: Vec<String> = line[2..].split_whitespace().map(|s| s.to_string()).collect();
+        if !parts.is_empty()
+            && PATH_OPS.contains(&parts.last().expect("guarded by is_empty").as_str())
+        {
+            parsed_lines.push(parts);
+        }
+    }
+    if parsed_lines.is_empty() {
+        for line in &lines {
+            if line.starts_with('%') { continue; }
+            let parts: Vec<String> = line.split_whitespace().map(|s| s.to_string()).collect();
+            if !parts.is_empty()
+                && PATH_OPS.contains(&parts.last().expect("guarded by is_empty").as_str())
+                && (parts.len() == 3 || parts.len() == 7)
+            {
+                let all_numeric = parts[..parts.len() - 1]
+                    .iter()
+                    .all(|p| p.parse::<f64>().is_ok());
+                if all_numeric { parsed_lines.push(parts); }
+            }
+        }
+    }
+    let refs: Vec<Vec<&str>> = parsed_lines
+        .iter()
+        .map(|parts| parts.iter().map(|s| s.as_str()).collect())
+        .collect();
+    let (paths, _open) = parse_path_lines_bezier(&refs, offset_x, y_base);
+    // Drop trivial/degenerate paths (fewer than 2 segments → can't be a closed shape)
+    paths.into_iter().filter(|p| p.segments.len() >= 2).collect()
+}
+
 fn extract_vector_path(
     block: &LayerBlock,
     data: &[u8],
@@ -799,7 +947,8 @@ pub fn parse_ai(
     let (offset_x, y_base) = compute_ai_transform(bg, data, &page, artbox);
     eprintln!("[parse_ai] transform: {:?}", t0.elapsed());
 
-    // Step 4: collect brick placements (PyMuPDF y-down coords)
+    // Step 4: collect brick placements (PyMuPDF y-down coords).
+    // Each child's classification is independent — fan out via rayon.
     let t0 = std::time::Instant::now();
     struct RawPlacement<'a> {
         child: &'a LayerBlock,
@@ -807,44 +956,47 @@ pub fn parse_ai(
         layer_type: String,
     }
 
-    let mut placements: Vec<RawPlacement> = Vec::new();
-    for child in &bricks_node.children {
-        let block_data = &data[child.begin..child.end];
-        let is_gradient = has_gradient(block_data);
-        let mat = extract_raster_matrix(block_data);
+    use rayon::prelude::*;
+    let placements: Vec<RawPlacement> = bricks_node
+        .children
+        .par_iter()
+        .filter_map(|child| {
+            let block_data = &data[child.begin..child.end];
+            let is_gradient = has_gradient(block_data);
+            let mat = extract_raster_matrix(block_data);
 
-        if let Some((tx, ty, w_pts, h_pts)) = mat {
-            if !is_gradient {
-                let pymu_x0 = tx + offset_x;
-                let pymu_y_top = y_base - ty;
-                let pymu_x1 = tx + w_pts + offset_x;
-                let pymu_y_bottom = y_base - ty + h_pts;
-                let has_vector = extract_plain_path_bbox(child, data).is_some();
-                let ltype = if has_vector { "mixed_brick" } else { "brick" };
-                placements.push(RawPlacement {
+            if let Some((tx, ty, w_pts, h_pts)) = mat {
+                if !is_gradient {
+                    let pymu_x0 = tx + offset_x;
+                    let pymu_y_top = y_base - ty;
+                    let pymu_x1 = tx + w_pts + offset_x;
+                    let pymu_y_bottom = y_base - ty + h_pts;
+                    let has_vector = extract_plain_path_bbox(child, data).is_some();
+                    let ltype = if has_vector { "mixed_brick" } else { "brick" };
+                    return Some(RawPlacement {
+                        child,
+                        pymu_bbox: (pymu_x0, pymu_y_top, pymu_x1, pymu_y_bottom),
+                        layer_type: ltype.to_string(),
+                    });
+                }
+            }
+            // Gradient/vector-only brick
+            if let Some((ai_xmin, ai_ymin, ai_xmax, ai_ymax)) =
+                extract_plain_path_bbox(child, data)
+            {
+                let pymu_x0 = ai_xmin + offset_x;
+                let pymu_x1 = ai_xmax + offset_x;
+                let pymu_y_top = y_base - ai_ymax;
+                let pymu_y_bottom = y_base - ai_ymin;
+                return Some(RawPlacement {
                     child,
                     pymu_bbox: (pymu_x0, pymu_y_top, pymu_x1, pymu_y_bottom),
-                    layer_type: ltype.to_string(),
+                    layer_type: "vector_brick".to_string(),
                 });
-                continue;
             }
-        }
-
-        // Gradient/vector-only brick
-        // Use plain path bbox as baseline, then expand with %_ vector path bbox
-        if let Some((ai_xmin, ai_ymin, ai_xmax, ai_ymax)) = extract_plain_path_bbox(child, data) {
-            let pymu_x0 = ai_xmin + offset_x;
-            let pymu_x1 = ai_xmax + offset_x;
-            let pymu_y_top = y_base - ai_ymax;
-            let pymu_y_bottom = y_base - ai_ymin;
-
-            placements.push(RawPlacement {
-                child,
-                pymu_bbox: (pymu_x0, pymu_y_top, pymu_x1, pymu_y_bottom),
-                layer_type: "vector_brick".to_string(),
-            });
-        }
-    }
+            None
+        })
+        .collect();
 
     if placements.is_empty() {
         bail!("No brick rasters found in 'bricks' layer");
@@ -868,8 +1020,10 @@ pub fn parse_ai(
     let clip_w_pts = clip_x1 - clip_x0;
 
     // Screen frame height in PDF points — determines the rendering scale.
-    // 15.5 Unity units = screen frame height. 1 unit = PIXELS_PER_UNIT pixels.
-    const PIXELS_PER_UNIT: f64 = 900.0 / 15.5; // ~58.06 px per unit
+    // The artist draws a `screen` layer rectangle representing
+    // `HOUSE_UNITS_HIGH` Unity units; we render at the DPI that makes
+    // that frame `CANVAS_HEIGHT_PX` pixels tall.
+    let pixels_per_unit: f64 = crate::CANVAS_HEIGHT_PX as f64 / crate::HOUSE_UNITS_HIGH;
     let screen_node = roots.iter().find(|r| r.name.eq_ignore_ascii_case("screen"));
     let mut screen_frame_h_pts: f64 = 0.0;
     if let Some(sn) = screen_node {
@@ -882,9 +1036,10 @@ pub fn parse_ai(
         }
     }
 
-    // DPI from screen frame: 15.5 units = screen_frame_h_pts PDF points = 15.5 * PIXELS_PER_UNIT pixels
+    // DPI from screen frame: HOUSE_UNITS_HIGH units = screen_frame_h_pts
+    // PDF points = HOUSE_UNITS_HIGH * pixels_per_unit pixels.
     let dpi = if screen_frame_h_pts > 0.0 {
-        PIXELS_PER_UNIT * 15.5 / screen_frame_h_pts * 72.0
+        pixels_per_unit * crate::HOUSE_UNITS_HIGH / screen_frame_h_pts * 72.0
     } else if clip_h_pts > 0.0 {
         // Fallback: fit canvas_height
         canvas_height as f64 / clip_h_pts * 72.0
@@ -905,27 +1060,51 @@ pub fn parse_ai(
     let expected_brick_min_x = ((all_x0.iter().cloned().fold(f64::INFINITY, f64::min) - clip_x0) * scale).round() as i32;
     let expected_brick_min_y = ((all_y0.iter().cloned().fold(f64::INFINITY, f64::min) - clip_y0) * scale).round() as i32;
 
-    // Build BrickPlacements — deduplicate by bbox, extract polygons
+    // Build BrickPlacements — deduplicate by bbox, extract polygons.
+    //
+    // The expensive part is `extract_vector_path` (PostScript parsing per
+    // brick).  Run that in parallel for every placement that survives the
+    // bbox dedup, then assemble the final list sequentially so we keep
+    // deterministic ordering.
     let t0 = std::time::Instant::now();
     let mut seen_bbox = std::collections::HashSet::new();
-    let mut results: Vec<BrickPlacement> = Vec::new();
-    let mut skipped_bricks: Vec<String> = Vec::new();
-    let mut warnings: Vec<String> = Vec::new();
-
-    for p in &placements {
+    let mut keep_idx: Vec<usize> = Vec::with_capacity(placements.len());
+    let mut bbox_px: Vec<(i32, i32, i32, i32)> = Vec::with_capacity(placements.len());
+    for (i, p) in placements.iter().enumerate() {
         let px = ((p.pymu_bbox.0 - clip_x0) * scale).round() as i32;
         let py = ((p.pymu_bbox.1 - clip_y0) * scale).round() as i32;
         let pw = ((p.pymu_bbox.2 - p.pymu_bbox.0) * scale).round().max(1.0) as i32;
         let ph = ((p.pymu_bbox.3 - p.pymu_bbox.1) * scale).round().max(1.0) as i32;
-
-        let bbox_key = (px, py, pw, ph);
-        if seen_bbox.contains(&bbox_key) {
-            continue;
+        let key = (px, py, pw, ph);
+        if seen_bbox.insert(key) {
+            keep_idx.push(i);
+            bbox_px.push(key);
         }
-        seen_bbox.insert(bbox_key);
+    }
 
-        // Extract vector polygon
-        let poly_pymu = extract_vector_path(p.child, data, offset_x, y_base, &mut warnings);
+    // Parallel polygon extraction.
+    let polys_with_warnings: Vec<(Vec<[f64; 2]>, Vec<String>)> = keep_idx
+        .par_iter()
+        .map(|&i| {
+            let mut local_warnings: Vec<String> = Vec::new();
+            let poly = extract_vector_path(
+                placements[i].child, data, offset_x, y_base, &mut local_warnings,
+            );
+            (poly, local_warnings)
+        })
+        .collect();
+
+    let mut results: Vec<BrickPlacement> = Vec::with_capacity(keep_idx.len());
+    let mut skipped_bricks: Vec<String> = Vec::new();
+    let mut warnings: Vec<String> = Vec::new();
+
+    for (slot, &orig_i) in keep_idx.iter().enumerate() {
+        let p = &placements[orig_i];
+        let (px, py, pw, ph) = bbox_px[slot];
+        let (poly_pymu, local_warnings) = &polys_with_warnings[slot];
+        warnings.extend(local_warnings.iter().cloned());
+        let _ = px; let _ = py; let _ = pw; let _ = ph;
+        // (Re-bind below to keep the rest of the original block unchanged.)
         let polygon: Option<Vec<[f64; 2]>> = if poly_pymu.len() >= 3 {
             Some(
                 poly_pymu.iter().map(|pt| {
@@ -1123,6 +1302,8 @@ pub fn parse_ai(
         skipped_bricks,
         expected_brick_min: (expected_brick_min_x, expected_brick_min_y),
         warnings,
+        offset_x,
+        y_base,
     };
 
     Ok((results, metadata, ai_data))
@@ -1139,6 +1320,11 @@ pub struct ParsedAiMetadata {
     pub skipped_bricks: Vec<String>,
     pub expected_brick_min: (i32, i32),
     pub warnings: Vec<String>,
+    /// AI → PyMuPDF transform. `pymu_x = ai_x + offset_x`, `pymu_y = y_base - ai_y`.
+    /// Exposed so downstream code (testbed, bezier merge) can re-parse path
+    /// bytes from the raw AI without redoing the artbox probe.
+    pub offset_x: f64,
+    pub y_base: f64,
 }
 
 #[cfg(test)]
@@ -1189,7 +1375,7 @@ mod tests {
             None => { eprintln!("Skipping: in/_NY1.ai not found"); return; }
         };
 
-        let (bricks, meta, _ai_data) = parse_ai(&path, 900).unwrap();
+        let (bricks, meta, _ai_data) = parse_ai(&path, crate::CANVAS_HEIGHT_PX as i32).unwrap();
 
         eprintln!("Canvas: {}x{}", meta.canvas_width, meta.canvas_height);
         eprintln!("DPI: {:.2}", meta.render_dpi);
@@ -1200,7 +1386,7 @@ mod tests {
         // Python produces 183 bricks for NY1 at canvas_height=900
         assert_eq!(bricks.len(), 183, "Expected 183 bricks, got {}", bricks.len());
         assert_eq!(meta.canvas_width, 494);
-        assert_eq!(meta.canvas_height, 900);
+        assert_eq!(meta.canvas_height as u32, crate::CANVAS_HEIGHT_PX);
         assert!(meta.render_dpi > 0.0);
         assert!(meta.screen_frame_height_px > 0.0);
 

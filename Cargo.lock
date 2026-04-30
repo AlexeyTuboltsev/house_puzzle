@@ -1702,6 +1702,7 @@ dependencies = [
  "geo",
  "geo-clipper",
  "image",
+ "memchr",
  "mupdf",
  "mupdf-sys",
  "parking_lot",
