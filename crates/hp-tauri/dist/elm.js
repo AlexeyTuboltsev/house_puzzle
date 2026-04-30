@@ -6865,10 +6865,6 @@ var $author$project$Main$LoadResponse = function (canvas) {
 		};
 	};
 };
-var $author$project$Main$Brick = F9(
-	function (id, x, y, width, height, brickType, neighbors, polygon, layerName) {
-		return {brickType: brickType, height: height, id: id, layerName: layerName, neighbors: neighbors, polygon: polygon, width: width, x: x, y: y};
-	});
 var $elm$json$Json$Decode$index = _Json_decodeIndex;
 var $elm$core$Tuple$pair = F2(
 	function (a, b) {
@@ -6884,13 +6880,23 @@ var $elm$json$Json$Decode$oneOf = _Json_oneOf;
 var $author$project$Main$decodeBrick = A2(
 	$elm$json$Json$Decode$andThen,
 	function (brick) {
-		return A2(
-			$elm$json$Json$Decode$map,
-			function (ln) {
-				return _Utils_update(
-					brick,
-					{layerName: ln});
-			},
+		return A3(
+			$elm$json$Json$Decode$map2,
+			F2(
+				function (paths, ln) {
+					return _Utils_update(
+						brick,
+						{layerName: ln, outlinePaths: paths});
+				}),
+			$elm$json$Json$Decode$oneOf(
+				_List_fromArray(
+					[
+						A2(
+						$elm$json$Json$Decode$field,
+						'outline_paths',
+						$elm$json$Json$Decode$list($elm$json$Json$Decode$string)),
+						$elm$json$Json$Decode$succeed(_List_Nil)
+					])),
 			$elm$json$Json$Decode$oneOf(
 				_List_fromArray(
 					[
@@ -6902,7 +6908,7 @@ var $author$project$Main$decodeBrick = A2(
 		$elm$json$Json$Decode$map8,
 		F8(
 			function (id, x, y, w, h, t, n, p) {
-				return A9($author$project$Main$Brick, id, x, y, w, h, t, n, p, '');
+				return {brickType: t, height: h, id: id, layerName: '', neighbors: n, outlinePaths: _List_Nil, polygon: p, width: w, x: x, y: y};
 			}),
 		A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$string),
 		A2($elm$json$Json$Decode$field, 'x', $elm$json$Json$Decode$float),
@@ -7031,14 +7037,23 @@ var $author$project$Main$decodeBrickRef = A6(
 var $author$project$Main$decodePiece = A2(
 	$elm$json$Json$Decode$andThen,
 	function (piece) {
-		return A3(
-			$elm$json$Json$Decode$map2,
-			F2(
-				function (img, out) {
+		return A4(
+			$elm$json$Json$Decode$map3,
+			F3(
+				function (paths, img, out) {
 					return _Utils_update(
 						piece,
-						{imgUrl: img, outlineUrl: out});
+						{imgUrl: img, outlinePaths: paths, outlineUrl: out});
 				}),
+			$elm$json$Json$Decode$oneOf(
+				_List_fromArray(
+					[
+						A2(
+						$elm$json$Json$Decode$field,
+						'outline_paths',
+						$elm$json$Json$Decode$list($elm$json$Json$Decode$string)),
+						$elm$json$Json$Decode$succeed(_List_Nil)
+					])),
 			$elm$json$Json$Decode$oneOf(
 				_List_fromArray(
 					[
@@ -7056,7 +7071,7 @@ var $author$project$Main$decodePiece = A2(
 		$elm$json$Json$Decode$map8,
 		F8(
 			function (id_, x_, y_, w_, h_, brickIds_, bricks_, polygon_) {
-				return {brickIds: brickIds_, bricks: bricks_, height: h_, id: id_, imgUrl: '', outlineUrl: '', polygon: polygon_, width: w_, x: x_, y: y_};
+				return {brickIds: brickIds_, bricks: bricks_, height: h_, id: id_, imgUrl: '', outlinePaths: _List_Nil, outlineUrl: '', polygon: polygon_, width: w_, x: x_, y: y_};
 			}),
 		A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$string),
 		A2($elm$json$Json$Decode$field, 'x', $elm$json$Json$Decode$float),
@@ -7421,7 +7436,7 @@ var $author$project$Main$recalcPieceBbox = F3(
 				var y2 = _v1.c.a;
 				return _Utils_update(
 					piece,
-					{bricks: newBrickRefs, height: y2 - y, imgUrl: '/api/s/' + (sessionKey + ('/piece/' + (piece.id + '.png'))), outlineUrl: '/api/s/' + (sessionKey + ('/piece_outline/' + (piece.id + '.png'))), polygon: _List_Nil, width: x2 - x, x: x, y: y});
+					{bricks: newBrickRefs, height: y2 - y, imgUrl: '/api/s/' + (sessionKey + ('/piece/' + (piece.id + '.png'))), outlinePaths: _List_Nil, outlineUrl: '/api/s/' + (sessionKey + ('/piece_outline/' + (piece.id + '.png'))), polygon: _List_Nil, width: x2 - x, x: x, y: y});
 			} else {
 				return piece;
 			}
@@ -8436,6 +8451,7 @@ var $author$project$Main$update = F2(
 										height: brick.height,
 										id: newPieceId,
 										imgUrl: '/api/s/' + (model.sessionKey + ('/piece/' + (newPieceId + '.png'))),
+										outlinePaths: _List_Nil,
 										outlineUrl: '/api/s/' + (model.sessionKey + ('/piece_outline/' + (newPieceId + '.png'))),
 										polygon: _List_Nil,
 										width: brick.width,
@@ -8450,6 +8466,7 @@ var $author$project$Main$update = F2(
 										height: 0,
 										id: newPieceId,
 										imgUrl: '/api/s/' + (model.sessionKey + ('/piece/' + (newPieceId + '.png'))),
+										outlinePaths: _List_Nil,
 										outlineUrl: '/api/s/' + (model.sessionKey + ('/piece_outline/' + (newPieceId + '.png'))),
 										polygon: _List_Nil,
 										width: 0,
@@ -10149,6 +10166,7 @@ var $elm$virtual_dom$VirtualDom$attribute = F2(
 	});
 var $elm$html$Html$Attributes$attribute = $elm$virtual_dom$VirtualDom$attribute;
 var $elm$svg$Svg$Attributes$class = _VirtualDom_attribute('class');
+var $elm$svg$Svg$Attributes$d = _VirtualDom_attribute('d');
 var $elm$svg$Svg$Attributes$fill = _VirtualDom_attribute('fill');
 var $elm$core$String$fromFloat = _String_fromNumber;
 var $elm$svg$Svg$trustedNode = _VirtualDom_nodeNS('http://www.w3.org/2000/svg');
@@ -10166,6 +10184,7 @@ var $elm$html$Html$Events$on = F2(
 			event,
 			$elm$virtual_dom$VirtualDom$Normal(decoder));
 	});
+var $elm$svg$Svg$path = $elm$svg$Svg$trustedNode('path');
 var $elm$svg$Svg$Attributes$points = _VirtualDom_attribute('points');
 var $elm$svg$Svg$polygon = $elm$svg$Svg$trustedNode('polygon');
 var $elm$svg$Svg$rect = $elm$svg$Svg$trustedNode('rect');
@@ -10350,121 +10369,180 @@ var $author$project$Main$viewBrickEditOverlay = F4(
 					return $elm$core$String$fromFloat(x) + (',' + $elm$core$String$fromFloat(y));
 				},
 				absPoints));
-		return $elm$core$List$isEmpty(absPoints) ? A2(
-			$elm$svg$Svg$g,
-			_List_Nil,
-			_List_fromArray(
-				[
-					A2(
-					$elm$svg$Svg$rect,
-					_List_fromArray(
-						[
-							$elm$svg$Svg$Attributes$x(
-							$elm$core$String$fromFloat(brick.x)),
-							$elm$svg$Svg$Attributes$y(
-							$elm$core$String$fromFloat(brick.y)),
-							$elm$svg$Svg$Attributes$width('20'),
-							$elm$svg$Svg$Attributes$height('20'),
-							$elm$svg$Svg$Attributes$fill('red'),
-							$elm$svg$Svg$Attributes$opacity('0.8')
-						]),
-					_List_Nil),
-					A2(
-					$elm$svg$Svg$text_,
-					_List_fromArray(
-						[
-							$elm$svg$Svg$Attributes$x(
-							$elm$core$String$fromFloat(brick.x + 2)),
-							$elm$svg$Svg$Attributes$y(
-							$elm$core$String$fromFloat(brick.y + 14)),
-							$elm$svg$Svg$Attributes$fontSize('12'),
-							$elm$svg$Svg$Attributes$fill('white'),
-							$elm$svg$Svg$Attributes$fontWeight('bold')
-						]),
-					_List_fromArray(
-						[
-							$elm$svg$Svg$text('!' + brick.id)
-						]))
-				])) : A2(
-			$elm$svg$Svg$polygon,
-			_Utils_ap(
+		if (!$elm$core$List$isEmpty(brick.outlinePaths)) {
+			var commonAttrs = _Utils_ap(
 				_List_fromArray(
 					[
-						$elm$svg$Svg$Attributes$points(pointsAttr),
 						$elm$svg$Svg$Attributes$class(cls),
 						A2($elm$html$Html$Attributes$attribute, 'vector-effect', 'non-scaling-stroke'),
 						$elm$html$Html$Events$onClick(clickMsg)
 					]),
-				hoverAttrs),
-			_List_Nil);
+				hoverAttrs);
+			return A2(
+				$elm$svg$Svg$g,
+				commonAttrs,
+				A2(
+					$elm$core$List$map,
+					function (d) {
+						return A2(
+							$elm$svg$Svg$path,
+							_List_fromArray(
+								[
+									$elm$svg$Svg$Attributes$d(d),
+									A2($elm$html$Html$Attributes$attribute, 'vector-effect', 'non-scaling-stroke')
+								]),
+							_List_Nil);
+					},
+					brick.outlinePaths));
+		} else {
+			if ($elm$core$List$isEmpty(absPoints)) {
+				return A2(
+					$elm$svg$Svg$g,
+					_List_Nil,
+					_List_fromArray(
+						[
+							A2(
+							$elm$svg$Svg$rect,
+							_List_fromArray(
+								[
+									$elm$svg$Svg$Attributes$x(
+									$elm$core$String$fromFloat(brick.x)),
+									$elm$svg$Svg$Attributes$y(
+									$elm$core$String$fromFloat(brick.y)),
+									$elm$svg$Svg$Attributes$width('20'),
+									$elm$svg$Svg$Attributes$height('20'),
+									$elm$svg$Svg$Attributes$fill('red'),
+									$elm$svg$Svg$Attributes$opacity('0.8')
+								]),
+							_List_Nil),
+							A2(
+							$elm$svg$Svg$text_,
+							_List_fromArray(
+								[
+									$elm$svg$Svg$Attributes$x(
+									$elm$core$String$fromFloat(brick.x + 2)),
+									$elm$svg$Svg$Attributes$y(
+									$elm$core$String$fromFloat(brick.y + 14)),
+									$elm$svg$Svg$Attributes$fontSize('12'),
+									$elm$svg$Svg$Attributes$fill('white'),
+									$elm$svg$Svg$Attributes$fontWeight('bold')
+								]),
+							_List_fromArray(
+								[
+									$elm$svg$Svg$text('!' + brick.id)
+								]))
+						]));
+			} else {
+				return A2(
+					$elm$svg$Svg$polygon,
+					_Utils_ap(
+						_List_fromArray(
+							[
+								$elm$svg$Svg$Attributes$points(pointsAttr),
+								$elm$svg$Svg$Attributes$class(cls),
+								A2($elm$html$Html$Attributes$attribute, 'vector-effect', 'non-scaling-stroke'),
+								$elm$html$Html$Events$onClick(clickMsg)
+							]),
+						hoverAttrs),
+					_List_Nil);
+			}
+		}
 	});
 var $author$project$Main$viewBrickOverlay = function (brick) {
-	var absPoints = A2(
-		$elm$core$List$map,
-		function (_v1) {
-			var x = _v1.a;
-			var y = _v1.b;
-			return _Utils_Tuple2(x + brick.x, y + brick.y);
-		},
-		brick.polygon);
-	var pointsAttr = A2(
-		$elm$core$String$join,
-		' ',
-		A2(
-			$elm$core$List$map,
-			function (_v0) {
-				var x = _v0.a;
-				var y = _v0.b;
-				return $elm$core$String$fromFloat(x) + (',' + $elm$core$String$fromFloat(y));
-			},
-			absPoints));
-	return $elm$core$List$isEmpty(absPoints) ? A2(
-		$elm$svg$Svg$g,
-		_List_Nil,
-		_List_fromArray(
-			[
+	if (!$elm$core$List$isEmpty(brick.outlinePaths)) {
+		return A2(
+			$elm$svg$Svg$g,
+			_List_fromArray(
+				[
+					$elm$html$Html$Events$onClick(
+					$author$project$Main$LogBrickClick(brick.id))
+				]),
+			A2(
+				$elm$core$List$map,
+				function (d) {
+					return A2(
+						$elm$svg$Svg$path,
+						_List_fromArray(
+							[
+								$elm$svg$Svg$Attributes$d(d),
+								$elm$svg$Svg$Attributes$fill('transparent'),
+								A2($elm$html$Html$Attributes$attribute, 'vector-effect', 'non-scaling-stroke'),
+								$elm$svg$Svg$Attributes$class('brick-overlay')
+							]),
+						_List_Nil);
+				},
+				brick.outlinePaths));
+	} else {
+		if (!$elm$core$List$isEmpty(brick.polygon)) {
+			var pointsAttr = A2(
+				$elm$core$String$join,
+				' ',
 				A2(
-				$elm$svg$Svg$rect,
+					$elm$core$List$map,
+					function (_v1) {
+						var x = _v1.a;
+						var y = _v1.b;
+						return $elm$core$String$fromFloat(x) + (',' + $elm$core$String$fromFloat(y));
+					},
+					A2(
+						$elm$core$List$map,
+						function (_v0) {
+							var x = _v0.a;
+							var y = _v0.b;
+							return _Utils_Tuple2(x + brick.x, y + brick.y);
+						},
+						brick.polygon)));
+			return A2(
+				$elm$svg$Svg$polygon,
 				_List_fromArray(
 					[
-						$elm$svg$Svg$Attributes$x(
-						$elm$core$String$fromFloat(brick.x)),
-						$elm$svg$Svg$Attributes$y(
-						$elm$core$String$fromFloat(brick.y)),
-						$elm$svg$Svg$Attributes$width('20'),
-						$elm$svg$Svg$Attributes$height('20'),
-						$elm$svg$Svg$Attributes$fill('red'),
-						$elm$svg$Svg$Attributes$opacity('0.8')
+						$elm$svg$Svg$Attributes$points(pointsAttr),
+						$elm$svg$Svg$Attributes$fill('transparent'),
+						A2($elm$html$Html$Attributes$attribute, 'vector-effect', 'non-scaling-stroke'),
+						$elm$svg$Svg$Attributes$class('brick-overlay'),
+						$elm$html$Html$Events$onClick(
+						$author$project$Main$LogBrickClick(brick.id))
 					]),
-				_List_Nil),
-				A2(
-				$elm$svg$Svg$text_,
+				_List_Nil);
+		} else {
+			return A2(
+				$elm$svg$Svg$g,
+				_List_Nil,
 				_List_fromArray(
 					[
-						$elm$svg$Svg$Attributes$x(
-						$elm$core$String$fromFloat(brick.x + 2)),
-						$elm$svg$Svg$Attributes$y(
-						$elm$core$String$fromFloat(brick.y + 14)),
-						$elm$svg$Svg$Attributes$fontSize('12'),
-						$elm$svg$Svg$Attributes$fill('white'),
-						$elm$svg$Svg$Attributes$fontWeight('bold')
-					]),
-				_List_fromArray(
-					[
-						$elm$svg$Svg$text('!' + brick.id)
-					]))
-			])) : A2(
-		$elm$svg$Svg$polygon,
-		_List_fromArray(
-			[
-				$elm$svg$Svg$Attributes$points(pointsAttr),
-				$elm$svg$Svg$Attributes$fill('transparent'),
-				A2($elm$html$Html$Attributes$attribute, 'vector-effect', 'non-scaling-stroke'),
-				$elm$svg$Svg$Attributes$class('brick-overlay'),
-				$elm$html$Html$Events$onClick(
-				$author$project$Main$LogBrickClick(brick.id))
-			]),
-		_List_Nil);
+						A2(
+						$elm$svg$Svg$rect,
+						_List_fromArray(
+							[
+								$elm$svg$Svg$Attributes$x(
+								$elm$core$String$fromFloat(brick.x)),
+								$elm$svg$Svg$Attributes$y(
+								$elm$core$String$fromFloat(brick.y)),
+								$elm$svg$Svg$Attributes$width('20'),
+								$elm$svg$Svg$Attributes$height('20'),
+								$elm$svg$Svg$Attributes$fill('red'),
+								$elm$svg$Svg$Attributes$opacity('0.8')
+							]),
+						_List_Nil),
+						A2(
+						$elm$svg$Svg$text_,
+						_List_fromArray(
+							[
+								$elm$svg$Svg$Attributes$x(
+								$elm$core$String$fromFloat(brick.x + 2)),
+								$elm$svg$Svg$Attributes$y(
+								$elm$core$String$fromFloat(brick.y + 14)),
+								$elm$svg$Svg$Attributes$fontSize('12'),
+								$elm$svg$Svg$Attributes$fill('white'),
+								$elm$svg$Svg$Attributes$fontWeight('bold')
+							]),
+						_List_fromArray(
+							[
+								$elm$svg$Svg$text('!' + brick.id)
+							]))
+					]));
+		}
+	}
 };
 var $author$project$Main$viewGreenHoverOverlay = F5(
 	function (editBrickIds, brickToPiece, hoveredPieceId, hoveredBrickId, brick) {
@@ -10486,56 +10564,89 @@ var $author$project$Main$viewGreenHoverOverlay = F5(
 				}
 			}
 		}();
-		if ((!shouldHighlight) || $elm$core$List$isEmpty(brick.polygon)) {
+		if (!shouldHighlight) {
 			return _List_Nil;
 		} else {
-			var absPoints = A2(
-				$elm$core$List$map,
-				function (_v1) {
-					var x = _v1.a;
-					var y = _v1.b;
-					return _Utils_Tuple2(x + brick.x, y + brick.y);
-				},
-				brick.polygon);
-			var pointsAttr = A2(
-				$elm$core$String$join,
-				' ',
-				A2(
+			if (!$elm$core$List$isEmpty(brick.outlinePaths)) {
+				var attrs = inEdit ? _List_fromArray(
+					[
+						$elm$svg$Svg$Attributes$fill('rgba(40,180,80,0.3)'),
+						$elm$svg$Svg$Attributes$stroke('rgba(40,180,80,0.9)'),
+						$elm$svg$Svg$Attributes$strokeWidth('3'),
+						A2($elm$html$Html$Attributes$attribute, 'vector-effect', 'non-scaling-stroke'),
+						$elm$svg$Svg$Attributes$style('pointer-events: none;')
+					]) : _List_fromArray(
+					[
+						$elm$svg$Svg$Attributes$fill('rgba(40,180,80,0.3)'),
+						$elm$svg$Svg$Attributes$stroke('none'),
+						A2($elm$html$Html$Attributes$attribute, 'vector-effect', 'non-scaling-stroke'),
+						$elm$svg$Svg$Attributes$style('pointer-events: none;')
+					]);
+				return A2(
 					$elm$core$List$map,
-					function (_v0) {
-						var x = _v0.a;
-						var y = _v0.b;
-						return $elm$core$String$fromFloat(x) + (',' + $elm$core$String$fromFloat(y));
+					function (d) {
+						return A2(
+							$elm$svg$Svg$path,
+							A2(
+								$elm$core$List$cons,
+								$elm$svg$Svg$Attributes$d(d),
+								attrs),
+							_List_Nil);
 					},
-					absPoints));
-			return inEdit ? _List_fromArray(
-				[
-					A2(
-					$elm$svg$Svg$polygon,
-					_List_fromArray(
+					brick.outlinePaths);
+			} else {
+				if ($elm$core$List$isEmpty(brick.polygon)) {
+					return _List_Nil;
+				} else {
+					var absPoints = A2(
+						$elm$core$List$map,
+						function (_v1) {
+							var x = _v1.a;
+							var y = _v1.b;
+							return _Utils_Tuple2(x + brick.x, y + brick.y);
+						},
+						brick.polygon);
+					var pointsAttr = A2(
+						$elm$core$String$join,
+						' ',
+						A2(
+							$elm$core$List$map,
+							function (_v0) {
+								var x = _v0.a;
+								var y = _v0.b;
+								return $elm$core$String$fromFloat(x) + (',' + $elm$core$String$fromFloat(y));
+							},
+							absPoints));
+					return inEdit ? _List_fromArray(
 						[
-							$elm$svg$Svg$Attributes$points(pointsAttr),
-							$elm$svg$Svg$Attributes$fill('rgba(40,180,80,0.3)'),
-							$elm$svg$Svg$Attributes$stroke('rgba(40,180,80,0.9)'),
-							$elm$svg$Svg$Attributes$strokeWidth('3'),
-							A2($elm$html$Html$Attributes$attribute, 'vector-effect', 'non-scaling-stroke'),
-							$elm$svg$Svg$Attributes$style('pointer-events: none;')
-						]),
-					_List_Nil)
-				]) : _List_fromArray(
-				[
-					A2(
-					$elm$svg$Svg$polygon,
-					_List_fromArray(
+							A2(
+							$elm$svg$Svg$polygon,
+							_List_fromArray(
+								[
+									$elm$svg$Svg$Attributes$points(pointsAttr),
+									$elm$svg$Svg$Attributes$fill('rgba(40,180,80,0.3)'),
+									$elm$svg$Svg$Attributes$stroke('rgba(40,180,80,0.9)'),
+									$elm$svg$Svg$Attributes$strokeWidth('3'),
+									A2($elm$html$Html$Attributes$attribute, 'vector-effect', 'non-scaling-stroke'),
+									$elm$svg$Svg$Attributes$style('pointer-events: none;')
+								]),
+							_List_Nil)
+						]) : _List_fromArray(
 						[
-							$elm$svg$Svg$Attributes$points(pointsAttr),
-							$elm$svg$Svg$Attributes$fill('rgba(40,180,80,0.3)'),
-							$elm$svg$Svg$Attributes$stroke('none'),
-							A2($elm$html$Html$Attributes$attribute, 'vector-effect', 'non-scaling-stroke'),
-							$elm$svg$Svg$Attributes$style('pointer-events: none;')
-						]),
-					_List_Nil)
-				]);
+							A2(
+							$elm$svg$Svg$polygon,
+							_List_fromArray(
+								[
+									$elm$svg$Svg$Attributes$points(pointsAttr),
+									$elm$svg$Svg$Attributes$fill('rgba(40,180,80,0.3)'),
+									$elm$svg$Svg$Attributes$stroke('none'),
+									A2($elm$html$Html$Attributes$attribute, 'vector-effect', 'non-scaling-stroke'),
+									$elm$svg$Svg$Attributes$style('pointer-events: none;')
+								]),
+							_List_Nil)
+						]);
+				}
+			}
 		}
 	});
 var $elm$svg$Svg$line = $elm$svg$Svg$trustedNode('line');
@@ -10597,34 +10708,59 @@ var $author$project$Main$viewGrid = F4(
 		return _Utils_ap(vLines, hLines);
 	});
 var $author$project$Main$viewPieceBlueprintPath = function (piece) {
-	if ($elm$core$List$isEmpty(piece.polygon)) {
-		return A2($elm$svg$Svg$g, _List_Nil, _List_Nil);
-	} else {
-		var pointsAttr = A2(
-			$elm$core$String$join,
-			' ',
+	if (!$elm$core$List$isEmpty(piece.outlinePaths)) {
+		return A2(
+			$elm$svg$Svg$g,
+			_List_Nil,
 			A2(
 				$elm$core$List$map,
-				function (_v0) {
-					var x = _v0.a;
-					var y = _v0.b;
-					return $elm$core$String$fromFloat(x) + (',' + $elm$core$String$fromFloat(y));
+				function (d) {
+					return A2(
+						$elm$svg$Svg$path,
+						_List_fromArray(
+							[
+								$elm$svg$Svg$Attributes$d(d),
+								$elm$svg$Svg$Attributes$fill('none'),
+								$elm$svg$Svg$Attributes$stroke('white'),
+								$elm$svg$Svg$Attributes$strokeWidth('4'),
+								$elm$svg$Svg$Attributes$strokeLinejoin('round'),
+								A2($elm$html$Html$Attributes$attribute, 'stroke-linecap', 'round'),
+								A2($elm$html$Html$Attributes$attribute, 'vector-effect', 'non-scaling-stroke'),
+								$elm$svg$Svg$Attributes$class('brick-path')
+							]),
+						_List_Nil);
 				},
-				piece.polygon));
-		return A2(
-			$elm$svg$Svg$polygon,
-			_List_fromArray(
-				[
-					$elm$svg$Svg$Attributes$points(pointsAttr),
-					$elm$svg$Svg$Attributes$fill('none'),
-					$elm$svg$Svg$Attributes$stroke('white'),
-					$elm$svg$Svg$Attributes$strokeWidth('4'),
-					$elm$svg$Svg$Attributes$strokeLinejoin('round'),
-					A2($elm$html$Html$Attributes$attribute, 'stroke-linecap', 'round'),
-					A2($elm$html$Html$Attributes$attribute, 'vector-effect', 'non-scaling-stroke'),
-					$elm$svg$Svg$Attributes$class('brick-path')
-				]),
-			_List_Nil);
+				piece.outlinePaths));
+	} else {
+		if ($elm$core$List$isEmpty(piece.polygon)) {
+			return A2($elm$svg$Svg$g, _List_Nil, _List_Nil);
+		} else {
+			var pointsAttr = A2(
+				$elm$core$String$join,
+				' ',
+				A2(
+					$elm$core$List$map,
+					function (_v0) {
+						var x = _v0.a;
+						var y = _v0.b;
+						return $elm$core$String$fromFloat(x) + (',' + $elm$core$String$fromFloat(y));
+					},
+					piece.polygon));
+			return A2(
+				$elm$svg$Svg$polygon,
+				_List_fromArray(
+					[
+						$elm$svg$Svg$Attributes$points(pointsAttr),
+						$elm$svg$Svg$Attributes$fill('none'),
+						$elm$svg$Svg$Attributes$stroke('white'),
+						$elm$svg$Svg$Attributes$strokeWidth('4'),
+						$elm$svg$Svg$Attributes$strokeLinejoin('round'),
+						A2($elm$html$Html$Attributes$attribute, 'stroke-linecap', 'round'),
+						A2($elm$html$Html$Attributes$attribute, 'vector-effect', 'non-scaling-stroke'),
+						$elm$svg$Svg$Attributes$class('brick-path')
+					]),
+				_List_Nil);
+		}
 	}
 };
 var $author$project$Main$cacheBust = F2(
@@ -10747,34 +10883,59 @@ var $author$project$Main$viewPieceNumberLabel = F2(
 	});
 var $author$project$Main$viewPieceOutline = F2(
 	function (color, piece) {
-		if ($elm$core$List$isEmpty(piece.polygon)) {
-			return A2($elm$svg$Svg$g, _List_Nil, _List_Nil);
-		} else {
-			var pointsAttr = A2(
-				$elm$core$String$join,
-				' ',
+		if (!$elm$core$List$isEmpty(piece.outlinePaths)) {
+			return A2(
+				$elm$svg$Svg$g,
+				_List_Nil,
 				A2(
 					$elm$core$List$map,
-					function (_v0) {
-						var x = _v0.a;
-						var y = _v0.b;
-						return $elm$core$String$fromFloat(x) + (',' + $elm$core$String$fromFloat(y));
+					function (d) {
+						return A2(
+							$elm$svg$Svg$path,
+							_List_fromArray(
+								[
+									$elm$svg$Svg$Attributes$d(d),
+									$elm$svg$Svg$Attributes$fill('transparent'),
+									$elm$svg$Svg$Attributes$stroke(color),
+									$elm$svg$Svg$Attributes$strokeWidth('3'),
+									$elm$svg$Svg$Attributes$strokeLinejoin('round'),
+									A2($elm$html$Html$Attributes$attribute, 'vector-effect', 'non-scaling-stroke'),
+									$elm$svg$Svg$Attributes$class('piece-outline'),
+									A2($elm$html$Html$Attributes$attribute, 'pointer-events', 'none')
+								]),
+							_List_Nil);
 					},
-					piece.polygon));
-			return A2(
-				$elm$svg$Svg$polygon,
-				_List_fromArray(
-					[
-						$elm$svg$Svg$Attributes$points(pointsAttr),
-						$elm$svg$Svg$Attributes$fill('transparent'),
-						$elm$svg$Svg$Attributes$stroke(color),
-						$elm$svg$Svg$Attributes$strokeWidth('3'),
-						$elm$svg$Svg$Attributes$strokeLinejoin('round'),
-						A2($elm$html$Html$Attributes$attribute, 'vector-effect', 'non-scaling-stroke'),
-						$elm$svg$Svg$Attributes$class('piece-outline'),
-						A2($elm$html$Html$Attributes$attribute, 'pointer-events', 'none')
-					]),
-				_List_Nil);
+					piece.outlinePaths));
+		} else {
+			if ($elm$core$List$isEmpty(piece.polygon)) {
+				return A2($elm$svg$Svg$g, _List_Nil, _List_Nil);
+			} else {
+				var pointsAttr = A2(
+					$elm$core$String$join,
+					' ',
+					A2(
+						$elm$core$List$map,
+						function (_v0) {
+							var x = _v0.a;
+							var y = _v0.b;
+							return $elm$core$String$fromFloat(x) + (',' + $elm$core$String$fromFloat(y));
+						},
+						piece.polygon));
+				return A2(
+					$elm$svg$Svg$polygon,
+					_List_fromArray(
+						[
+							$elm$svg$Svg$Attributes$points(pointsAttr),
+							$elm$svg$Svg$Attributes$fill('transparent'),
+							$elm$svg$Svg$Attributes$stroke(color),
+							$elm$svg$Svg$Attributes$strokeWidth('3'),
+							$elm$svg$Svg$Attributes$strokeLinejoin('round'),
+							A2($elm$html$Html$Attributes$attribute, 'vector-effect', 'non-scaling-stroke'),
+							$elm$svg$Svg$Attributes$class('piece-outline'),
+							A2($elm$html$Html$Attributes$attribute, 'pointer-events', 'none')
+						]),
+					_List_Nil);
+			}
 		}
 	});
 var $author$project$Main$AssignGroupToWave = F2(
@@ -10936,41 +11097,58 @@ var $author$project$Main$viewPieceOverlay = function (appMode) {
 												}
 											}
 										}();
-										if ($elm$core$List$isEmpty(piece.polygon)) {
-											return A2($elm$svg$Svg$g, _List_Nil, _List_Nil);
-										} else {
-											var pointsAttr = A2(
-												$elm$core$String$join,
-												' ',
-												A2(
-													$elm$core$List$map,
-													function (_v0) {
-														var x = _v0.a;
-														var y = _v0.b;
-														return $elm$core$String$fromFloat(x) + (',' + $elm$core$String$fromFloat(y));
-													},
-													piece.polygon));
-											var pointerStyle = isLassoing ? 'pointer-events: none; ' : '';
+										var pointerStyle = isLassoing ? 'pointer-events: none; ' : '';
+										var commonAttrs = _Utils_ap(
+											_List_fromArray(
+												[
+													$elm$svg$Svg$Attributes$class(clsStr),
+													$elm$svg$Svg$Attributes$style(
+													_Utils_ap(pointerStyle, fillStyle))
+												]),
+											isLassoing ? _List_Nil : _List_fromArray(
+												[
+													$elm$html$Html$Events$onClick(clickMsg),
+													$elm$html$Html$Events$onMouseEnter(
+													$author$project$Main$SetHoveredPiece(
+														$elm$core$Maybe$Just(piece.id))),
+													$elm$html$Html$Events$onMouseLeave(
+													$author$project$Main$SetHoveredPiece($elm$core$Maybe$Nothing))
+												]));
+										if (!$elm$core$List$isEmpty(piece.outlinePaths)) {
+											var combinedD = A2($elm$core$String$join, ' ', piece.outlinePaths);
 											return A2(
-												$elm$svg$Svg$polygon,
-												_Utils_ap(
-													_List_fromArray(
-														[
-															$elm$svg$Svg$Attributes$points(pointsAttr),
-															$elm$svg$Svg$Attributes$class(clsStr),
-															$elm$svg$Svg$Attributes$style(
-															_Utils_ap(pointerStyle, fillStyle))
-														]),
-													isLassoing ? _List_Nil : _List_fromArray(
-														[
-															$elm$html$Html$Events$onClick(clickMsg),
-															$elm$html$Html$Events$onMouseEnter(
-															$author$project$Main$SetHoveredPiece(
-																$elm$core$Maybe$Just(piece.id))),
-															$elm$html$Html$Events$onMouseLeave(
-															$author$project$Main$SetHoveredPiece($elm$core$Maybe$Nothing))
-														])),
+												$elm$svg$Svg$path,
+												A2(
+													$elm$core$List$cons,
+													$elm$svg$Svg$Attributes$d(combinedD),
+													A2(
+														$elm$core$List$cons,
+														A2($elm$html$Html$Attributes$attribute, 'fill-rule', 'evenodd'),
+														commonAttrs)),
 												_List_Nil);
+										} else {
+											if ($elm$core$List$isEmpty(piece.polygon)) {
+												return A2($elm$svg$Svg$g, _List_Nil, _List_Nil);
+											} else {
+												var pointsAttr = A2(
+													$elm$core$String$join,
+													' ',
+													A2(
+														$elm$core$List$map,
+														function (_v0) {
+															var x = _v0.a;
+															var y = _v0.b;
+															return $elm$core$String$fromFloat(x) + (',' + $elm$core$String$fromFloat(y));
+														},
+														piece.polygon));
+												return A2(
+													$elm$svg$Svg$polygon,
+													A2(
+														$elm$core$List$cons,
+														$elm$svg$Svg$Attributes$points(pointsAttr),
+														commonAttrs),
+													_List_Nil);
+											}
 										}
 									};
 								};
@@ -11127,36 +11305,57 @@ var $author$project$Main$viewMainSvg = F2(
 							return _List_Nil;
 						} else {
 							var piece = _v6.a;
-							if ($elm$core$List$isEmpty(piece.polygon)) {
-								return _List_Nil;
+							if (!$elm$core$List$isEmpty(piece.outlinePaths)) {
+								return A2(
+									$elm$core$List$map,
+									function (d) {
+										return A2(
+											$elm$svg$Svg$path,
+											_List_fromArray(
+												[
+													$elm$svg$Svg$Attributes$d(d),
+													$elm$svg$Svg$Attributes$fill('none'),
+													$elm$svg$Svg$Attributes$stroke('rgba(40,180,80,0.9)'),
+													$elm$svg$Svg$Attributes$strokeWidth('3'),
+													$elm$svg$Svg$Attributes$strokeLinejoin('round'),
+													A2($elm$html$Html$Attributes$attribute, 'vector-effect', 'non-scaling-stroke'),
+													$elm$svg$Svg$Attributes$style('pointer-events: none;')
+												]),
+											_List_Nil);
+									},
+									piece.outlinePaths);
 							} else {
-								var pointsAttr = A2(
-									$elm$core$String$join,
-									' ',
-									A2(
-										$elm$core$List$map,
-										function (_v7) {
-											var x = _v7.a;
-											var y = _v7.b;
-											return $elm$core$String$fromFloat(x) + (',' + $elm$core$String$fromFloat(y));
-										},
-										piece.polygon));
-								return _List_fromArray(
-									[
+								if ($elm$core$List$isEmpty(piece.polygon)) {
+									return _List_Nil;
+								} else {
+									var pointsAttr = A2(
+										$elm$core$String$join,
+										' ',
 										A2(
-										$elm$svg$Svg$polygon,
-										_List_fromArray(
-											[
-												$elm$svg$Svg$Attributes$points(pointsAttr),
-												$elm$svg$Svg$Attributes$fill('none'),
-												$elm$svg$Svg$Attributes$stroke('rgba(40,180,80,0.9)'),
-												$elm$svg$Svg$Attributes$strokeWidth('3'),
-												$elm$svg$Svg$Attributes$strokeLinejoin('round'),
-												A2($elm$html$Html$Attributes$attribute, 'vector-effect', 'non-scaling-stroke'),
-												$elm$svg$Svg$Attributes$style('pointer-events: none;')
-											]),
-										_List_Nil)
-									]);
+											$elm$core$List$map,
+											function (_v7) {
+												var x = _v7.a;
+												var y = _v7.b;
+												return $elm$core$String$fromFloat(x) + (',' + $elm$core$String$fromFloat(y));
+											},
+											piece.polygon));
+									return _List_fromArray(
+										[
+											A2(
+											$elm$svg$Svg$polygon,
+											_List_fromArray(
+												[
+													$elm$svg$Svg$Attributes$points(pointsAttr),
+													$elm$svg$Svg$Attributes$fill('none'),
+													$elm$svg$Svg$Attributes$stroke('rgba(40,180,80,0.9)'),
+													$elm$svg$Svg$Attributes$strokeWidth('3'),
+													$elm$svg$Svg$Attributes$strokeLinejoin('round'),
+													A2($elm$html$Html$Attributes$attribute, 'vector-effect', 'non-scaling-stroke'),
+													$elm$svg$Svg$Attributes$style('pointer-events: none;')
+												]),
+											_List_Nil)
+										]);
+								}
 							}
 						}
 					}
@@ -11233,36 +11432,57 @@ var $author$project$Main$viewMainSvg = F2(
 						return _List_Nil;
 					} else {
 						var piece = _v3.a;
-						if ($elm$core$List$isEmpty(piece.polygon)) {
-							return _List_Nil;
+						if (!$elm$core$List$isEmpty(piece.outlinePaths)) {
+							return A2(
+								$elm$core$List$map,
+								function (d) {
+									return A2(
+										$elm$svg$Svg$path,
+										_List_fromArray(
+											[
+												$elm$svg$Svg$Attributes$d(d),
+												$elm$svg$Svg$Attributes$fill('rgba(40,180,80,0.25)'),
+												$elm$svg$Svg$Attributes$stroke('rgba(40,180,80,0.9)'),
+												$elm$svg$Svg$Attributes$strokeWidth('3'),
+												$elm$svg$Svg$Attributes$strokeLinejoin('round'),
+												A2($elm$html$Html$Attributes$attribute, 'vector-effect', 'non-scaling-stroke'),
+												$elm$svg$Svg$Attributes$style('pointer-events: none;')
+											]),
+										_List_Nil);
+								},
+								piece.outlinePaths);
 						} else {
-							var pointsAttr = A2(
-								$elm$core$String$join,
-								' ',
-								A2(
-									$elm$core$List$map,
-									function (_v4) {
-										var x = _v4.a;
-										var y = _v4.b;
-										return $elm$core$String$fromFloat(x) + (',' + $elm$core$String$fromFloat(y));
-									},
-									piece.polygon));
-							return _List_fromArray(
-								[
+							if ($elm$core$List$isEmpty(piece.polygon)) {
+								return _List_Nil;
+							} else {
+								var pointsAttr = A2(
+									$elm$core$String$join,
+									' ',
 									A2(
-									$elm$svg$Svg$polygon,
-									_List_fromArray(
-										[
-											$elm$svg$Svg$Attributes$points(pointsAttr),
-											$elm$svg$Svg$Attributes$fill('rgba(40,180,80,0.25)'),
-											$elm$svg$Svg$Attributes$stroke('rgba(40,180,80,0.9)'),
-											$elm$svg$Svg$Attributes$strokeWidth('3'),
-											$elm$svg$Svg$Attributes$strokeLinejoin('round'),
-											A2($elm$html$Html$Attributes$attribute, 'vector-effect', 'non-scaling-stroke'),
-											$elm$svg$Svg$Attributes$style('pointer-events: none;')
-										]),
-									_List_Nil)
-								]);
+										$elm$core$List$map,
+										function (_v4) {
+											var x = _v4.a;
+											var y = _v4.b;
+											return $elm$core$String$fromFloat(x) + (',' + $elm$core$String$fromFloat(y));
+										},
+										piece.polygon));
+								return _List_fromArray(
+									[
+										A2(
+										$elm$svg$Svg$polygon,
+										_List_fromArray(
+											[
+												$elm$svg$Svg$Attributes$points(pointsAttr),
+												$elm$svg$Svg$Attributes$fill('rgba(40,180,80,0.25)'),
+												$elm$svg$Svg$Attributes$stroke('rgba(40,180,80,0.9)'),
+												$elm$svg$Svg$Attributes$strokeWidth('3'),
+												$elm$svg$Svg$Attributes$strokeLinejoin('round'),
+												A2($elm$html$Html$Attributes$attribute, 'vector-effect', 'non-scaling-stroke'),
+												$elm$svg$Svg$Attributes$style('pointer-events: none;')
+											]),
+										_List_Nil)
+									]);
+							}
 						}
 					}
 				}
@@ -12722,8 +12942,6 @@ var $elm$html$Html$Attributes$classList = function (classes) {
 				$elm$core$Tuple$first,
 				A2($elm$core$List$filter, $elm$core$Tuple$second, classes))));
 };
-var $elm$svg$Svg$Attributes$d = _VirtualDom_attribute('d');
-var $elm$svg$Svg$path = $elm$svg$Svg$trustedNode('path');
 var $author$project$Main$iconLockClosed = A2(
 	$elm$svg$Svg$svg,
 	_List_fromArray(

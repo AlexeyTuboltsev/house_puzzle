@@ -40,6 +40,11 @@ type alias Brick =
     , brickType : String
     , neighbors : List String
     , polygon : List Point
+    -- Bezier-derived SVG path `d=` strings in canvas pixels. Source
+    -- of truth for outlines (preserves cubic curves through the merge).
+    -- `polygon` is kept for legacy click / hit-test consumers and as
+    -- a fallback if a brick somehow comes back without a bezier path.
+    , outlinePaths : List String
     , layerName : String
     }
 
@@ -62,6 +67,9 @@ type alias Piece =
     , brickIds : List String
     , bricks : List BrickRef
     , polygon : List Point
+    -- Bezier-derived SVG path `d=` strings in canvas pixels, one per
+    -- closed loop (annular pieces have multiple). See `Brick.outlinePaths`.
+    , outlinePaths : List String
     , imgUrl : String
     , outlineUrl : String
     }
@@ -1049,6 +1057,7 @@ update msg model =
                                         , brickIds = [ bid ]
                                         , bricks = [ BrickRef bid brick.x brick.y brick.width brick.height ]
                                         , polygon = []
+                                        , outlinePaths = []
                                         , imgUrl = "/api/s/" ++ model.sessionKey ++ "/piece/" ++ newPieceId ++ ".png"
                                         , outlineUrl = "/api/s/" ++ model.sessionKey ++ "/piece_outline/" ++ newPieceId ++ ".png"
                                         }
@@ -1062,6 +1071,7 @@ update msg model =
                                         , brickIds = [ bid ]
                                         , bricks = []
                                         , polygon = []
+                                        , outlinePaths = []
                                         , imgUrl = "/api/s/" ++ model.sessionKey ++ "/piece/" ++ newPieceId ++ ".png"
                                         , outlineUrl = "/api/s/" ++ model.sessionKey ++ "/piece_outline/" ++ newPieceId ++ ".png"
                                         }
@@ -2165,7 +2175,7 @@ recalcPieceBbox sessionKey bricksById piece =
         Just x ->
             case ( List.minimum ys, List.maximum x2s, List.maximum y2s ) of
                 ( Just y, Just x2, Just y2 ) ->
-                    { piece | x = x, y = y, width = x2 - x, height = y2 - y, bricks = newBrickRefs, polygon = [], imgUrl = "/api/s/" ++ sessionKey ++ "/piece/" ++ piece.id ++ ".png", outlineUrl = "/api/s/" ++ sessionKey ++ "/piece_outline/" ++ piece.id ++ ".png" }
+                    { piece | x = x, y = y, width = x2 - x, height = y2 - y, bricks = newBrickRefs, polygon = [], outlinePaths = [], imgUrl = "/api/s/" ++ sessionKey ++ "/piece/" ++ piece.id ++ ".png", outlineUrl = "/api/s/" ++ sessionKey ++ "/piece_outline/" ++ piece.id ++ ".png" }
 
                 _ ->
                     piece
@@ -2359,7 +2369,13 @@ decodeCanvas =
 
 decodeBrick : D.Decoder Brick
 decodeBrick =
-    D.map8 (\id x y w h t n p -> Brick id x y w h t n p "")
+    D.map8
+        (\id x y w h t n p ->
+            { id = id, x = x, y = y, width = w, height = h
+            , brickType = t, neighbors = n, polygon = p
+            , outlinePaths = [], layerName = ""
+            }
+        )
         (D.field "id" D.string)
         (D.field "x" D.float)
         (D.field "y" D.float)
@@ -2369,7 +2385,8 @@ decodeBrick =
         (D.field "neighbors" (D.list D.string))
         (D.field "polygon" (D.list decodePoint))
         |> D.andThen (\brick ->
-            D.map (\ln -> { brick | layerName = ln })
+            D.map2 (\paths ln -> { brick | outlinePaths = paths, layerName = ln })
+                (D.oneOf [ D.field "outline_paths" (D.list D.string), D.succeed [] ])
                 (D.oneOf [ D.field "layer_name" D.string, D.succeed "" ])
         )
 
@@ -2399,6 +2416,7 @@ decodePiece =
             , brickIds = brickIds_
             , bricks = bricks_
             , polygon = polygon_
+            , outlinePaths = []
             , imgUrl = ""
             , outlineUrl = ""
             }
@@ -2412,7 +2430,11 @@ decodePiece =
         (D.field "bricks" (D.list decodeBrickRef))
         (D.field "polygon" (D.list decodePoint))
         |> D.andThen (\piece ->
-            D.map2 (\img out -> { piece | imgUrl = img, outlineUrl = out })
+            D.map3
+                (\paths img out ->
+                    { piece | outlinePaths = paths, imgUrl = img, outlineUrl = out }
+                )
+                (D.oneOf [ D.field "outline_paths" (D.list D.string), D.succeed [] ])
                 (D.oneOf [ D.field "img_url" D.string, D.succeed "" ])
                 (D.oneOf [ D.field "outline_url" D.string, D.succeed "" ])
         )
@@ -3701,7 +3723,25 @@ viewMainSvg response model =
                                 []
 
                             Just piece ->
-                                if List.isEmpty piece.polygon then
+                                -- Prefer bezier `outlinePaths` (curve-preserving), fall back
+                                -- to legacy polygon. See Phase 3 of the bezier port.
+                                if not (List.isEmpty piece.outlinePaths) then
+                                    piece.outlinePaths
+                                        |> List.map
+                                            (\d ->
+                                                Svg.path
+                                                    [ SA.d d
+                                                    , SA.fill "rgba(40,180,80,0.25)"
+                                                    , SA.stroke "rgba(40,180,80,0.9)"
+                                                    , SA.strokeWidth "3"
+                                                    , SA.strokeLinejoin "round"
+                                                    , attribute "vector-effect" "non-scaling-stroke"
+                                                    , SA.style "pointer-events: none;"
+                                                    ]
+                                                    []
+                                            )
+
+                                else if List.isEmpty piece.polygon then
                                     []
 
                                 else
@@ -3790,7 +3830,25 @@ viewMainSvg response model =
                                     []
 
                                 Just piece ->
-                                    if List.isEmpty piece.polygon then
+                                    -- Prefer bezier `outlinePaths` (curve-preserving), fall back
+                                    -- to legacy polygon. See Phase 3 of the bezier port.
+                                    if not (List.isEmpty piece.outlinePaths) then
+                                        piece.outlinePaths
+                                            |> List.map
+                                                (\d ->
+                                                    Svg.path
+                                                        [ SA.d d
+                                                        , SA.fill "none"
+                                                        , SA.stroke "rgba(40,180,80,0.9)"
+                                                        , SA.strokeWidth "3"
+                                                        , SA.strokeLinejoin "round"
+                                                        , attribute "vector-effect" "non-scaling-stroke"
+                                                        , SA.style "pointer-events: none;"
+                                                        ]
+                                                        []
+                                                )
+
+                                    else if List.isEmpty piece.polygon then
                                         []
 
                                     else
@@ -3980,16 +4038,44 @@ viewPieceImage generation piece =
 
 viewBrickOverlay : Brick -> Svg.Svg Msg
 viewBrickOverlay brick =
-    let
-        absPoints =
-            List.map (\( x, y ) -> ( x + brick.x, y + brick.y )) brick.polygon
+    -- Render the brick outline from `brick.outlinePaths` (bezier-derived,
+    -- canvas-pixel SVG `d=` strings — see Phase 3 of the bezier port).
+    -- Falls back to the legacy `brick.polygon` (brick-local px) for any
+    -- brick that comes back without a bezier path; falls back to a red
+    -- error marker if neither is available.
+    if not (List.isEmpty brick.outlinePaths) then
+        Svg.g [ onClick (LogBrickClick brick.id) ]
+            (brick.outlinePaths
+                |> List.map
+                    (\d ->
+                        Svg.path
+                            [ SA.d d
+                            , SA.fill "transparent"
+                            , attribute "vector-effect" "non-scaling-stroke"
+                            , SA.class "brick-overlay"
+                            ]
+                            []
+                    )
+            )
 
-        pointsAttr =
-            absPoints
-                |> List.map (\( x, y ) -> String.fromFloat x ++ "," ++ String.fromFloat y)
-                |> String.join " "
-    in
-    if List.isEmpty absPoints then
+    else if not (List.isEmpty brick.polygon) then
+        let
+            pointsAttr =
+                brick.polygon
+                    |> List.map (\( x, y ) -> ( x + brick.x, y + brick.y ))
+                    |> List.map (\( x, y ) -> String.fromFloat x ++ "," ++ String.fromFloat y)
+                    |> String.join " "
+        in
+        Svg.polygon
+            [ SA.points pointsAttr
+            , SA.fill "transparent"
+            , attribute "vector-effect" "non-scaling-stroke"
+            , SA.class "brick-overlay"
+            , onClick (LogBrickClick brick.id)
+            ]
+            []
+
+    else
         -- ERROR: no polygon from PDF vector layer — must never happen, all shapes are complex polygons
         Svg.g []
             [ Svg.rect
@@ -4010,16 +4096,6 @@ viewBrickOverlay brick =
                 ]
                 [ Svg.text ("!" ++ brick.id) ]
             ]
-
-    else
-        Svg.polygon
-            [ SA.points pointsAttr
-            , SA.fill "transparent"
-            , attribute "vector-effect" "non-scaling-stroke"
-            , SA.class "brick-overlay"
-            , onClick (LogBrickClick brick.id)
-            ]
-            []
 
 
 viewBrickEditOverlay : List String -> Dict String String -> Maybe String -> Brick -> Svg.Svg Msg
@@ -4080,7 +4156,29 @@ viewBrickEditOverlay editBrickIds brickToPiece hoveredPieceId brick =
                     Nothing ->
                         []
     in
-    if List.isEmpty absPoints then
+    -- Prefer bezier `outlinePaths` (curve-preserving), fall back to legacy
+    -- polygon. See Phase 3 of the bezier port.
+    if not (List.isEmpty brick.outlinePaths) then
+        let
+            commonAttrs =
+                [ SA.class cls
+                , attribute "vector-effect" "non-scaling-stroke"
+                , onClick clickMsg
+                ] ++ hoverAttrs
+        in
+        Svg.g commonAttrs
+            (brick.outlinePaths
+                |> List.map
+                    (\d ->
+                        Svg.path
+                            [ SA.d d
+                            , attribute "vector-effect" "non-scaling-stroke"
+                            ]
+                            []
+                    )
+            )
+
+    else if List.isEmpty absPoints then
         -- ERROR: no polygon — all bricks must have vector polygons
         Svg.g []
             [ Svg.rect
@@ -4132,7 +4230,32 @@ viewGreenHoverOverlay editBrickIds brickToPiece hoveredPieceId hoveredBrickId br
                     Nothing ->
                         False
     in
-    if not shouldHighlight || List.isEmpty brick.polygon then
+    if not shouldHighlight then
+        []
+    else if not (List.isEmpty brick.outlinePaths) then
+        -- Prefer bezier `outlinePaths` (curve-preserving). See Phase 3 of bezier port.
+        let
+            attrs =
+                if inEdit then
+                    -- In-edit brick hovered: green fill + green outline around just this brick
+                    [ SA.fill "rgba(40,180,80,0.3)"
+                    , SA.stroke "rgba(40,180,80,0.9)"
+                    , SA.strokeWidth "3"
+                    , attribute "vector-effect" "non-scaling-stroke"
+                    , SA.style "pointer-events: none;"
+                    ]
+                else
+                    -- Foreign piece brick hovered: green fill only (piece outline handled by greenPieceOutlineLayer)
+                    [ SA.fill "rgba(40,180,80,0.3)"
+                    , SA.stroke "none"
+                    , attribute "vector-effect" "non-scaling-stroke"
+                    , SA.style "pointer-events: none;"
+                    ]
+        in
+        brick.outlinePaths
+            |> List.map (\d -> Svg.path (SA.d d :: attrs) [])
+
+    else if List.isEmpty brick.polygon then
         []
     else
         let
@@ -4171,7 +4294,29 @@ viewGreenHoverOverlay editBrickIds brickToPiece hoveredPieceId hoveredBrickId br
 
 viewPieceBlueprintPath : Piece -> Svg.Svg Msg
 viewPieceBlueprintPath piece =
-    if List.isEmpty piece.polygon then
+    -- Render the blueprint outline from `piece.outlinePaths` (bezier-merged,
+    -- canvas-pixel SVG `d=` strings — see Phase 3 of the bezier port).
+    -- Falls back to the legacy `piece.polygon` for any piece without a bezier path.
+    if not (List.isEmpty piece.outlinePaths) then
+        Svg.g []
+            (piece.outlinePaths
+                |> List.map
+                    (\d ->
+                        Svg.path
+                            [ SA.d d
+                            , SA.fill "none"
+                            , SA.stroke "white"
+                            , SA.strokeWidth "4"
+                            , SA.strokeLinejoin "round"
+                            , attribute "stroke-linecap" "round"
+                            , attribute "vector-effect" "non-scaling-stroke"
+                            , SA.class "brick-path"
+                            ]
+                            []
+                    )
+            )
+
+    else if List.isEmpty piece.polygon then
         Svg.g [] []
 
     else
@@ -4196,7 +4341,29 @@ viewPieceBlueprintPath piece =
 
 viewPieceOutline : String -> Piece -> Svg.Svg Msg
 viewPieceOutline color piece =
-    if List.isEmpty piece.polygon then
+    -- Render the piece outline from `piece.outlinePaths` (bezier-merged
+    -- canvas-pixel SVG `d=` strings — see Phase 3 of the bezier port).
+    -- Falls back to the legacy `piece.polygon` for any piece without a bezier path.
+    if not (List.isEmpty piece.outlinePaths) then
+        Svg.g []
+            (piece.outlinePaths
+                |> List.map
+                    (\d ->
+                        Svg.path
+                            [ SA.d d
+                            , SA.fill "transparent"
+                            , SA.stroke color
+                            , SA.strokeWidth "3"
+                            , SA.strokeLinejoin "round"
+                            , attribute "vector-effect" "non-scaling-stroke"
+                            , SA.class "piece-outline"
+                            , attribute "pointer-events" "none"
+                            ]
+                            []
+                    )
+            )
+
+    else if List.isEmpty piece.polygon then
         Svg.g [] []
 
     else
@@ -4405,24 +4572,14 @@ viewPieceOverlay appMode hoveredId selectedId selectedWaveId waves groups select
             else
                 SelectPiece piece.id
     in
-    if List.isEmpty piece.polygon then
-        Svg.g [] []
+    let
+        pointerStyle =
+            if isLassoing then "pointer-events: none; " else ""
 
-    else
-        let
-            pointsAttr =
-                piece.polygon
-                    |> List.map (\( x, y ) -> String.fromFloat x ++ "," ++ String.fromFloat y)
-                    |> String.join " "
-
-            pointerStyle =
-                if isLassoing then "pointer-events: none; " else ""
-        in
-        Svg.polygon
-            ([ SA.points pointsAttr
-             , SA.class clsStr
-             , SA.style (pointerStyle ++ fillStyle)
-             ]
+        commonAttrs =
+            [ SA.class clsStr
+            , SA.style (pointerStyle ++ fillStyle)
+            ]
                 ++ (if isLassoing then
                         []
 
@@ -4432,8 +4589,27 @@ viewPieceOverlay appMode hoveredId selectedId selectedWaveId waves groups select
                         , onMouseLeave (SetHoveredPiece Nothing)
                         ]
                    )
-            )
-            []
+    in
+    -- Prefer bezier `outlinePaths` (curve-preserving), fall back to legacy
+    -- polygon. See Phase 3 of the bezier port. Hit region is the path fill.
+    if not (List.isEmpty piece.outlinePaths) then
+        let
+            combinedD =
+                String.join " " piece.outlinePaths
+        in
+        Svg.path (SA.d combinedD :: attribute "fill-rule" "evenodd" :: commonAttrs) []
+
+    else if List.isEmpty piece.polygon then
+        Svg.g [] []
+
+    else
+        let
+            pointsAttr =
+                piece.polygon
+                    |> List.map (\( x, y ) -> String.fromFloat x ++ "," ++ String.fromFloat y)
+                    |> String.join " "
+        in
+        Svg.polygon (SA.points pointsAttr :: commonAttrs) []
 
 
 viewGrid : Float -> Float -> String -> Float -> List (Svg.Svg Msg)
