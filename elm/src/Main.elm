@@ -139,7 +139,6 @@ type AppMode
     = ModeInit
     | ModeGenerate
     | ModePieces
-    | ModeBlueprint
     | ModeGroups
     | ModeWaves
     | ModeExport
@@ -191,6 +190,7 @@ type alias Model =
     , showLights : Bool
     , showGroupOverlay : Bool
     , showWaveOverlay : Bool
+    , showOnlyBlueprint : Bool
     , waves : List Wave
     , nextWaveId : Int
     , groups : List Group
@@ -254,6 +254,7 @@ init flags =
       , showLights = False
       , showGroupOverlay = True
       , showWaveOverlay = True
+      , showOnlyBlueprint = False
 
       , waves = []
       , nextWaveId = 1
@@ -332,6 +333,8 @@ type Msg
     | ToggleGroupOverlay Bool
     | ToggleWaveOverlay Bool
     | AddWave
+    | AddLastWave
+    | ToggleOnlyBlueprint Bool
     | ToggleWaveVisibility Int
     | SetHoveredPiece (Maybe String)
     | SetHoveredBrick (Maybe String)
@@ -404,6 +407,14 @@ port tauriResponse : (D.Value -> msg) -> Sub msg
 
 
 port testSetValue : ({ testId : String, value : String } -> msg) -> Sub msg
+
+
+{-| Scroll every strip thumbnail (and the SVG canvas piece overlay) that
+matches a given piece id into view. Implemented in JS via
+`element.scrollIntoView` since each piece can appear in multiple strips
+simultaneously (wave row, big-wave tray) and Browser.Dom only scrolls
+one viewport at a time. -}
+port scrollPieceIntoView : String -> Cmd msg
 
 
 
@@ -821,6 +832,48 @@ update msg model =
                 , Cmd.none
                 )
 
+        AddLastWave ->
+            let
+                assignedIds =
+                    List.concatMap .pieceIds model.waves
+
+                unassignedIds =
+                    model.pieces
+                        |> List.filter (\p -> not (List.member p.id assignedIds))
+                        |> List.map .id
+
+                newWave =
+                    { id = model.nextWaveId
+                    , name = "Wave " ++ String.fromInt model.nextWaveId
+                    , visible = True
+                    , locked = False
+                    , pieceIds = unassignedIds
+                    , hue = defaultHue (model.nextWaveId - 1)
+                    , opacity = 0.3
+                    }
+
+                lockedWaves =
+                    List.map
+                        (\w ->
+                            if Just w.id == model.selectedWaveId then
+                                { w | locked = True }
+                            else
+                                w
+                        )
+                        model.waves
+            in
+            withUndo model
+                ( { model
+                    | waves = [ newWave ] ++ lockedWaves
+                    , nextWaveId = model.nextWaveId + 1
+                    , selectedWaveId = Just newWave.id
+                  }
+                , Cmd.none
+                )
+
+        ToggleOnlyBlueprint checked ->
+            ( { model | showOnlyBlueprint = checked }, Cmd.none )
+
         ToggleWaveVisibility waveId ->
             withUndo model
                 ( { model
@@ -845,15 +898,21 @@ update msg model =
             ( { model | hoveredBrickId = mid }, Cmd.none )
 
         SelectPiece pid ->
-            ( { model
-                | selectedPieceId =
+            let
+                newSelected =
                     if model.selectedPieceId == Just pid then
                         Nothing
 
                     else
                         Just pid
-              }
-            , Cmd.none
+            in
+            ( { model | selectedPieceId = newSelected }
+            , case newSelected of
+                Just sid ->
+                    scrollPieceIntoView sid
+
+                Nothing ->
+                    Cmd.none
             )
 
         SelectWave mwid ->
@@ -2705,17 +2764,6 @@ viewTitleBar model =
             , button
                 [ classList
                     [ ( "mode-btn", True )
-                    , ( "active", model.appMode == ModeBlueprint )
-                    ]
-                , disabled (not isGenerated || isBusy || isGenerating)
-                , onClick (SetAppMode ModeBlueprint)
-                , tid "mode-blueprint"
-                ]
-                [ text "Blueprint" ]
-            , span [ class "mode-sep" ] [ text "\u{2195}" ]
-            , button
-                [ classList
-                    [ ( "mode-btn", True )
                     , ( "active", model.appMode == ModeGroups )
                     ]
                 , disabled (not isGenerated || isBusy || isGenerating)
@@ -2903,7 +2951,7 @@ viewWaveTray model _ =
                                                         SinglePiece _ -> Nothing
                                                         GroupedPiece _ allIds -> Just (List.length allIds)
                                             in
-                                            [ viewWaveTrayThumb piece isLocked model.svgScale model.hoveredPieceId model.pieceGeneration model.showNumbers pos groupCount ]
+                                            [ viewWaveTrayThumb piece isLocked model.svgScale model.hoveredPieceId model.selectedPieceId model.pieceGeneration model.showNumbers pos groupCount ]
 
                                         Nothing ->
                                             []
@@ -2926,11 +2974,14 @@ viewWaveTray model _ =
 
 -- scale: computed from viewport height and SVG natural height (stored in model.svgScale).
 -- Produces exact px dimensions matching how the piece appears in the house view.
-viewWaveTrayThumb : Piece -> Bool -> Float -> Maybe String -> Int -> Bool -> Int -> Maybe Int -> Html Msg
-viewWaveTrayThumb piece isLocked scale hoveredId generation showNum pos maybeGroupN =
+viewWaveTrayThumb : Piece -> Bool -> Float -> Maybe String -> Maybe String -> Int -> Bool -> Int -> Maybe Int -> Html Msg
+viewWaveTrayThumb piece isLocked scale hoveredId selectedId generation showNum pos maybeGroupN =
     let
         isHovered =
             hoveredId == Just piece.id
+
+        isSelected =
+            selectedId == Just piece.id
 
         widthCss =
             String.fromFloat (piece.width * scale) ++ "px"
@@ -2947,7 +2998,12 @@ viewWaveTrayThumb piece isLocked scale hoveredId generation showNum pos maybeGro
                 ]
     in
     div
-        ([ classList [ ( "wave-tray-thumb", True ), ( "hovered", isHovered ) ]
+        ([ classList
+            [ ( "wave-tray-thumb", True )
+            , ( "hovered", isHovered )
+            , ( "selected", isSelected )
+            ]
+         , attribute "data-piece-id" piece.id
          , style "width" widthCss
          , style "aspect-ratio" (String.fromFloat (piece.width / piece.height))
          , onMouseEnter (SetHoveredPiece (Just piece.id))
@@ -2956,6 +3012,7 @@ viewWaveTrayThumb piece isLocked scale hoveredId generation showNum pos maybeGro
             ++ dragAttrs
         )
         [ img [ src (cacheBust piece.imgUrl generation) ] []
+
         , if showNum then
             div [ class "tray-thumb-num" ] [ text (String.fromInt pos) ]
           else
@@ -2980,9 +3037,6 @@ viewToolsCol model response =
 
             ModePieces ->
                 viewPiecesTools model
-
-            ModeBlueprint ->
-                viewBlueprintTools model
 
             ModeGroups ->
                 viewGroupsTools model
@@ -3017,12 +3071,18 @@ viewGenerateTools model response =
         , viewStatusBadge model
         , viewSectionTitle "Import"
         , div [ class "param-group" ]
-            [ label [] [ text "Target Pieces ", span [ class "value" ] [ text (String.fromInt model.targetCount) ] ]
-            , input [ type_ "range", Html.Attributes.min "5", Html.Attributes.max "181", value (String.fromInt model.targetCount), onInput SetTargetCount, tid "target-pieces" ] []
+            [ label [] [ text "Target Pieces" ]
+            , div [ class "param-row" ]
+                [ input [ type_ "range", Html.Attributes.min "5", Html.Attributes.max "181", value (String.fromInt model.targetCount), onInput SetTargetCount, tid "target-pieces" ] []
+                , input [ type_ "number", Html.Attributes.min "5", Html.Attributes.max "181", value (String.fromInt model.targetCount), onInput SetTargetCount, class "param-number" ] []
+                ]
             ]
         , div [ class "param-group" ]
-            [ label [] [ text "Min. Common Border Length ", span [ class "value" ] [ text (String.fromInt model.minBorder) ], text "px" ]
-            , input [ type_ "range", Html.Attributes.min "0", Html.Attributes.max "50", value (String.fromInt model.minBorder), onInput SetMinBorder, tid "min-border" ] []
+            [ label [] [ text "Min. Common Border Length (px)" ]
+            , div [ class "param-row" ]
+                [ input [ type_ "range", Html.Attributes.min "0", Html.Attributes.max "50", value (String.fromInt model.minBorder), onInput SetMinBorder, tid "min-border" ] []
+                , input [ type_ "number", Html.Attributes.min "0", Html.Attributes.max "50", value (String.fromInt model.minBorder), onInput SetMinBorder, class "param-number" ] []
+                ]
             ]
         , h2 [] [ text "Import" ]
         , viewImportStats response
@@ -3058,7 +3118,7 @@ viewPiecesTools model =
                     model.selectedPieceId
                         |> Maybe.andThen (\pid -> model.pieces |> List.filter (\p -> p.id == pid) |> List.head)
             in
-            [ viewTogglesBox [ viewCheckboxLights model, viewCheckboxGrid model, viewCheckboxOutlines model ]
+            [ viewTogglesBox [ viewCheckboxLights model, viewCheckboxGrid model, viewCheckboxOutlines model, viewCheckboxOnlyBlueprint model ]
             , viewSectionTitle "Edit Pieces"
             , case selectedPiece of
                 Just piece ->
@@ -3192,8 +3252,27 @@ viewCheckboxGrid model =
 
 viewCheckboxOutlines : Model -> Html Msg
 viewCheckboxOutlines model =
-    div [ class "checkbox-group" ]
-        [ input [ type_ "checkbox", id "cbOutlines", checked model.showOutlines, onCheck ToggleOutlines ] []
+    div
+        [ classList
+            [ ( "checkbox-group", True )
+            , ( "disabled", model.showOnlyBlueprint )
+            ]
+        , title
+            (if model.showOnlyBlueprint then
+                "Disabled while \"Only blueprint\" is on"
+
+             else
+                ""
+            )
+        ]
+        [ input
+            [ type_ "checkbox"
+            , id "cbOutlines"
+            , checked model.showOutlines
+            , disabled model.showOnlyBlueprint
+            , onCheck ToggleOutlines
+            ]
+            []
         , label [ for "cbOutlines" ] [ text "Show piece outlines" ]
         , span
             [ class "wave-swatch wave-swatch-sm"
@@ -3233,6 +3312,14 @@ viewCheckboxWaveOverlay model =
         ]
 
 
+viewCheckboxOnlyBlueprint : Model -> Html Msg
+viewCheckboxOnlyBlueprint model =
+    div [ class "checkbox-group" ]
+        [ input [ type_ "checkbox", id "cbOnlyBlueprint", checked model.showOnlyBlueprint, onCheck ToggleOnlyBlueprint ] []
+        , label [ for "cbOnlyBlueprint" ] [ text "Only blueprint" ]
+        ]
+
+
 viewGridColorSwatch : Model -> Html Msg
 viewGridColorSwatch model =
     span
@@ -3246,14 +3333,6 @@ viewGridColorSwatch model =
         , title "Pick grid color"
         ]
         []
-
-
-viewBlueprintTools : Model -> Html Msg
-viewBlueprintTools model =
-    div [ class "tools-pane" ]
-        [ viewTogglesBox [ viewCheckboxLights model, viewCheckboxGrid model ]
-        , viewSectionTitle "Blueprint"
-        ]
 
 
 -- ── Groups helpers ──────────────────────────────────────────────────────────
@@ -3301,7 +3380,7 @@ viewGroupsTools model =
             List.filter (\p -> not (List.member p.id assignedIds)) model.pieces
     in
     div [ class "tools-pane waves-tools" ]
-        [ viewTogglesBox [ viewCheckboxLights model, viewCheckboxGrid model, viewCheckboxOutlines model, viewCheckboxGroupOverlay model ]
+        [ viewTogglesBox [ viewCheckboxLights model, viewCheckboxGrid model, viewCheckboxOutlines model, viewCheckboxGroupOverlay model, viewCheckboxOnlyBlueprint model ]
         , div [ class "waves-header" ]
             [ viewSectionTitle "Groups"
             , span [ class "wave-count" ]
@@ -3390,7 +3469,7 @@ viewGroupRow model allGroups group =
                     model.pieces
                         |> List.filter (\p -> p.id == pid)
                         |> List.head
-                        |> Maybe.map (\piece -> viewPieceThumb (Just ( group.id, pid )) False model.hoveredPieceId pid (cacheBust piece.imgUrl model.pieceGeneration) Nothing)
+                        |> Maybe.map (\piece -> viewPieceThumb (Just ( group.id, pid )) False model.hoveredPieceId model.selectedPieceId pid (cacheBust piece.imgUrl model.pieceGeneration) Nothing)
                 )
                 group.pieceIds
             )
@@ -3419,7 +3498,7 @@ viewGroupUnassignedRow model unassignedPieces =
                 ]
             , div [ class "wave-pieces" ]
                 (List.map
-                    (\p -> viewPieceThumb Nothing False model.hoveredPieceId p.id (p.imgUrl ++ "?v=" ++ String.fromInt model.pieceGeneration) Nothing)
+                    (\p -> viewPieceThumb Nothing False model.hoveredPieceId model.selectedPieceId p.id (cacheBust p.imgUrl model.pieceGeneration) Nothing)
                     unassignedPieces
                 )
             ]
@@ -3444,7 +3523,7 @@ viewWavesTools model =
             List.filter (\p -> not (List.member p.id assignedIds)) model.pieces
     in
     div [ class "tools-pane waves-tools" ]
-        [ viewTogglesBox [ viewCheckboxLights model, viewCheckboxGrid model, viewCheckboxOutlines model, viewCheckboxWaveOverlay model, viewCheckboxNumbers model ]
+        [ viewTogglesBox [ viewCheckboxLights model, viewCheckboxGrid model, viewCheckboxOutlines model, viewCheckboxWaveOverlay model, viewCheckboxNumbers model, viewCheckboxOnlyBlueprint model ]
         , div [ class "waves-header" ]
             [ viewSectionTitle "Waves"
             , span [ class "wave-count" ]
@@ -3459,9 +3538,22 @@ viewWavesTools model =
             ]
         , div [ class "wave-toolbar" ]
             [ button [ onClick AddWave ] [ text "New wave" ]
+            , button
+                [ onClick AddLastWave
+                , disabled (List.isEmpty unassignedPieces)
+                , title "Create a new wave and assign every unassigned piece to it"
+                ]
+                [ text "Last wave" ]
             ]
         , div [ class "waves-body" ]
-            (List.map (viewWaveRow model model.waves) model.waves
+            (let
+                waveTotal =
+                    List.length model.waves
+             in
+             -- Waves are prepended on creation (newest first), so the
+             -- on-screen order is reverse-chronological. Number them in
+             -- creation order: oldest = 1, newest = N.
+             List.indexedMap (\idx w -> viewWaveRow model model.waves (waveTotal - idx) w) model.waves
                 ++ [ viewUnassignedRow model unassignedPieces ]
             )
         , div [ class "tools-divider" ] []
@@ -3484,7 +3576,7 @@ viewExportTools model =
             List.any (\p -> not (List.member p.id assignedIds)) model.pieces
     in
     div [ class "tools-pane" ]
-        [ viewTogglesBox [ viewCheckboxLights model, viewCheckboxGrid model, viewCheckboxOutlines model, viewCheckboxWaveOverlay model, viewCheckboxNumbers model ]
+        [ viewTogglesBox [ viewCheckboxLights model, viewCheckboxGrid model, viewCheckboxOutlines model, viewCheckboxWaveOverlay model, viewCheckboxNumbers model, viewCheckboxOnlyBlueprint model ]
         , viewSectionTitle "Export"
         , div [ class "field-row" ]
             [ label [] [ text "Location" ]
@@ -3601,17 +3693,31 @@ viewMainSvg response model =
                 Nothing ->
                     filtered
 
-        -- Blueprint layer: always shown post-gen (underneath everything) so hidden-wave gaps show piece outlines
+        -- Blueprint layer: always shown post-gen (underneath everything) so
+        -- hidden-wave gaps show piece outlines. Also kept in edit mode when
+        -- "Only blueprint" is on, so the editor still has the blue+white
+        -- backdrop while the green selection overlays render on top.
         blueprintLayer =
-            if (not model.editMode) && isGenerated then
+            if isGenerated && ((not model.editMode) || blueprintMode) then
                 List.map viewPieceBlueprintPath model.pieces
 
             else
                 []
 
-        -- Base layer (on top of blueprint)
+        -- Base layer (on top of blueprint). When `showOnlyBlueprint` is
+        -- on AND the puzzle has been generated, we skip the composite
+        -- imagery so just the blueprint outlines remain (still
+        -- clickable, draggable, etc.). Pre-generation we always show
+        -- the raster composite — there's no blueprint to fall back on
+        -- in the import stage.
+        blueprintMode =
+            isGenerated && model.showOnlyBlueprint
+
         baseLayer =
-            if model.editMode then
+            if blueprintMode then
+                []
+
+            else if model.editMode then
                 if response.hasComposite then
                     [ Svg.image
                         [ SA.x "0"
@@ -3644,12 +3750,14 @@ viewMainSvg response model =
                 -- Blueprint or pieces mode post-gen: hide bricks, piece polygons/images show through
                 []
 
-        -- Background image layer — shown in Blueprint and Waves modes when blueprintBgUrl is available.
-        -- Sits beneath piece outlines and piece images so bricks render on top of it.
+        -- Background image layer — shows the blueprint background image
+        -- in Waves mode (the existing behaviour) and whenever "Only
+        -- blueprint" is on (the new toggle that hides the composite and
+        -- leaves just blue bg + white outlines).
         bgImageLayer =
             case response.blueprintBgUrl of
                 Just url ->
-                    if model.appMode == ModeBlueprint || model.appMode == ModeWaves then
+                    if blueprintMode || model.appMode == ModeWaves then
                         [ Svg.image
                             [ SA.x "0"
                             , SA.y "0"
@@ -3793,7 +3901,13 @@ viewMainSvg response model =
 
         -- Piece outlines (post-gen, pieces/waves mode only; always shown in edit mode so blue outlines stay visible)
         outlineLayer =
-            if isGenerated && (model.editMode || (model.showOutlines && (model.appMode == ModePieces || model.appMode == ModeGroups || model.appMode == ModeWaves || model.appMode == ModeExport))) then
+            if blueprintMode then
+                -- "Only blueprint" mode: the white blueprint outlines on the
+                -- blue background already represent each piece — colored
+                -- outlines on top would dirty the look, so suppress them.
+                []
+
+            else if isGenerated && (model.editMode || (model.showOutlines && (model.appMode == ModePieces || model.appMode == ModeGroups || model.appMode == ModeWaves || model.appMode == ModeExport))) then
                 List.map (viewPieceOutline (waveColor model.outlineHue 1.0)) visiblePieces
 
             else
@@ -3999,7 +4113,13 @@ viewMainSvg response model =
             ++ lassoSvgAttrs
         )
         (if model.editMode then
-            [ Svg.g [] baseLayer
+            -- In edit mode the green selection overlays must stay on top.
+            -- bgImageLayer + blueprintLayer go beneath baseLayer so the
+            -- blue-blueprint backdrop shows through when "Only blueprint"
+            -- is on (baseLayer is empty in that case anyway).
+            [ Svg.g [] bgImageLayer
+            , Svg.g [] blueprintLayer
+            , Svg.g [] baseLayer
             , Svg.g [] editOverlays
             , Svg.g [] outlineLayer
             , Svg.g [] editActivePieceOverlay
@@ -4579,6 +4699,7 @@ viewPieceOverlay appMode hoveredId selectedId selectedWaveId waves groups select
         commonAttrs =
             [ SA.class clsStr
             , SA.style (pointerStyle ++ fillStyle)
+            , attribute "data-piece-id" piece.id
             ]
                 ++ (if isLassoing then
                         []
@@ -4614,16 +4735,60 @@ viewPieceOverlay appMode hoveredId selectedId selectedWaveId waves groups select
 
 viewGrid : Float -> Float -> String -> Float -> List (Svg.Svg Msg)
 viewGrid cw ch color houseUnitsHigh =
+    -- Spec (HArt puzzle editor sizes): one grid cell = 100×100 design
+    -- units, i.e. two standard 100×50 bricks stacked. Strong "screen"
+    -- lines every 22 cells = 2200 design units mark the play-field
+    -- boundaries. The export pipeline already speaks in Unity units
+    -- where one screen = 15.5 units, so we derive the pitch from there.
     let
-        gridStep =
-            ch / houseUnitsHigh
+        unityUnitsPerScreen =
+            15.5
 
-        -- Extend 1 unit beyond each side
+        cellsPerScreen =
+            22
+
+        screenStep =
+            if houseUnitsHigh > 0 then
+                ch / (houseUnitsHigh / unityUnitsPerScreen)
+
+            else
+                ch
+
+        gridStep =
+            screenStep / cellsPerScreen
+
+        -- Extend 1 cell beyond each side so the grid bleeds out of the canvas.
         numV =
             floor (cw / gridStep) + 1
 
         numH =
             floor (ch / gridStep) + 1
+
+        isScreenIdx i =
+            modBy cellsPerScreen i == 0
+
+        lineFor isScreen attrs =
+            Svg.line
+                ([ SA.stroke color
+                 , SA.strokeWidth
+                    (if isScreen then
+                        "2.5"
+
+                     else
+                        "1"
+                    )
+                 , SA.strokeOpacity
+                    (if isScreen then
+                        "1"
+
+                     else
+                        "0.45"
+                    )
+                 , attribute "vector-effect" "non-scaling-stroke"
+                 ]
+                    ++ attrs
+                )
+                []
 
         vLines =
             List.map
@@ -4632,16 +4797,12 @@ viewGrid cw ch color houseUnitsHigh =
                         x =
                             toFloat i * gridStep
                     in
-                    Svg.line
+                    lineFor (isScreenIdx i)
                         [ SA.x1 (String.fromFloat x)
                         , SA.y1 (String.fromFloat -gridStep)
                         , SA.x2 (String.fromFloat x)
                         , SA.y2 (String.fromFloat (ch + gridStep))
-                        , SA.stroke color
-                        , SA.strokeWidth "1"
-                        , attribute "vector-effect" "non-scaling-stroke"
                         ]
-                        []
                 )
                 (List.range -1 numV)
 
@@ -4652,16 +4813,12 @@ viewGrid cw ch color houseUnitsHigh =
                         y =
                             ch - toFloat i * gridStep
                     in
-                    Svg.line
+                    lineFor (isScreenIdx i)
                         [ SA.x1 (String.fromFloat -gridStep)
                         , SA.y1 (String.fromFloat y)
                         , SA.x2 (String.fromFloat (cw + gridStep))
                         , SA.y2 (String.fromFloat y)
-                        , SA.stroke color
-                        , SA.strokeWidth "1"
-                        , attribute "vector-effect" "non-scaling-stroke"
                         ]
-                        []
                 )
                 (List.range -1 numH)
     in
@@ -4697,8 +4854,8 @@ iconLockOpen =
         ]
 
 
-viewWaveRow : Model -> List Wave -> Wave -> Html Msg
-viewWaveRow model allWaves wave =
+viewWaveRow : Model -> List Wave -> Int -> Wave -> Html Msg
+viewWaveRow model allWaves waveNumber wave =
     let
         isSelected =
             model.selectedWaveId == Just wave.id
@@ -4730,11 +4887,25 @@ viewWaveRow model allWaves wave =
                     SelectWave (Just wave.id)
                 )
             ]
-            [ span
-                [ classList [ ( "wave-eye", True ), ( "hidden", not wave.visible ) ]
-                , stopPropagationOn "click" (D.succeed ( ToggleWaveVisibility wave.id, True ))
-                , title (if wave.visible then "Hide wave" else "Show wave")
-                ]
+            [ -- The eye toggles wave-piece composite visibility. In
+              -- "Only blueprint" mode the composite is hidden anyway, so
+              -- the toggle has nothing to act on — disable it visibly.
+              span
+                (if model.showOnlyBlueprint then
+                    [ classList
+                        [ ( "wave-eye", True )
+                        , ( "hidden", not wave.visible )
+                        , ( "disabled", True )
+                        ]
+                    , title "Disabled while \"Only blueprint\" is on"
+                    ]
+
+                 else
+                    [ classList [ ( "wave-eye", True ), ( "hidden", not wave.visible ) ]
+                    , stopPropagationOn "click" (D.succeed ( ToggleWaveVisibility wave.id, True ))
+                    , title (if wave.visible then "Hide wave" else "Show wave")
+                    ]
+                )
                 [ if wave.visible then iconEye else iconEyeCrossed ]
             , span
                 [ classList [ ( "wave-lock", True ), ( "locked", wave.locked ) ]
@@ -4748,6 +4919,8 @@ viewWaveRow model allWaves wave =
                     )
                 ]
                 [ if wave.locked then iconLockClosed else iconLockOpen ]
+            , span [ class "wave-number-badge", title ("Wave " ++ String.fromInt waveNumber) ]
+                [ text (String.fromInt waveNumber) ]
             , span
                 [ class "wave-swatch"
                 , style "background-color" swatchColor
@@ -4779,11 +4952,11 @@ viewWaveRow model allWaves wave =
                         case display of
                             SinglePiece pid ->
                                 model.pieces |> List.filter (\p -> p.id == pid) |> List.head
-                                    |> Maybe.map (\piece -> viewPieceThumb (Just ( wave.id, pid )) wave.locked model.hoveredPieceId pid (cacheBust piece.imgUrl model.pieceGeneration) (Just pos))
+                                    |> Maybe.map (\piece -> viewPieceThumb (Just ( wave.id, pid )) wave.locked model.hoveredPieceId model.selectedPieceId pid (cacheBust piece.imgUrl model.pieceGeneration) (Just pos))
 
                             GroupedPiece repId allIds ->
                                 model.pieces |> List.filter (\p -> p.id == repId) |> List.head
-                                    |> Maybe.map (\piece -> viewGroupThumb (Just wave.id) model.hoveredPieceId (model.groups |> List.filter (\g -> List.member repId g.pieceIds) |> List.head) piece allIds model.pieceGeneration (Just pos) wave.locked)
+                                    |> Maybe.map (\piece -> viewGroupThumb (Just wave.id) model.hoveredPieceId model.selectedPieceId (model.groups |> List.filter (\g -> List.member repId g.pieceIds) |> List.head) piece allIds model.pieceGeneration (Just pos) wave.locked)
                     )
             )
         ]
@@ -4816,21 +4989,24 @@ viewUnassignedRow model unassignedPieces =
                             case display of
                                 SinglePiece pid ->
                                     model.pieces |> List.filter (\p -> p.id == pid) |> List.head
-                                        |> Maybe.map (\p -> viewPieceThumb Nothing False model.hoveredPieceId p.id (p.imgUrl ++ "?v=" ++ String.fromInt model.pieceGeneration) Nothing)
+                                        |> Maybe.map (\p -> viewPieceThumb Nothing False model.hoveredPieceId model.selectedPieceId p.id (cacheBust p.imgUrl model.pieceGeneration) Nothing)
 
                                 GroupedPiece repId allIds ->
                                     model.pieces |> List.filter (\p -> p.id == repId) |> List.head
-                                        |> Maybe.map (\p -> viewGroupThumb model.selectedWaveId model.hoveredPieceId (model.groups |> List.filter (\g -> List.member repId g.pieceIds) |> List.head) p allIds model.pieceGeneration Nothing False)
+                                        |> Maybe.map (\p -> viewGroupThumb model.selectedWaveId model.hoveredPieceId model.selectedPieceId (model.groups |> List.filter (\g -> List.member repId g.pieceIds) |> List.head) p allIds model.pieceGeneration Nothing False)
                         )
                 )
             ]
 
 
-viewPieceThumb : Maybe ( Int, String ) -> Bool -> Maybe String -> String -> String -> Maybe Int -> Html Msg
-viewPieceThumb removeInfo isLocked hoveredId pieceId dataUrl maybePos =
+viewPieceThumb : Maybe ( Int, String ) -> Bool -> Maybe String -> Maybe String -> String -> String -> Maybe Int -> Html Msg
+viewPieceThumb removeInfo isLocked hoveredId selectedId pieceId dataUrl maybePos =
     let
         isHovered =
             hoveredId == Just pieceId
+
+        isSelected =
+            selectedId == Just pieceId
 
         dragAttrs =
             if isLocked then
@@ -4844,7 +5020,12 @@ viewPieceThumb removeInfo isLocked hoveredId pieceId dataUrl maybePos =
                 ]
     in
     div
-        ([ classList [ ( "piece-thumb", True ), ( "hovered", isHovered ) ]
+        ([ classList
+            [ ( "piece-thumb", True )
+            , ( "hovered", isHovered )
+            , ( "selected", isSelected )
+            ]
+         , attribute "data-piece-id" pieceId
          , onMouseEnter (SetHoveredPiece (Just pieceId))
          , onMouseLeave (SetHoveredPiece Nothing)
          ]
@@ -4885,14 +5066,17 @@ viewPieceThumb removeInfo isLocked hoveredId pieceId dataUrl maybePos =
 -- A thumbnail for a group of interchangeable pieces: shows one representative
 -- image with an "xN" badge at the bottom. Clicking assigns/removes the whole group to/from
 -- the wave identified by maybeWaveId. Draggable when not locked.
-viewGroupThumb : Maybe Int -> Maybe String -> Maybe Group -> Piece -> List String -> Int -> Maybe Int -> Bool -> Html Msg
-viewGroupThumb maybeWaveId hoveredId maybeGroup piece allIds generation maybePos isLocked =
+viewGroupThumb : Maybe Int -> Maybe String -> Maybe String -> Maybe Group -> Piece -> List String -> Int -> Maybe Int -> Bool -> Html Msg
+viewGroupThumb maybeWaveId hoveredId selectedId maybeGroup piece allIds generation maybePos isLocked =
     let
         n =
             List.length allIds
 
         isHovered =
             hoveredId == Just piece.id
+
+        isSelected =
+            selectedId == Just piece.id
 
         clickMsg =
             case ( maybeGroup, maybeWaveId ) of
@@ -4910,7 +5094,12 @@ viewGroupThumb maybeWaveId hoveredId maybeGroup piece allIds generation maybePos
                 ]
     in
     div
-        ([ classList [ ( "piece-thumb", True ), ( "hovered", isHovered ) ]
+        ([ classList
+            [ ( "piece-thumb", True )
+            , ( "hovered", isHovered )
+            , ( "selected", isSelected )
+            ]
+         , attribute "data-piece-id" piece.id
          , onMouseEnter (SetHoveredPiece (Just piece.id))
          , onMouseLeave (SetHoveredPiece Nothing)
          , onClick clickMsg

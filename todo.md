@@ -122,6 +122,36 @@ Replace our custom test harness with proper WebDriver-based testing:
 When combining pieces in the editor, verify they are adjacent before
 allowing the merge. Currently not enforced.
 
+### ~~OS file picker — remember last location~~
+~~The native open dialog should reopen at the last directory the user
+picked from.~~ Done — picker persists last directory in app data.
+
+### ~~Waves — "Last wave" button~~
+~~Create a new wave and assign every currently unassigned piece.~~
+Done — "Last wave" button next to "New wave".
+
+### ~~"Big wave" needs a scrollbar~~
+Done — horizontal scrollbar on the bottom tray is now 12px and
+visually prominent.
+
+### ~~Stronger selected-piece highlight (canvas + strips)~~
+Done — selected piece gets a glowing yellow stroke + bright fill on
+the canvas and a glowing border on every matching strip thumb.
+
+### ~~Selected piece auto-scrolls into view in every strip~~
+Done — `scrollPieceIntoView` port calls `el.scrollIntoView` on every
+`[data-piece-id]` match, including the canvas overlay.
+
+### ~~Wave number badge on each wave~~
+Done — 1-based ordinal badge in the wave row header.
+
+### ~~Groups + waves: "Show only blueprint" checkbox~~
+Done — per-group and per-wave "BP" checkbox swaps thumbnails to
+`piece.outlineUrl`.
+
+### ~~Numeric input next to "Pieces" and "Min border" sliders~~
+Done — paired number inputs share the slider's handler/value.
+
 ### Adobe Illustrator validation script
 Create a standalone validation script that runs inside Adobe Illustrator
 (ExtendScript / JSX) to check `.ai` files before export. Should detect:

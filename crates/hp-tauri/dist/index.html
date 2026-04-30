@@ -296,7 +296,15 @@ input.zoom-slider {
 .brick-overlay:hover { fill: rgba(64,120,255,0.25); }
 .piece-overlay { cursor: pointer; fill: transparent; }
 .piece-overlay.hovered { fill: rgba(64,120,255,0.2); }
-.piece-overlay.selected { fill: rgba(64,120,255,0.45); }
+.piece-overlay.selected {
+    /* Stronger selection: brighter fill plus a glowing yellow stroke so the
+       selected piece pops out on both the canvas and the strip thumbs. */
+    fill: rgba(64,120,255,0.65);
+    stroke: rgba(255,210,0,0.95);
+    stroke-width: 4px;
+    stroke-linejoin: round;
+    filter: drop-shadow(0 0 6px rgba(255,210,0,0.6));
+}
 
 /* Per-wave piece overlay colors */
 .piece-overlay.wc-0 { fill: rgba(200,60,60,0.3); }
@@ -371,9 +379,15 @@ input.zoom-slider {
     z-index: 2;
     pointer-events: none;
 }
-.wave-tray-scroll::-webkit-scrollbar { height: 4px; }
-.wave-tray-scroll::-webkit-scrollbar-track { background: transparent; }
-.wave-tray-scroll::-webkit-scrollbar-thumb { background: #555; border-radius: 2px; }
+.wave-tray-scroll {
+    /* Always show the horizontal scrollbar so it's visually obvious the strip can be scrolled. */
+    scrollbar-color: #555 transparent;
+    scrollbar-width: thin;
+}
+.wave-tray-scroll::-webkit-scrollbar { height: 12px; }
+.wave-tray-scroll::-webkit-scrollbar-track { background: rgba(0,0,0,0.05); border-radius: 6px; }
+.wave-tray-scroll::-webkit-scrollbar-thumb { background: #888; border-radius: 6px; border: 2px solid transparent; background-clip: content-box; }
+.wave-tray-scroll::-webkit-scrollbar-thumb:hover { background: #555; background-clip: content-box; border: 2px solid transparent; }
 .wave-tray-thumb {
     flex-shrink: 0;
     position: relative;
@@ -545,6 +559,25 @@ input.zoom-slider {
     border-radius: 3px;
     font-size: 12px;
 }
+.param-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.param-row input[type="range"] {
+    flex: 1;
+    min-width: 0;
+}
+.param-row input.param-number {
+    width: 60px;
+    flex-shrink: 0;
+    background: #fff;
+    border: 1px solid #ccc;
+    color: #333;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 12px;
+}
 .checkbox-group {
     display: flex;
     align-items: center;
@@ -692,6 +725,27 @@ input.zoom-slider {
 .wave-toolbar button { padding: 4px 10px; font-size: 11px; }
 
 /* ── Wave rows ─────────────────────────────────────────────────────────────── */
+.wave-number-badge {
+    background: #2060b0;
+    color: #fff;
+    border-radius: 10px;
+    padding: 1px 8px;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1.4;
+    margin-right: 4px;
+}
+.wave-eye.disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+.checkbox-group.disabled {
+    opacity: 0.45;
+}
+.checkbox-group.disabled label {
+    cursor: not-allowed;
+}
 .wave-row { border-bottom: 1px solid rgba(0,0,0,0.1); padding: 4px 0; }
 .wave-row.selected .wave-row-header { background: linear-gradient(135deg, #e8f0fb 0%, #f4f7fd 100%); outline: 1px solid #b8cfe8; }
 .wave-row.drag-over { outline: 1px dashed rgba(60,120,255,0.6); background: rgba(60,120,255,0.07); }
@@ -866,6 +920,16 @@ input.zoom-slider {
 }
 .piece-thumb:active { cursor: grabbing; }
 .piece-thumb:hover, .piece-thumb.hovered { border-color: rgba(40,100,220,0.5); }
+.piece-thumb.selected {
+    border-color: rgba(255,180,0,0.95);
+    box-shadow: 0 0 0 2px rgba(255,180,0,0.95), 0 0 8px rgba(255,180,0,0.6);
+    background: rgba(255,210,0,0.2);
+}
+.wave-tray-thumb.selected {
+    border-color: rgba(255,180,0,0.95);
+    box-shadow: 0 0 0 2px rgba(255,180,0,0.95), 0 0 10px rgba(255,180,0,0.7);
+    background: rgba(255,210,0,0.2);
+}
 .piece-thumb-label { font-size: 9px; color: #aaa; text-align: center; margin-top: 1px; }
 .piece-thumb-pos {
     position: absolute;
@@ -1070,6 +1134,22 @@ if (window.Elm && window.Elm.Main) { (async function() {
   const app = window.Elm.Main.init({ node: document.getElementById('elm-root'), flags: { version: initVersion, isTauri: !!window.__TAURI__, loadFile: null } });
 
   app.ports.setTitle.subscribe(function(title) { document.title = title; });
+
+  // Scroll every element tagged with the given piece id into view in its
+  // own scroll container. A piece can appear in multiple strips at once
+  // (wave row + big-wave tray + unassigned), so we walk every match.
+  app.ports.scrollPieceIntoView.subscribe(function(pid) {
+    requestAnimationFrame(function() {
+      var els = document.querySelectorAll('[data-piece-id="' + CSS.escape(pid) + '"]');
+      els.forEach(function(el) {
+        try {
+          el.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+        } catch (e) {
+          el.scrollIntoView();
+        }
+      });
+    });
+  });
 
   // Expose app for test-mode commands
   window.__hpApp = app;
