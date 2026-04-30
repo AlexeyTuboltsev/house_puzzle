@@ -175,16 +175,18 @@ pub async fn load_pdf(
 
     let (placements, metadata, ai_data) = parse_result;
 
-    // Bezier extraction is the per-brick bottleneck (PostScript path
-    // reparse per layer); run in parallel via rayon. Keeps cubic curves
-    // intact — required for the bezier merge to preserve arches and
-    // gradients on window/door bricks. Same pattern as the testbed.
-    let t0 = std::time::Instant::now();
+    // Bezier extraction (per-brick PostScript reparse, rayon-parallel) and
+    // the bricks OCG MuPDF render don't depend on each other — both feed
+    // into the response but neither needs the other's output. Run them as
+    // concurrent tokio tasks and wait once. On a typical NY house this
+    // overlaps two ~1-second blocking phases that used to be sequential.
+    let t_parallel = std::time::Instant::now();
     let ai_raw_for_beziers = ai_data.raw.clone();
     let placements_for_beziers: Vec<ai_parser::BrickPlacement> = placements.clone();
     let metadata_for_beziers = metadata.clone();
-    let bezier_per_brick: Vec<Vec<BezierPath>> = tokio::task::spawn_blocking(move || {
-        placements_for_beziers
+    let bezier_fut = tokio::task::spawn_blocking(move || {
+        let t0 = std::time::Instant::now();
+        let res: Vec<Vec<BezierPath>> = placements_for_beziers
             .par_iter()
             .map(|p| {
                 let block = ai_parser::LayerBlock {
@@ -201,11 +203,38 @@ pub async fn load_pdf(
                     metadata_for_beziers.y_base,
                 )
             })
-            .collect()
-    })
-    .await
-    .map_err(|e| e.to_string())?;
-    eprintln!("[profile] extract_vector_path_bezier (parallel): {:?}", t0.elapsed());
+            .collect();
+        eprintln!(
+            "[profile] extract_vector_path_bezier (parallel): {:?}",
+            t0.elapsed()
+        );
+        res
+    });
+
+    let cw = metadata.canvas_width as u32;
+    let ch = metadata.canvas_height as u32;
+    let fp_bricks = file_path.clone();
+    let clip = metadata.clip_rect;
+    let dpi = metadata.render_dpi;
+    let expected_min = metadata.expected_brick_min;
+    let bricks_render_fut = tokio::task::spawn_blocking(move || {
+        let t0 = std::time::Instant::now();
+        let res = render::render_ocg_layer_image(
+            &fp_bricks, "bricks", dpi, clip, cw, ch, (0, 0),
+        );
+        eprintln!("[profile] OCG bricks render (initial): {:?}", t0.elapsed());
+        res
+    });
+
+    let (bezier_per_brick, bricks_no_offset) = tokio::join!(bezier_fut, bricks_render_fut);
+    let bezier_per_brick = bezier_per_brick.map_err(|e| e.to_string())?;
+    let bricks_no_offset = bricks_no_offset
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "Failed to render bricks layer".to_string())?;
+    eprintln!(
+        "[profile] bezier+bricks_OCG (overlapped): {:?}",
+        t_parallel.elapsed()
+    );
 
     // Assign brick IDs
     let mut bricks: Vec<Brick> = Vec::new();
@@ -250,24 +279,6 @@ pub async fn load_pdf(
         .map(|(b, p)| (b.id.clone(), p.clone()))
         .collect();
 
-    let cw = metadata.canvas_width as u32;
-    let ch = metadata.canvas_height as u32;
-
-    // Render bricks OCG layer, compute offset, re-render if needed
-    let t0 = std::time::Instant::now();
-    let fp_bricks = file_path.clone();
-    let clip = metadata.clip_rect;
-    let dpi = metadata.render_dpi;
-    let expected_min = metadata.expected_brick_min;
-    let bricks_no_offset = tokio::task::spawn_blocking(move || {
-        render::render_ocg_layer_image(
-            &fp_bricks, "bricks", dpi, clip, cw, ch, (0, 0),
-        )
-    })
-    .await
-    .map_err(|e| e.to_string())?
-    .ok_or_else(|| "Failed to render bricks layer".to_string())?;
-
     let pdf_offset = render::compute_pdf_offset(
         &bricks_no_offset,
         expected_min.0,
@@ -275,22 +286,28 @@ pub async fn load_pdf(
     );
 
     let bricks_layer_img = if pdf_offset != (0, 0) {
+        let t_reoffset = std::time::Instant::now();
         let fp2 = file_path.clone();
         let bricks_no_offset_clone = bricks_no_offset;
-        tokio::task::spawn_blocking(move || {
+        let img = tokio::task::spawn_blocking(move || {
             render::render_ocg_layer_image(
                 &fp2, "bricks", dpi, clip, cw, ch, pdf_offset,
             )
             .unwrap_or(bricks_no_offset_clone)
         })
         .await
-        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())?;
+        eprintln!(
+            "[profile] OCG bricks re-render (offset={:?}): {:?}",
+            pdf_offset,
+            t_reoffset.elapsed()
+        );
+        img
     } else {
         bricks_no_offset
     };
     eprintln!(
-        "[profile] OCG bricks (render+offset): {:?} ({}x{}, offset={:?})",
-        t0.elapsed(),
+        "[profile] bricks_layer ready: {}x{}, offset={:?}",
         bricks_layer_img.width(),
         bricks_layer_img.height(),
         pdf_offset,
