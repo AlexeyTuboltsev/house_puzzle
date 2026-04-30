@@ -122,43 +122,35 @@ Replace our custom test harness with proper WebDriver-based testing:
 When combining pieces in the editor, verify they are adjacent before
 allowing the merge. Currently not enforced.
 
-### OS file picker — remember last location
-The native open dialog should reopen at the last directory the user
-picked from, not the default. Persist the path across sessions so
-repeat loads from the same folder don't require re-navigating.
+### ~~OS file picker — remember last location~~
+~~The native open dialog should reopen at the last directory the user
+picked from.~~ Done — picker persists last directory in app data.
 
-### Waves — "Last wave" button
-In waves mode, add a button that creates a new wave and assigns every
-currently unassigned piece to it in one click.
+### ~~Waves — "Last wave" button~~
+~~Create a new wave and assign every currently unassigned piece.~~
+Done — "Last wave" button next to "New wave".
 
-### "Big wave" needs a scrollbar
-The full unassigned/preview strip at the bottom should scroll horizontally
-when its contents exceed the viewport instead of overflowing or clipping.
+### ~~"Big wave" needs a scrollbar~~
+Done — horizontal scrollbar on the bottom tray is now 12px and
+visually prominent.
 
-### Stronger selected-piece highlight (canvas + strips)
-The currently selected piece must stand out much more clearly — brighter
-fill, thicker outline, or a glow — and the highlight must be mirrored
-between the main canvas and every wave/group strip simultaneously, so
-it's obvious which piece is selected regardless of which view you're in.
+### ~~Stronger selected-piece highlight (canvas + strips)~~
+Done — selected piece gets a glowing yellow stroke + bright fill on
+the canvas and a glowing border on every matching strip thumb.
 
-### Selected piece auto-scrolls into view in every strip
-When a piece is selected (from any view), each wave strip — including
-the unassigned/big-wave strip — that contains it should scroll so the
-piece is visible. Selection-driven scroll, independent of which view
-triggered the selection.
+### ~~Selected piece auto-scrolls into view in every strip~~
+Done — `scrollPieceIntoView` port calls `el.scrollIntoView` on every
+`[data-piece-id]` match, including the canvas overlay.
 
-### Wave number badge on each wave
-Show the wave's index (1-based ordinal) on the wave row so the user
-can refer to "wave 3" etc. without counting.
+### ~~Wave number badge on each wave~~
+Done — 1-based ordinal badge in the wave row header.
 
-### Groups + waves: "Show only blueprint" checkbox
-Add a per-group and per-wave checkbox that swaps the composite render
-for the blueprint render for the pieces in that group/wave. All other
-behaviour (selection, drag, assignment, outlines) stays the same.
+### ~~Groups + waves: "Show only blueprint" checkbox~~
+Done — per-group and per-wave "BP" checkbox swaps thumbnails to
+`piece.outlineUrl`.
 
-### Numeric input next to "Pieces" and "Min border" sliders
-Pair each slider with a small number input bound to the same value, so
-the user can type a precise number instead of (or in addition to) dragging.
+### ~~Numeric input next to "Pieces" and "Min border" sliders~~
+Done — paired number inputs share the slider's handler/value.
 
 ### Adobe Illustrator validation script
 Create a standalone validation script that runs inside Adobe Illustrator
