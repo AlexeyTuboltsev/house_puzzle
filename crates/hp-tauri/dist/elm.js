@@ -6374,7 +6374,7 @@ var $author$project$Main$fetchPdfList = function (isTauri) {
 var $elm$browser$Browser$Dom$getViewport = _Browser_withWindow(_Browser_getViewport);
 var $author$project$Main$init = function (flags) {
 	return _Utils_Tuple2(
-		{appMode: $author$project$Main$ModeInit, appVersion: flags.version, availableH: 900.0, bricksById: $elm$core$Dict$empty, colorPicking: $elm$core$Maybe$Nothing, dragInsertBeforeId: $elm$core$Maybe$Nothing, dragOverGroupId: $elm$core$Maybe$Nothing, dragOverWaveId: $elm$core$Maybe$Nothing, draggingPieceId: $elm$core$Maybe$Nothing, editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, editOriginalGroups: _List_Nil, editOriginalPieces: _List_Nil, editOriginalWaves: _List_Nil, exportCanvasHeight: '900', exportHouseName: 'NewHouse', exportLocation: 'Rome', exportPosition: '0', exportSpacing: '12.0', exporting: false, generateState: $author$project$Main$NotGenerated, gridHue: 35.0, groups: _List_Nil, houseUnitsHigh: 15.5, hoveredBrickId: $elm$core$Maybe$Nothing, hoveredPieceId: $elm$core$Maybe$Nothing, isTauri: flags.isTauri, lasso: $elm$core$Maybe$Nothing, loadState: $author$project$Main$Idle, minBorder: 10, nextGroupId: 1, nextSessionId: 1, nextWaveId: 1, outlineHue: 210.0, pdfFiles: _List_Nil, pieceGeneration: 0, pieces: _List_Nil, recomputing: false, redoHistory: _List_Nil, seed: 42, selectedFileName: '', selectedGroupId: $elm$core$Maybe$Nothing, selectedPieceId: $elm$core$Maybe$Nothing, selectedWaveId: $elm$core$Maybe$Nothing, sessionKey: '', showGrid: false, showGroupOverlay: true, showLights: false, showNumbers: true, showOutlines: true, showWaveOverlay: true, svgScale: 1.0, targetCount: 60, undoHistory: _List_Nil, waves: _List_Nil, zoomGridActive: false, zoomLevel: 1.0},
+		{appMode: $author$project$Main$ModeInit, appVersion: flags.version, availableH: 900.0, bricksById: $elm$core$Dict$empty, colorPicking: $elm$core$Maybe$Nothing, dragInsertBeforeId: $elm$core$Maybe$Nothing, dragOverGroupId: $elm$core$Maybe$Nothing, dragOverWaveId: $elm$core$Maybe$Nothing, draggingPieceId: $elm$core$Maybe$Nothing, editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, editOriginalGroups: _List_Nil, editOriginalPieces: _List_Nil, editOriginalWaves: _List_Nil, exportCanvasHeight: '900', exportHouseName: 'NewHouse', exportLocation: 'Rome', exportPosition: '0', exportSpacing: '12.0', exporting: false, generateState: $author$project$Main$NotGenerated, gridHue: 35.0, groups: _List_Nil, houseUnitsHigh: 15.5, hoveredBrickId: $elm$core$Maybe$Nothing, hoveredPieceId: $elm$core$Maybe$Nothing, isTauri: flags.isTauri, lasso: $elm$core$Maybe$Nothing, loadState: $author$project$Main$Idle, minBorder: 10, nextGroupId: 1, nextSessionId: 1, nextWaveId: 1, outlineHue: 210.0, pdfFiles: _List_Nil, pieceGeneration: 0, pieces: _List_Nil, recomputing: false, redoHistory: _List_Nil, seed: 42, selectedFileName: '', selectedGroupId: $elm$core$Maybe$Nothing, selectedPieceId: $elm$core$Maybe$Nothing, selectedWaveId: $elm$core$Maybe$Nothing, sessionKey: '', showGrid: false, showGroupOverlay: true, showLights: false, showNumbers: true, showOnlyBlueprint: false, showOutlines: true, showWaveOverlay: true, svgScale: 1.0, targetCount: 60, undoHistory: _List_Nil, waves: _List_Nil, zoomGridActive: false, zoomLevel: 1.0},
 		$elm$core$Platform$Cmd$batch(
 			_List_fromArray(
 				[
@@ -7997,7 +7997,6 @@ var $author$project$Main$update = F2(
 								name: 'Wave ' + $elm$core$String$fromInt(model.nextWaveId),
 								opacity: 0.3,
 								pieceIds: _List_Nil,
-								showBlueprint: false,
 								visible: true
 							};
 							return _Utils_Tuple2(
@@ -8029,8 +8028,7 @@ var $author$project$Main$update = F2(
 									id: model.nextGroupId,
 									locked: false,
 									name: 'Group ' + $elm$core$String$fromInt(model.nextGroupId),
-									pieceIds: _List_Nil,
-									showBlueprint: false
+									pieceIds: _List_Nil
 								};
 								return _Utils_Tuple2(
 									_Utils_update(
@@ -8106,7 +8104,6 @@ var $author$project$Main$update = F2(
 						name: 'Wave ' + $elm$core$String$fromInt(model.nextWaveId),
 						opacity: 0.3,
 						pieceIds: _List_Nil,
-						showBlueprint: false,
 						visible: true
 					};
 					var lockedWaves = A2(
@@ -8169,7 +8166,6 @@ var $author$project$Main$update = F2(
 						name: 'Wave ' + $elm$core$String$fromInt(model.nextWaveId),
 						opacity: 0.3,
 						pieceIds: unassignedIds,
-						showBlueprint: false,
 						visible: true
 					};
 					return A2(
@@ -8187,39 +8183,12 @@ var $author$project$Main$update = F2(
 										lockedWaves)
 								}),
 							$elm$core$Platform$Cmd$none));
-				case 'ToggleWaveBlueprint':
-					var wid = msg.a;
-					var checked = msg.b;
+				case 'ToggleOnlyBlueprint':
+					var checked = msg.a;
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
-							{
-								waves: A2(
-									$elm$core$List$map,
-									function (w) {
-										return _Utils_eq(w.id, wid) ? _Utils_update(
-											w,
-											{showBlueprint: checked}) : w;
-									},
-									model.waves)
-							}),
-						$elm$core$Platform$Cmd$none);
-				case 'ToggleGroupBlueprint':
-					var gid = msg.a;
-					var checked = msg.b;
-					return _Utils_Tuple2(
-						_Utils_update(
-							model,
-							{
-								groups: A2(
-									$elm$core$List$map,
-									function (g) {
-										return _Utils_eq(g.id, gid) ? _Utils_update(
-											g,
-											{showBlueprint: checked}) : g;
-									},
-									model.groups)
-							}),
+							{showOnlyBlueprint: checked}),
 						$elm$core$Platform$Cmd$none);
 				case 'ToggleWaveVisibility':
 					var waveId = msg.a;
@@ -9209,8 +9178,7 @@ var $author$project$Main$update = F2(
 						id: model.nextGroupId,
 						locked: false,
 						name: 'Group ' + $elm$core$String$fromInt(model.nextGroupId),
-						pieceIds: _List_Nil,
-						showBlueprint: false
+						pieceIds: _List_Nil
 					};
 					return A2(
 						$author$project$Main$withUndo,
@@ -11715,7 +11683,7 @@ var $author$project$Main$viewMainSvg = F2(
 				return _List_Nil;
 			}
 		}();
-		var baseLayer = model.editMode ? (response.hasComposite ? _List_fromArray(
+		var baseLayer = model.showOnlyBlueprint ? _List_Nil : (model.editMode ? (response.hasComposite ? _List_fromArray(
 			[
 				A2(
 				$elm$svg$Svg$image,
@@ -11744,7 +11712,7 @@ var $author$project$Main$viewMainSvg = F2(
 						A2($elm$html$Html$Attributes$attribute, 'href', response.compositeUrl)
 					]),
 				_List_Nil)
-			]) : _List_Nil));
+			]) : _List_Nil)));
 		return A2(
 			$elm$svg$Svg$svg,
 			_Utils_ap(
@@ -12315,6 +12283,40 @@ var $author$project$Main$viewCheckboxNumbers = function (model) {
 					]))
 			]));
 };
+var $author$project$Main$ToggleOnlyBlueprint = function (a) {
+	return {$: 'ToggleOnlyBlueprint', a: a};
+};
+var $author$project$Main$viewCheckboxOnlyBlueprint = function (model) {
+	return A2(
+		$elm$html$Html$div,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('checkbox-group')
+			]),
+		_List_fromArray(
+			[
+				A2(
+				$elm$html$Html$input,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$type_('checkbox'),
+						$elm$html$Html$Attributes$id('cbOnlyBlueprint'),
+						$elm$html$Html$Attributes$checked(model.showOnlyBlueprint),
+						$elm$html$Html$Events$onCheck($author$project$Main$ToggleOnlyBlueprint)
+					]),
+				_List_Nil),
+				A2(
+				$elm$html$Html$label,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$for('cbOnlyBlueprint')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text('Only blueprint')
+					]))
+			]));
+};
 var $author$project$Main$ToggleOutlines = function (a) {
 	return {$: 'ToggleOutlines', a: a};
 };
@@ -12436,7 +12438,8 @@ var $author$project$Main$viewExportTools = function (model) {
 						$author$project$Main$viewCheckboxGrid(model),
 						$author$project$Main$viewCheckboxOutlines(model),
 						$author$project$Main$viewCheckboxWaveOverlay(model),
-						$author$project$Main$viewCheckboxNumbers(model)
+						$author$project$Main$viewCheckboxNumbers(model),
+						$author$project$Main$viewCheckboxOnlyBlueprint(model)
 					])),
 				$author$project$Main$viewSectionTitle('Export'),
 				A2(
@@ -13045,10 +13048,6 @@ var $author$project$Main$RemoveGroup = function (a) {
 var $author$project$Main$SelectGroup = function (a) {
 	return {$: 'SelectGroup', a: a};
 };
-var $author$project$Main$ToggleGroupBlueprint = F2(
-	function (a, b) {
-		return {$: 'ToggleGroupBlueprint', a: a, b: b};
-	});
 var $author$project$Main$ToggleGroupLock = function (a) {
 	return {$: 'ToggleGroupLock', a: a};
 };
@@ -13378,32 +13377,6 @@ var $author$project$Main$viewGroupRow = F3(
 									$elm$html$Html$text(group.name)
 								])),
 							A2(
-							$elm$html$Html$label,
-							_List_fromArray(
-								[
-									$elm$html$Html$Attributes$class('wave-blueprint-toggle'),
-									$elm$html$Html$Attributes$title('Show only the blueprint outline instead of the composite image'),
-									A2(
-									$elm$html$Html$Events$stopPropagationOn,
-									'click',
-									$elm$json$Json$Decode$succeed(
-										_Utils_Tuple2($author$project$Main$NoOp, true)))
-								]),
-							_List_fromArray(
-								[
-									A2(
-									$elm$html$Html$input,
-									_List_fromArray(
-										[
-											$elm$html$Html$Attributes$type_('checkbox'),
-											$elm$html$Html$Attributes$checked(group.showBlueprint),
-											$elm$html$Html$Events$onCheck(
-											$author$project$Main$ToggleGroupBlueprint(group.id))
-										]),
-									_List_Nil),
-									$elm$html$Html$text('BP')
-								])),
-							A2(
 							$elm$html$Html$span,
 							_List_fromArray(
 								[
@@ -13460,7 +13433,7 @@ var $author$project$Main$viewGroupRow = F3(
 										pid,
 										A2(
 											$author$project$Main$cacheBust,
-											A2($author$project$Main$thumbUrl, group.showBlueprint, piece),
+											A2($author$project$Main$thumbUrl, model.showOnlyBlueprint, piece),
 											model.pieceGeneration),
 										$elm$core$Maybe$Nothing);
 								},
@@ -13556,7 +13529,10 @@ var $author$project$Main$viewGroupUnassignedRow = F2(
 								model.hoveredPieceId,
 								model.selectedPieceId,
 								p.id,
-								p.imgUrl + ('?v=' + $elm$core$String$fromInt(model.pieceGeneration)),
+								A2(
+									$author$project$Main$cacheBust,
+									A2($author$project$Main$thumbUrl, model.showOnlyBlueprint, p),
+									model.pieceGeneration),
 								$elm$core$Maybe$Nothing);
 						},
 						unassignedPieces))
@@ -13591,7 +13567,8 @@ var $author$project$Main$viewGroupsTools = function (model) {
 						$author$project$Main$viewCheckboxLights(model),
 						$author$project$Main$viewCheckboxGrid(model),
 						$author$project$Main$viewCheckboxOutlines(model),
-						$author$project$Main$viewCheckboxGroupOverlay(model)
+						$author$project$Main$viewCheckboxGroupOverlay(model),
+						$author$project$Main$viewCheckboxOnlyBlueprint(model)
 					])),
 				A2(
 				$elm$html$Html$div,
@@ -13773,7 +13750,8 @@ var $author$project$Main$viewPiecesTools = function (model) {
 							[
 								$author$project$Main$viewCheckboxLights(model),
 								$author$project$Main$viewCheckboxGrid(model),
-								$author$project$Main$viewCheckboxOutlines(model)
+								$author$project$Main$viewCheckboxOutlines(model),
+								$author$project$Main$viewCheckboxOnlyBlueprint(model)
 							])),
 						$author$project$Main$viewSectionTitle('Edit Pieces'),
 						function () {
@@ -14068,7 +14046,10 @@ var $author$project$Main$viewUnassignedRow = F2(
 											model.hoveredPieceId,
 											model.selectedPieceId,
 											p.id,
-											p.imgUrl + ('?v=' + $elm$core$String$fromInt(model.pieceGeneration)),
+											A2(
+												$author$project$Main$cacheBust,
+												A2($author$project$Main$thumbUrl, model.showOnlyBlueprint, p),
+												model.pieceGeneration),
 											$elm$core$Maybe$Nothing);
 									},
 									$elm$core$List$head(
@@ -14091,7 +14072,7 @@ var $author$project$Main$viewUnassignedRow = F2(
 													function (g) {
 														return A2($elm$core$List$member, repId, g.pieceIds);
 													},
-													model.groups)))(p)(allIds)(model.pieceGeneration)($elm$core$Maybe$Nothing)(false)(false);
+													model.groups)))(p)(allIds)(model.pieceGeneration)($elm$core$Maybe$Nothing)(false)(model.showOnlyBlueprint);
 									},
 									$elm$core$List$head(
 										A2(
@@ -14394,10 +14375,6 @@ var $author$project$Main$RemoveWave = function (a) {
 var $author$project$Main$SelectWave = function (a) {
 	return {$: 'SelectWave', a: a};
 };
-var $author$project$Main$ToggleWaveBlueprint = F2(
-	function (a, b) {
-		return {$: 'ToggleWaveBlueprint', a: a, b: b};
-	});
 var $author$project$Main$ToggleWaveLock = function (a) {
 	return {$: 'ToggleWaveLock', a: a};
 };
@@ -14509,7 +14486,17 @@ var $author$project$Main$viewWaveRow = F4(
 						[
 							A2(
 							$elm$html$Html$span,
-							_List_fromArray(
+							model.showOnlyBlueprint ? _List_fromArray(
+								[
+									$elm$html$Html$Attributes$classList(
+									_List_fromArray(
+										[
+											_Utils_Tuple2('wave-eye', true),
+											_Utils_Tuple2('hidden', !wave.visible),
+											_Utils_Tuple2('disabled', true)
+										])),
+									$elm$html$Html$Attributes$title('Disabled while \"Only blueprint\" is on')
+								]) : _List_fromArray(
 								[
 									$elm$html$Html$Attributes$classList(
 									_List_fromArray(
@@ -14607,32 +14594,6 @@ var $author$project$Main$viewWaveRow = F4(
 										$elm$core$List$length(wave.pieceIds)) + ' pcs')
 								])),
 							A2(
-							$elm$html$Html$label,
-							_List_fromArray(
-								[
-									$elm$html$Html$Attributes$class('wave-blueprint-toggle'),
-									$elm$html$Html$Attributes$title('Show only the blueprint outline instead of the composite image'),
-									A2(
-									$elm$html$Html$Events$stopPropagationOn,
-									'click',
-									$elm$json$Json$Decode$succeed(
-										_Utils_Tuple2($author$project$Main$NoOp, true)))
-								]),
-							_List_fromArray(
-								[
-									A2(
-									$elm$html$Html$input,
-									_List_fromArray(
-										[
-											$elm$html$Html$Attributes$type_('checkbox'),
-											$elm$html$Html$Attributes$checked(wave.showBlueprint),
-											$elm$html$Html$Events$onCheck(
-											$author$project$Main$ToggleWaveBlueprint(wave.id))
-										]),
-									_List_Nil),
-									$elm$html$Html$text('BP')
-								])),
-							A2(
 							$elm$html$Html$span,
 							_List_fromArray(
 								[
@@ -14693,7 +14654,7 @@ var $author$project$Main$viewWaveRow = F4(
 											pid,
 											A2(
 												$author$project$Main$cacheBust,
-												A2($author$project$Main$thumbUrl, wave.showBlueprint, piece),
+												A2($author$project$Main$thumbUrl, model.showOnlyBlueprint, piece),
 												model.pieceGeneration),
 											$elm$core$Maybe$Just(pos));
 									},
@@ -14719,7 +14680,7 @@ var $author$project$Main$viewWaveRow = F4(
 														return A2($elm$core$List$member, repId, g.pieceIds);
 													},
 													model.groups)))(piece)(allIds)(model.pieceGeneration)(
-											$elm$core$Maybe$Just(pos))(wave.locked)(wave.showBlueprint);
+											$elm$core$Maybe$Just(pos))(wave.locked)(model.showOnlyBlueprint);
 									},
 									$elm$core$List$head(
 										A2(
@@ -14769,7 +14730,8 @@ var $author$project$Main$viewWavesTools = function (model) {
 						$author$project$Main$viewCheckboxGrid(model),
 						$author$project$Main$viewCheckboxOutlines(model),
 						$author$project$Main$viewCheckboxWaveOverlay(model),
-						$author$project$Main$viewCheckboxNumbers(model)
+						$author$project$Main$viewCheckboxNumbers(model),
+						$author$project$Main$viewCheckboxOnlyBlueprint(model)
 					])),
 				A2(
 				$elm$html$Html$div,
@@ -14977,101 +14939,121 @@ var $author$project$Main$viewBody = function (model) {
 var $author$project$Main$ScrollTrayBy = function (a) {
 	return {$: 'ScrollTrayBy', a: a};
 };
-var $author$project$Main$viewWaveTrayThumb = F9(
-	function (piece, isLocked, scale, hoveredId, selectedId, generation, showNum, pos, maybeGroupN) {
-		var widthCss = $elm$core$String$fromFloat(piece.width * scale) + 'px';
-		var isSelected = _Utils_eq(
-			selectedId,
-			$elm$core$Maybe$Just(piece.id));
-		var isHovered = _Utils_eq(
-			hoveredId,
-			$elm$core$Maybe$Just(piece.id));
-		var dragAttrs = isLocked ? _List_Nil : _List_fromArray(
-			[
-				A2($elm$html$Html$Attributes$attribute, 'draggable', 'true'),
-				A2(
-				$elm$html$Html$Events$on,
-				'dragstart',
-				$elm$json$Json$Decode$succeed(
-					$author$project$Main$DragPieceStart(piece.id))),
-				A2(
-				$elm$html$Html$Events$on,
-				'dragend',
-				$elm$json$Json$Decode$succeed($author$project$Main$DragPieceEnd)),
-				A2(
-				$elm$html$Html$Events$stopPropagationOn,
-				'dragenter',
-				$elm$json$Json$Decode$succeed(
-					_Utils_Tuple2(
-						$author$project$Main$DragEnterPiece(piece.id),
-						true)))
-			]);
-		return A2(
-			$elm$html$Html$div,
-			_Utils_ap(
-				_List_fromArray(
-					[
-						$elm$html$Html$Attributes$classList(
-						_List_fromArray(
-							[
-								_Utils_Tuple2('wave-tray-thumb', true),
-								_Utils_Tuple2('hovered', isHovered),
-								_Utils_Tuple2('selected', isSelected)
-							])),
-						A2($elm$html$Html$Attributes$attribute, 'data-piece-id', piece.id),
-						A2($elm$html$Html$Attributes$style, 'width', widthCss),
-						A2(
-						$elm$html$Html$Attributes$style,
-						'aspect-ratio',
-						$elm$core$String$fromFloat(piece.width / piece.height)),
-						$elm$html$Html$Events$onMouseEnter(
-						$author$project$Main$SetHoveredPiece(
-							$elm$core$Maybe$Just(piece.id))),
-						$elm$html$Html$Events$onMouseLeave(
-						$author$project$Main$SetHoveredPiece($elm$core$Maybe$Nothing))
-					]),
-				dragAttrs),
-			_List_fromArray(
-				[
-					A2(
-					$elm$html$Html$img,
-					_List_fromArray(
-						[
-							$elm$html$Html$Attributes$src(
-							A2($author$project$Main$cacheBust, piece.imgUrl, generation))
-						]),
-					_List_Nil),
-					showNum ? A2(
-					$elm$html$Html$div,
-					_List_fromArray(
-						[
-							$elm$html$Html$Attributes$class('tray-thumb-num')
-						]),
-					_List_fromArray(
-						[
-							$elm$html$Html$text(
-							$elm$core$String$fromInt(pos))
-						])) : $elm$html$Html$text(''),
-					function () {
-					if (maybeGroupN.$ === 'Just') {
-						var n = maybeGroupN.a;
-						return A2(
-							$elm$html$Html$div,
-							_List_fromArray(
-								[
-									$elm$html$Html$Attributes$class('group-xn-badge group-xn-badge-bottom')
-								]),
-							_List_fromArray(
-								[
-									$elm$html$Html$text(
-									'x' + $elm$core$String$fromInt(n))
-								]));
-					} else {
-						return $elm$html$Html$text('');
-					}
-				}()
-				]));
-	});
+var $author$project$Main$viewWaveTrayThumb = function (piece) {
+	return function (isLocked) {
+		return function (scale) {
+			return function (hoveredId) {
+				return function (selectedId) {
+					return function (generation) {
+						return function (showNum) {
+							return function (showOnlyBlueprint) {
+								return function (pos) {
+									return function (maybeGroupN) {
+										var widthCss = $elm$core$String$fromFloat(piece.width * scale) + 'px';
+										var isSelected = _Utils_eq(
+											selectedId,
+											$elm$core$Maybe$Just(piece.id));
+										var isHovered = _Utils_eq(
+											hoveredId,
+											$elm$core$Maybe$Just(piece.id));
+										var dragAttrs = isLocked ? _List_Nil : _List_fromArray(
+											[
+												A2($elm$html$Html$Attributes$attribute, 'draggable', 'true'),
+												A2(
+												$elm$html$Html$Events$on,
+												'dragstart',
+												$elm$json$Json$Decode$succeed(
+													$author$project$Main$DragPieceStart(piece.id))),
+												A2(
+												$elm$html$Html$Events$on,
+												'dragend',
+												$elm$json$Json$Decode$succeed($author$project$Main$DragPieceEnd)),
+												A2(
+												$elm$html$Html$Events$stopPropagationOn,
+												'dragenter',
+												$elm$json$Json$Decode$succeed(
+													_Utils_Tuple2(
+														$author$project$Main$DragEnterPiece(piece.id),
+														true)))
+											]);
+										return A2(
+											$elm$html$Html$div,
+											_Utils_ap(
+												_List_fromArray(
+													[
+														$elm$html$Html$Attributes$classList(
+														_List_fromArray(
+															[
+																_Utils_Tuple2('wave-tray-thumb', true),
+																_Utils_Tuple2('hovered', isHovered),
+																_Utils_Tuple2('selected', isSelected)
+															])),
+														A2($elm$html$Html$Attributes$attribute, 'data-piece-id', piece.id),
+														A2($elm$html$Html$Attributes$style, 'width', widthCss),
+														A2(
+														$elm$html$Html$Attributes$style,
+														'aspect-ratio',
+														$elm$core$String$fromFloat(piece.width / piece.height)),
+														$elm$html$Html$Events$onMouseEnter(
+														$author$project$Main$SetHoveredPiece(
+															$elm$core$Maybe$Just(piece.id))),
+														$elm$html$Html$Events$onMouseLeave(
+														$author$project$Main$SetHoveredPiece($elm$core$Maybe$Nothing))
+													]),
+												dragAttrs),
+											_List_fromArray(
+												[
+													A2(
+													$elm$html$Html$img,
+													_List_fromArray(
+														[
+															$elm$html$Html$Attributes$src(
+															A2(
+																$author$project$Main$cacheBust,
+																A2($author$project$Main$thumbUrl, showOnlyBlueprint, piece),
+																generation))
+														]),
+													_List_Nil),
+													showNum ? A2(
+													$elm$html$Html$div,
+													_List_fromArray(
+														[
+															$elm$html$Html$Attributes$class('tray-thumb-num')
+														]),
+													_List_fromArray(
+														[
+															$elm$html$Html$text(
+															$elm$core$String$fromInt(pos))
+														])) : $elm$html$Html$text(''),
+													function () {
+													if (maybeGroupN.$ === 'Just') {
+														var n = maybeGroupN.a;
+														return A2(
+															$elm$html$Html$div,
+															_List_fromArray(
+																[
+																	$elm$html$Html$Attributes$class('group-xn-badge group-xn-badge-bottom')
+																]),
+															_List_fromArray(
+																[
+																	$elm$html$Html$text(
+																	'x' + $elm$core$String$fromInt(n))
+																]));
+													} else {
+														return $elm$html$Html$text('');
+													}
+												}()
+												]));
+									};
+								};
+							};
+						};
+					};
+				};
+			};
+		};
+	};
+};
 var $author$project$Main$viewWaveTray = F2(
 	function (model, _v0) {
 		var activeWaveId = model.selectedWaveId;
@@ -15220,7 +15202,7 @@ var $author$project$Main$viewWaveTray = F2(
 										}();
 										return _List_fromArray(
 											[
-												A9($author$project$Main$viewWaveTrayThumb, piece, isLocked, model.svgScale, model.hoveredPieceId, model.selectedPieceId, model.pieceGeneration, model.showNumbers, pos, groupCount)
+												$author$project$Main$viewWaveTrayThumb(piece)(isLocked)(model.svgScale)(model.hoveredPieceId)(model.selectedPieceId)(model.pieceGeneration)(model.showNumbers)(model.showOnlyBlueprint)(pos)(groupCount)
 											]);
 									} else {
 										return _List_Nil;
