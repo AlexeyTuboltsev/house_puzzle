@@ -9,3 +9,4 @@ path = "src/main.rs"
 
 [dependencies]
 tauri-ui-test = { git = "ssh://git@github.com/AlexeyTuboltsev/tauri-ui-test", branch = "main" }
+image = { version = "0.24", default-features = false, features = ["png"] }

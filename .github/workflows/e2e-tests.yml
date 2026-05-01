@@ -120,7 +120,8 @@ jobs:
             ${{ matrix.test_binary }} \
               --binary ${{ matrix.app_binary }} \
               --fixture-dir in \
-              --screenshots screenshots
+              --screenshots screenshots \
+              --baselines tests/accessibility/baselines/${{ matrix.artifact-suffix }}
 
       - name: Run E2E tests (macOS)
         if: startsWith(matrix.platform, 'macos')
@@ -129,7 +130,8 @@ jobs:
           ${{ matrix.test_binary }} \
             --binary ${{ matrix.app_binary }} \
             --fixture-dir in \
-            --screenshots screenshots
+            --screenshots screenshots \
+            --baselines tests/accessibility/baselines/${{ matrix.artifact-suffix }}
 
       - name: Run E2E tests (Windows)
         if: matrix.platform == 'windows-latest'
@@ -137,7 +139,8 @@ jobs:
           ${{ matrix.test_binary }} `
             --binary ${{ matrix.app_binary }} `
             --fixture-dir in `
-            --screenshots screenshots
+            --screenshots screenshots `
+            --baselines tests/accessibility/baselines/${{ matrix.artifact-suffix }}
 
       - name: Upload screenshots
         if: always()
@@ -222,10 +225,14 @@ jobs:
             echo "<div class='platform'><h3>${platform}</h3>" >> "site/runs/${RUN}/index.html"
             for step in $STEPS; do
               img="${platform}/${step}.png"
+              diff="${platform}/${step}.diff.png"
               if [ -f "site/runs/${RUN}/${img}" ]; then
                 echo "<div class='screenshot'><a href='${img}' target='_blank'><img src='${img}' alt='${step}'></a><div class='label'>${step}</div></div>" >> "site/runs/${RUN}/index.html"
               else
                 echo "<div class='screenshot'><div style='height:100px;display:flex;align-items:center;justify-content:center;color:#ccc'>no screenshot</div><div class='label'>${step}</div></div>" >> "site/runs/${RUN}/index.html"
+              fi
+              if [ -f "site/runs/${RUN}/${diff}" ]; then
+                echo "<div class='screenshot'><a href='${diff}' target='_blank'><img src='${diff}' alt='${step} diff'></a><div class='label'>${step} (diff vs baseline)</div></div>" >> "site/runs/${RUN}/index.html"
               fi
             done
             echo "</div>" >> "site/runs/${RUN}/index.html"
