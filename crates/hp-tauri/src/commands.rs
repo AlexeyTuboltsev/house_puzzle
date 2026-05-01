@@ -300,26 +300,40 @@ pub async fn load_pdf(
     );
 
     let bricks_layer_img = if pdf_offset != (0, 0) {
-        // Cheap re-overlay: the MuPDF render is already done, we just
-        // place the same pixmap onto a fresh canvas at the corrected
-        // offset. Used to be a full second MuPDF render — saves ~3 s
-        // on AI files where MuPDF's coordinate origin doesn't match
-        // ours.
-        match bricks_pixmap.as_ref() {
-            Some(pixmap) => {
-                let t_recompose = std::time::Instant::now();
-                let img = render::compose_clipped_canvas(
-                    pixmap, "bricks", cw, ch, pdf_offset,
-                );
-                eprintln!(
-                    "[profile] OCG bricks re-compose (offset={:?}): {:?}",
-                    pdf_offset,
-                    t_recompose.elapsed()
-                );
-                img
-            }
+        // The first render only rasterised pixels inside the artwork
+        // clip rect. With a non-zero detected offset we now want to
+        // *shift* the bricks layer right/down by `pdf_offset` pixels,
+        // which means we need pixels that lie OUTSIDE the original
+        // clip on the opposite side (left/top). The old full-page
+        // render had them; the clipped render doesn't, so re-rasterise
+        // with the clip shifted by `-pdf_offset / scale` PDF points
+        // and compose at canvas (0, 0). Costs one extra MuPDF render
+        // — but only on AI files where MuPDF's coordinate origin
+        // disagrees with the parser's, which is rare. The common
+        // offset == (0, 0) path stays single-render fast.
+        let scale_f = dpi / 72.0;
+        let dx_pts = pdf_offset.0 as f64 / scale_f;
+        let dy_pts = pdf_offset.1 as f64 / scale_f;
+        let shifted_clip = (
+            clip.0 - dx_pts, clip.1 - dy_pts,
+            clip.2 - dx_pts, clip.3 - dy_pts,
+        );
+        let t_rerender = std::time::Instant::now();
+        let fp_rerender = file_path.clone();
+        let img = match render::render_ocg_layer_pixmap_clipped(
+            &fp_rerender, "bricks", dpi, shifted_clip,
+        ) {
+            Some((shifted_pixmap, _, _)) => render::compose_clipped_canvas(
+                &shifted_pixmap, "bricks", cw, ch, (0, 0),
+            ),
             None => bricks_no_offset,
-        }
+        };
+        eprintln!(
+            "[profile] OCG bricks re-render with shifted clip (offset={:?}): {:?}",
+            pdf_offset,
+            t_rerender.elapsed()
+        );
+        img
     } else {
         bricks_no_offset
     };

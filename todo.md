@@ -266,6 +266,29 @@ change. Need a real distribution path. Options to evaluate:
   — re-run validation". Catches the "did the artist run the new
   validator" question without asking.
 
+### Persist user settings between sessions
+Several UI knobs live in the DOM/Elm only and reset on every launch:
+
+- `--tools-width` (right panel width — set by dragging `.resize-handle`,
+  default now 40vw, never persisted).
+- Zoom level / pan position on the canvas.
+- "Show lights / grid / piece outlines / blueprint" checkboxes.
+- Target pieces / min border slider values.
+- Last picked AI file (already persisted via the OS picker, but only
+  the directory; the actual selected file isn't restored).
+- Selected wave / piece editor mode state.
+
+Tauri has `tauri-plugin-store` for typed key/value JSON state on disk
+(survives reboots). Wire it up so:
+
+1. On change, debounce-save each setting to the store.
+2. On startup, read the store and seed the model + CSS custom
+   properties before the first render (avoid layout flash).
+3. Keep the schema versioned so adding/removing fields stays safe.
+
+Could also consider per-AI-file overrides (e.g. zoom level remembered
+per file content hash) once the basic global settings work.
+
 ### Tauri warning / error UX — currently a raw dump
 `load_pdf` returns `metadata.warnings` as `Vec<String>` and the Elm
 side displays them as a flat list under the canvas. Some cases:
