@@ -206,10 +206,17 @@ jobs:
             .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
             .platform { text-align: center; }
             .platform h3 { margin: 0 0 8px; color: #333; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; }
-            .screenshot { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 8px; margin-bottom: 12px; }
-            .screenshot img { width: 100%; border-radius: 4px; cursor: pointer; }
-            .screenshot img:hover { outline: 2px solid #2060b0; }
-            .screenshot .label { font-size: 11px; color: #888; margin-top: 4px; }
+            .step { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 8px; margin-bottom: 12px; }
+            .step .step-label { font-size: 12px; font-weight: 600; color: #333; margin-bottom: 6px; }
+            .trio { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; }
+            .trio a { display: block; line-height: 0; }
+            .trio img { width: 100%; border-radius: 3px; cursor: pointer; border: 1px solid #eee; }
+            .trio a:hover img { outline: 2px solid #2060b0; }
+            .trio-labels { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; margin-top: 4px; font-size: 10px; color: #888; }
+            .trio-labels span:nth-child(1) { color: #2a7a2a; }
+            .trio-labels span:nth-child(2) { color: #2060b0; }
+            .trio-labels span:nth-child(3) { color: #c02060; }
+            .missing { height: 60px; background: #f0f0f0; border: 1px dashed #ccc; border-radius: 3px; display: flex; align-items: center; justify-content: center; color: #ccc; font-size: 10px; }
             .back { margin-bottom: 16px; }
             .back a { color: #2060b0; text-decoration: none; }
             @media (max-width: 900px) { .grid { grid-template-columns: repeat(2, 1fr); } }
@@ -226,19 +233,22 @@ jobs:
           <div class="grid">
           RUNHTML
 
+          # Per platform column, per step a trio: expected | received | diff
           for platform in $PLATFORMS; do
             echo "<div class='platform'><h3>${platform}</h3>" >> "site/runs/${RUN}/index.html"
             for step in $STEPS; do
-              img="${platform}/${step}.png"
+              expected="${platform}/${step}.expected.png"
+              received="${platform}/${step}.png"
               diff="${platform}/${step}.diff.png"
-              if [ -f "site/runs/${RUN}/${img}" ]; then
-                echo "<div class='screenshot'><a href='${img}' target='_blank'><img src='${img}' alt='${step}'></a><div class='label'>${step}</div></div>" >> "site/runs/${RUN}/index.html"
-              else
-                echo "<div class='screenshot'><div style='height:100px;display:flex;align-items:center;justify-content:center;color:#ccc'>no screenshot</div><div class='label'>${step}</div></div>" >> "site/runs/${RUN}/index.html"
-              fi
-              if [ -f "site/runs/${RUN}/${diff}" ]; then
-                echo "<div class='screenshot'><a href='${diff}' target='_blank'><img src='${diff}' alt='${step} diff'></a><div class='label'>${step} (diff vs baseline)</div></div>" >> "site/runs/${RUN}/index.html"
-              fi
+              echo "<div class='step'><div class='step-label'>${step}</div><div class='trio'>" >> "site/runs/${RUN}/index.html"
+              for variant in "$expected" "$received" "$diff"; do
+                if [ -f "site/runs/${RUN}/${variant}" ]; then
+                  echo "<a href='${variant}' target='_blank'><img src='${variant}'></a>" >> "site/runs/${RUN}/index.html"
+                else
+                  echo "<div class='missing'>missing</div>" >> "site/runs/${RUN}/index.html"
+                fi
+              done
+              echo "</div><div class='trio-labels'><span>Expected</span><span>Received</span><span>Diff</span></div></div>" >> "site/runs/${RUN}/index.html"
             done
             echo "</div>" >> "site/runs/${RUN}/index.html"
           done

@@ -228,6 +228,12 @@ fn compare_pngs(
         .save(&diff_path)
         .map_err(|e| format!("save diff {}: {e}", diff_path.display()))?;
 
+    // Also drop the baseline next to the actual + diff so the gh-pages
+    // grid can show an "expected / received / diff" trio per step.
+    let expected_path = Path::new(out_dir).join(format!("{step_name}.expected.png"));
+    fs::copy(baseline_path, &expected_path)
+        .map_err(|e| format!("copy baseline -> {}: {e}", expected_path.display()))?;
+
     Ok(DiffReport {
         diff_pixels,
         total_pixels,
