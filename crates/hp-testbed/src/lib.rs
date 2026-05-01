@@ -1,6 +1,6 @@
 //! Shared data model + snapshot-generation logic for hp-testbed binaries.
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use hp_core::ai_parser::{self, LayerBlock};
 use hp_core::bezier::BezierPath;
 use hp_core::puzzle;
@@ -112,29 +112,20 @@ pub fn build_snapshot(ai_path: &Path, target: usize, seed: u64) -> Result<Snapsh
     })
 }
 
-/// Load a snapshot from disk, or build it (and persist it) on miss.
+/// Always rebuild the snapshot from the AI file. Disk caching is
+/// intentionally disabled here — stale snapshots have shadowed real
+/// bugs (e.g. the NY8 'Layer 320' regression: the JSON on disk had
+/// been written before the parser validation tightened, so the
+/// testbed kept showing a brick the editor was correctly dropping).
+/// Always reparse so every request reflects the current parser, at
+/// the cost of a few seconds per first hit.
 pub fn load_or_build(
     ai_path: &Path,
-    out_dir: &Path,
+    _out_dir: &Path,
     target: usize,
     seed: u64,
 ) -> Result<Snapshot> {
-    let name = ai_path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("snapshot");
-    let cached_path = out_dir.join(format!("{name}.json"));
-    if cached_path.exists() {
-        let raw = std::fs::read(&cached_path)
-            .with_context(|| format!("reading {}", cached_path.display()))?;
-        return serde_json::from_slice(&raw).context("parsing cached snapshot");
-    }
-    let snap = build_snapshot(ai_path, target, seed)?;
-    std::fs::create_dir_all(out_dir).ok();
-    let body = serde_json::to_vec_pretty(&snap)?;
-    std::fs::write(&cached_path, &body)
-        .with_context(|| format!("writing {}", cached_path.display()))?;
-    Ok(snap)
+    build_snapshot(ai_path, target, seed)
 }
 
 /// List every `.ai` file in `in_dir` sorted by file name.
