@@ -9021,7 +9021,9 @@ var $author$project$Main$update = F2(
 						$elm$core$Platform$Cmd$none);
 				case 'DragEnterWave':
 					var waveId = msg.a;
-					return _Utils_Tuple2(
+					return _Utils_eq(
+						model.dragOverWaveId,
+						$elm$core$Maybe$Just(waveId)) ? _Utils_Tuple2(model, $elm$core$Platform$Cmd$none) : _Utils_Tuple2(
 						_Utils_update(
 							model,
 							{
@@ -9351,10 +9353,13 @@ var $author$project$Main$update = F2(
 					}
 				case 'DragEnterGroup':
 					var mgid = msg.a;
-					return _Utils_Tuple2(
+					return _Utils_eq(
+						model.dragOverGroupId,
+						$elm$core$Maybe$Just(mgid)) ? _Utils_Tuple2(model, $elm$core$Platform$Cmd$none) : _Utils_Tuple2(
 						_Utils_update(
 							model,
 							{
+								dragInsertBeforeId: $elm$core$Maybe$Nothing,
 								dragOverGroupId: $elm$core$Maybe$Just(mgid)
 							}),
 						$elm$core$Platform$Cmd$none);
@@ -9365,10 +9370,36 @@ var $author$project$Main$update = F2(
 						return _Utils_Tuple2(
 							_Utils_update(
 								model,
-								{dragOverGroupId: $elm$core$Maybe$Nothing}),
+								{dragInsertBeforeId: $elm$core$Maybe$Nothing, dragOverGroupId: $elm$core$Maybe$Nothing}),
 							$elm$core$Platform$Cmd$none);
 					} else {
 						var pid = _v34.a;
+						var insertBefore = model.dragInsertBeforeId;
+						var insertInto = function (pids) {
+							var filtered = A2(
+								$elm$core$List$filter,
+								$elm$core$Basics$neq(pid),
+								pids);
+							if (insertBefore.$ === 'Just') {
+								var beforeId = insertBefore.a;
+								return _Utils_eq(beforeId, pid) ? _Utils_ap(
+									filtered,
+									_List_fromArray(
+										[pid])) : A2(
+									$elm$core$List$concatMap,
+									function (p) {
+										return _Utils_eq(p, beforeId) ? _List_fromArray(
+											[pid, p]) : _List_fromArray(
+											[p]);
+									},
+									filtered);
+							} else {
+								return _Utils_ap(
+									filtered,
+									_List_fromArray(
+										[pid]));
+							}
+						};
 						var updatedGroups = function () {
 							if (mgid.$ === 'Nothing') {
 								return A2(
@@ -9389,14 +9420,11 @@ var $author$project$Main$update = F2(
 								return A2(
 									$elm$core$List$map,
 									function (g) {
-										return _Utils_eq(g.id, gid) ? (A2($elm$core$List$member, pid, g.pieceIds) ? g : _Utils_update(
+										return _Utils_eq(g.id, gid) ? _Utils_update(
 											g,
 											{
-												pieceIds: _Utils_ap(
-													g.pieceIds,
-													_List_fromArray(
-														[pid]))
-											})) : _Utils_update(
+												pieceIds: insertInto(g.pieceIds)
+											}) : _Utils_update(
 											g,
 											{
 												pieceIds: A2(
@@ -9414,23 +9442,23 @@ var $author$project$Main$update = F2(
 							_Utils_Tuple2(
 								_Utils_update(
 									model,
-									{dragOverGroupId: $elm$core$Maybe$Nothing, draggingPieceId: $elm$core$Maybe$Nothing, groups: updatedGroups}),
+									{dragInsertBeforeId: $elm$core$Maybe$Nothing, dragOverGroupId: $elm$core$Maybe$Nothing, draggingPieceId: $elm$core$Maybe$Nothing, groups: updatedGroups}),
 								$elm$core$Platform$Cmd$none));
 					}
 				case 'AssignGroupToWave':
 					var gid = msg.a;
 					var wid = msg.b;
-					var _v36 = $elm$core$List$head(
+					var _v37 = $elm$core$List$head(
 						A2(
 							$elm$core$List$filter,
 							function (g) {
 								return _Utils_eq(g.id, gid);
 							},
 							model.groups));
-					if (_v36.$ === 'Nothing') {
+					if (_v37.$ === 'Nothing') {
 						return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 					} else {
-						var group = _v36.a;
+						var group = _v37.a;
 						var targetLocked = A2(
 							$elm$core$List$any,
 							function (w) {
@@ -9503,9 +9531,9 @@ var $author$project$Main$update = F2(
 					var waveTrayHeight = (vh - waveTrayOffset) * 0.12;
 					var bottomPadding = 16;
 					var availableH = _Utils_eq(model.appMode, $author$project$Main$ModeWaves) ? ((vh - waveTrayHeight) - bottomPadding) : (vh - bottomPadding);
-					var _v37 = model.loadState;
-					if (_v37.$ === 'Loaded') {
-						var response = _v37.a;
+					var _v38 = model.loadState;
+					if (_v38.$ === 'Loaded') {
+						var response = _v38.a;
 						var svgH = response.canvas.height + 20;
 						var scale = (availableH * model.houseUnitsHigh) / (svgH * 15.5);
 						return _Utils_Tuple2(
@@ -9534,11 +9562,11 @@ var $author$project$Main$update = F2(
 				case 'LassoMove':
 					var x = msg.a;
 					var y = msg.b;
-					var _v38 = model.lasso;
-					if (_v38.$ === 'Nothing') {
+					var _v39 = model.lasso;
+					if (_v39.$ === 'Nothing') {
 						return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 					} else {
-						var ls = _v38.a;
+						var ls = _v39.a;
 						return _Utils_Tuple2(
 							_Utils_update(
 								model,
@@ -9551,11 +9579,11 @@ var $author$project$Main$update = F2(
 							$elm$core$Platform$Cmd$none);
 					}
 				case 'LassoEnd':
-					var _v39 = model.lasso;
-					if (_v39.$ === 'Nothing') {
+					var _v40 = model.lasso;
+					if (_v40.$ === 'Nothing') {
 						return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 					} else {
-						var ls = _v39.a;
+						var ls = _v40.a;
 						var isDrag = ($elm$core$Basics$abs(ls.x1 - ls.x0) > 5) || ($elm$core$Basics$abs(ls.y1 - ls.y0) > 5);
 						var cleared = _Utils_update(
 							model,
@@ -9563,11 +9591,11 @@ var $author$project$Main$update = F2(
 						if (!isDrag) {
 							return _Utils_Tuple2(cleared, $elm$core$Platform$Cmd$none);
 						} else {
-							var _v40 = model.selectedWaveId;
-							if (_v40.$ === 'Nothing') {
+							var _v41 = model.selectedWaveId;
+							if (_v41.$ === 'Nothing') {
 								return _Utils_Tuple2(cleared, $elm$core$Platform$Cmd$none);
 							} else {
-								var wid = _v40.a;
+								var wid = _v41.a;
 								var ly1 = A2($elm$core$Basics$max, ls.y0, ls.y1);
 								var ly0 = A2($elm$core$Basics$min, ls.y0, ls.y1);
 								var lx1 = A2($elm$core$Basics$max, ls.x0, ls.x1);
@@ -9675,9 +9703,9 @@ var $author$project$Main$update = F2(
 						$elm$core$Platform$Cmd$none);
 				case 'SetHouseUnitsHigh':
 					var s = msg.a;
-					var _v41 = $elm$core$String$toFloat(s);
-					if (_v41.$ === 'Just') {
-						var h = _v41.a;
+					var _v42 = $elm$core$String$toFloat(s);
+					if (_v42.$ === 'Just') {
+						var h = _v42.a;
 						return (h > 0) ? _Utils_Tuple2(
 							_Utils_update(
 								model,
@@ -9692,7 +9720,7 @@ var $author$project$Main$update = F2(
 					var py = msg.c;
 					var hueOnly = _Utils_eq(target, $author$project$Main$GridColorTarget) || _Utils_eq(target, $author$project$Main$OutlineColorTarget);
 					var innerH = hueOnly ? 20 : 96;
-					var _v42 = function () {
+					var _v43 = function () {
 						switch (target.$) {
 							case 'WaveColorTarget':
 								var waveId = target.a;
@@ -9734,8 +9762,8 @@ var $author$project$Main$update = F2(
 								return _Utils_Tuple2(model.outlineHue, 1.0);
 						}
 					}();
-					var currentHue = _v42.a;
-					var currentOpacity = _v42.b;
+					var currentHue = _v43.a;
+					var currentOpacity = _v43.b;
 					var panelX = (px - 10) - ((currentHue / 360) * 240);
 					var panelY = (py - 10) - ((1 - currentOpacity) * innerH);
 					return _Utils_Tuple2(
@@ -9749,18 +9777,18 @@ var $author$project$Main$update = F2(
 				case 'ColorPickMove':
 					var mx = msg.a;
 					var my = msg.b;
-					var _v44 = model.colorPicking;
-					if (_v44.$ === 'Nothing') {
+					var _v45 = model.colorPicking;
+					if (_v45.$ === 'Nothing') {
 						return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 					} else {
-						var cp = _v44.a;
+						var cp = _v45.a;
 						var newOpacity = cp.hueOnly ? 1.0 : A3($elm$core$Basics$clamp, 0.05, 1.0, 1.0 - (((my - cp.panelY) - 10) / 96));
 						var localX = (mx - cp.panelX) - 10;
 						var newHue = (localX < 20) ? (-2) : ((localX < 40) ? (-1) : A3($elm$core$Basics$clamp, 0, 360, ((localX - 40) / 240) * 360));
-						var _v45 = cp.target;
-						switch (_v45.$) {
+						var _v46 = cp.target;
+						switch (_v46.$) {
 							case 'WaveColorTarget':
-								var waveId = _v45.a;
+								var waveId = _v46.a;
 								return _Utils_Tuple2(
 									_Utils_update(
 										model,
@@ -9776,7 +9804,7 @@ var $author$project$Main$update = F2(
 										}),
 									$elm$core$Platform$Cmd$none);
 							case 'GroupColorTarget':
-								var groupId = _v45.a;
+								var groupId = _v46.a;
 								return _Utils_Tuple2(
 									_Utils_update(
 										model,
@@ -9866,7 +9894,7 @@ var $author$project$Main$update = F2(
 						model,
 						A2(
 							$elm$core$Task$attempt,
-							function (_v47) {
+							function (_v48) {
 								return $author$project$Main$NoOp;
 							},
 							A2(
@@ -9876,12 +9904,12 @@ var $author$project$Main$update = F2(
 								},
 								$elm$browser$Browser$Dom$getViewportOf('wave-tray-scroll'))));
 				case 'Undo':
-					var _v48 = model.undoHistory;
-					if (!_v48.b) {
+					var _v49 = model.undoHistory;
+					if (!_v49.b) {
 						return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 					} else {
-						var top = _v48.a;
-						var rest = _v48.b;
+						var top = _v49.a;
+						var rest = _v49.b;
 						var restored = A2($author$project$Main$applySnapshot, top, model);
 						var currentSnap = $author$project$Main$takeSnapshot(model);
 						return _Utils_Tuple2(
@@ -9897,12 +9925,12 @@ var $author$project$Main$update = F2(
 							$elm$core$Platform$Cmd$none);
 					}
 				case 'Redo':
-					var _v49 = model.redoHistory;
-					if (!_v49.b) {
+					var _v50 = model.redoHistory;
+					if (!_v50.b) {
 						return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 					} else {
-						var top = _v49.a;
-						var rest = _v49.b;
+						var top = _v50.a;
+						var rest = _v50.b;
 						var restored = A2($author$project$Main$applySnapshot, top, model);
 						var currentSnap = $author$project$Main$takeSnapshot(model);
 						return _Utils_Tuple2(
@@ -9981,15 +10009,15 @@ var $author$project$Main$update = F2(
 					} else {
 						switch (requestId) {
 							case 'list_pdfs':
-								var _v52 = A2(
+								var _v53 = A2(
 									$elm$json$Json$Decode$decodeValue,
 									A2(
 										$elm$json$Json$Decode$field,
 										'files',
 										$elm$json$Json$Decode$list($author$project$Main$decodePdfFile)),
 									dataVal);
-								if (_v52.$ === 'Ok') {
-									var files = _v52.a;
+								if (_v53.$ === 'Ok') {
+									var files = _v53.a;
 									return _Utils_Tuple2(
 										_Utils_update(
 											model,
@@ -9999,9 +10027,9 @@ var $author$project$Main$update = F2(
 									return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 								}
 							case 'load_pdf':
-								var _v53 = A2($elm$json$Json$Decode$decodeValue, $author$project$Main$decodeLoadResponse, dataVal);
-								if (_v53.$ === 'Ok') {
-									var response = _v53.a;
+								var _v54 = A2($elm$json$Json$Decode$decodeValue, $author$project$Main$decodeLoadResponse, dataVal);
+								if (_v54.$ === 'Ok') {
+									var response = _v54.a;
 									var $temp$msg = $author$project$Main$GotLoadResponse(
 										$elm$core$Result$Ok(response)),
 										$temp$model = model;
@@ -10009,7 +10037,7 @@ var $author$project$Main$update = F2(
 									model = $temp$model;
 									continue update;
 								} else {
-									var e = _v53.a;
+									var e = _v54.a;
 									return _Utils_Tuple2(
 										_Utils_update(
 											model,
@@ -10020,9 +10048,9 @@ var $author$project$Main$update = F2(
 										$elm$core$Platform$Cmd$none);
 								}
 							case 'merge_pieces':
-								var _v54 = A2($elm$json$Json$Decode$decodeValue, $author$project$Main$decodeMergeResponse, dataVal);
-								if (_v54.$ === 'Ok') {
-									var response = _v54.a;
+								var _v55 = A2($elm$json$Json$Decode$decodeValue, $author$project$Main$decodeMergeResponse, dataVal);
+								if (_v55.$ === 'Ok') {
+									var response = _v55.a;
 									var $temp$msg = $author$project$Main$GotMergeResponse(
 										$elm$core$Result$Ok(response)),
 										$temp$model = model;
@@ -10037,9 +10065,9 @@ var $author$project$Main$update = F2(
 										$elm$core$Platform$Cmd$none);
 								}
 							case 'merge_pieces_recompute':
-								var _v55 = A2($elm$json$Json$Decode$decodeValue, $author$project$Main$decodeMergeResponse, dataVal);
-								if (_v55.$ === 'Ok') {
-									var response = _v55.a;
+								var _v56 = A2($elm$json$Json$Decode$decodeValue, $author$project$Main$decodeMergeResponse, dataVal);
+								if (_v56.$ === 'Ok') {
+									var response = _v56.a;
 									var pieceMap = $elm$core$Dict$fromList(
 										A2(
 											$elm$core$List$map,
@@ -10050,9 +10078,9 @@ var $author$project$Main$update = F2(
 									var updatedPieces = A2(
 										$elm$core$List$map,
 										function (p) {
-											var _v56 = A2($elm$core$Dict$get, p.id, pieceMap);
-											if (_v56.$ === 'Just') {
-												var rp = _v56.a;
+											var _v57 = A2($elm$core$Dict$get, p.id, pieceMap);
+											if (_v57.$ === 'Just') {
+												var rp = _v57.a;
 												return _Utils_update(
 													p,
 													{
@@ -10084,21 +10112,6 @@ var $author$project$Main$update = F2(
 										{exporting: false}),
 									$elm$core$Platform$Cmd$none);
 							case 'ensure_lights':
-								var _v57 = A2(
-									$elm$json$Json$Decode$decodeValue,
-									$elm$json$Json$Decode$nullable($elm$json$Json$Decode$string),
-									dataVal);
-								if (_v57.$ === 'Ok') {
-									var url = _v57.a;
-									return _Utils_Tuple2(
-										_Utils_update(
-											model,
-											{lightsUrl: url}),
-										$elm$core$Platform$Cmd$none);
-								} else {
-									return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
-								}
-							case 'ensure_background':
 								var _v58 = A2(
 									$elm$json$Json$Decode$decodeValue,
 									$elm$json$Json$Decode$nullable($elm$json$Json$Decode$string),
@@ -10108,18 +10121,33 @@ var $author$project$Main$update = F2(
 									return _Utils_Tuple2(
 										_Utils_update(
 											model,
+											{lightsUrl: url}),
+										$elm$core$Platform$Cmd$none);
+								} else {
+									return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
+								}
+							case 'ensure_background':
+								var _v59 = A2(
+									$elm$json$Json$Decode$decodeValue,
+									$elm$json$Json$Decode$nullable($elm$json$Json$Decode$string),
+									dataVal);
+								if (_v59.$ === 'Ok') {
+									var url = _v59.a;
+									return _Utils_Tuple2(
+										_Utils_update(
+											model,
 											{blueprintBgUrl: url}),
 										$elm$core$Platform$Cmd$none);
 								} else {
 									return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 								}
 							case 'pick_file':
-								var _v59 = A2(
+								var _v60 = A2(
 									$elm$json$Json$Decode$decodeValue,
 									$elm$json$Json$Decode$nullable($elm$json$Json$Decode$string),
 									dataVal);
-								if ((_v59.$ === 'Ok') && (_v59.a.$ === 'Just')) {
-									var path = _v59.a.a;
+								if ((_v60.$ === 'Ok') && (_v60.a.$ === 'Just')) {
+									var path = _v60.a.a;
 									var key = $elm$core$String$fromInt(model.nextSessionId);
 									var fileName = function (n) {
 										return A2(
@@ -10163,12 +10191,12 @@ var $author$project$Main$update = F2(
 							command: 'log_to_stderr',
 							requestId: 'log'
 						}) : $elm$core$Platform$Cmd$none;
-					var _v60 = A2($elm$core$Debug$log, '[elm] TestSetValue', testId + ('=' + value));
+					var _v61 = A2($elm$core$Debug$log, '[elm] TestSetValue', testId + ('=' + value));
 					switch (testId) {
 						case 'target-pieces':
-							var _v62 = $elm$core$String$toInt(value);
-							if (_v62.$ === 'Just') {
-								var n = _v62.a;
+							var _v63 = $elm$core$String$toInt(value);
+							if (_v63.$ === 'Just') {
+								var n = _v63.a;
 								return _Utils_Tuple2(
 									_Utils_update(
 										model,
@@ -10180,9 +10208,9 @@ var $author$project$Main$update = F2(
 								return _Utils_Tuple2(model, logCmd);
 							}
 						case 'min-border':
-							var _v63 = $elm$core$String$toInt(value);
-							if (_v63.$ === 'Just') {
-								var n = _v63.a;
+							var _v64 = $elm$core$String$toInt(value);
+							if (_v64.$ === 'Just') {
+								var n = _v64.a;
 								return _Utils_Tuple2(
 									_Utils_update(
 										model,
@@ -10194,9 +10222,9 @@ var $author$project$Main$update = F2(
 								return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 							}
 						case 'zoom':
-							var _v64 = $elm$core$String$toFloat(value);
-							if (_v64.$ === 'Just') {
-								var z = _v64.a;
+							var _v65 = $elm$core$String$toFloat(value);
+							if (_v65.$ === 'Just') {
+								var z = _v65.a;
 								return _Utils_Tuple2(
 									_Utils_update(
 										model,
@@ -13184,10 +13212,6 @@ var $author$project$Main$DragPieceEnd = {$: 'DragPieceEnd'};
 var $author$project$Main$DragPieceStart = function (a) {
 	return {$: 'DragPieceStart', a: a};
 };
-var $author$project$Main$RemovePieceFromWave = F2(
-	function (a, b) {
-		return {$: 'RemovePieceFromWave', a: a, b: b};
-	});
 var $elm$html$Html$img = _VirtualDom_node('img');
 var $elm$html$Html$Attributes$src = function (url) {
 	return A2(
@@ -13195,6 +13219,114 @@ var $elm$html$Html$Attributes$src = function (url) {
 		'src',
 		_VirtualDom_noJavaScriptOrHtmlUri(url));
 };
+var $author$project$Main$viewGroupThumb = F9(
+	function (maybeWaveId, hoveredId, selectedId, maybeGroup, piece, allIds, generation, maybePos, isLocked) {
+		var n = $elm$core$List$length(allIds);
+		var isSelected = _Utils_eq(
+			selectedId,
+			$elm$core$Maybe$Just(piece.id));
+		var isHovered = _Utils_eq(
+			hoveredId,
+			$elm$core$Maybe$Just(piece.id));
+		var dragAttrs = isLocked ? _List_Nil : _List_fromArray(
+			[
+				A2($elm$html$Html$Attributes$attribute, 'draggable', 'true'),
+				A2(
+				$elm$html$Html$Events$on,
+				'dragstart',
+				$elm$json$Json$Decode$succeed(
+					$author$project$Main$DragPieceStart(piece.id))),
+				A2(
+				$elm$html$Html$Events$on,
+				'dragend',
+				$elm$json$Json$Decode$succeed($author$project$Main$DragPieceEnd)),
+				A2(
+				$elm$html$Html$Events$stopPropagationOn,
+				'dragenter',
+				$elm$json$Json$Decode$succeed(
+					_Utils_Tuple2(
+						$author$project$Main$DragEnterPiece(piece.id),
+						true)))
+			]);
+		var clickMsg = function () {
+			var _v1 = _Utils_Tuple2(maybeGroup, maybeWaveId);
+			if ((_v1.a.$ === 'Just') && (_v1.b.$ === 'Just')) {
+				var g = _v1.a.a;
+				var wid = _v1.b.a;
+				return A2($author$project$Main$AssignGroupToWave, g.id, wid);
+			} else {
+				return $author$project$Main$NoOp;
+			}
+		}();
+		return A2(
+			$elm$html$Html$div,
+			_Utils_ap(
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$classList(
+						_List_fromArray(
+							[
+								_Utils_Tuple2('piece-thumb', true),
+								_Utils_Tuple2('hovered', isHovered),
+								_Utils_Tuple2('selected', isSelected)
+							])),
+						A2($elm$html$Html$Attributes$attribute, 'data-piece-id', piece.id),
+						$elm$html$Html$Events$onMouseEnter(
+						$author$project$Main$SetHoveredPiece(
+							$elm$core$Maybe$Just(piece.id))),
+						$elm$html$Html$Events$onMouseLeave(
+						$author$project$Main$SetHoveredPiece($elm$core$Maybe$Nothing)),
+						$elm$html$Html$Events$onClick(clickMsg)
+					]),
+				dragAttrs),
+			_List_fromArray(
+				[
+					A2(
+					$elm$html$Html$img,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$src(
+							A2($author$project$Main$cacheBust, piece.imgUrl, generation)),
+							A2($elm$html$Html$Attributes$style, 'max-height', '48px'),
+							A2($elm$html$Html$Attributes$style, 'max-width', '80px'),
+							A2($elm$html$Html$Attributes$style, 'display', 'block')
+						]),
+					_List_Nil),
+					function () {
+					if (maybePos.$ === 'Just') {
+						var pos = maybePos.a;
+						return A2(
+							$elm$html$Html$div,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('piece-thumb-pos')
+								]),
+							_List_fromArray(
+								[
+									$elm$html$Html$text(
+									$elm$core$String$fromInt(pos))
+								]));
+					} else {
+						return $elm$html$Html$text('');
+					}
+				}(),
+					(n > 1) ? A2(
+					$elm$html$Html$div,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('group-xn-badge group-xn-badge-bottom')
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text(
+							'x' + $elm$core$String$fromInt(n))
+						])) : $elm$html$Html$text('')
+				]));
+	});
+var $author$project$Main$RemovePieceFromWave = F2(
+	function (a, b) {
+		return {$: 'RemovePieceFromWave', a: a, b: b};
+	});
 var $author$project$Main$viewPieceThumb = F7(
 	function (removeInfo, isLocked, hoveredId, selectedId, pieceId, dataUrl, maybePos) {
 		var isSelected = _Utils_eq(
@@ -13306,6 +13438,127 @@ var $author$project$Main$viewPieceThumb = F7(
 						}
 					}())));
 	});
+var $author$project$Main$viewPieceListContents = function (cfg) {
+	var renderThumb = F2(
+		function (display, maybePos) {
+			if (display.$ === 'SinglePiece') {
+				var pid = display.a;
+				return A2(
+					$elm$core$Maybe$withDefault,
+					_List_Nil,
+					A2(
+						$elm$core$Maybe$map,
+						function (piece) {
+							return _List_fromArray(
+								[
+									A7(
+									$author$project$Main$viewPieceThumb,
+									cfg.removeInfoFor(pid),
+									cfg.locked,
+									cfg.hoveredPieceId,
+									cfg.selectedPieceId,
+									pid,
+									A2($author$project$Main$cacheBust, piece.imgUrl, cfg.pieceGeneration),
+									maybePos)
+								]);
+						},
+						$elm$core$List$head(
+							A2(
+								$elm$core$List$filter,
+								function (p) {
+									return _Utils_eq(p.id, pid);
+								},
+								cfg.pieces))));
+			} else {
+				var repIdInner = display.a;
+				var allIds = display.b;
+				return A2(
+					$elm$core$Maybe$withDefault,
+					_List_Nil,
+					A2(
+						$elm$core$Maybe$map,
+						function (piece) {
+							return _List_fromArray(
+								[
+									A9(
+									$author$project$Main$viewGroupThumb,
+									cfg.groupClickWaveId,
+									cfg.hoveredPieceId,
+									cfg.selectedPieceId,
+									$elm$core$List$head(
+										A2(
+											$elm$core$List$filter,
+											function (g) {
+												return A2($elm$core$List$member, repIdInner, g.pieceIds);
+											},
+											cfg.groups)),
+									piece,
+									allIds,
+									cfg.pieceGeneration,
+									maybePos,
+									cfg.locked)
+								]);
+						},
+						$elm$core$List$head(
+							A2(
+								$elm$core$List$filter,
+								function (p) {
+									return _Utils_eq(p.id, repIdInner);
+								},
+								cfg.pieces))));
+			}
+		});
+	var endMarker = ((!cfg.locked) && ((!_Utils_eq(cfg.draggingPieceId, $elm$core$Maybe$Nothing)) && (_Utils_eq(cfg.dragInsertBeforeId, $elm$core$Maybe$Nothing) && cfg.isCurrentDropZone))) ? _List_fromArray(
+		[
+			A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('drag-insert-marker')
+				]),
+			_List_Nil)
+		]) : _List_Nil;
+	var displays = cfg.collapseGroups ? A2($author$project$Main$toPieceDisplays, cfg.groups, cfg.pieceIds) : A2($elm$core$List$map, $author$project$Main$SinglePiece, cfg.pieceIds);
+	var indexed = A2($elm$core$List$indexedMap, $elm$core$Tuple$pair, displays);
+	var displayRepId = function (d) {
+		if (d.$ === 'SinglePiece') {
+			var pid = d.a;
+			return pid;
+		} else {
+			var pid = d.a;
+			return pid;
+		}
+	};
+	var thumbsWithMarkers = A2(
+		$elm$core$List$concatMap,
+		function (_v0) {
+			var i = _v0.a;
+			var display = _v0.b;
+			var repId = displayRepId(display);
+			var showMarker = (!cfg.locked) && ((!_Utils_eq(cfg.draggingPieceId, $elm$core$Maybe$Nothing)) && _Utils_eq(
+				cfg.dragInsertBeforeId,
+				$elm$core$Maybe$Just(repId)));
+			var pos = i + 1;
+			var maybePos = cfg.showPositions ? $elm$core$Maybe$Just(pos) : $elm$core$Maybe$Nothing;
+			var marker = showMarker ? _List_fromArray(
+				[
+					A2(
+					$elm$html$Html$div,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('drag-insert-marker')
+						]),
+					_List_Nil)
+				]) : _List_Nil;
+			var isBeingDragged = _Utils_eq(
+				cfg.draggingPieceId,
+				$elm$core$Maybe$Just(repId));
+			var thumb = isBeingDragged ? _List_Nil : A2(renderThumb, display, maybePos);
+			return _Utils_ap(marker, thumb);
+		},
+		indexed);
+	return _Utils_ap(thumbsWithMarkers, endMarker);
+};
 var $author$project$Main$viewGroupRow = F3(
 	function (model, allGroups, group) {
 		var swatchColor = A2($author$project$Main$waveColor, group.hue, 0.85);
@@ -13341,11 +13594,13 @@ var $author$project$Main$viewGroupRow = F3(
 						$author$project$Main$DragEnterGroup(
 							$elm$core$Maybe$Just(group.id)))),
 					A2(
-					$elm$html$Html$Events$on,
+					$elm$html$Html$Events$preventDefaultOn,
 					'drop',
 					$elm$json$Json$Decode$succeed(
-						$author$project$Main$DropOnGroup(
-							$elm$core$Maybe$Just(group.id))))
+						_Utils_Tuple2(
+							$author$project$Main$DropOnGroup(
+								$elm$core$Maybe$Just(group.id)),
+							true)))
 				]),
 			_List_fromArray(
 				[
@@ -13477,32 +13732,29 @@ var $author$project$Main$viewGroupRow = F3(
 						[
 							$elm$html$Html$Attributes$class('wave-pieces')
 						]),
-					A2(
-						$elm$core$List$filterMap,
-						function (pid) {
-							return A2(
-								$elm$core$Maybe$map,
-								function (piece) {
-									return A7(
-										$author$project$Main$viewPieceThumb,
-										$elm$core$Maybe$Just(
-											_Utils_Tuple2(group.id, pid)),
-										false,
-										model.hoveredPieceId,
-										model.selectedPieceId,
-										pid,
-										A2($author$project$Main$cacheBust, piece.imgUrl, model.pieceGeneration),
-										$elm$core$Maybe$Nothing);
-								},
-								$elm$core$List$head(
-									A2(
-										$elm$core$List$filter,
-										function (p) {
-											return _Utils_eq(p.id, pid);
-										},
-										model.pieces)));
-						},
-						group.pieceIds))
+					$author$project$Main$viewPieceListContents(
+						{
+							collapseGroups: false,
+							dragInsertBeforeId: model.dragInsertBeforeId,
+							draggingPieceId: model.draggingPieceId,
+							groupClickWaveId: $elm$core$Maybe$Nothing,
+							groups: model.groups,
+							hoveredPieceId: model.hoveredPieceId,
+							isCurrentDropZone: _Utils_eq(
+								model.dragOverGroupId,
+								$elm$core$Maybe$Just(
+									$elm$core$Maybe$Just(group.id))),
+							locked: group.locked,
+							pieceGeneration: model.pieceGeneration,
+							pieceIds: group.pieceIds,
+							pieces: model.pieces,
+							removeInfoFor: function (pid) {
+								return $elm$core$Maybe$Just(
+									_Utils_Tuple2(group.id, pid));
+							},
+							selectedPieceId: model.selectedPieceId,
+							showPositions: false
+						}))
 				]));
 	});
 var $author$project$Main$viewGroupUnassignedRow = F2(
@@ -13532,10 +13784,12 @@ var $author$project$Main$viewGroupUnassignedRow = F2(
 					$elm$json$Json$Decode$succeed(
 						$author$project$Main$DragEnterGroup($elm$core$Maybe$Nothing))),
 					A2(
-					$elm$html$Html$Events$on,
+					$elm$html$Html$Events$preventDefaultOn,
 					'drop',
 					$elm$json$Json$Decode$succeed(
-						$author$project$Main$DropOnGroup($elm$core$Maybe$Nothing)))
+						_Utils_Tuple2(
+							$author$project$Main$DropOnGroup($elm$core$Maybe$Nothing),
+							true)))
 				]),
 			_List_fromArray(
 				[
@@ -13576,20 +13830,32 @@ var $author$project$Main$viewGroupUnassignedRow = F2(
 						[
 							$elm$html$Html$Attributes$class('wave-pieces')
 						]),
-					A2(
-						$elm$core$List$map,
-						function (p) {
-							return A7(
-								$author$project$Main$viewPieceThumb,
-								$elm$core$Maybe$Nothing,
-								false,
-								model.hoveredPieceId,
-								model.selectedPieceId,
-								p.id,
-								A2($author$project$Main$cacheBust, p.imgUrl, model.pieceGeneration),
-								$elm$core$Maybe$Nothing);
-						},
-						unassignedPieces))
+					$author$project$Main$viewPieceListContents(
+						{
+							collapseGroups: false,
+							dragInsertBeforeId: model.dragInsertBeforeId,
+							draggingPieceId: model.draggingPieceId,
+							groupClickWaveId: $elm$core$Maybe$Nothing,
+							groups: model.groups,
+							hoveredPieceId: model.hoveredPieceId,
+							isCurrentDropZone: _Utils_eq(
+								model.dragOverGroupId,
+								$elm$core$Maybe$Just($elm$core$Maybe$Nothing)),
+							locked: false,
+							pieceGeneration: model.pieceGeneration,
+							pieceIds: A2(
+								$elm$core$List$map,
+								function ($) {
+									return $.id;
+								},
+								unassignedPieces),
+							pieces: model.pieces,
+							removeInfoFor: function (_v0) {
+								return $elm$core$Maybe$Nothing;
+							},
+							selectedPieceId: model.selectedPieceId,
+							showPositions: false
+						}))
 				]));
 	});
 var $author$project$Main$viewGroupsTools = function (model) {
@@ -13890,110 +14156,6 @@ var $author$project$Main$DragEnterWave = function (a) {
 var $author$project$Main$DropOnWave = function (a) {
 	return {$: 'DropOnWave', a: a};
 };
-var $author$project$Main$viewGroupThumb = F9(
-	function (maybeWaveId, hoveredId, selectedId, maybeGroup, piece, allIds, generation, maybePos, isLocked) {
-		var n = $elm$core$List$length(allIds);
-		var isSelected = _Utils_eq(
-			selectedId,
-			$elm$core$Maybe$Just(piece.id));
-		var isHovered = _Utils_eq(
-			hoveredId,
-			$elm$core$Maybe$Just(piece.id));
-		var dragAttrs = isLocked ? _List_Nil : _List_fromArray(
-			[
-				A2($elm$html$Html$Attributes$attribute, 'draggable', 'true'),
-				A2(
-				$elm$html$Html$Events$on,
-				'dragstart',
-				$elm$json$Json$Decode$succeed(
-					$author$project$Main$DragPieceStart(piece.id))),
-				A2(
-				$elm$html$Html$Events$on,
-				'dragend',
-				$elm$json$Json$Decode$succeed($author$project$Main$DragPieceEnd)),
-				A2(
-				$elm$html$Html$Events$stopPropagationOn,
-				'dragenter',
-				$elm$json$Json$Decode$succeed(
-					_Utils_Tuple2(
-						$author$project$Main$DragEnterPiece(piece.id),
-						true)))
-			]);
-		var clickMsg = function () {
-			var _v1 = _Utils_Tuple2(maybeGroup, maybeWaveId);
-			if ((_v1.a.$ === 'Just') && (_v1.b.$ === 'Just')) {
-				var g = _v1.a.a;
-				var wid = _v1.b.a;
-				return A2($author$project$Main$AssignGroupToWave, g.id, wid);
-			} else {
-				return $author$project$Main$NoOp;
-			}
-		}();
-		return A2(
-			$elm$html$Html$div,
-			_Utils_ap(
-				_List_fromArray(
-					[
-						$elm$html$Html$Attributes$classList(
-						_List_fromArray(
-							[
-								_Utils_Tuple2('piece-thumb', true),
-								_Utils_Tuple2('hovered', isHovered),
-								_Utils_Tuple2('selected', isSelected)
-							])),
-						A2($elm$html$Html$Attributes$attribute, 'data-piece-id', piece.id),
-						$elm$html$Html$Events$onMouseEnter(
-						$author$project$Main$SetHoveredPiece(
-							$elm$core$Maybe$Just(piece.id))),
-						$elm$html$Html$Events$onMouseLeave(
-						$author$project$Main$SetHoveredPiece($elm$core$Maybe$Nothing)),
-						$elm$html$Html$Events$onClick(clickMsg)
-					]),
-				dragAttrs),
-			_List_fromArray(
-				[
-					A2(
-					$elm$html$Html$img,
-					_List_fromArray(
-						[
-							$elm$html$Html$Attributes$src(
-							A2($author$project$Main$cacheBust, piece.imgUrl, generation)),
-							A2($elm$html$Html$Attributes$style, 'max-height', '48px'),
-							A2($elm$html$Html$Attributes$style, 'max-width', '80px'),
-							A2($elm$html$Html$Attributes$style, 'display', 'block')
-						]),
-					_List_Nil),
-					function () {
-					if (maybePos.$ === 'Just') {
-						var pos = maybePos.a;
-						return A2(
-							$elm$html$Html$div,
-							_List_fromArray(
-								[
-									$elm$html$Html$Attributes$class('piece-thumb-pos')
-								]),
-							_List_fromArray(
-								[
-									$elm$html$Html$text(
-									$elm$core$String$fromInt(pos))
-								]));
-					} else {
-						return $elm$html$Html$text('');
-					}
-				}(),
-					(n > 1) ? A2(
-					$elm$html$Html$div,
-					_List_fromArray(
-						[
-							$elm$html$Html$Attributes$class('group-xn-badge group-xn-badge-bottom')
-						]),
-					_List_fromArray(
-						[
-							$elm$html$Html$text(
-							'x' + $elm$core$String$fromInt(n))
-						])) : $elm$html$Html$text('')
-				]));
-	});
 var $author$project$Main$viewUnassignedRow = F2(
 	function (model, unassignedPieces) {
 		return $elm$core$List$isEmpty(model.pieces) ? $elm$html$Html$text('') : A2(
@@ -14021,10 +14183,12 @@ var $author$project$Main$viewUnassignedRow = F2(
 					$elm$json$Json$Decode$succeed(
 						$author$project$Main$DragEnterWave($elm$core$Maybe$Nothing))),
 					A2(
-					$elm$html$Html$Events$on,
+					$elm$html$Html$Events$preventDefaultOn,
 					'drop',
 					$elm$json$Json$Decode$succeed(
-						$author$project$Main$DropOnWave($elm$core$Maybe$Nothing)))
+						_Utils_Tuple2(
+							$author$project$Main$DropOnWave($elm$core$Maybe$Nothing),
+							true)))
 				]),
 			_List_fromArray(
 				[
@@ -14065,73 +14229,32 @@ var $author$project$Main$viewUnassignedRow = F2(
 						[
 							$elm$html$Html$Attributes$class('wave-pieces')
 						]),
-					A2(
-						$elm$core$List$filterMap,
-						function (display) {
-							if (display.$ === 'SinglePiece') {
-								var pid = display.a;
-								return A2(
-									$elm$core$Maybe$map,
-									function (p) {
-										return A7(
-											$author$project$Main$viewPieceThumb,
-											$elm$core$Maybe$Nothing,
-											false,
-											model.hoveredPieceId,
-											model.selectedPieceId,
-											p.id,
-											A2($author$project$Main$cacheBust, p.imgUrl, model.pieceGeneration),
-											$elm$core$Maybe$Nothing);
-									},
-									$elm$core$List$head(
-										A2(
-											$elm$core$List$filter,
-											function (p) {
-												return _Utils_eq(p.id, pid);
-											},
-											model.pieces)));
-							} else {
-								var repId = display.a;
-								var allIds = display.b;
-								return A2(
-									$elm$core$Maybe$map,
-									function (p) {
-										return A9(
-											$author$project$Main$viewGroupThumb,
-											model.selectedWaveId,
-											model.hoveredPieceId,
-											model.selectedPieceId,
-											$elm$core$List$head(
-												A2(
-													$elm$core$List$filter,
-													function (g) {
-														return A2($elm$core$List$member, repId, g.pieceIds);
-													},
-													model.groups)),
-											p,
-											allIds,
-											model.pieceGeneration,
-											$elm$core$Maybe$Nothing,
-											false);
-									},
-									$elm$core$List$head(
-										A2(
-											$elm$core$List$filter,
-											function (p) {
-												return _Utils_eq(p.id, repId);
-											},
-											model.pieces)));
-							}
-						},
-						A2(
-							$author$project$Main$toPieceDisplays,
-							model.groups,
-							A2(
+					$author$project$Main$viewPieceListContents(
+						{
+							collapseGroups: true,
+							dragInsertBeforeId: model.dragInsertBeforeId,
+							draggingPieceId: model.draggingPieceId,
+							groupClickWaveId: model.selectedWaveId,
+							groups: model.groups,
+							hoveredPieceId: model.hoveredPieceId,
+							isCurrentDropZone: _Utils_eq(
+								model.dragOverWaveId,
+								$elm$core$Maybe$Just($elm$core$Maybe$Nothing)),
+							locked: false,
+							pieceGeneration: model.pieceGeneration,
+							pieceIds: A2(
 								$elm$core$List$map,
 								function ($) {
 									return $.id;
 								},
-								unassignedPieces))))
+								unassignedPieces),
+							pieces: model.pieces,
+							removeInfoFor: function (_v0) {
+								return $elm$core$Maybe$Nothing;
+							},
+							selectedPieceId: model.selectedPieceId,
+							showPositions: false
+						}))
 				]));
 	});
 var $author$project$Main$viewWavePieceInfoBox = function (model) {
@@ -14505,11 +14628,13 @@ var $author$project$Main$viewWaveRow = F4(
 						$author$project$Main$DragEnterWave(
 							$elm$core$Maybe$Just(wave.id)))),
 					A2(
-					$elm$html$Html$Events$on,
+					$elm$html$Html$Events$preventDefaultOn,
 					'drop',
 					$elm$json$Json$Decode$succeed(
-						$author$project$Main$DropOnWave(
-							$elm$core$Maybe$Just(wave.id))))
+						_Utils_Tuple2(
+							$author$project$Main$DropOnWave(
+								$elm$core$Maybe$Just(wave.id)),
+							true)))
 				]),
 			_List_fromArray(
 				[
@@ -14674,74 +14799,29 @@ var $author$project$Main$viewWaveRow = F4(
 						[
 							$elm$html$Html$Attributes$class('wave-pieces')
 						]),
-					A2(
-						$elm$core$List$filterMap,
-						function (_v0) {
-							var pos = _v0.a;
-							var display = _v0.b;
-							if (display.$ === 'SinglePiece') {
-								var pid = display.a;
-								return A2(
-									$elm$core$Maybe$map,
-									function (piece) {
-										return A7(
-											$author$project$Main$viewPieceThumb,
-											$elm$core$Maybe$Just(
-												_Utils_Tuple2(wave.id, pid)),
-											wave.locked,
-											model.hoveredPieceId,
-											model.selectedPieceId,
-											pid,
-											A2($author$project$Main$cacheBust, piece.imgUrl, model.pieceGeneration),
-											$elm$core$Maybe$Just(pos));
-									},
-									$elm$core$List$head(
-										A2(
-											$elm$core$List$filter,
-											function (p) {
-												return _Utils_eq(p.id, pid);
-											},
-											model.pieces)));
-							} else {
-								var repId = display.a;
-								var allIds = display.b;
-								return A2(
-									$elm$core$Maybe$map,
-									function (piece) {
-										return A9(
-											$author$project$Main$viewGroupThumb,
-											$elm$core$Maybe$Just(wave.id),
-											model.hoveredPieceId,
-											model.selectedPieceId,
-											$elm$core$List$head(
-												A2(
-													$elm$core$List$filter,
-													function (g) {
-														return A2($elm$core$List$member, repId, g.pieceIds);
-													},
-													model.groups)),
-											piece,
-											allIds,
-											model.pieceGeneration,
-											$elm$core$Maybe$Just(pos),
-											wave.locked);
-									},
-									$elm$core$List$head(
-										A2(
-											$elm$core$List$filter,
-											function (p) {
-												return _Utils_eq(p.id, repId);
-											},
-											model.pieces)));
-							}
-						},
-						A2(
-							$elm$core$List$indexedMap,
-							F2(
-								function (i, display) {
-									return _Utils_Tuple2(i + 1, display);
-								}),
-							A2($author$project$Main$toPieceDisplays, model.groups, wave.pieceIds))))
+					$author$project$Main$viewPieceListContents(
+						{
+							collapseGroups: true,
+							dragInsertBeforeId: model.dragInsertBeforeId,
+							draggingPieceId: model.draggingPieceId,
+							groupClickWaveId: $elm$core$Maybe$Just(wave.id),
+							groups: model.groups,
+							hoveredPieceId: model.hoveredPieceId,
+							isCurrentDropZone: _Utils_eq(
+								model.dragOverWaveId,
+								$elm$core$Maybe$Just(
+									$elm$core$Maybe$Just(wave.id))),
+							locked: wave.locked,
+							pieceGeneration: model.pieceGeneration,
+							pieceIds: wave.pieceIds,
+							pieces: model.pieces,
+							removeInfoFor: function (pid) {
+								return $elm$core$Maybe$Just(
+									_Utils_Tuple2(wave.id, pid));
+							},
+							selectedPieceId: model.selectedPieceId,
+							showPositions: true
+						}))
 				]));
 	});
 var $author$project$Main$viewWavesTools = function (model) {
@@ -15004,16 +15084,9 @@ var $author$project$Main$viewWaveTrayThumb = F9(
 				A2(
 				$elm$html$Html$Events$on,
 				'dragend',
-				$elm$json$Json$Decode$succeed($author$project$Main$DragPieceEnd)),
-				A2(
-				$elm$html$Html$Events$stopPropagationOn,
-				'dragenter',
-				$elm$json$Json$Decode$succeed(
-					_Utils_Tuple2(
-						$author$project$Main$DragEnterPiece(piece.id),
-						true)))
+				$elm$json$Json$Decode$succeed($author$project$Main$DragPieceEnd))
 			]);
-		return A2(
+		var thumbBody = A2(
 			$elm$html$Html$div,
 			_Utils_ap(
 				_List_fromArray(
@@ -15030,12 +15103,7 @@ var $author$project$Main$viewWaveTrayThumb = F9(
 						A2(
 						$elm$html$Html$Attributes$style,
 						'aspect-ratio',
-						$elm$core$String$fromFloat(piece.width / piece.height)),
-						$elm$html$Html$Events$onMouseEnter(
-						$author$project$Main$SetHoveredPiece(
-							$elm$core$Maybe$Just(piece.id))),
-						$elm$html$Html$Events$onMouseLeave(
-						$author$project$Main$SetHoveredPiece($elm$core$Maybe$Nothing))
+						$elm$core$String$fromFloat(piece.width / piece.height))
 					]),
 				dragAttrs),
 			_List_fromArray(
@@ -15078,6 +15146,31 @@ var $author$project$Main$viewWaveTrayThumb = F9(
 					}
 				}()
 				]));
+		return A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$classList(
+					_List_fromArray(
+						[
+							_Utils_Tuple2('wave-tray-slot', true)
+						])),
+					A2($elm$html$Html$Attributes$style, 'width', widthCss),
+					A2(
+					$elm$html$Html$Events$stopPropagationOn,
+					'dragenter',
+					$elm$json$Json$Decode$succeed(
+						_Utils_Tuple2(
+							$author$project$Main$DragEnterPiece(piece.id),
+							true))),
+					$elm$html$Html$Events$onMouseEnter(
+					$author$project$Main$SetHoveredPiece(
+						$elm$core$Maybe$Just(piece.id))),
+					$elm$html$Html$Events$onMouseLeave(
+					$author$project$Main$SetHoveredPiece($elm$core$Maybe$Nothing))
+				]),
+			_List_fromArray(
+				[thumbBody]));
 	});
 var $author$project$Main$viewWaveTray = F2(
 	function (model, _v0) {
@@ -15134,10 +15227,12 @@ var $author$project$Main$viewWaveTray = F2(
 					$elm$json$Json$Decode$succeed(
 						$author$project$Main$DragEnterWave(activeWaveId))),
 					A2(
-					$elm$html$Html$Events$on,
+					$elm$html$Html$Events$preventDefaultOn,
 					'drop',
 					$elm$json$Json$Decode$succeed(
-						$author$project$Main$DropOnWave(activeWaveId)))
+						_Utils_Tuple2(
+							$author$project$Main$DropOnWave(activeWaveId),
+							true)))
 				]),
 			_List_fromArray(
 				[
@@ -15182,57 +15277,27 @@ var $author$project$Main$viewWaveTray = F2(
 									]),
 								_List_Nil)
 							]) : _List_Nil;
-						var displays = A2(
-							$elm$core$List$indexedMap,
-							F2(
-								function (i, display) {
-									return _Utils_Tuple2(i + 1, display);
-								}),
-							A2($author$project$Main$toPieceDisplays, model.groups, activeWavePieceIds));
+						var displays = A2($author$project$Main$toPieceDisplays, model.groups, activeWavePieceIds);
+						var indexed = A2($elm$core$List$indexedMap, $elm$core$Tuple$pair, displays);
+						var displayRepId = function (d) {
+							if (d.$ === 'SinglePiece') {
+								var pid = d.a;
+								return pid;
+							} else {
+								var pid = d.a;
+								return pid;
+							}
+						};
 						var thumbs = A2(
 							$elm$core$List$concatMap,
 							function (_v1) {
-								var pos = _v1.a;
+								var i = _v1.a;
 								var display = _v1.b;
-								var repId = function () {
-									if (display.$ === 'SinglePiece') {
-										var pid = display.a;
-										return pid;
-									} else {
-										var pid = display.a;
-										return pid;
-									}
-								}();
+								var repId = displayRepId(display);
 								var showMarker = (!isLocked) && ((!_Utils_eq(model.draggingPieceId, $elm$core$Maybe$Nothing)) && _Utils_eq(
 									model.dragInsertBeforeId,
 									$elm$core$Maybe$Just(repId)));
-								var thumb = function () {
-									var _v2 = $elm$core$List$head(
-										A2(
-											$elm$core$List$filter,
-											function (p) {
-												return _Utils_eq(p.id, repId);
-											},
-											model.pieces));
-									if (_v2.$ === 'Just') {
-										var piece = _v2.a;
-										var groupCount = function () {
-											if (display.$ === 'SinglePiece') {
-												return $elm$core$Maybe$Nothing;
-											} else {
-												var allIds = display.b;
-												return $elm$core$Maybe$Just(
-													$elm$core$List$length(allIds));
-											}
-										}();
-										return _List_fromArray(
-											[
-												A9($author$project$Main$viewWaveTrayThumb, piece, isLocked, model.svgScale, model.hoveredPieceId, model.selectedPieceId, model.pieceGeneration, model.showNumbers, pos, groupCount)
-											]);
-									} else {
-										return _List_Nil;
-									}
-								}();
+								var pos = i + 1;
 								var marker = showMarker ? _List_fromArray(
 									[
 										A2(
@@ -15243,9 +15308,43 @@ var $author$project$Main$viewWaveTray = F2(
 											]),
 										_List_Nil)
 									]) : _List_Nil;
+								var isBeingDragged = _Utils_eq(
+									model.draggingPieceId,
+									$elm$core$Maybe$Just(repId));
+								var thumb = function () {
+									if (isBeingDragged) {
+										return _List_Nil;
+									} else {
+										var _v2 = $elm$core$List$head(
+											A2(
+												$elm$core$List$filter,
+												function (p) {
+													return _Utils_eq(p.id, repId);
+												},
+												model.pieces));
+										if (_v2.$ === 'Just') {
+											var piece = _v2.a;
+											var groupCount = function () {
+												if (display.$ === 'SinglePiece') {
+													return $elm$core$Maybe$Nothing;
+												} else {
+													var allIds = display.b;
+													return $elm$core$Maybe$Just(
+														$elm$core$List$length(allIds));
+												}
+											}();
+											return _List_fromArray(
+												[
+													A9($author$project$Main$viewWaveTrayThumb, piece, isLocked, model.svgScale, model.hoveredPieceId, model.selectedPieceId, model.pieceGeneration, model.showNumbers, pos, groupCount)
+												]);
+										} else {
+											return _List_Nil;
+										}
+									}
+								}();
 								return _Utils_ap(marker, thumb);
 							},
-							displays);
+							indexed);
 						return _Utils_ap(thumbs, endMarker);
 					}())
 				]));

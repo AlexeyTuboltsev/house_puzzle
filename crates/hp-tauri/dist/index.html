@@ -388,6 +388,21 @@ input.zoom-slider {
 .wave-tray-scroll::-webkit-scrollbar-track { background: rgba(0,0,0,0.05); border-radius: 6px; }
 .wave-tray-scroll::-webkit-scrollbar-thumb { background: #888; border-radius: 6px; border: 2px solid transparent; background-clip: content-box; }
 .wave-tray-scroll::-webkit-scrollbar-thumb:hover { background: #555; background-clip: content-box; border: 2px solid transparent; }
+/* Tall, transparent hit-area wrapping each wave-tray thumb. Gives
+   tiny thumbs a comfortable dragenter target (full strip height)
+   without growing the visible piece. Thumb sits flush at the
+   bottom; the area above it is empty space the user can hover. */
+.wave-tray-slot {
+    flex-shrink: 0;
+    align-self: flex-end;
+    height: calc((100vh - 48px) * 0.14 - 16px);
+    min-height: 64px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    align-items: center;
+    pointer-events: auto;
+}
 .wave-tray-thumb {
     flex-shrink: 0;
     position: relative;
@@ -416,14 +431,21 @@ input.zoom-slider {
     pointer-events: none;
     user-select: none;
 }
+/* Big-wave insert marker: piece-shaped slot, bottom-aligned with the
+   wave-tray-scroll's flex-end thumbs. Sized to the wave-tray's
+   visible band, NOT the 600px scroll overflow above it. */
 .drag-insert-marker-v {
-    width: 3px;
-    min-width: 3px;
-    align-self: stretch;
-    background: #4080d0;
-    border-radius: 2px;
-    margin: 2px 1px;
     flex-shrink: 0;
+    align-self: flex-end;
+    width: 60px;
+    height: calc((100vh - 48px) * 0.14 - 16px);
+    min-height: 64px;
+    background: rgba(64,128,208,0.18);
+    border: 2px dashed rgba(64,128,208,0.85);
+    border-radius: 4px;
+    margin: 0 2px 8px 2px;
+    box-sizing: border-box;
+    pointer-events: none;
 }
 .group-xn-badge {
     position: absolute;
@@ -750,14 +772,18 @@ input.zoom-slider {
 .wave-row.selected .wave-row-header { background: linear-gradient(135deg, #e8f0fb 0%, #f4f7fd 100%); outline: 1px solid #b8cfe8; }
 .wave-row.drag-over { outline: 1px dashed rgba(60,120,255,0.6); background: rgba(60,120,255,0.07); }
 /* Wave-colored piece count labels */
+/* Small-wave / unassigned-wave insert marker: piece-shaped slot
+   that fills the wave-pieces row height. */
 .drag-insert-marker {
-    width: 3px;
-    min-width: 3px;
-    align-self: stretch;
-    background: #4080d0;
-    border-radius: 2px;
-    margin: 2px 1px;
     flex-shrink: 0;
+    align-self: stretch;
+    width: 60px;
+    background: rgba(64,128,208,0.18);
+    border: 2px dashed rgba(64,128,208,0.85);
+    border-radius: 4px;
+    margin: 2px 2px;
+    box-sizing: border-box;
+    pointer-events: none;
 }
 .wave-row-header {
     display: flex;
