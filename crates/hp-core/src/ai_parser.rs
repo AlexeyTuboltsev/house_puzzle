@@ -1407,4 +1407,115 @@ mod tests {
         let first = &bricks[0];
         eprintln!("First brick: {} at ({}, {}) {}x{}", first.name, first.x, first.y, first.width, first.height);
     }
+
+    // ── Auto-close unit tests ───────────────────────────────────────────
+    //
+    // `parse_path_lines` used to drop any sub-path whose start vertex
+    // didn't match the last segment endpoint — bricks where every
+    // sub-path was open ended up with `polygon: None` and got silently
+    // killed by the validation step. The fix mirrors the auto-close
+    // already present in `parse_path_lines_bezier`. These tests pin the
+    // behaviour so it can't regress again.
+
+    #[test]
+    fn parse_path_lines_auto_closes_open_subpath() {
+        // Three points, no closing edge — the artist forgot to draw it.
+        // Pre-fix this returned (vec![], 1). Post-fix the polygon is
+        // returned with an explicit closing vertex appended, and
+        // open_paths is still bumped so the upcoming Illustrator
+        // validator can flag the source.
+        let lines: Vec<Vec<&str>> = vec![
+            vec!["100", "100", "m"],
+            vec!["200", "100", "L"],
+            vec!["200", "200", "L"],
+        ];
+        let (polygons, open_paths) = parse_path_lines(&lines, 0.0, 0.0);
+
+        assert_eq!(polygons.len(), 1, "expected one auto-closed polygon, got {}", polygons.len());
+        assert_eq!(open_paths, 1, "open_paths should still flag the source error");
+
+        let poly = &polygons[0];
+        assert!(
+            poly.len() >= 4,
+            "auto-closed polygon needs the closing vertex appended (got {} pts)",
+            poly.len()
+        );
+        let first = poly.first().unwrap();
+        let last = poly.last().unwrap();
+        let d = ((first[0] - last[0]).powi(2) + (first[1] - last[1]).powi(2)).sqrt();
+        assert!(
+            d < 1.0,
+            "polygon should be geometrically closed after auto-close (gap={d})"
+        );
+    }
+
+    #[test]
+    fn parse_path_lines_keeps_explicitly_closed_subpath_clean() {
+        // Same shape, drawn properly: explicit closing edge then a fill
+        // operator. Auto-close should be a no-op here — `open_paths`
+        // stays 0 and we don't append a duplicate vertex.
+        let lines: Vec<Vec<&str>> = vec![
+            vec!["100", "100", "m"],
+            vec!["200", "100", "L"],
+            vec!["200", "200", "L"],
+            vec!["100", "200", "L"],
+            vec!["100", "100", "L"],
+            vec!["f"],
+        ];
+        let (polygons, open_paths) = parse_path_lines(&lines, 0.0, 0.0);
+
+        assert_eq!(polygons.len(), 1);
+        assert_eq!(open_paths, 0, "explicitly closed path should not bump open_paths");
+        // 5 input vertices; auto-close shouldn't add a sixth.
+        assert_eq!(polygons[0].len(), 5);
+    }
+
+    // ── Regression: NY8 'Layer 320' must survive the parse ──────────────
+    //
+    // 'Layer 320' is a brick in `_NY8.ai` whose polygon sub-paths are
+    // all drawn open (artist forgot the closing edge). Between
+    // v0.4.1 (validation tightened) and v0.4.6 (auto-close ported),
+    // the brick was silently dropped — visible in the editor as a
+    // missing element on the canvas with no warning. This test pins
+    // that the brick is parsed successfully going forward.
+
+    fn test_ai_path_ny8() -> Option<std::path::PathBuf> {
+        for candidate in [
+            "../../in/fixed/_NY8.ai",
+            "../../in/_NY8.ai",
+        ] {
+            let p = std::path::PathBuf::from(candidate);
+            if p.exists() { return Some(p); }
+        }
+        None
+    }
+
+    #[test]
+    fn regression_ny8_layer_320_present() {
+        let path = match test_ai_path_ny8() {
+            Some(p) => p,
+            None => { eprintln!("Skipping: NY8.ai not found in in/ or in/fixed/"); return; }
+        };
+
+        let (bricks, _meta, _ai_data) = parse_ai(&path, crate::CANVAS_HEIGHT_PX as i32).unwrap();
+
+        let names: Vec<&str> = bricks.iter().map(|b| b.name.as_str()).collect();
+        assert!(
+            names.contains(&"Layer 320"),
+            "regression: 'Layer 320' missing from NY8 brick list (had {} bricks). \
+             This is the open-sub-path brick that auto-close should rescue.",
+            bricks.len()
+        );
+
+        // Sanity: the brick should have a polygon — that's the whole
+        // point of the auto-close fix. If it ever comes back without
+        // one we're back to the pre-fix bug.
+        let layer_320 = bricks.iter().find(|b| b.name == "Layer 320").unwrap();
+        assert!(
+            layer_320.polygon.is_some(),
+            "'Layer 320' parsed but has no polygon — auto-close didn't fire"
+        );
+        let poly = layer_320.polygon.as_ref().unwrap();
+        assert!(poly.len() >= 3, "'Layer 320' polygon has too few vertices ({})", poly.len());
+    }
 }
