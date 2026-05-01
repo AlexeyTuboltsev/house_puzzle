@@ -150,7 +150,14 @@ pub async fn load_pdf(
     deterministic_ids: Option<bool>,
 ) -> Result<Value, String> {
     let canvas_height = canvas_height.unwrap_or(900);
-    let deterministic = deterministic_ids.unwrap_or(false);
+    // Default to deterministic brick IDs (hashed from x/y/w/h via the
+    // process-stable SipHash with key (0,0)). UUIDs gave a fresh ID
+    // every run, which leaked through the merge algorithm: two runs
+    // with the same seed and the same brick set produced different
+    // piece shapes, because tie-breaks landed in random alphabetical
+    // order. The IDs are session-only and have no persistence story
+    // that would care which form they take.
+    let deterministic = deterministic_ids.unwrap_or(true);
 
     let t_total = std::time::Instant::now();
     let file_path = PathBuf::from(&path);
