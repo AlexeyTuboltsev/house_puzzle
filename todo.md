@@ -171,6 +171,49 @@ Need:
 4. **Move out of `temp_dir`** into the OS cache dir (`app_cache_dir()`
    — survives reboots but really needs cleanup or it'll snowball).
 
+### Test coverage — unit + regression suite
+The parser, merge, and render pipelines have ~3 ad-hoc smoke tests and a
+just-added regression for NY8 'Layer 320'. We need real coverage so
+regressions stop being shipped to release. Two tracks:
+
+**Unit tests** (per-function, no fixtures):
+- `parse_path_lines` / `parse_path_lines_bezier`: open vs closed
+  sub-paths, multiple sub-paths, cubic-bezier tessellation, malformed
+  input. The auto-close behaviour now has two unit tests (open +
+  explicitly closed) — same pattern should cover the remaining edge
+  cases.
+- `compute_pdf_offset`: offset detection on synthetic pixmaps with
+  known opaque-pixel positions.
+- `compose_ocg_canvas`: output dimensions + overlay position for
+  various clip / offset combinations.
+- `bezier_merge::merge_piece_bezier`: pairs and triples of bricks
+  with known shared edges, no-overlap pairs, contained pairs.
+- `find_covered_bricks`: detect a fully-covered brick, leave a
+  protected vector brick alone, ignore small bricks under the size
+  floor.
+- `parse_cache_key`: same file → same key; different mtime / size /
+  canvas_height → different keys; `PARSE_CACHE_VERSION` bump
+  invalidates.
+
+**Regression tests** (per-house, fixture-based):
+- For each `_NY*.ai` fixture, assert known-good brick count,
+  layer-name presence (`Layer 320` in NY8 — already done),
+  metadata.warnings fingerprint, and a stable hash of the full
+  bricks Vec serialized via bincode.
+- Run a deterministic merge with `seed=42, target=120, deterministic_ids=true`
+  and assert the produced piece count + a stable hash of the
+  per-piece brick assignment.
+- Run the full export pipeline against a fixture and diff
+  `house_data.json` against a checked-in golden file. Fail the test
+  if any field shifts unexpectedly. Refresh the golden via a
+  flagged subcommand (`cargo run -p hp-testbed --bin hp-golden`).
+
+CI:
+- Wire `cargo test --workspace` into the existing CI workflow, with
+  the AI fixtures present (the `in/` dir is committed).
+- Make the regression suite part of `ultrareview` so PR reviewers
+  see the diffs against goldens before merge.
+
 ### Parse cache — versioning is fragile
 Right now any shape change to `CachedParse` requires bumping
 `PARSE_CACHE_VERSION` by hand. Bincode silently accepts mismatched
