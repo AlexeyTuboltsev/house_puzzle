@@ -1234,3 +1234,111 @@ fn point_in_ring(p: [f64; 2], ring: &[[f64; 2]]) -> bool {
     inside
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::bezier::{BezierPath, Segment};
+
+    /// Closed axis-aligned rectangle as a BezierPath.
+    fn rect(x: f64, y: f64, w: f64, h: f64) -> BezierPath {
+        BezierPath {
+            start: [x, y],
+            segments: vec![
+                Segment::Line { to: [x + w, y] },
+                Segment::Line { to: [x + w, y + h] },
+                Segment::Line { to: [x, y + h] },
+                Segment::Line { to: [x, y] },
+            ],
+        }
+    }
+
+    fn ring_bbox(pts: &[[f64; 2]]) -> (f64, f64, f64, f64) {
+        let mut x0 = f64::INFINITY;
+        let mut y0 = f64::INFINITY;
+        let mut x1 = f64::NEG_INFINITY;
+        let mut y1 = f64::NEG_INFINITY;
+        for p in pts {
+            if p[0] < x0 { x0 = p[0]; }
+            if p[1] < y0 { y0 = p[1]; }
+            if p[0] > x1 { x1 = p[0]; }
+            if p[1] > y1 { y1 = p[1]; }
+        }
+        (x0, y0, x1, y1)
+    }
+
+    /// Single brick in → exactly one outline path back, same bbox.
+    /// Pins the trivial case so a refactor of the merge driver can't
+    /// silently drop bricks at the input boundary.
+    #[test]
+    fn merge_piece_bezier_single_brick_round_trips() {
+        let r = rect(0.0, 0.0, 10.0, 10.0);
+        let merged = merge_piece_bezier(&[r]);
+        assert_eq!(merged.len(), 1, "single brick should produce one outline path");
+        let (x0, y0, x1, y1) = ring_bbox(&merged[0].tessellate(8));
+        assert!((x0 - 0.0).abs() < 0.5);
+        assert!((y0 - 0.0).abs() < 0.5);
+        assert!((x1 - 10.0).abs() < 0.5);
+        assert!((y1 - 10.0).abs() < 0.5);
+    }
+
+    /// Two unit rectangles touching at x=10 should merge into a single
+    /// outline whose bbox spans 0..20 wide. Pins the basic union case
+    /// — if any future tweak produces two paths instead of one for
+    /// trivially adjacent input, this fails immediately.
+    #[test]
+    fn merge_piece_bezier_two_adjacent_rectangles_become_one_outline() {
+        let a = rect(0.0, 0.0, 10.0, 10.0);
+        let b = rect(10.0, 0.0, 10.0, 10.0);
+        let merged = merge_piece_bezier(&[a, b]);
+        assert_eq!(
+            merged.len(), 1,
+            "two adjacent rectangles should merge into a single outline path, got {}", merged.len()
+        );
+        let (x0, y0, x1, y1) = ring_bbox(&merged[0].tessellate(8));
+        assert!((x0 - 0.0).abs() < 0.5, "bbox left should be 0, got {x0}");
+        assert!((x1 - 20.0).abs() < 0.5, "bbox right should be 20, got {x1}");
+        assert!((y0 - 0.0).abs() < 0.5);
+        assert!((y1 - 10.0).abs() < 0.5);
+    }
+
+    /// Two non-touching rectangles must come back as two separate
+    /// outlines — anything else would imply the merge invented an
+    /// edge between them.
+    #[test]
+    fn merge_piece_bezier_disjoint_rectangles_stay_separate() {
+        let a = rect(0.0, 0.0, 10.0, 10.0);
+        let b = rect(100.0, 100.0, 10.0, 10.0);
+        let merged = merge_piece_bezier(&[a, b]);
+        assert_eq!(
+            merged.len(), 2,
+            "disjoint rectangles should produce two outlines, got {}", merged.len()
+        );
+    }
+
+    /// A single brick containing a cubic curve must keep the cubic
+    /// (not be tessellated to lines). The merge passes through for a
+    /// single-brick piece — the whole reason for the bezier port is
+    /// that curves survive the merge.
+    #[test]
+    fn merge_piece_bezier_preserves_cubic_curves_in_single_brick() {
+        let bp = BezierPath {
+            start: [0.0, 0.0],
+            segments: vec![
+                Segment::Line { to: [100.0, 0.0] },
+                Segment::Cubic {
+                    cp1: [100.0, 50.0],
+                    cp2: [50.0, 100.0],
+                    to: [0.0, 100.0],
+                },
+                Segment::Line { to: [0.0, 0.0] },
+            ],
+        };
+        let merged = merge_piece_bezier(&[bp]);
+        assert_eq!(merged.len(), 1);
+        let has_cubic = merged[0].segments.iter().any(|s| matches!(s, Segment::Cubic { .. }));
+        assert!(
+            has_cubic,
+            "merge of a single curved brick should preserve at least one Cubic segment"
+        );
+    }
+}

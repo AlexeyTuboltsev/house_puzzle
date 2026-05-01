@@ -112,3 +112,98 @@ impl BezierPath {
         s
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn close(a: f64, b: f64, eps: f64) -> bool {
+        (a - b).abs() <= eps
+    }
+
+    #[test]
+    fn vertices_collects_start_and_segment_endpoints() {
+        let bp = BezierPath {
+            start: [0.0, 0.0],
+            segments: vec![
+                Segment::Line { to: [1.0, 0.0] },
+                Segment::Cubic { cp1: [1.5, 0.0], cp2: [1.5, 1.0], to: [1.0, 1.0] },
+                Segment::Line { to: [0.0, 0.0] },
+            ],
+        };
+        let v = bp.vertices();
+        assert_eq!(v, vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 0.0]]);
+    }
+
+    #[test]
+    fn tessellate_line_is_two_endpoints_only() {
+        let bp = BezierPath {
+            start: [0.0, 0.0],
+            segments: vec![Segment::Line { to: [10.0, 5.0] }],
+        };
+        let pts = bp.tessellate(8);
+        assert_eq!(pts, vec![[0.0, 0.0], [10.0, 5.0]]);
+    }
+
+    #[test]
+    fn tessellate_cubic_returns_n_plus_1_points() {
+        // Cubic with `samples_per_curve = 8` should add 8 sample points
+        // (t = 1/8 .. 8/8) on top of the start vertex.
+        let bp = BezierPath {
+            start: [0.0, 0.0],
+            segments: vec![Segment::Cubic {
+                cp1: [0.0, 100.0],
+                cp2: [100.0, 100.0],
+                to: [100.0, 0.0],
+            }],
+        };
+        let pts = bp.tessellate(8);
+        assert_eq!(pts.len(), 1 + 8, "expected start + 8 samples, got {} pts", pts.len());
+        // First and last must match the curve's exact endpoints.
+        assert_eq!(pts.first(), Some(&[0.0, 0.0]));
+        assert!(close(pts.last().unwrap()[0], 100.0, 1e-9));
+        assert!(close(pts.last().unwrap()[1], 0.0, 1e-9));
+        // Curve bulges up: at t=0.5 the y should be positive (~75).
+        assert!(pts[4][1] > 50.0, "midpoint y should bulge upward, got {:?}", pts[4]);
+    }
+
+    #[test]
+    fn transform_offset_then_scale() {
+        // Move (-2, -3) then scale by 10. Point (12, 23) should land at
+        // ((12 - 2) * 10, (23 - 3) * 10) = (100, 200).
+        let bp = BezierPath {
+            start: [12.0, 23.0],
+            segments: vec![Segment::Cubic {
+                cp1: [2.0, 3.0],
+                cp2: [4.0, 5.0],
+                to: [22.0, 33.0],
+            }],
+        };
+        let t = bp.transform([-2.0, -3.0], 10.0);
+        assert_eq!(t.start, [100.0, 200.0]);
+        match t.segments[0] {
+            Segment::Cubic { cp1, cp2, to } => {
+                assert_eq!(cp1, [0.0, 0.0]);
+                assert_eq!(cp2, [20.0, 20.0]);
+                assert_eq!(to, [200.0, 300.0]);
+            }
+            _ => panic!("expected Cubic"),
+        }
+    }
+
+    #[test]
+    fn to_svg_d_emits_canonical_path() {
+        let bp = BezierPath {
+            start: [1.0, 2.0],
+            segments: vec![
+                Segment::Line { to: [3.0, 4.0] },
+                Segment::Cubic { cp1: [5.0, 6.0], cp2: [7.0, 8.0], to: [9.0, 10.0] },
+            ],
+        };
+        // Three decimal places, M start, L line, C cubic-with-controls, terminating Z.
+        assert_eq!(
+            bp.to_svg_d(),
+            "M1.000,2.000 L3.000,4.000 C5.000,6.000 7.000,8.000 9.000,10.000 Z"
+        );
+    }
+}
