@@ -56,7 +56,12 @@ fn main() {
     // Launch app
     let mut app = App::launch(&binary, &project_root);
     app.wait_for_window(60);
-    app.sleep(5);
+    // Pre-screenshot settle: `wait_for_window` only waits for the Tauri
+    // window to exist, not for the Elm bundle to finish loading inside
+    // the WebView. On a cold Windows runner the JS/wasm boot can take
+    // 10+ s, and capturing at 5 s caught a blank grey window once
+    // (Run #25226321551). Give it room.
+    app.sleep(15);
 
     // === Test flow ===
 
