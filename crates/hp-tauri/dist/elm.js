@@ -6846,13 +6846,11 @@ var $author$project$Main$LoadResponse = function (canvas) {
 			return function (hasBase) {
 				return function (renderDpi) {
 					return function (warnings) {
-						return function (outlinesUrl) {
-							return function (compositeUrl) {
-								return function (hasLights) {
-									return function (houseUnitsHigh) {
-										return function (key) {
-											return {bricks: bricks, canvas: canvas, compositeUrl: compositeUrl, hasBase: hasBase, hasComposite: hasComposite, hasLights: hasLights, houseUnitsHigh: houseUnitsHigh, key: key, outlinesUrl: outlinesUrl, renderDpi: renderDpi, warnings: warnings};
-										};
+						return function (compositeUrl) {
+							return function (hasLights) {
+								return function (houseUnitsHigh) {
+									return function (key) {
+										return {bricks: bricks, canvas: canvas, compositeUrl: compositeUrl, hasBase: hasBase, hasComposite: hasComposite, hasLights: hasLights, houseUnitsHigh: houseUnitsHigh, key: key, renderDpi: renderDpi, warnings: warnings};
 									};
 								};
 							};
@@ -6931,6 +6929,7 @@ var $author$project$Main$decodeCanvas = A3(
 	$author$project$Main$Canvas,
 	A2($elm$json$Json$Decode$field, 'width', $elm$json$Json$Decode$float),
 	A2($elm$json$Json$Decode$field, 'height', $elm$json$Json$Decode$float));
+var $elm$json$Json$Decode$map7 = _Json_map7;
 var $elm$json$Json$Decode$maybe = function (decoder) {
 	return $elm$json$Json$Decode$oneOf(
 		_List_fromArray(
@@ -6980,13 +6979,13 @@ var $author$project$Main$decodeLoadResponse = A2(
 						$elm$json$Json$Decode$maybe(
 							A2($elm$json$Json$Decode$field, 'has_lights', $elm$json$Json$Decode$bool))));
 			},
-			A9(
-				$elm$json$Json$Decode$map8,
-				F8(
-					function (canvas, bricks, hasComposite, hasBase, renderDpi, warnings, outlinesUrl, compositeUrl) {
+			A8(
+				$elm$json$Json$Decode$map7,
+				F7(
+					function (canvas, bricks, hasComposite, hasBase, renderDpi, warnings, compositeUrl) {
 						return F3(
 							function (hasLights, houseUnitsHigh, key) {
-								return $author$project$Main$LoadResponse(canvas)(bricks)(hasComposite)(hasBase)(renderDpi)(warnings)(outlinesUrl)(compositeUrl)(hasLights)(houseUnitsHigh)(key);
+								return $author$project$Main$LoadResponse(canvas)(bricks)(hasComposite)(hasBase)(renderDpi)(warnings)(compositeUrl)(hasLights)(houseUnitsHigh)(key);
 							});
 					}),
 				A2($elm$json$Json$Decode$field, 'canvas', $author$project$Main$decodeCanvas),
@@ -7001,11 +7000,6 @@ var $author$project$Main$decodeLoadResponse = A2(
 					$elm$json$Json$Decode$field,
 					'warnings',
 					$elm$json$Json$Decode$list($elm$json$Json$Decode$string)),
-				A2(
-					$elm$json$Json$Decode$map,
-					$elm$core$Maybe$withDefault('/api/outlines.png'),
-					$elm$json$Json$Decode$maybe(
-						A2($elm$json$Json$Decode$field, 'outlines_url', $elm$json$Json$Decode$string))),
 				A2(
 					$elm$json$Json$Decode$map,
 					$elm$core$Maybe$withDefault('/api/composite.png'),
@@ -11365,6 +11359,28 @@ var $author$project$Main$viewMainSvg = F2(
 		}();
 		var isLassoing = !_Utils_eq(model.lasso, $elm$core$Maybe$Nothing);
 		var isGenerated = _Utils_eq(model.generateState, $author$project$Main$Generated);
+		var outlinesPngLayer = ((!model.editMode) && (!isGenerated)) ? A2(
+			$elm$core$List$concatMap,
+			function (b) {
+				return A2(
+					$elm$core$List$map,
+					function (d) {
+						return A2(
+							$elm$svg$Svg$path,
+							_List_fromArray(
+								[
+									$elm$svg$Svg$Attributes$d(d),
+									$elm$svg$Svg$Attributes$fill('none'),
+									$elm$svg$Svg$Attributes$stroke('rgba(40,80,160,0.7)'),
+									$elm$svg$Svg$Attributes$strokeWidth('1'),
+									A2($elm$html$Html$Attributes$attribute, 'vector-effect', 'non-scaling-stroke'),
+									$elm$svg$Svg$Attributes$style('pointer-events: none;')
+								]),
+							_List_Nil);
+					},
+					b.outlinePaths);
+			},
+			response.bricks) : _List_Nil;
 		var showComposite = response.hasComposite && ((!isGenerated) || _Utils_eq(model.appMode, $author$project$Main$ModeGenerate));
 		var showPieceImages = (_Utils_eq(model.appMode, $author$project$Main$ModePieces) || (_Utils_eq(model.appMode, $author$project$Main$ModeGroups) || (_Utils_eq(model.appMode, $author$project$Main$ModeWaves) || _Utils_eq(model.appMode, $author$project$Main$ModeExport)))) && (isGenerated && (!$elm$core$List$isEmpty(model.pieces)));
 		var hiddenPieceIds = _Utils_eq(model.appMode, $author$project$Main$ModeWaves) ? A2(
@@ -11688,21 +11704,6 @@ var $author$project$Main$viewMainSvg = F2(
 				return _List_Nil;
 			}
 		}();
-		var outlinesPngLayer = ((!model.editMode) && (!isGenerated)) ? _List_fromArray(
-			[
-				A2(
-				$elm$svg$Svg$image,
-				_List_fromArray(
-					[
-						$elm$svg$Svg$Attributes$x('0'),
-						$elm$svg$Svg$Attributes$y('0'),
-						$elm$svg$Svg$Attributes$width(w),
-						$elm$svg$Svg$Attributes$height(h),
-						A2($elm$html$Html$Attributes$attribute, 'href', response.outlinesUrl),
-						$elm$svg$Svg$Attributes$style('pointer-events: none;')
-					]),
-				_List_Nil)
-			]) : _List_Nil;
 		var lassoBackdrop = ((!model.editMode) && (isGenerated && (!_Utils_eq(model.selectedWaveId, $elm$core$Maybe$Nothing)))) ? _List_fromArray(
 			[
 				A2(

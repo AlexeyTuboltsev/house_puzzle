@@ -466,12 +466,19 @@ pub fn merge_bricks(
     let mut merge_iter = 0usize;
     while pieces_dict.len() > target_mergeable {
         let mut candidates: Vec<String> = pieces_dict.keys().cloned().collect();
+        // Sort by area, breaking ties on the piece id so the order is
+        // deterministic. `pieces_dict.keys()` iterates the HashMap in
+        // a per-process-random order, and `sort_by` is stable, so without
+        // the id tiebreaker, two pieces with identical area would keep
+        // their (random) input order and the merge would pick different
+        // neighbours each run.
         candidates.sort_by(|a, b| {
             piece_area
                 .get(a)
                 .unwrap_or(&0.0)
                 .partial_cmp(piece_area.get(b).unwrap_or(&0.0))
                 .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.cmp(b))
         });
 
         let mut merged = false;
@@ -482,7 +489,13 @@ pub fn merge_bricks(
             };
 
             let cur_area = piece_area.get(smallest_pid).copied().unwrap_or(0.0);
+            // `neighbors` is a HashSet — its iteration order is
+            // per-process-random. Sort before the seeded shuffle so
+            // the shuffle input is deterministic; otherwise the same
+            // (seed, brick set, adjacency) trio produces different
+            // merges across runs.
             let mut nbr_list: Vec<String> = neighbors.into_iter().collect();
+            nbr_list.sort();
             nbr_list.shuffle(&mut rng);
 
             let mut best_nbr: Option<String> = None;

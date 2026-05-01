@@ -89,7 +89,6 @@ type alias LoadResponse =
     , hasBase : Bool
     , renderDpi : Float
     , warnings : List String
-    , outlinesUrl : String
     , compositeUrl : String
     , {- Lights are rendered lazily on the backend; this flag tells the
          frontend whether the AI file even declares a `lights` layer so
@@ -2480,10 +2479,10 @@ decodePiecePolygonResponse =
 
 decodeLoadResponse : D.Decoder LoadResponse
 decodeLoadResponse =
-    D.map8
-        (\canvas bricks hasComposite hasBase renderDpi warnings outlinesUrl compositeUrl ->
+    D.map7
+        (\canvas bricks hasComposite hasBase renderDpi warnings compositeUrl ->
             \hasLights houseUnitsHigh key ->
-                LoadResponse canvas bricks hasComposite hasBase renderDpi warnings outlinesUrl compositeUrl hasLights houseUnitsHigh key
+                LoadResponse canvas bricks hasComposite hasBase renderDpi warnings compositeUrl hasLights houseUnitsHigh key
         )
         (D.field "canvas" decodeCanvas)
         (D.field "bricks" (D.list decodeBrick))
@@ -2491,7 +2490,6 @@ decodeLoadResponse =
         (D.field "has_base" D.bool)
         (D.field "render_dpi" D.float)
         (D.field "warnings" (D.list D.string))
-        (D.field "outlines_url" D.string |> D.maybe |> D.map (Maybe.withDefault "/api/outlines.png"))
         (D.field "composite_url" D.string |> D.maybe |> D.map (Maybe.withDefault "/api/composite.png"))
         |> D.andThen (\f -> D.map f (D.field "has_lights" D.bool |> D.maybe |> D.map (Maybe.withDefault False)))
         |> D.andThen (\f -> D.map f (D.field "houseUnitsHigh" D.float |> D.maybe |> D.map (Maybe.withDefault 15.5)))
@@ -3872,19 +3870,30 @@ viewMainSvg response model =
                 _ ->
                     []
 
-        -- Outlines PNG overlay (pre-gen only, shows vector brick shapes from PDF)
+        -- Pre-gen brick outline overlay — renders the bezier
+        -- outline_paths each brick already carries from `load_pdf`.
+        -- Used to be a separate `outlines.png` raster baked at load
+        -- time, but the bezier port made that PNG redundant — every
+        -- brick already has its own SVG `d=` paths in canvas pixels.
+        -- Saves a ~0.7 s render-and-save on every load.
         outlinesPngLayer =
             if not model.editMode && not isGenerated then
-                [ Svg.image
-                    [ SA.x "0"
-                    , SA.y "0"
-                    , SA.width w
-                    , SA.height h
-                    , attribute "href" response.outlinesUrl
-                    , SA.style "pointer-events: none;"
-                    ]
-                    []
-                ]
+                response.bricks
+                    |> List.concatMap (\b ->
+                        b.outlinePaths
+                            |> List.map
+                                (\d ->
+                                    Svg.path
+                                        [ SA.d d
+                                        , SA.fill "none"
+                                        , SA.stroke "rgba(40,80,160,0.7)"
+                                        , SA.strokeWidth "1"
+                                        , attribute "vector-effect" "non-scaling-stroke"
+                                        , SA.style "pointer-events: none;"
+                                        ]
+                                        []
+                                )
+                    )
 
             else
                 []

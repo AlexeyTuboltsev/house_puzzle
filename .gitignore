@@ -26,6 +26,9 @@ in/
 # Debug/test artifacts
 *.png
 
+# E2E baselines (allowlisted PNGs)
+!tests/accessibility/baselines/**/*.png
+
 # Environment
 .env
 .env.local
