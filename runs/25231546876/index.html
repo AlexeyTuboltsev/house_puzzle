@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<title>E2E Run #25231546876</title>
+<style>
+  body { font-family: -apple-system, sans-serif; max-width: 1400px; margin: 0 auto; padding: 20px; background: #f5f5f5; }
+  h1 { color: #2060b0; }
+  .meta { color: #666; font-size: 14px; margin-bottom: 20px; }
+  .meta a { color: #2060b0; }
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  .platform { text-align: center; }
+  .platform h3 { margin: 0 0 8px; color: #333; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; }
+  .step { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 8px; margin-bottom: 12px; cursor: zoom-in; transition: border-color 0.1s; }
+  .step:hover { border-color: #2060b0; }
+  .step .step-label { font-size: 12px; font-weight: 600; color: #333; margin-bottom: 6px; }
+  .trio { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; }
+  .trio a { display: block; line-height: 0; }
+  .trio img { width: 100%; border-radius: 3px; cursor: zoom-in; border: 1px solid #eee; }
+  .trio a:hover img { outline: 2px solid #2060b0; }
+  .trio-labels { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; margin-top: 4px; font-size: 10px; color: #888; }
+  .trio-labels span:nth-child(1) { color: #2a7a2a; }
+  .trio-labels span:nth-child(2) { color: #2060b0; }
+  .trio-labels span:nth-child(3) { color: #c02060; }
+  .missing { height: 60px; background: #f0f0f0; border: 1px dashed #ccc; border-radius: 3px; display: flex; align-items: center; justify-content: center; color: #ccc; font-size: 10px; }
+  .back { margin-bottom: 16px; }
+  .back a { color: #2060b0; text-decoration: none; }
+  @media (max-width: 900px) { .grid { grid-template-columns: repeat(2, 1fr); } }
+
+  /* Lightbox overlay — shared by single + trio modes */
+  .lb { position: fixed; inset: 0; background: rgba(20, 20, 20, 0.95); display: none; flex-direction: column; z-index: 100; user-select: none; }
+  .lb.open { display: flex; }
+  .lb-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; color: #ddd; font-size: 13px; border-bottom: 1px solid #333; }
+  .lb-header .lb-title { font-weight: 600; }
+  .lb-header .lb-hint { color: #888; font-size: 11px; }
+  .lb-close { cursor: pointer; color: #ccc; font-size: 22px; line-height: 1; padding: 0 8px; }
+  .lb-close:hover { color: #fff; }
+  .lb-body { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 16px; position: relative; }
+  /* Single mode */
+  .lb-single { display: flex; flex-direction: column; align-items: center; gap: 8px; max-width: 100%; max-height: 100%; }
+  .lb-single img { max-width: 100%; max-height: calc(100vh - 140px); object-fit: contain; background: #222; box-shadow: 0 4px 24px rgba(0,0,0,0.5); }
+  .lb-single .lb-variant { font-size: 13px; padding: 4px 12px; border-radius: 12px; background: #333; }
+  .lb-single .lb-variant.expected { color: #5fbf5f; }
+  .lb-single .lb-variant.received { color: #6fa9ff; }
+  .lb-single .lb-variant.diff { color: #ff66b0; }
+  .lb-nav { position: absolute; top: 50%; transform: translateY(-50%); width: 44px; height: 64px; display: flex; align-items: center; justify-content: center; color: #aaa; font-size: 32px; cursor: pointer; background: rgba(0,0,0,0.4); border-radius: 4px; }
+  .lb-nav:hover { color: #fff; background: rgba(0,0,0,0.7); }
+  .lb-prev { left: 16px; }
+  .lb-next { right: 16px; }
+  /* Trio mode */
+  .lb-trio { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; max-width: 100%; max-height: 100%; align-items: center; }
+  .lb-trio-cell { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; }
+  .lb-trio-cell img { max-width: 100%; max-height: calc(100vh - 160px); object-fit: contain; background: #222; box-shadow: 0 4px 24px rgba(0,0,0,0.5); cursor: zoom-in; }
+  .lb-trio-cell .lb-variant { font-size: 12px; padding: 3px 10px; border-radius: 10px; background: #333; }
+  .lb-trio-cell .lb-variant.expected { color: #5fbf5f; }
+  .lb-trio-cell .lb-variant.received { color: #6fa9ff; }
+  .lb-trio-cell .lb-variant.diff { color: #ff66b0; }
+</style>
+</head><body>
+<div class="back"><a href="../../">&larr; All runs</a></div>
+<h1>E2E Screenshots</h1>
+<div class="meta">
+  Run <a href="https://github.com/AlexeyTuboltsev/house_puzzle/actions/runs/25231546876">#25231546876</a>
+  &middot; 2026-05-01 20:29 UTC
+  &middot; <code>09c28fd</code>
+  &middot; main
+</div>
+<div class="grid">
+<div class='platform'><h3>linux</h3>
+<div class='step'><div class='step-label'>initial-state</div><div class='trio'>
+<a href='linux/initial-state.expected.png' target='_blank'><img src='linux/initial-state.expected.png'></a>
+<a href='linux/initial-state.png' target='_blank'><img src='linux/initial-state.png'></a>
+<a href='linux/initial-state.diff.png' target='_blank'><img src='linux/initial-state.diff.png'></a>
+</div><div class='trio-labels'><span>Expected</span><span>Received</span><span>Diff</span></div></div>
+<div class='step'><div class='step-label'>house-loaded</div><div class='trio'>
+<a href='linux/house-loaded.expected.png' target='_blank'><img src='linux/house-loaded.expected.png'></a>
+<a href='linux/house-loaded.png' target='_blank'><img src='linux/house-loaded.png'></a>
+<a href='linux/house-loaded.diff.png' target='_blank'><img src='linux/house-loaded.diff.png'></a>
+</div><div class='trio-labels'><span>Expected</span><span>Received</span><span>Diff</span></div></div>
+<div class='step'><div class='step-label'>puzzle-generated</div><div class='trio'>
+<a href='linux/puzzle-generated.expected.png' target='_blank'><img src='linux/puzzle-generated.expected.png'></a>
+<a href='linux/puzzle-generated.png' target='_blank'><img src='linux/puzzle-generated.png'></a>
+<a href='linux/puzzle-generated.diff.png' target='_blank'><img src='linux/puzzle-generated.diff.png'></a>
+</div><div class='trio-labels'><span>Expected</span><span>Received</span><span>Diff</span></div></div>
+</div>
+<div class='platform'><h3>macos-aarch64</h3>
+<div class='step'><div class='step-label'>initial-state</div><div class='trio'>
+<a href='macos-aarch64/initial-state.expected.png' target='_blank'><img src='macos-aarch64/initial-state.expected.png'></a>
+<a href='macos-aarch64/initial-state.png' target='_blank'><img src='macos-aarch64/initial-state.png'></a>
+<a href='macos-aarch64/initial-state.diff.png' target='_blank'><img src='macos-aarch64/initial-state.diff.png'></a>
+</div><div class='trio-labels'><span>Expected</span><span>Received</span><span>Diff</span></div></div>
+<div class='step'><div class='step-label'>house-loaded</div><div class='trio'>
+<a href='macos-aarch64/house-loaded.expected.png' target='_blank'><img src='macos-aarch64/house-loaded.expected.png'></a>
+<a href='macos-aarch64/house-loaded.png' target='_blank'><img src='macos-aarch64/house-loaded.png'></a>
+<a href='macos-aarch64/house-loaded.diff.png' target='_blank'><img src='macos-aarch64/house-loaded.diff.png'></a>
+</div><div class='trio-labels'><span>Expected</span><span>Received</span><span>Diff</span></div></div>
+<div class='step'><div class='step-label'>puzzle-generated</div><div class='trio'>
+<a href='macos-aarch64/puzzle-generated.expected.png' target='_blank'><img src='macos-aarch64/puzzle-generated.expected.png'></a>
+<a href='macos-aarch64/puzzle-generated.png' target='_blank'><img src='macos-aarch64/puzzle-generated.png'></a>
+<a href='macos-aarch64/puzzle-generated.diff.png' target='_blank'><img src='macos-aarch64/puzzle-generated.diff.png'></a>
+</div><div class='trio-labels'><span>Expected</span><span>Received</span><span>Diff</span></div></div>
+</div>
+<div class='platform'><h3>macos-x86_64</h3>
+<div class='step'><div class='step-label'>initial-state</div><div class='trio'>
+<a href='macos-x86_64/initial-state.expected.png' target='_blank'><img src='macos-x86_64/initial-state.expected.png'></a>
+<a href='macos-x86_64/initial-state.png' target='_blank'><img src='macos-x86_64/initial-state.png'></a>
+<a href='macos-x86_64/initial-state.diff.png' target='_blank'><img src='macos-x86_64/initial-state.diff.png'></a>
+</div><div class='trio-labels'><span>Expected</span><span>Received</span><span>Diff</span></div></div>
+<div class='step'><div class='step-label'>house-loaded</div><div class='trio'>
+<a href='macos-x86_64/house-loaded.expected.png' target='_blank'><img src='macos-x86_64/house-loaded.expected.png'></a>
+<a href='macos-x86_64/house-loaded.png' target='_blank'><img src='macos-x86_64/house-loaded.png'></a>
+<a href='macos-x86_64/house-loaded.diff.png' target='_blank'><img src='macos-x86_64/house-loaded.diff.png'></a>
+</div><div class='trio-labels'><span>Expected</span><span>Received</span><span>Diff</span></div></div>
+<div class='step'><div class='step-label'>puzzle-generated</div><div class='trio'>
+<a href='macos-x86_64/puzzle-generated.expected.png' target='_blank'><img src='macos-x86_64/puzzle-generated.expected.png'></a>
+<a href='macos-x86_64/puzzle-generated.png' target='_blank'><img src='macos-x86_64/puzzle-generated.png'></a>
+<a href='macos-x86_64/puzzle-generated.diff.png' target='_blank'><img src='macos-x86_64/puzzle-generated.diff.png'></a>
+</div><div class='trio-labels'><span>Expected</span><span>Received</span><span>Diff</span></div></div>
+</div>
+<div class='platform'><h3>windows</h3>
+<div class='step'><div class='step-label'>initial-state</div><div class='trio'>
+<a href='windows/initial-state.expected.png' target='_blank'><img src='windows/initial-state.expected.png'></a>
+<a href='windows/initial-state.png' target='_blank'><img src='windows/initial-state.png'></a>
+<a href='windows/initial-state.diff.png' target='_blank'><img src='windows/initial-state.diff.png'></a>
+</div><div class='trio-labels'><span>Expected</span><span>Received</span><span>Diff</span></div></div>
+<div class='step'><div class='step-label'>house-loaded</div><div class='trio'>
+<a href='windows/house-loaded.expected.png' target='_blank'><img src='windows/house-loaded.expected.png'></a>
+<a href='windows/house-loaded.png' target='_blank'><img src='windows/house-loaded.png'></a>
+<a href='windows/house-loaded.diff.png' target='_blank'><img src='windows/house-loaded.diff.png'></a>
+</div><div class='trio-labels'><span>Expected</span><span>Received</span><span>Diff</span></div></div>
+<div class='step'><div class='step-label'>puzzle-generated</div><div class='trio'>
+<a href='windows/puzzle-generated.expected.png' target='_blank'><img src='windows/puzzle-generated.expected.png'></a>
+<a href='windows/puzzle-generated.png' target='_blank'><img src='windows/puzzle-generated.png'></a>
+<a href='windows/puzzle-generated.diff.png' target='_blank'><img src='windows/puzzle-generated.diff.png'></a>
+</div><div class='trio-labels'><span>Expected</span><span>Received</span><span>Diff</span></div></div>
+</div>
+</div>
+<div class="lb" id="lb">
+  <div class="lb-header">
+    <span class="lb-title" id="lb-title"></span>
+    <span class="lb-hint">← / → navigate · Esc to close</span>
+    <span class="lb-close" id="lb-close" title="Close (Esc)">✕</span>
+  </div>
+  <div class="lb-body" id="lb-body"></div>
+</div>
+<script>
+(function () {
+  const VARIANT_NAMES = ['Expected', 'Received', 'Diff'];
+  const VARIANT_CLASSES = ['expected', 'received', 'diff'];
+
+  // Build a flat list of all real (non-missing) image slots and a parallel
+  // step list. Each step keeps the 3 slot indices it owns (or -1 for missing).
+  const slots = [];     // {src, platform, step, variantIdx}
+  const stepsArr = [];  // {platform, step, slotIdx[3]}
+  document.querySelectorAll('.step').forEach((stepEl, i) => {
+    const platform = stepEl.closest('.platform').querySelector('h3').textContent;
+    const stepName = stepEl.querySelector('.step-label').textContent;
+    const cells = stepEl.querySelector('.trio').children;
+    const slotIdx = [-1, -1, -1];
+    for (let v = 0; v < 3 && v < cells.length; v++) {
+      const cell = cells[v];
+      if (cell.tagName === 'A') {
+        slotIdx[v] = slots.length;
+        slots.push({ src: cell.getAttribute('href'), platform, step: stepName, variantIdx: v });
+      }
+    }
+    stepEl.dataset.stepIndex = i;
+    stepsArr.push({ platform, step: stepName, slotIdx });
+  });
+
+  const lb = document.getElementById('lb');
+  const lbTitle = document.getElementById('lb-title');
+  const lbBody = document.getElementById('lb-body');
+  const lbClose = document.getElementById('lb-close');
+
+  let mode = null;       // 'single' | 'trio' | null
+  let cursor = 0;        // slot index for single mode
+  let stepCursor = 0;    // step index for trio mode
+
+  function openSingle(slotIdx) {
+    if (slotIdx < 0 || slotIdx >= slots.length) return;
+    mode = 'single';
+    cursor = slotIdx;
+    renderSingle();
+    lb.classList.add('open');
+  }
+
+  function openTrio(stepIdx) {
+    if (stepIdx < 0 || stepIdx >= stepsArr.length) return;
+    mode = 'trio';
+    stepCursor = stepIdx;
+    renderTrio();
+    lb.classList.add('open');
+  }
+
+  function close() {
+    lb.classList.remove('open');
+    mode = null;
+    lbBody.innerHTML = '';
+  }
+
+  function renderSingle() {
+    const s = slots[cursor];
+    lbTitle.textContent = s.platform + ' · ' + s.step;
+    lbBody.innerHTML =
+      '<div class="lb-nav lb-prev" id="lb-prev">‹</div>' +
+      '<div class="lb-single">' +
+        '<img src="' + s.src + '">' +
+        '<span class="lb-variant ' + VARIANT_CLASSES[s.variantIdx] + '">' + VARIANT_NAMES[s.variantIdx] + '</span>' +
+      '</div>' +
+      '<div class="lb-nav lb-next" id="lb-next">›</div>';
+    document.getElementById('lb-prev').onclick = () => step(-1);
+    document.getElementById('lb-next').onclick = () => step(1);
+  }
+
+  function renderTrio() {
+    const st = stepsArr[stepCursor];
+    lbTitle.textContent = st.platform + ' · ' + st.step;
+    const cells = st.slotIdx.map((slotIdx, v) => {
+      const variant = VARIANT_NAMES[v];
+      const klass = VARIANT_CLASSES[v];
+      if (slotIdx < 0) {
+        return '<div class="lb-trio-cell"><div class="missing" style="width:100%;height:200px">missing</div><span class="lb-variant ' + klass + '">' + variant + '</span></div>';
+      }
+      return '<div class="lb-trio-cell" data-slot="' + slotIdx + '">' +
+        '<img src="' + slots[slotIdx].src + '">' +
+        '<span class="lb-variant ' + klass + '">' + variant + '</span>' +
+      '</div>';
+    }).join('');
+    lbBody.innerHTML = '<div class="lb-trio">' + cells + '</div>';
+    // Click a cell to drop into single mode at that variant
+    lbBody.querySelectorAll('.lb-trio-cell[data-slot]').forEach(el => {
+      el.onclick = () => openSingle(parseInt(el.dataset.slot, 10));
+    });
+  }
+
+  function step(delta) {
+    if (mode === 'single') {
+      cursor = (cursor + delta + slots.length) % slots.length;
+      renderSingle();
+    } else if (mode === 'trio') {
+      stepCursor = (stepCursor + delta + stepsArr.length) % stepsArr.length;
+      renderTrio();
+    }
+  }
+
+  // Wire clicks on the gallery
+  document.querySelectorAll('.step').forEach(stepEl => {
+    stepEl.addEventListener('click', e => {
+      // Let an explicit thumbnail click take precedence
+      const a = e.target.closest('.trio a');
+      if (a) {
+        e.preventDefault();
+        e.stopPropagation();
+        // Find which slot this anchor maps to
+        const stepIdx = parseInt(stepEl.dataset.stepIndex, 10);
+        const cellIdx = Array.prototype.indexOf.call(stepEl.querySelector('.trio').children, a);
+        const slotIdx = stepsArr[stepIdx].slotIdx[cellIdx];
+        if (slotIdx >= 0) openSingle(slotIdx);
+        return;
+      }
+      e.preventDefault();
+      openTrio(parseInt(stepEl.dataset.stepIndex, 10));
+    });
+  });
+
+  // Lightbox controls
+  lbClose.addEventListener('click', close);
+  lb.addEventListener('click', e => { if (e.target === lb || e.target === lbBody) close(); });
+  document.addEventListener('keydown', e => {
+    if (!lb.classList.contains('open')) return;
+    if (e.key === 'Escape') { close(); e.preventDefault(); }
+    else if (e.key === 'ArrowRight') { step(1); e.preventDefault(); }
+    else if (e.key === 'ArrowLeft') { step(-1); e.preventDefault(); }
+  });
+})();
+</script>
+</body></html>
