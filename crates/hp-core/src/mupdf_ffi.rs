@@ -225,22 +225,33 @@ pub fn render_page_with_ocg_clipped(
                 }
             }
 
-            // Clipped render: build a draw device on a clip-sized pixmap
-            // and run only the clip area through it. Mirrors what
-            // `fz_new_pixmap_from_page` does internally for an alpha
-            // pixmap — see mupdf source `fz_new_pixmap_from_page_with_
-            // separations`, which calls `fz_clear_pixmap` (zeros the
-            // whole buffer, including alpha) when alpha=1. We must NOT
-            // use `fz_clear_pixmap_with_value(pix, 0xff)` because that
-            // sets every byte (alpha included) to 255, so the whole
-            // pixmap reads as fully opaque white background and breaks
-            // `compute_pdf_offset`'s "first opaque pixel" probe.
-            // The CTM is `scale * translate(-clip_x0, -clip_y0)` so the
-            // clip area lands at (0,0) in pixmap coords.
+            // Clipped render: build a draw device on a pixmap whose
+            // bbox is the clip region in *device pixel coordinates*
+            // (i.e. the same pixel grid the full-page render would
+            // use), then run the page with the same scale-only CTM as
+            // the full path. The pixmap data buffer is just clip_w x
+            // clip_h bytes, but its bbox tells the rasteriser to write
+            // only the pixels inside [(cx_px, cy_px), (cx1_px, cy1_px))
+            // of the conceptual full-page grid — so output pixels
+            // align byte-for-byte with the unclipped render.
+            //
+            // An earlier version put bbox at (0, 0) and used a
+            // translated CTM `scale * translate(-cx0, -cy0)`. That
+            // works geometrically, but rasterises onto a shifted
+            // pixel grid (the fractional part of `cx0*scale` ends up
+            // as a sub-pixel offset), which produced ~5% pixel diff
+            // against the legacy render at every antialiased edge.
+            //
+            // Clear with `fz_clear_pixmap` (not `_with_value(0xff)`)
+            // so the alpha=1 pixmap starts fully transparent — see
+            // fz_new_pixmap_from_page_with_separations in mupdf
+            // source for the same idiom.
             Some((cx0, cy0, cx1, cy1)) => {
-                let clip_w_px = ((cx1 - cx0) * scale as f64).ceil() as i32;
-                let clip_h_px = ((cy1 - cy0) * scale as f64).ceil() as i32;
-                let bbox = fz_irect { x0: 0, y0: 0, x1: clip_w_px, y1: clip_h_px };
+                let cx_px = (cx0 * scale as f64).round() as i32;
+                let cy_px = (cy0 * scale as f64).round() as i32;
+                let cx1_px = (cx1 * scale as f64).round() as i32;
+                let cy1_px = (cy1 * scale as f64).round() as i32;
+                let bbox = fz_irect { x0: cx_px, y0: cy_px, x1: cx1_px, y1: cy1_px };
 
                 let pix = fz_new_pixmap_with_bbox(ctx(), cs, bbox, std::ptr::null_mut(), 1);
                 if pix.is_null() {
@@ -262,8 +273,7 @@ pub fn render_page_with_ocg_clipped(
                         let ctm = fz_matrix {
                             a: scale, b: 0.0,
                             c: 0.0, d: scale,
-                            e: -(cx0 * scale as f64) as f32,
-                            f: -(cy0 * scale as f64) as f32,
+                            e: 0.0, f: 0.0,
                         };
                         fz_run_page(ctx(), page, dev, ctm, std::ptr::null_mut());
                         fz_close_device(ctx(), dev);
