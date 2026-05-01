@@ -100,11 +100,13 @@ pub struct LayerInfo {
 
 /// Count the number of OCG layer UI entries in a PDF document.
 pub fn count_layer_ui(doc: &mupdf::pdf::PdfDocument) -> i32 {
+    let _lock = ffi_lock();
     unsafe { pdf_count_layer_config_ui(ctx(), pdf_doc_ptr(doc)) }
 }
 
 /// Get info about a specific OCG layer UI entry.
 pub fn layer_ui_info(doc: &mupdf::pdf::PdfDocument, idx: i32) -> LayerInfo {
+    let _lock = ffi_lock();
     unsafe {
         let mut info: pdf_layer_config_ui = std::mem::zeroed();
         pdf_layer_config_ui_info(ctx(), pdf_doc_ptr(doc), idx, &mut info);
@@ -124,17 +126,20 @@ pub fn layer_ui_info(doc: &mupdf::pdf::PdfDocument, idx: i32) -> LayerInfo {
 
 /// Select (enable) a specific OCG layer UI entry.
 pub fn select_layer_ui(doc: &mupdf::pdf::PdfDocument, idx: i32) {
+    let _lock = ffi_lock();
     unsafe { pdf_select_layer_config_ui(ctx(), pdf_doc_ptr(doc), idx) }
 }
 
 /// Deselect (disable) a specific OCG layer UI entry.
 pub fn deselect_layer_ui(doc: &mupdf::pdf::PdfDocument, idx: i32) {
+    let _lock = ffi_lock();
     unsafe { pdf_deselect_layer_config_ui(ctx(), pdf_doc_ptr(doc), idx) }
 }
 
 /// Apply current layer UI selections as the default rendering config.
 /// Must be called after toggling layers and before rendering.
 pub fn apply_layer_config(doc: &mupdf::pdf::PdfDocument) {
+    let _lock = ffi_lock();
     unsafe { pdf_set_layer_config_as_default(ctx(), pdf_doc_ptr(doc)) }
 }
 
@@ -239,15 +244,21 @@ pub fn render_page_with_ocg(
 
 /// Get the number of xref entries in the PDF.
 pub fn xref_len(doc: &mupdf::pdf::PdfDocument) -> i32 {
+    let _lock = ffi_lock();
     unsafe { pdf_xref_len(ctx(), pdf_doc_ptr(doc)) }
 }
 
 /// Find AIPrivateData stream references in the PDF.
 /// Returns a sorted list of (sequence_number, xref_number) pairs.
 pub fn find_ai_private_data(doc: &mupdf::pdf::PdfDocument) -> Vec<(u32, i32)> {
+    // xref_len takes the lock briefly first, then releases. We then
+    // acquire again for the dictionary scan below — unrelated work
+    // (e.g. mupdf-rs operations on a different thread) is free to
+    // interleave between the two phases without corrupting state.
     let xref_count = xref_len(doc);
     let mut result: Vec<(u32, i32)> = Vec::new();
 
+    let _lock = ffi_lock();
     unsafe {
         for i in 1..xref_count {
             let obj = pdf_load_object(ctx(), pdf_doc_ptr(doc), i);
@@ -286,6 +297,7 @@ pub fn find_ai_private_data(doc: &mupdf::pdf::PdfDocument) -> Vec<(u32, i32)> {
 
 /// Load a decoded stream by xref number. Returns the raw bytes.
 pub fn xref_stream(doc: &mupdf::pdf::PdfDocument, num: i32) -> Option<Vec<u8>> {
+    let _lock = ffi_lock();
     unsafe {
         let buf = pdf_load_stream_number(ctx(), pdf_doc_ptr(doc), num);
         buffer_to_vec(buf)
@@ -305,12 +317,13 @@ pub fn page_mediabox(page: &mupdf::Page) -> (f32, f32, f32, f32) {
 /// Get the artbox of page 0 of a PDF file via FFI.
 /// Returns (x0, y0, x1, y1) in PDF points.
 pub fn pdf_page_artbox(path: &str) -> Option<(f64, f64, f64, f64)> {
+    let _lock = ffi_lock();
     unsafe {
         use std::ffi::CString;
         let c_path = CString::new(path).ok()?;
         let doc = fz_open_document(ctx(), c_path.as_ptr());
         if doc.is_null() { return None; }
-        let pdf_doc = doc as *mut pdf_document;
+        let _pdf_doc = doc as *mut pdf_document;
 
         let page = fz_load_page(ctx(), doc, 0);
         if page.is_null() {
