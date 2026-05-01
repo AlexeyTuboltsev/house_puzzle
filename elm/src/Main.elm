@@ -1482,7 +1482,16 @@ update msg model =
             ( { model | draggingPieceId = Nothing, dragOverWaveId = Nothing, dragInsertBeforeId = Nothing }, Cmd.none )
 
         DragEnterWave waveId ->
-            ( { model | dragOverWaveId = Just waveId, dragInsertBeforeId = Nothing }, Cmd.none )
+            -- Only reset the insert position when crossing into a *new*
+            -- wave. Otherwise dragging across the gap between two
+            -- pieces in the same wave fires dragenter on the wave-row
+            -- (events bubble through the marker, which has
+            -- pointer-events:none) and the slot would briefly
+            -- collapse — visible as a wiggle.
+            if model.dragOverWaveId == Just waveId then
+                ( model, Cmd.none )
+            else
+                ( { model | dragOverWaveId = Just waveId, dragInsertBeforeId = Nothing }, Cmd.none )
 
         DragEnterPiece pid ->
             ( { model | dragInsertBeforeId = Just pid }, Cmd.none )
@@ -1654,15 +1663,47 @@ update msg model =
                     withUndo model ( { model | groups = updatedGroups }, Cmd.none )
 
         DragEnterGroup mgid ->
-            ( { model | dragOverGroupId = Just mgid }, Cmd.none )
+            -- Same rule as DragEnterWave: only reset the insert
+            -- position when crossing into a *different* group, so the
+            -- slot doesn't collapse as the mouse moves across the
+            -- gap between two thumbs in the same row.
+            if model.dragOverGroupId == Just mgid then
+                ( model, Cmd.none )
+            else
+                ( { model | dragOverGroupId = Just mgid, dragInsertBeforeId = Nothing }, Cmd.none )
 
         DropOnGroup mgid ->
             case model.draggingPieceId of
                 Nothing ->
-                    ( { model | dragOverGroupId = Nothing }, Cmd.none )
+                    ( { model | dragOverGroupId = Nothing, dragInsertBeforeId = Nothing }, Cmd.none )
 
                 Just pid ->
                     let
+                        insertBefore =
+                            model.dragInsertBeforeId
+
+                        insertInto pids =
+                            let
+                                filtered =
+                                    List.filter ((/=) pid) pids
+                            in
+                            case insertBefore of
+                                Just beforeId ->
+                                    if beforeId == pid then
+                                        filtered ++ [ pid ]
+                                    else
+                                        List.concatMap
+                                            (\p ->
+                                                if p == beforeId then
+                                                    [ pid, p ]
+                                                else
+                                                    [ p ]
+                                            )
+                                            filtered
+
+                                Nothing ->
+                                    filtered ++ [ pid ]
+
                         updatedGroups =
                             case mgid of
                                 Nothing ->
@@ -1672,13 +1713,14 @@ update msg model =
                                     List.map
                                         (\g ->
                                             if g.id == gid then
-                                                if List.member pid g.pieceIds then g else { g | pieceIds = g.pieceIds ++ [ pid ] }
+                                                { g | pieceIds = insertInto g.pieceIds }
                                             else
                                                 { g | pieceIds = List.filter ((/=) pid) g.pieceIds }
                                         )
                                         model.groups
                     in
-                    withUndo model ( { model | groups = updatedGroups, draggingPieceId = Nothing, dragOverGroupId = Nothing }, Cmd.none )
+                    withUndo model
+                        ( { model | groups = updatedGroups, draggingPieceId = Nothing, dragOverGroupId = Nothing, dragInsertBeforeId = Nothing }, Cmd.none )
 
         AssignGroupToWave gid wid ->
             case model.groups |> List.filter (\g -> g.id == gid) |> List.head of
@@ -2267,6 +2309,136 @@ cacheBust url gen =
         url
     else
         url ++ "?v=" ++ String.fromInt gen
+
+
+-- Shared piece-list renderer for any horizontal "wave-pieces" strip:
+-- assignment waves, unassigned-pieces row, group rows, group-unassigned
+-- row. Interleaves thumbnails with insertion markers, hides the source
+-- thumb during a drag, shows an end-marker when the drop will land at
+-- the row's tail. Caller wraps the result in `<div class="wave-pieces">`.
+type alias PieceListConfig =
+    { locked : Bool
+    , draggingPieceId : Maybe String
+    , dragInsertBeforeId : Maybe String
+    , isCurrentDropZone : Bool
+    , removeInfoFor : String -> Maybe ( Int, String )
+    , groupClickWaveId : Maybe Int
+    , showPositions : Bool
+    , collapseGroups : Bool
+    , hoveredPieceId : Maybe String
+    , selectedPieceId : Maybe String
+    , pieceGeneration : Int
+    , pieces : List Piece
+    , groups : List Group
+    , pieceIds : List String
+    }
+
+
+viewPieceListContents : PieceListConfig -> List (Html Msg)
+viewPieceListContents cfg =
+    let
+        -- In wave / unassigned strips a group of interchangeable pieces
+        -- collapses to a single thumbnail with an "xN" badge — the
+        -- whole group moves as one unit. In the groups editor pane
+        -- itself, a group's own row should show every member piece
+        -- individually so the user can rearrange / remove them.
+        displays =
+            if cfg.collapseGroups then
+                toPieceDisplays cfg.groups cfg.pieceIds
+            else
+                List.map SinglePiece cfg.pieceIds
+
+        displayRepId d =
+            case d of
+                SinglePiece pid ->
+                    pid
+
+                GroupedPiece pid _ ->
+                    pid
+
+        indexed =
+            List.indexedMap Tuple.pair displays
+
+        renderThumb display maybePos =
+            case display of
+                SinglePiece pid ->
+                    cfg.pieces
+                        |> List.filter (\p -> p.id == pid)
+                        |> List.head
+                        |> Maybe.map
+                            (\piece ->
+                                [ viewPieceThumb (cfg.removeInfoFor pid) cfg.locked cfg.hoveredPieceId cfg.selectedPieceId pid (cacheBust piece.imgUrl cfg.pieceGeneration) maybePos ]
+                            )
+                        |> Maybe.withDefault []
+
+                GroupedPiece repIdInner allIds ->
+                    cfg.pieces
+                        |> List.filter (\p -> p.id == repIdInner)
+                        |> List.head
+                        |> Maybe.map
+                            (\piece ->
+                                [ viewGroupThumb cfg.groupClickWaveId
+                                    cfg.hoveredPieceId
+                                    cfg.selectedPieceId
+                                    (cfg.groups |> List.filter (\g -> List.member repIdInner g.pieceIds) |> List.head)
+                                    piece
+                                    allIds
+                                    cfg.pieceGeneration
+                                    maybePos
+                                    cfg.locked
+                                ]
+                            )
+                        |> Maybe.withDefault []
+
+        thumbsWithMarkers =
+            List.concatMap
+                (\( i, display ) ->
+                    let
+                        pos =
+                            i + 1
+
+                        repId =
+                            displayRepId display
+
+                        showMarker =
+                            not cfg.locked && cfg.draggingPieceId /= Nothing && cfg.dragInsertBeforeId == Just repId
+
+                        marker =
+                            if showMarker then
+                                [ div [ class "drag-insert-marker" ] [] ]
+
+                            else
+                                []
+
+                        isBeingDragged =
+                            cfg.draggingPieceId == Just repId
+
+                        maybePos =
+                            if cfg.showPositions then
+                                Just pos
+
+                            else
+                                Nothing
+
+                        thumb =
+                            if isBeingDragged then
+                                []
+
+                            else
+                                renderThumb display maybePos
+                    in
+                    marker ++ thumb
+                )
+                indexed
+
+        endMarker =
+            if not cfg.locked && cfg.draggingPieceId /= Nothing && cfg.dragInsertBeforeId == Nothing && cfg.isCurrentDropZone then
+                [ div [ class "drag-insert-marker" ] [] ]
+
+            else
+                []
+    in
+    thumbsWithMarkers ++ endMarker
 
 
 withPieceUrls : String -> Piece -> Piece
@@ -2983,7 +3155,7 @@ viewWaveTray model _ =
             ]
         , preventDefaultOn "dragover" (D.succeed ( NoOp, True ))
         , on "dragenter" (D.succeed (DragEnterWave activeWaveId))
-        , on "drop" (D.succeed (DropOnWave activeWaveId))
+        , preventDefaultOn "drop" (D.succeed ( DropOnWave activeWaveId, True ))
         ]
         [ div
             [ class "wave-tray-bg"
@@ -2998,16 +3170,22 @@ viewWaveTray model _ =
             (let
                 displays =
                     toPieceDisplays model.groups activeWavePieceIds
-                        |> List.indexedMap (\i display -> ( i + 1, display ))
+
+                displayRepId d =
+                    case d of
+                        SinglePiece pid -> pid
+                        GroupedPiece pid _ -> pid
+
+                indexed =
+                    List.indexedMap Tuple.pair displays
 
                 thumbs =
                     List.concatMap
-                        (\( pos, display ) ->
+                        (\( i, display ) ->
                             let
-                                repId =
-                                    case display of
-                                        SinglePiece pid -> pid
-                                        GroupedPiece pid _ -> pid
+                                pos = i + 1
+
+                                repId = displayRepId display
 
                                 showMarker =
                                     not isLocked && model.draggingPieceId /= Nothing && model.dragInsertBeforeId == Just repId
@@ -3019,23 +3197,29 @@ viewWaveTray model _ =
                                     else
                                         []
 
-                                thumb =
-                                    case model.pieces |> List.filter (\p -> p.id == repId) |> List.head of
-                                        Just piece ->
-                                            let
-                                                groupCount =
-                                                    case display of
-                                                        SinglePiece _ -> Nothing
-                                                        GroupedPiece _ allIds -> Just (List.length allIds)
-                                            in
-                                            [ viewWaveTrayThumb piece isLocked model.svgScale model.hoveredPieceId model.selectedPieceId model.pieceGeneration model.showNumbers pos groupCount ]
+                                isBeingDragged =
+                                    model.draggingPieceId == Just repId
 
-                                        Nothing ->
-                                            []
+                                thumb =
+                                    if isBeingDragged then
+                                        []
+                                    else
+                                        case model.pieces |> List.filter (\p -> p.id == repId) |> List.head of
+                                            Just piece ->
+                                                let
+                                                    groupCount =
+                                                        case display of
+                                                            SinglePiece _ -> Nothing
+                                                            GroupedPiece _ allIds -> Just (List.length allIds)
+                                                in
+                                                [ viewWaveTrayThumb piece isLocked model.svgScale model.hoveredPieceId model.selectedPieceId model.pieceGeneration model.showNumbers pos groupCount ]
+
+                                            Nothing ->
+                                                []
                             in
                             marker ++ thumb
                         )
-                        displays
+                        indexed
 
                 endMarker =
                     if not isLocked && model.draggingPieceId /= Nothing && model.dragInsertBeforeId == Nothing && model.dragOverWaveId == Just activeWaveId then
@@ -3071,35 +3255,48 @@ viewWaveTrayThumb piece isLocked scale hoveredId selectedId generation showNum p
                 [ attribute "draggable" "true"
                 , on "dragstart" (D.succeed (DragPieceStart piece.id))
                 , on "dragend" (D.succeed DragPieceEnd)
-                , stopPropagationOn "dragenter" (D.succeed ( DragEnterPiece piece.id, True ))
+                ]
+
+        thumbBody =
+            div
+                ([ classList
+                    [ ( "wave-tray-thumb", True )
+                    , ( "hovered", isHovered )
+                    , ( "selected", isSelected )
+                    ]
+                 , attribute "data-piece-id" piece.id
+                 , style "width" widthCss
+                 , style "aspect-ratio" (String.fromFloat (piece.width / piece.height))
+                 ]
+                    ++ dragAttrs
+                )
+                [ img [ src (cacheBust piece.imgUrl generation) ] []
+
+                , if showNum then
+                    div [ class "tray-thumb-num" ] [ text (String.fromInt pos) ]
+                  else
+                    text ""
+                , case maybeGroupN of
+                    Just n ->
+                        div [ class "group-xn-badge group-xn-badge-bottom" ] [ text ("x" ++ String.fromInt n) ]
+                    Nothing ->
+                        text ""
                 ]
     in
+    -- Wrap the visible thumb in a tall, invisible "slot" the height of
+    -- the wave-tray strip. The slot is the dragenter / hover target,
+    -- so even very small thumbs (sub-20 px) get a comfortable hit
+    -- area that extends all the way to the top of the strip. The
+    -- thumb itself sits at the bottom of the slot via `align-items:
+    -- flex-end`.
     div
-        ([ classList
-            [ ( "wave-tray-thumb", True )
-            , ( "hovered", isHovered )
-            , ( "selected", isSelected )
-            ]
-         , attribute "data-piece-id" piece.id
-         , style "width" widthCss
-         , style "aspect-ratio" (String.fromFloat (piece.width / piece.height))
-         , onMouseEnter (SetHoveredPiece (Just piece.id))
-         , onMouseLeave (SetHoveredPiece Nothing)
-         ]
-            ++ dragAttrs
-        )
-        [ img [ src (cacheBust piece.imgUrl generation) ] []
-
-        , if showNum then
-            div [ class "tray-thumb-num" ] [ text (String.fromInt pos) ]
-          else
-            text ""
-        , case maybeGroupN of
-            Just n ->
-                div [ class "group-xn-badge group-xn-badge-bottom" ] [ text ("x" ++ String.fromInt n) ]
-            Nothing ->
-                text ""
+        [ classList [ ( "wave-tray-slot", True ) ]
+        , style "width" widthCss
+        , stopPropagationOn "dragenter" (D.succeed ( DragEnterPiece piece.id, True ))
+        , onMouseEnter (SetHoveredPiece (Just piece.id))
+        , onMouseLeave (SetHoveredPiece Nothing)
         ]
+        [ thumbBody ]
 
 
 viewToolsCol : Model -> LoadResponse -> Html Msg
@@ -3499,7 +3696,7 @@ viewGroupRow model allGroups group =
             ]
         , preventDefaultOn "dragover" (D.succeed ( NoOp, True ))
         , on "dragenter" (D.succeed (DragEnterGroup (Just group.id)))
-        , on "drop" (D.succeed (DropOnGroup (Just group.id)))
+        , preventDefaultOn "drop" (D.succeed ( DropOnGroup (Just group.id), True ))
         ]
         [ div
             [ class "wave-row-header"
@@ -3541,14 +3738,22 @@ viewGroupRow model allGroups group =
                 ]
             ]
         , div [ class "wave-pieces" ]
-            (List.filterMap
-                (\pid ->
-                    model.pieces
-                        |> List.filter (\p -> p.id == pid)
-                        |> List.head
-                        |> Maybe.map (\piece -> viewPieceThumb (Just ( group.id, pid )) False model.hoveredPieceId model.selectedPieceId pid (cacheBust piece.imgUrl model.pieceGeneration) Nothing)
-                )
-                group.pieceIds
+            (viewPieceListContents
+                { locked = group.locked
+                , draggingPieceId = model.draggingPieceId
+                , dragInsertBeforeId = model.dragInsertBeforeId
+                , isCurrentDropZone = model.dragOverGroupId == Just (Just group.id)
+                , removeInfoFor = \pid -> Just ( group.id, pid )
+                , groupClickWaveId = Nothing
+                , showPositions = False
+                , collapseGroups = False
+                , hoveredPieceId = model.hoveredPieceId
+                , selectedPieceId = model.selectedPieceId
+                , pieceGeneration = model.pieceGeneration
+                , pieces = model.pieces
+                , groups = model.groups
+                , pieceIds = group.pieceIds
+                }
             )
         ]
 
@@ -3566,7 +3771,7 @@ viewGroupUnassignedRow model unassignedPieces =
                 ]
             , preventDefaultOn "dragover" (D.succeed ( NoOp, True ))
             , on "dragenter" (D.succeed (DragEnterGroup Nothing))
-            , on "drop" (D.succeed (DropOnGroup Nothing))
+            , preventDefaultOn "drop" (D.succeed ( DropOnGroup Nothing, True ))
             ]
             [ div [ class "wave-row-header" ]
                 [ span [ class "wave-label unassigned-label" ] [ text "Unassigned" ]
@@ -3574,9 +3779,22 @@ viewGroupUnassignedRow model unassignedPieces =
                     [ text (String.fromInt (List.length unassignedPieces) ++ " pcs") ]
                 ]
             , div [ class "wave-pieces" ]
-                (List.map
-                    (\p -> viewPieceThumb Nothing False model.hoveredPieceId model.selectedPieceId p.id (cacheBust p.imgUrl model.pieceGeneration) Nothing)
-                    unassignedPieces
+                (viewPieceListContents
+                    { locked = False
+                    , draggingPieceId = model.draggingPieceId
+                    , dragInsertBeforeId = model.dragInsertBeforeId
+                    , isCurrentDropZone = model.dragOverGroupId == Just Nothing
+                    , removeInfoFor = \_ -> Nothing
+                    , groupClickWaveId = Nothing
+                    , showPositions = False
+                    , collapseGroups = False
+                    , hoveredPieceId = model.hoveredPieceId
+                    , selectedPieceId = model.selectedPieceId
+                    , pieceGeneration = model.pieceGeneration
+                    , pieces = model.pieces
+                    , groups = model.groups
+                    , pieceIds = List.map .id unassignedPieces
+                    }
                 )
             ]
 
@@ -4963,7 +5181,7 @@ viewWaveRow model allWaves waveNumber wave =
             ]
         , preventDefaultOn "dragover" (D.succeed ( NoOp, True ))
         , on "dragenter" (D.succeed (DragEnterWave (Just wave.id)))
-        , on "drop" (D.succeed (DropOnWave (Just wave.id)))
+        , preventDefaultOn "drop" (D.succeed ( DropOnWave (Just wave.id), True ))
         ]
         [ div
             [ class "wave-row-header"
@@ -5033,19 +5251,22 @@ viewWaveRow model allWaves waveNumber wave =
                 ]
             ]
         , div [ class "wave-pieces" ]
-            (toPieceDisplays model.groups wave.pieceIds
-                |> List.indexedMap (\i display -> ( i + 1, display ))
-                |> List.filterMap
-                    (\( pos, display ) ->
-                        case display of
-                            SinglePiece pid ->
-                                model.pieces |> List.filter (\p -> p.id == pid) |> List.head
-                                    |> Maybe.map (\piece -> viewPieceThumb (Just ( wave.id, pid )) wave.locked model.hoveredPieceId model.selectedPieceId pid (cacheBust piece.imgUrl model.pieceGeneration) (Just pos))
-
-                            GroupedPiece repId allIds ->
-                                model.pieces |> List.filter (\p -> p.id == repId) |> List.head
-                                    |> Maybe.map (\piece -> viewGroupThumb (Just wave.id) model.hoveredPieceId model.selectedPieceId (model.groups |> List.filter (\g -> List.member repId g.pieceIds) |> List.head) piece allIds model.pieceGeneration (Just pos) wave.locked)
-                    )
+            (viewPieceListContents
+                { locked = wave.locked
+                , draggingPieceId = model.draggingPieceId
+                , dragInsertBeforeId = model.dragInsertBeforeId
+                , isCurrentDropZone = model.dragOverWaveId == Just (Just wave.id)
+                , removeInfoFor = \pid -> Just ( wave.id, pid )
+                , groupClickWaveId = Just wave.id
+                , showPositions = True
+                , collapseGroups = True
+                , hoveredPieceId = model.hoveredPieceId
+                , selectedPieceId = model.selectedPieceId
+                , pieceGeneration = model.pieceGeneration
+                , pieces = model.pieces
+                , groups = model.groups
+                , pieceIds = wave.pieceIds
+                }
             )
         ]
 
@@ -5063,7 +5284,7 @@ viewUnassignedRow model unassignedPieces =
                 ]
             , preventDefaultOn "dragover" (D.succeed ( NoOp, True ))
             , on "dragenter" (D.succeed (DragEnterWave Nothing))
-            , on "drop" (D.succeed (DropOnWave Nothing))
+            , preventDefaultOn "drop" (D.succeed ( DropOnWave Nothing, True ))
             ]
             [ div [ class "wave-row-header" ]
                 [ span [ class "wave-label unassigned-label" ] [ text "Unassigned" ]
@@ -5071,18 +5292,22 @@ viewUnassignedRow model unassignedPieces =
                     [ text (String.fromInt (List.length unassignedPieces) ++ " pcs") ]
                 ]
             , div [ class "wave-pieces" ]
-                (toPieceDisplays model.groups (List.map .id unassignedPieces)
-                    |> List.filterMap
-                        (\display ->
-                            case display of
-                                SinglePiece pid ->
-                                    model.pieces |> List.filter (\p -> p.id == pid) |> List.head
-                                        |> Maybe.map (\p -> viewPieceThumb Nothing False model.hoveredPieceId model.selectedPieceId p.id (cacheBust p.imgUrl model.pieceGeneration) Nothing)
-
-                                GroupedPiece repId allIds ->
-                                    model.pieces |> List.filter (\p -> p.id == repId) |> List.head
-                                        |> Maybe.map (\p -> viewGroupThumb model.selectedWaveId model.hoveredPieceId model.selectedPieceId (model.groups |> List.filter (\g -> List.member repId g.pieceIds) |> List.head) p allIds model.pieceGeneration Nothing False)
-                        )
+                (viewPieceListContents
+                    { locked = False
+                    , draggingPieceId = model.draggingPieceId
+                    , dragInsertBeforeId = model.dragInsertBeforeId
+                    , isCurrentDropZone = model.dragOverWaveId == Just Nothing
+                    , removeInfoFor = \_ -> Nothing
+                    , groupClickWaveId = model.selectedWaveId
+                    , showPositions = False
+                    , collapseGroups = True
+                    , hoveredPieceId = model.hoveredPieceId
+                    , selectedPieceId = model.selectedPieceId
+                    , pieceGeneration = model.pieceGeneration
+                    , pieces = model.pieces
+                    , groups = model.groups
+                    , pieceIds = List.map .id unassignedPieces
+                    }
                 )
             ]
 
