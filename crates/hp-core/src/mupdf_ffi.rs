@@ -226,13 +226,15 @@ pub fn render_page_with_ocg_clipped(
             }
 
             // Clipped render: build a draw device on a clip-sized pixmap
-            // and run only the clip area through it. Same idiom as the
-            // standard MuPDF "render bbox" snippet:
-            //   pix = fz_new_pixmap_with_bbox(ctx, cs, bbox, NULL, 1);
-            //   fz_clear_pixmap_with_value(ctx, pix, 0xff);
-            //   dev = fz_new_draw_device(ctx, identity, pix);
-            //   fz_run_page(ctx, page, dev, ctm, NULL);
-            //   fz_close_device(ctx, dev); fz_drop_device(ctx, dev);
+            // and run only the clip area through it. Mirrors what
+            // `fz_new_pixmap_from_page` does internally for an alpha
+            // pixmap — see mupdf source `fz_new_pixmap_from_page_with_
+            // separations`, which calls `fz_clear_pixmap` (zeros the
+            // whole buffer, including alpha) when alpha=1. We must NOT
+            // use `fz_clear_pixmap_with_value(pix, 0xff)` because that
+            // sets every byte (alpha included) to 255, so the whole
+            // pixmap reads as fully opaque white background and breaks
+            // `compute_pdf_offset`'s "first opaque pixel" probe.
             // The CTM is `scale * translate(-clip_x0, -clip_y0)` so the
             // clip area lands at (0,0) in pixmap coords.
             Some((cx0, cy0, cx1, cy1)) => {
@@ -244,10 +246,9 @@ pub fn render_page_with_ocg_clipped(
                 if pix.is_null() {
                     None
                 } else {
-                    // Clear to opaque white so transparent regions
-                    // outside the actual ink come back as alpha-zeroed
-                    // (downstream alpha tests expect that).
-                    fz_clear_pixmap_with_value(ctx(), pix, 0xff);
+                    // Alpha pixmap: zero everything → transparent. Ink
+                    // gets composited on top during fz_run_page.
+                    fz_clear_pixmap(ctx(), pix);
 
                     let dev = fz_new_draw_device(
                         ctx(),
