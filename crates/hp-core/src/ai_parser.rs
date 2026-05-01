@@ -462,6 +462,32 @@ fn parse_path_lines(
     let mut polygons: Vec<Vec<[f64; 2]>> = Vec::new();
     let mut open_paths = 0usize;
 
+    // Auto-close: if the artist forgot the closing edge (last point ≠
+    // start), append the start point so the polygon is geometrically
+    // closed. The same fix already lives in `parse_path_lines_bezier`
+    // for the same reason — without it, bricks with open sub-paths
+    // (e.g. NY8 'Layer 320', NY9n b012/b020/b022/b026) get silently
+    // dropped by the downstream "no polygon" validation. `open_paths`
+    // is still bumped so the future Illustrator validator can flag the
+    // source error.
+    let flush_open = |polygons: &mut Vec<Vec<[f64; 2]>>,
+                      open_paths: &mut usize,
+                      pts: &mut Vec<[f64; 2]>| {
+        if pts.len() >= 3 {
+            let first = *pts.first().expect("guarded by pts.len() >= 3");
+            let last = *pts.last().expect("guarded by pts.len() >= 3");
+            let d = ((first[0] - last[0]).powi(2) + (first[1] - last[1]).powi(2)).sqrt();
+            if d >= 1.0 {
+                pts.push(first);
+                *open_paths += 1;
+            }
+            polygons.push(std::mem::take(pts));
+        } else if !pts.is_empty() {
+            *open_paths += 1;
+            pts.clear();
+        }
+    };
+
     for parts in lines {
         if parts.is_empty() {
             continue;
@@ -470,19 +496,8 @@ fn parse_path_lines(
 
         match op {
             "m" if parts.len() >= 3 => {
-                // New sub-path — save previous if geometrically closed,
-                // otherwise discard as open path
-                if pts.len() >= 3 {
-                    let d = ((pts.first().unwrap()[0] - pts.last().unwrap()[0]).powi(2)
-                           + (pts.first().unwrap()[1] - pts.last().unwrap()[1]).powi(2)).sqrt();
-                    if d < 1.0 {
-                        polygons.push(pts.clone());
-                    } else {
-                        open_paths += 1;
-                    }
-                } else if !pts.is_empty() {
-                    open_paths += 1;
-                }
+                // New sub-path — flush previous (auto-closing if open).
+                flush_open(&mut polygons, &mut open_paths, &mut pts);
                 let x: f64 = parts[0].parse().unwrap_or(0.0);
                 let y: f64 = parts[1].parse().unwrap_or(0.0);
                 pts = vec![to_pymu(x, y)];
@@ -513,28 +528,16 @@ fn parse_path_lines(
                 pts.push(p4);
             }
             "n" | "N" | "f" | "F" | "s" | "S" | "b" | "B" => {
-                // Close operator — this path is a valid closed polygon
-                if pts.len() >= 3 {
-                    polygons.push(pts.clone());
-                }
-                pts.clear();
+                // Close / fill / stroke operator — flush whatever we've
+                // collected, auto-closing if the artist drew it open.
+                flush_open(&mut polygons, &mut open_paths, &mut pts);
             }
             _ => {}
         }
     }
 
-    // Trailing path: accept if geometrically closed, discard otherwise
-    if pts.len() >= 3 {
-        let d = ((pts.first().unwrap()[0] - pts.last().unwrap()[0]).powi(2)
-               + (pts.first().unwrap()[1] - pts.last().unwrap()[1]).powi(2)).sqrt();
-        if d < 1.0 {
-            polygons.push(pts);
-        } else {
-            open_paths += 1;
-        }
-    } else if !pts.is_empty() {
-        open_paths += 1;
-    }
+    // Trailing path at end of input.
+    flush_open(&mut polygons, &mut open_paths, &mut pts);
     (polygons, open_paths)
 }
 
