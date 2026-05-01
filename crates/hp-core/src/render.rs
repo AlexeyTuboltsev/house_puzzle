@@ -384,66 +384,11 @@ fn render_piece_outline(piece_img: &RgbaImage, out_path: &Path) {
     outline.save(out_path).ok();
 }
 
-/// Render brick outlines as white strokes on transparent canvas.
-pub fn render_outlines_png(
-    bricks: &[(String, BrickPlacement)],
-    canvas_width: u32,
-    canvas_height: u32,
-    out_path: &Path,
-) {
-    let ss = 4u32;
-    let sw = canvas_width * ss;
-    let sh = canvas_height * ss;
-    let mut canvas = RgbaImage::new(sw, sh);
-
-    for (_, bp) in bricks {
-        let poly = match &bp.polygon {
-            Some(p) if p.len() >= 3 => p,
-            _ => continue,
-        };
-        let points: Vec<(f64, f64)> = poly.iter()
-            .map(|pt| ((pt[0] + bp.x as f64) * ss as f64, (pt[1] + bp.y as f64) * ss as f64))
-            .collect();
-        let white = Rgba([255, 255, 255, 255]);
-        for i in 0..points.len() {
-            let (x0, y0) = points[i];
-            let (x1, y1) = points[(i + 1) % points.len()];
-            draw_line(&mut canvas, x0 as i32, y0 as i32, x1 as i32, y1 as i32, white, sw, sh);
-        }
-    }
-
-    let result = image::imageops::resize(&canvas, canvas_width, canvas_height, image::imageops::Lanczos3);
-    result.save(out_path).ok();
-}
-
-fn draw_line(img: &mut RgbaImage, x0: i32, y0: i32, x1: i32, y1: i32, color: Rgba<u8>, w: u32, h: u32) {
-    let dx = (x1 - x0).abs();
-    let dy = -(y1 - y0).abs();
-    let sx = if x0 < x1 { 1 } else { -1 };
-    let sy = if y0 < y1 { 1 } else { -1 };
-    let mut err = dx + dy;
-    let mut x = x0;
-    let mut y = y0;
-    loop {
-        if x >= 0 && y >= 0 && (x as u32) < w && (y as u32) < h {
-            img.put_pixel(x as u32, y as u32, color);
-            for ox in -6i32..=6 {
-                for oy in -6i32..=6 {
-                    if ox == 0 && oy == 0 { continue; }
-                    let nx = x + ox;
-                    let ny = y + oy;
-                    if nx >= 0 && ny >= 0 && (nx as u32) < w && (ny as u32) < h {
-                        img.put_pixel(nx as u32, ny as u32, color);
-                    }
-                }
-            }
-        }
-        if x == x1 && y == y1 { break; }
-        let e2 = 2 * err;
-        if e2 >= dy { err += dy; x += sx; }
-        if e2 <= dx { err += dx; y += sy; }
-    }
-}
+// `render_outlines_png` was removed: since the bezier port the editor
+// draws pre-gen brick outlines straight from `brick.outline_paths`
+// SVGs in the Elm side, so the standalone PNG was redundant — and
+// rendering it (~0.7 s with 4× supersampling and Bresenham line
+// drawing) was the slow side of the load-stage parallel block.
 
 /// Render a specific OCG layer to an RgbaImage (for in-memory use).
 /// Uses pure FFI rendering to ensure OCG layer state is respected.
@@ -463,6 +408,29 @@ pub fn render_ocg_layer_pixmap(
     )?;
     let full_img = RgbaImage::from_raw(pw, ph, rgba)?;
     Some((full_img, pw, ph))
+}
+
+/// Clip-aware pixmap render. MuPDF rasterises only the given clip
+/// rect (in PDF points) instead of the full mediabox — on AI files
+/// where the artwork occupies a small fraction of the page (typical
+/// for the NY houses, where mediabox padding is significant) this
+/// can roughly halve the OCG render time.
+///
+/// The returned pixmap covers the clip area at the given DPI; the
+/// caller composes it onto the canvas via `compose_clipped_canvas`.
+pub fn render_ocg_layer_pixmap_clipped(
+    ai_path: &Path,
+    layer_name: &str,
+    dpi: f64,
+    clip_rect_pts: (f64, f64, f64, f64),
+) -> Option<(RgbaImage, u32, u32)> {
+    use crate::mupdf_ffi;
+
+    let (rgba, pw, ph) = mupdf_ffi::render_page_with_ocg_clipped(
+        ai_path.to_str()?, layer_name, dpi, Some(clip_rect_pts),
+    )?;
+    let img = RgbaImage::from_raw(pw, ph, rgba)?;
+    Some((img, pw, ph))
 }
 
 /// Cheap step: paste an already-rendered pixmap onto a canvas-sized
@@ -490,6 +458,28 @@ pub fn compose_ocg_canvas(
 
     let mut canvas = RgbaImage::new(canvas_width, canvas_height);
     image::imageops::overlay(&mut canvas, full_img, -(cx - dx), -(cy - dy));
+    canvas
+}
+
+/// Cheap compose for the clipped pixmap: the input already starts at
+/// the clip origin, so we just place it at `pdf_offset_px` on the
+/// canvas (no `clip_rect` math needed). Use with
+/// `render_ocg_layer_pixmap_clipped`.
+pub fn compose_clipped_canvas(
+    clipped_img: &RgbaImage,
+    layer_name: &str,
+    canvas_width: u32,
+    canvas_height: u32,
+    pdf_offset_px: (i32, i32),
+) -> RgbaImage {
+    eprintln!(
+        "[compose_clipped] layer={layer_name} canvas={canvas_width}x{canvas_height} pixmap={}x{} offset=({},{})",
+        clipped_img.width(), clipped_img.height(), pdf_offset_px.0, pdf_offset_px.1
+    );
+    let mut canvas = RgbaImage::new(canvas_width, canvas_height);
+    image::imageops::overlay(
+        &mut canvas, clipped_img, pdf_offset_px.0 as i64, pdf_offset_px.1 as i64,
+    );
     canvas
 }
 

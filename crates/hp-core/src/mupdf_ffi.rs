@@ -143,13 +143,20 @@ pub fn apply_layer_config(doc: &mupdf::pdf::PdfDocument) {
     unsafe { pdf_set_layer_config_as_default(ctx(), pdf_doc_ptr(doc)) }
 }
 
-/// Open a PDF, toggle OCG layers, render page 0 to RGBA pixels.
-/// This uses a single FFI context for the entire operation, ensuring
-/// OCG state is respected during rendering.
-pub fn render_page_with_ocg(
+/// Open a PDF, toggle OCG layers, render only the given clip rect of
+/// page 0 (in PDF points) to RGBA pixels. Returns
+/// (rgba, width_px, height_px). The pixmap covers the clip area only,
+/// not the full mediabox — so on AI files where the mediabox has lots
+/// of empty space around the artwork, this is significantly faster
+/// than `render_page_with_ocg`.
+///
+/// `clip_rect_pts` is `(x0, y0, x1, y1)` in PDF points (y-down). Pass
+/// `None` to render the full page (matches the legacy behaviour).
+pub fn render_page_with_ocg_clipped(
     path: &str,
     layer_name: &str,
     dpi: f64,
+    clip_rect_pts: Option<(f64, f64, f64, f64)>,
 ) -> Option<(Vec<u8>, u32, u32)> {
     let _lock = ffi_lock(); // Serialize MuPDF FFI access
     unsafe {
@@ -168,7 +175,7 @@ pub fn render_page_with_ocg(
         for i in 0..layer_count {
             pdf_deselect_layer_config_ui(ctx(), pdf_doc, i);
         }
-        let c_layer = CString::new(layer_name).ok()?;
+        let _c_layer = CString::new(layer_name).ok()?;
         let mut found = false;
         for i in 0..layer_count {
             let mut info: pdf_layer_config_ui = std::mem::zeroed();
@@ -187,9 +194,7 @@ pub fn render_page_with_ocg(
         }
         pdf_set_layer_config_as_default(ctx(), pdf_doc);
 
-        // Render page 0
         let scale = dpi as f32 / 72.0;
-        let ctm = fz_matrix { a: scale, b: 0.0, c: 0.0, d: scale, e: 0.0, f: 0.0 };
         let cs = fz_device_rgb(ctx());
         let page = fz_load_page(ctx(), doc, 0);
         if page.is_null() {
@@ -197,46 +202,120 @@ pub fn render_page_with_ocg(
             return None;
         }
 
-        let pix = fz_new_pixmap_from_page(ctx(), page, ctm, cs, 1);
-        if pix.is_null() {
-            fz_drop_page(ctx(), page);
-            fz_drop_document(ctx(), doc);
-            return None;
-        }
+        let result = match clip_rect_pts {
+            // Full-page render — same path as before.
+            None => {
+                let ctm = fz_matrix { a: scale, b: 0.0, c: 0.0, d: scale, e: 0.0, f: 0.0 };
+                let pix = fz_new_pixmap_from_page(ctx(), page, ctm, cs, 1);
+                if pix.is_null() {
+                    None
+                } else {
+                    let w = fz_pixmap_width(ctx(), pix) as u32;
+                    let h = fz_pixmap_height(ctx(), pix) as u32;
+                    let n = fz_pixmap_components(ctx(), pix) as u32;
+                    let samples_ptr = fz_pixmap_samples(ctx(), pix);
+                    let total = (w * h * n) as usize;
+                    let pixels = if !samples_ptr.is_null() && total > 0 {
+                        std::slice::from_raw_parts(samples_ptr, total).to_vec()
+                    } else {
+                        vec![0u8; total]
+                    };
+                    fz_drop_pixmap(ctx(), pix);
+                    Some((pixels, w, h, n))
+                }
+            }
 
-        let w = fz_pixmap_width(ctx(), pix) as u32;
-        let h = fz_pixmap_height(ctx(), pix) as u32;
-        let n = fz_pixmap_components(ctx(), pix) as u32;
-        let mut data_ptr: *mut u8 = std::ptr::null_mut();
-        let len = fz_buffer_storage(ctx(), std::ptr::null_mut(), &mut data_ptr);
+            // Clipped render: build a draw device on a clip-sized pixmap
+            // and run only the clip area through it. Same idiom as the
+            // standard MuPDF "render bbox" snippet:
+            //   pix = fz_new_pixmap_with_bbox(ctx, cs, bbox, NULL, 1);
+            //   fz_clear_pixmap_with_value(ctx, pix, 0xff);
+            //   dev = fz_new_draw_device(ctx, identity, pix);
+            //   fz_run_page(ctx, page, dev, ctm, NULL);
+            //   fz_close_device(ctx, dev); fz_drop_device(ctx, dev);
+            // The CTM is `scale * translate(-clip_x0, -clip_y0)` so the
+            // clip area lands at (0,0) in pixmap coords.
+            Some((cx0, cy0, cx1, cy1)) => {
+                let clip_w_px = ((cx1 - cx0) * scale as f64).ceil() as i32;
+                let clip_h_px = ((cy1 - cy0) * scale as f64).ceil() as i32;
+                let bbox = fz_irect { x0: 0, y0: 0, x1: clip_w_px, y1: clip_h_px };
 
-        // Read pixels directly from pixmap samples
-        let samples_ptr = fz_pixmap_samples(ctx(), pix);
-        let total = (w * h * n) as usize;
-        let pixels = if !samples_ptr.is_null() && total > 0 {
-            std::slice::from_raw_parts(samples_ptr, total).to_vec()
-        } else {
-            vec![0u8; total]
+                let pix = fz_new_pixmap_with_bbox(ctx(), cs, bbox, std::ptr::null_mut(), 1);
+                if pix.is_null() {
+                    None
+                } else {
+                    // Clear to opaque white so transparent regions
+                    // outside the actual ink come back as alpha-zeroed
+                    // (downstream alpha tests expect that).
+                    fz_clear_pixmap_with_value(ctx(), pix, 0xff);
+
+                    let dev = fz_new_draw_device(
+                        ctx(),
+                        fz_matrix { a: 1.0, b: 0.0, c: 0.0, d: 1.0, e: 0.0, f: 0.0 },
+                        pix,
+                    );
+                    if dev.is_null() {
+                        fz_drop_pixmap(ctx(), pix);
+                        None
+                    } else {
+                        let ctm = fz_matrix {
+                            a: scale, b: 0.0,
+                            c: 0.0, d: scale,
+                            e: -(cx0 * scale as f64) as f32,
+                            f: -(cy0 * scale as f64) as f32,
+                        };
+                        fz_run_page(ctx(), page, dev, ctm, std::ptr::null_mut());
+                        fz_close_device(ctx(), dev);
+                        fz_drop_device(ctx(), dev);
+
+                        let w = fz_pixmap_width(ctx(), pix) as u32;
+                        let h = fz_pixmap_height(ctx(), pix) as u32;
+                        let n = fz_pixmap_components(ctx(), pix) as u32;
+                        let samples_ptr = fz_pixmap_samples(ctx(), pix);
+                        let total = (w * h * n) as usize;
+                        let pixels = if !samples_ptr.is_null() && total > 0 {
+                            std::slice::from_raw_parts(samples_ptr, total).to_vec()
+                        } else {
+                            vec![0u8; total]
+                        };
+                        fz_drop_pixmap(ctx(), pix);
+                        Some((pixels, w, h, n))
+                    }
+                }
+            }
         };
 
-        fz_drop_pixmap(ctx(), pix);
         fz_drop_page(ctx(), page);
         fz_drop_document(ctx(), doc);
+
+        let (pixels, w, h, n) = result?;
 
         // Convert from N-component to RGBA
         let mut rgba = vec![0u8; (w * h * 4) as usize];
         for i in 0..(w * h) as usize {
             let src = i * n as usize;
             let dst = i * 4;
-            rgba[dst] = pixels[src];           // R
-            rgba[dst + 1] = pixels[src + 1];   // G
-            rgba[dst + 2] = pixels[src + 2];   // B
-            rgba[dst + 3] = if n >= 4 { pixels[src + 3] } else { 255 }; // A
+            rgba[dst] = pixels[src];
+            rgba[dst + 1] = pixels[src + 1];
+            rgba[dst + 2] = pixels[src + 2];
+            rgba[dst + 3] = if n >= 4 { pixels[src + 3] } else { 255 };
         }
-
         Some((rgba, w, h))
     }
 }
+
+/// Backwards-compatible wrapper for full-page render. Prefer
+/// `render_page_with_ocg_clipped` for new callers — passing the
+/// clip rect there lets MuPDF skip rasterising the empty mediabox
+/// padding around the artwork.
+pub fn render_page_with_ocg(
+    path: &str,
+    layer_name: &str,
+    dpi: f64,
+) -> Option<(Vec<u8>, u32, u32)> {
+    render_page_with_ocg_clipped(path, layer_name, dpi, None)
+}
+
 
 // ---------------------------------------------------------------------------
 // xref / stream access (for AIPrivateData extraction)

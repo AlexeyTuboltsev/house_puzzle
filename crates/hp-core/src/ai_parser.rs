@@ -890,7 +890,7 @@ fn extract_vector_path(
 // ---------------------------------------------------------------------------
 
 /// A brick placement extracted from the AI file.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone)]
 pub struct BrickPlacement {
     pub name: String,
     pub layer_type: String,
@@ -1315,7 +1315,7 @@ pub fn parse_ai(
 }
 
 /// Metadata from AI parsing (canvas geometry, DPI, etc.)
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone)]
 pub struct ParsedAiMetadata {
     pub canvas_width: i32,
     pub canvas_height: i32,
@@ -1333,7 +1333,6 @@ pub struct ParsedAiMetadata {
     /// Whether the AI file declares a `lights` OCG layer. Used by the
     /// lazy lights renderer in hp-tauri so the frontend knows whether
     /// to expose the "Show lights" control without a probe round-trip.
-    #[serde(default)]
     pub has_lights_layer: bool,
 }
 
