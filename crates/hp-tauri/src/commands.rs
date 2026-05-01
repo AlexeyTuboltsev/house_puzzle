@@ -3,13 +3,114 @@
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use hp_core::{ai_parser, bezier::BezierPath, bezier_merge, puzzle, render, types::Brick};
 use rayon::prelude::*;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::session::{Session, SessionStore};
+
+// ---------------------------------------------------------------------------
+// Parse cache — reuses the expensive parse_ai + bezier extraction output
+// across loads of the same AI file. Keyed by file size + mtime + path so
+// edits to the file naturally invalidate the entry.
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize, Deserialize)]
+struct CachedParse {
+    placements: Vec<ai_parser::BrickPlacement>,
+    metadata: ai_parser::ParsedAiMetadata,
+    bezier_per_brick: Vec<Vec<BezierPath>>,
+}
+
+// TODO(parse-cache): cache busting & cleanup.
+//
+// Right now the cache lives under `<temp_dir>/house_puzzle_parse_cache/`
+// and grows monotonically — every distinct (AI file, mtime, size,
+// canvas_height) combination adds a `.bin` (a few hundred KB) and a
+// `_bricks.png` (a few MB). Bumping `PARSE_CACHE_VERSION` invalidates
+// by hash mismatch, but the orphaned files stay on disk until the OS
+// clears /tmp.
+//
+// We need:
+// 1. A startup sweep that deletes files whose name doesn't match the
+//    current `PARSE_CACHE_VERSION` schema, so old-version blobs go
+//    away on the next launch after a version bump.
+// 2. An LRU / max-age policy (e.g. delete files not accessed in 30
+//    days, or cap total size at N MB) so the cache doesn't grow
+//    forever for power users.
+// 3. A "Clear cache" action in the UI for manual nuke.
+// 4. Long term, probably move out of `temp_dir` into the OS cache dir
+//    (`app.path().app_cache_dir()`) so it survives reboots — but then
+//    we *really* need cleanup or it'll snowball.
+//
+// Versioning: today every shape change to `CachedParse` requires a
+// bump. The bincode schema is fragile (field rename = breakage). If
+// we keep iterating on what's cached, consider switching to a more
+// forward-compatible encoding (e.g. CBOR with serde, or write the
+// version into each file header and reject mismatches loudly).
+const PARSE_CACHE_VERSION: u32 = 2;
+
+fn parse_cache_dir() -> Option<PathBuf> {
+    let d = std::env::temp_dir().join("house_puzzle_parse_cache");
+    std::fs::create_dir_all(&d).ok()?;
+    Some(d)
+}
+
+/// Cache key includes canvas_height because parse_ai's metadata
+/// (DPI, clip rect, screen frame, etc.) is derived from it — caching
+/// across canvas heights would silently return wrong values.
+fn parse_cache_key(ai_path: &Path, canvas_height: i32) -> Option<String> {
+    use std::hash::{Hash, Hasher};
+    let meta = std::fs::metadata(ai_path).ok()?;
+    let size = meta.len();
+    let mtime = meta
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs())?;
+    let path_str = ai_path.to_string_lossy().to_string();
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    PARSE_CACHE_VERSION.hash(&mut h);
+    size.hash(&mut h);
+    mtime.hash(&mut h);
+    path_str.hash(&mut h);
+    canvas_height.hash(&mut h);
+    Some(format!("{:016x}", h.finish()))
+}
+
+fn parse_cache_read(key: &str) -> Option<CachedParse> {
+    let path = parse_cache_dir()?.join(format!("{}.bin", key));
+    let bytes = std::fs::read(&path).ok()?;
+    bincode::deserialize::<CachedParse>(&bytes).ok()
+}
+
+fn parse_cache_write(key: &str, value: &CachedParse) {
+    let Some(dir) = parse_cache_dir() else { return };
+    let path = dir.join(format!("{}.bin", key));
+    if let Ok(bytes) = bincode::serialize(value) {
+        let _ = std::fs::write(&path, bytes);
+    }
+}
+
+/// Cache the rendered bricks layer pixmap (full MuPDF page raster).
+/// Skipping the MuPDF render is the single biggest re-load win on
+/// typical houses — that step takes ~4 s, vs ~50 ms to read a PNG.
+fn bricks_pixmap_cache_path(key: &str) -> Option<PathBuf> {
+    parse_cache_dir().map(|d| d.join(format!("{}_bricks.png", key)))
+}
+
+fn bricks_pixmap_cache_read(key: &str) -> Option<image::RgbaImage> {
+    let path = bricks_pixmap_cache_path(key)?;
+    image::open(&path).ok().map(|img| img.to_rgba8())
+}
+
+fn bricks_pixmap_cache_write(key: &str, img: &image::RgbaImage) {
+    if let Some(path) = bricks_pixmap_cache_path(key) {
+        let _ = img.save(&path);
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Version
@@ -158,54 +259,230 @@ pub async fn load_pdf(
     if !file_path.exists() {
         return Err(format!("File not found: {path}"));
     }
+    eprintln!(
+        "[profile] load_pdf START: {} (canvas_height={canvas_height})",
+        file_path.display()
+    );
 
     // Generate a short session key
     let key = uuid::Uuid::new_v4().to_string()[..8].to_string();
 
-    // Parse AI file in blocking thread
-    let path_clone = file_path.clone();
-    let t0 = std::time::Instant::now();
-    let parse_result = tokio::task::spawn_blocking(move || {
-        ai_parser::parse_ai(&path_clone, canvas_height)
-    })
-    .await
-    .map_err(|e| e.to_string())?
-    .map_err(|e| e.to_string())?;
-    eprintln!("[profile] parse_ai: {:?}", t0.elapsed());
+    // ── Parse + bezier extraction (cache-aware) ────────────────────────
+    //
+    // Cache hit: the expensive AI parse + bezier extraction are reused
+    // from disk. We still need ai_data.raw for hybrid brick rendering, so
+    // a fast `decompress_ai_data` runs in parallel with the bricks OCG
+    // render. Both are blocking; tokio::join! overlaps them.
+    //
+    // Cache miss: full `parse_ai` (sequential — its phases need each
+    // other's output), then bezier extraction overlapped with the bricks
+    // OCG render via tokio::join!. The completed parse output is then
+    // written to disk for next time.
+    let cache_key = parse_cache_key(&file_path, canvas_height);
+    let cached: Option<CachedParse> = cache_key
+        .as_ref()
+        .and_then(|k| parse_cache_read(k));
 
-    let (placements, metadata, ai_data) = parse_result;
+    let cw;
+    let ch;
+    let clip;
+    let dpi;
+    let expected_min;
 
-    // Bezier extraction is the per-brick bottleneck (PostScript path
-    // reparse per layer); run in parallel via rayon. Keeps cubic curves
-    // intact — required for the bezier merge to preserve arches and
-    // gradients on window/door bricks. Same pattern as the testbed.
-    let t0 = std::time::Instant::now();
-    let ai_raw_for_beziers = ai_data.raw.clone();
-    let placements_for_beziers: Vec<ai_parser::BrickPlacement> = placements.clone();
-    let metadata_for_beziers = metadata.clone();
-    let bezier_per_brick: Vec<Vec<BezierPath>> = tokio::task::spawn_blocking(move || {
-        placements_for_beziers
-            .par_iter()
-            .map(|p| {
-                let block = ai_parser::LayerBlock {
-                    name: p.name.clone(),
-                    begin: p.block_begin,
-                    end: p.block_end,
-                    depth: 0,
-                    children: Vec::new(),
-                };
-                ai_parser::extract_vector_path_bezier(
-                    &block,
-                    &ai_raw_for_beziers,
-                    metadata_for_beziers.offset_x,
-                    metadata_for_beziers.y_base,
-                )
-            })
-            .collect()
-    })
-    .await
-    .map_err(|e| e.to_string())?;
-    eprintln!("[profile] extract_vector_path_bezier (parallel): {:?}", t0.elapsed());
+    let (placements, metadata, ai_data, bezier_per_brick, bricks_no_offset, bricks_pixmap) =
+        if let Some(cached) = cached
+    {
+        eprintln!("[profile] parse cache HIT (key={})", cache_key.as_deref().unwrap_or("?"));
+        cw = cached.metadata.canvas_width as u32;
+        ch = cached.metadata.canvas_height as u32;
+        clip = cached.metadata.clip_rect;
+        dpi = cached.metadata.render_dpi;
+        expected_min = cached.metadata.expected_brick_min;
+
+        let t_parallel = std::time::Instant::now();
+        let path_for_decompress = file_path.clone();
+        let decompress_fut = tokio::task::spawn_blocking(move || {
+            let t0 = std::time::Instant::now();
+            let r = ai_parser::decompress_ai_data(&path_for_decompress);
+            eprintln!("[profile] decompress (cache hit): {:?}", t0.elapsed());
+            r
+        });
+
+        // Try to read the cached bricks pixmap PNG — saves ~4 s of
+        // MuPDF rendering on a hot re-load. Falls back to a fresh
+        // render if the file is missing or unreadable.
+        let cache_key_owned = cache_key.clone();
+        let bricks_pixmap_fut = tokio::task::spawn_blocking({
+            let fp_bricks = file_path.clone();
+            move || {
+                let t0 = std::time::Instant::now();
+                if let Some(k) = cache_key_owned.as_deref() {
+                    if let Some(img) = bricks_pixmap_cache_read(k) {
+                        eprintln!(
+                            "[profile] bricks pixmap cache HIT ({}x{}): {:?}",
+                            img.width(),
+                            img.height(),
+                            t0.elapsed()
+                        );
+                        return Some((img, false /* needs_write */));
+                    }
+                }
+                let res = render::render_ocg_layer_pixmap(&fp_bricks, "bricks", dpi)
+                    .map(|(img, _, _)| (img, true /* needs_write */));
+                eprintln!("[profile] OCG bricks pixmap render: {:?}", t0.elapsed());
+                res
+            }
+        });
+
+        let (decompress_res, bricks_res) = tokio::join!(decompress_fut, bricks_pixmap_fut);
+        let ai_data = decompress_res
+            .map_err(|e| e.to_string())?
+            .map_err(|e| e.to_string())?;
+        let (bricks_pixmap, needs_pixmap_write) = bricks_res
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| "Failed to render bricks layer".to_string())?;
+        eprintln!(
+            "[profile] decompress+bricks_OCG (overlapped, cache hit): {:?}",
+            t_parallel.elapsed()
+        );
+
+        // If the parse cache hit but the pixmap cache missed (e.g.
+        // PARSE_CACHE_VERSION bump didn't happen but the pixmap PNG
+        // was deleted), persist the freshly-rendered pixmap.
+        if needs_pixmap_write {
+            if let Some(k) = cache_key.as_deref() {
+                let key_owned = k.to_string();
+                let pixmap_clone = bricks_pixmap.clone();
+                tokio::task::spawn_blocking(move || {
+                    bricks_pixmap_cache_write(&key_owned, &pixmap_clone);
+                });
+            }
+        }
+
+        let bricks_no_offset = render::compose_ocg_canvas(
+            &bricks_pixmap, "bricks", dpi, clip, cw, ch, (0, 0),
+        );
+
+        (
+            cached.placements,
+            cached.metadata,
+            ai_data,
+            cached.bezier_per_brick,
+            bricks_no_offset,
+            Some(bricks_pixmap),
+        )
+    } else {
+        eprintln!("[profile] parse cache MISS (key={})", cache_key.as_deref().unwrap_or("?"));
+
+        let path_for_parse = file_path.clone();
+        let t0 = std::time::Instant::now();
+        let parse_result = tokio::task::spawn_blocking(move || {
+            ai_parser::parse_ai(&path_for_parse, canvas_height)
+        })
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())?;
+        eprintln!("[profile] parse_ai: {:?}", t0.elapsed());
+
+        let (placements, metadata, ai_data) = parse_result;
+
+        cw = metadata.canvas_width as u32;
+        ch = metadata.canvas_height as u32;
+        clip = metadata.clip_rect;
+        dpi = metadata.render_dpi;
+        expected_min = metadata.expected_brick_min;
+
+        // Bezier extraction (per-brick PostScript reparse, rayon-parallel)
+        // and the bricks OCG MuPDF render don't depend on each other —
+        // both feed into the response but neither needs the other's
+        // output. Overlap them on real cores.
+        let t_parallel = std::time::Instant::now();
+        let ai_raw_for_beziers = ai_data.raw.clone();
+        let placements_for_beziers: Vec<ai_parser::BrickPlacement> = placements.clone();
+        let metadata_for_beziers = metadata.clone();
+        let bezier_fut = tokio::task::spawn_blocking(move || {
+            let t0 = std::time::Instant::now();
+            let res: Vec<Vec<BezierPath>> = placements_for_beziers
+                .par_iter()
+                .map(|p| {
+                    let block = ai_parser::LayerBlock {
+                        name: p.name.clone(),
+                        begin: p.block_begin,
+                        end: p.block_end,
+                        depth: 0,
+                        children: Vec::new(),
+                    };
+                    ai_parser::extract_vector_path_bezier(
+                        &block,
+                        &ai_raw_for_beziers,
+                        metadata_for_beziers.offset_x,
+                        metadata_for_beziers.y_base,
+                    )
+                })
+                .collect();
+            eprintln!(
+                "[profile] extract_vector_path_bezier (parallel): {:?}",
+                t0.elapsed()
+            );
+            res
+        });
+
+        let fp_bricks = file_path.clone();
+        let bricks_render_fut = tokio::task::spawn_blocking(move || {
+            let t0 = std::time::Instant::now();
+            let res = render::render_ocg_layer_pixmap(&fp_bricks, "bricks", dpi);
+            eprintln!("[profile] OCG bricks pixmap render: {:?}", t0.elapsed());
+            res
+        });
+
+        let (bezier_per_brick, bricks_res) =
+            tokio::join!(bezier_fut, bricks_render_fut);
+        let bezier_per_brick = bezier_per_brick.map_err(|e| e.to_string())?;
+        let (bricks_pixmap, _, _) = bricks_res
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| "Failed to render bricks layer".to_string())?;
+        eprintln!(
+            "[profile] bezier+bricks_OCG (overlapped, cache miss): {:?}",
+            t_parallel.elapsed()
+        );
+
+        let bricks_no_offset = render::compose_ocg_canvas(
+            &bricks_pixmap, "bricks", dpi, clip, cw, ch, (0, 0),
+        );
+
+        // Persist the parse output and the bricks pixmap for the next
+        // load. Writes are best-effort — failures don't affect this
+        // load's success.
+        if let Some(k) = cache_key.as_deref() {
+            let to_write = CachedParse {
+                placements: placements.clone(),
+                metadata: metadata.clone(),
+                bezier_per_brick: bezier_per_brick.clone(),
+            };
+            let key_owned = k.to_string();
+            tokio::task::spawn_blocking(move || {
+                let t0 = std::time::Instant::now();
+                parse_cache_write(&key_owned, &to_write);
+                eprintln!("[profile] parse_cache_write: {:?}", t0.elapsed());
+            });
+            let key_owned = k.to_string();
+            let pixmap_clone = bricks_pixmap.clone();
+            tokio::task::spawn_blocking(move || {
+                let t0 = std::time::Instant::now();
+                bricks_pixmap_cache_write(&key_owned, &pixmap_clone);
+                eprintln!("[profile] bricks_pixmap_cache_write: {:?}", t0.elapsed());
+            });
+        }
+
+        (
+            placements,
+            metadata,
+            ai_data,
+            bezier_per_brick,
+            bricks_no_offset,
+            Some(bricks_pixmap),
+        )
+    };
 
     // Assign brick IDs
     let mut bricks: Vec<Brick> = Vec::new();
@@ -250,24 +527,6 @@ pub async fn load_pdf(
         .map(|(b, p)| (b.id.clone(), p.clone()))
         .collect();
 
-    let cw = metadata.canvas_width as u32;
-    let ch = metadata.canvas_height as u32;
-
-    // Render bricks OCG layer, compute offset, re-render if needed
-    let t0 = std::time::Instant::now();
-    let fp_bricks = file_path.clone();
-    let clip = metadata.clip_rect;
-    let dpi = metadata.render_dpi;
-    let expected_min = metadata.expected_brick_min;
-    let bricks_no_offset = tokio::task::spawn_blocking(move || {
-        render::render_ocg_layer_image(
-            &fp_bricks, "bricks", dpi, clip, cw, ch, (0, 0),
-        )
-    })
-    .await
-    .map_err(|e| e.to_string())?
-    .ok_or_else(|| "Failed to render bricks layer".to_string())?;
-
     let pdf_offset = render::compute_pdf_offset(
         &bricks_no_offset,
         expected_min.0,
@@ -275,22 +534,34 @@ pub async fn load_pdf(
     );
 
     let bricks_layer_img = if pdf_offset != (0, 0) {
-        let fp2 = file_path.clone();
-        let bricks_no_offset_clone = bricks_no_offset;
-        tokio::task::spawn_blocking(move || {
-            render::render_ocg_layer_image(
-                &fp2, "bricks", dpi, clip, cw, ch, pdf_offset,
-            )
-            .unwrap_or(bricks_no_offset_clone)
-        })
-        .await
-        .map_err(|e| e.to_string())?
+        // Cheap re-overlay: the MuPDF render is already done, we just
+        // place the same pixmap onto a fresh canvas at the corrected
+        // offset. Used to be a full second MuPDF render — saves ~3 s
+        // on AI files where MuPDF's coordinate origin doesn't match
+        // ours.
+        match bricks_pixmap.as_ref() {
+            Some(pixmap) => {
+                let t_recompose = std::time::Instant::now();
+                let img = render::compose_ocg_canvas(
+                    pixmap, "bricks", dpi, clip, cw, ch, pdf_offset,
+                );
+                eprintln!(
+                    "[profile] OCG bricks re-compose (offset={:?}): {:?}",
+                    pdf_offset,
+                    t_recompose.elapsed()
+                );
+                img
+            }
+            None => bricks_no_offset,
+        }
     } else {
         bricks_no_offset
     };
+    // Drop the pixmap once we're done re-composing — it's the largest
+    // intermediate buffer and we don't need it past this point.
+    drop(bricks_pixmap);
     eprintln!(
-        "[profile] OCG bricks (render+offset): {:?} ({}x{}, offset={:?})",
-        t0.elapsed(),
+        "[profile] bricks_layer ready: {}x{}, offset={:?}",
         bricks_layer_img.width(),
         bricks_layer_img.height(),
         pdf_offset,
@@ -360,43 +631,27 @@ pub async fn load_pdf(
         .map(|(id, img)| (id, Arc::new(img)))
         .collect();
 
-    // Render composite + outlines + OCG layers in parallel
+    // Render composite + outlines in parallel. Lights and background are
+    // rendered lazily on first use (see `ensure_lights_image` /
+    // `ensure_background_image`) — most loads never enter waves /
+    // blueprint mode or toggle lights, so paying for those MuPDF
+    // renders eagerly is wasted work.
     let t0 = std::time::Instant::now();
-    let fp1 = file_path.clone();
-    let fp2 = file_path.clone();
-    let ed1 = extract_dir.clone();
-    let ed2 = extract_dir.clone();
     let ed3 = extract_dir.clone();
     let ed4 = extract_dir.clone();
     let rb = render_bricks.clone();
     let bla = bricks_layer_arc.clone();
-    let (_, _, has_lights, has_background) = tokio::join!(
+    let _ = tokio::join!(
         tokio::task::spawn_blocking(move || {
             render::save_composite(&bla, &ed4.join("composite.png"));
         }),
         tokio::task::spawn_blocking(move || {
             render::render_outlines_png(&rb, cw, ch, &ed3.join("outlines.png"));
         }),
-        tokio::task::spawn_blocking(move || {
-            render::render_ocg_layer(&fp1, "lights", &ed1.join("lights.png"), dpi, clip, cw, ch, pdf_offset)
-        }),
-        tokio::task::spawn_blocking(move || {
-            render::render_ocg_layer(
-                &fp2,
-                "background",
-                &ed2.join("background.png"),
-                dpi,
-                clip,
-                cw,
-                ch,
-                pdf_offset,
-            )
-        }),
     );
-    let has_lights = has_lights.unwrap_or(false);
-    let has_background = has_background.unwrap_or(false);
+    let has_lights = metadata.has_lights_layer;
     eprintln!(
-        "[profile] composite+outlines+lights+bg (parallel): {:?}",
+        "[profile] composite+outlines (parallel): {:?}",
         t0.elapsed()
     );
 
@@ -466,21 +721,20 @@ pub async fn load_pdf(
                 bricks_layer_img: bricks_layer_arc,
                 brick_images: HashMap::new(),
                 brick_rgba,
+                ai_path: file_path.clone(),
+                pdf_offset,
             },
         );
     }
 
     eprintln!("[profile] TOTAL load: {:?}", t_total.elapsed());
 
-    // Return file paths — the JS side converts to asset:// URLs via convertFileSrc()
+    // Return file paths — the JS side converts to asset:// URLs via
+    // convertFileSrc(). Lights and background are NOT in this response;
+    // the frontend invokes `ensure_lights_image` / `ensure_background_image`
+    // when it actually needs them and gets a path back then.
     let composite_path = extract_dir.join("composite.png").to_string_lossy().to_string();
     let outlines_path = extract_dir.join("outlines.png").to_string_lossy().to_string();
-    let lights_path = if has_lights {
-        Some(extract_dir.join("lights.png").to_string_lossy().to_string())
-    } else { None };
-    let bg_path = if has_background {
-        Some(extract_dir.join("background.png").to_string_lossy().to_string())
-    } else { None };
 
     Ok(json!({
         "key": key,
@@ -495,9 +749,84 @@ pub async fn load_pdf(
         "houseUnitsHigh": house_units_high,
         "composite_url": composite_path,
         "outlines_url": outlines_path,
-        "lights_url": lights_path,
-        "blueprint_bg_url": bg_path,
+        "has_lights": has_lights,
     }))
+}
+
+// ---------------------------------------------------------------------------
+// Lazy OCG layer renders (lights + blueprint background)
+// ---------------------------------------------------------------------------
+//
+// Both layers used to be rendered eagerly inside `load_pdf` even though
+// most loads don't enter waves / blueprint mode and don't toggle
+// "Show lights". The frontend now invokes one of these commands the
+// first time it needs the image; we render-once-and-cache to disk so
+// subsequent toggles are free.
+
+async fn ensure_ocg_layer_image(
+    sessions: tauri::State<'_, SessionStore>,
+    key: &str,
+    layer_name: &'static str,
+    file_name: &str,
+) -> Result<Option<String>, String> {
+    let (extract_dir, file_path, dpi, clip, cw, ch, pdf_offset) = {
+        let store = sessions.lock();
+        let session = store
+            .get(key)
+            .ok_or_else(|| format!("Session not found: {key}"))?;
+        (
+            session.extract_dir.clone(),
+            session.ai_path.clone(),
+            session.metadata.render_dpi,
+            session.metadata.clip_rect,
+            session.metadata.canvas_width as u32,
+            session.metadata.canvas_height as u32,
+            session.pdf_offset,
+        )
+    };
+
+    let out_path = extract_dir.join(file_name);
+    if out_path.exists() {
+        return Ok(Some(out_path.to_string_lossy().to_string()));
+    }
+
+    let out = out_path.clone();
+    let fp = file_path.clone();
+    let ok = tokio::task::spawn_blocking(move || {
+        let t0 = std::time::Instant::now();
+        let r = render::render_ocg_layer(&fp, layer_name, &out, dpi, clip, cw, ch, pdf_offset);
+        eprintln!(
+            "[profile] lazy render_ocg_layer({}): {:?} -> {}",
+            layer_name,
+            t0.elapsed(),
+            r
+        );
+        r
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    if ok {
+        Ok(Some(out_path.to_string_lossy().to_string()))
+    } else {
+        Ok(None)
+    }
+}
+
+#[tauri::command]
+pub async fn ensure_lights_image(
+    sessions: tauri::State<'_, SessionStore>,
+    key: String,
+) -> Result<Option<String>, String> {
+    ensure_ocg_layer_image(sessions, &key, "lights", "lights.png").await
+}
+
+#[tauri::command]
+pub async fn ensure_background_image(
+    sessions: tauri::State<'_, SessionStore>,
+    key: String,
+) -> Result<Option<String>, String> {
+    ensure_ocg_layer_image(sessions, &key, "background", "background.png").await
 }
 
 // ---------------------------------------------------------------------------

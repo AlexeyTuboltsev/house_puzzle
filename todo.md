@@ -152,6 +152,36 @@ Done — per-group and per-wave "BP" checkbox swaps thumbnails to
 ### ~~Numeric input next to "Pieces" and "Min border" sliders~~
 Done — paired number inputs share the slider's handler/value.
 
+### Parse cache — cache busting, cleanup, versioning
+The load-speedup PR added a parse cache under `<temp_dir>/house_puzzle_parse_cache/`
+keyed by (PARSE_CACHE_VERSION, file size, file mtime, file path,
+canvas_height). It writes two artifacts per cache key — a `.bin`
+(bincoded `CachedParse`) and a `_bricks.png` (full MuPDF pixmap of the
+bricks layer). Together they save ~6 s on re-opens of the same AI file.
+But the cache grows monotonically and never reclaims space.
+
+Need:
+1. **Startup sweep** that deletes files whose name doesn't match the
+   current `PARSE_CACHE_VERSION` schema, so old-version blobs go away
+   automatically after a version bump.
+2. **LRU / max-age policy** — e.g. delete files not accessed in 30
+   days, or cap total cache size at N MB. Power users will accumulate
+   one entry per (AI file × canvas height) combination over time.
+3. **"Clear cache" action** in the UI for manual nuke.
+4. **Move out of `temp_dir`** into the OS cache dir (`app_cache_dir()`
+   — survives reboots but really needs cleanup or it'll snowball).
+
+### Parse cache — versioning is fragile
+Right now any shape change to `CachedParse` requires bumping
+`PARSE_CACHE_VERSION` by hand. Bincode silently accepts mismatched
+schemas in some cases. Consider:
+- A versioned header byte at the start of each `.bin` so reads can
+  reject mismatches loudly even within the same cache key.
+- A more forward-compatible format (e.g. CBOR with serde flatten
+  defaults) so adding optional fields doesn't require invalidation.
+- Document the bump rule in code: "any new field in any cached type
+  → bump PARSE_CACHE_VERSION".
+
 ### Adobe Illustrator validation script
 Create a standalone validation script that runs inside Adobe Illustrator
 (ExtendScript / JSX) to check `.ai` files before export. Should detect:
