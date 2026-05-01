@@ -24,6 +24,9 @@ fn main() {
     let fixture_dir = find_arg(&args, "--fixture-dir").expect("--fixture-dir <path> required");
     let screenshots_dir = find_arg(&args, "--screenshots").unwrap_or_else(|| "screenshots".into());
     let baselines_dir = find_arg(&args, "--baselines");
+    let mask_bottom: u32 = find_arg(&args, "--mask-bottom")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
 
     fs::create_dir_all(&screenshots_dir).expect("Failed to create screenshots dir");
 
@@ -104,7 +107,7 @@ fn main() {
                 println!("  WARN: no baseline for {name} at {}", baseline.display());
                 continue;
             }
-            match compare_pngs(&actual, &baseline, &screenshots_dir, name) {
+            match compare_pngs(&actual, &baseline, &screenshots_dir, name, mask_bottom) {
                 Ok(report) => {
                     let pct = report.diff_pct();
                     let status = if pct <= PIXEL_PCT_TOL { "PASS" } else { "FAIL" };
@@ -159,6 +162,7 @@ fn compare_pngs(
     baseline_path: &Path,
     out_dir: &str,
     step_name: &str,
+    mask_bottom: u32,
 ) -> Result<DiffReport, String> {
     let actual = image::open(actual_path)
         .map_err(|e| format!("read {}: {e}", actual_path.display()))?
@@ -176,11 +180,17 @@ fn compare_pngs(
     }
 
     let (w, h) = actual.dimensions();
-    let total_pixels = w as u64 * h as u64;
+    // `mask_bottom` rows at the bottom are excluded from the diff —
+    // used on Windows to skip the OS taskbar (the clock keeps
+    // ticking between runs and would flake the comparison).
+    let mask_bottom = mask_bottom.min(h);
+    let compare_h = h - mask_bottom;
+    let total_pixels = w as u64 * compare_h as u64;
     let mut diff_pixels: u64 = 0;
     let mut diff_img = image::RgbaImage::new(w, h);
 
     for y in 0..h {
+        let in_mask = y >= compare_h;
         for x in 0..w {
             let a = actual.get_pixel(x, y).0;
             let b = baseline.get_pixel(x, y).0;
@@ -190,6 +200,13 @@ fn compare_pngs(
                 .map(|(av, bv)| av.abs_diff(*bv))
                 .max()
                 .unwrap_or(0);
+            if in_mask {
+                // Visualise the masked region as a grey strip in the
+                // diff PNG so it's obvious from the artefact what was
+                // skipped.
+                diff_img.put_pixel(x, y, image::Rgba([60, 60, 60, 255]));
+                continue;
+            }
             if max_delta > CHANNEL_TOL {
                 diff_pixels += 1;
                 // Bright magenta on diff so it's eye-catching in artefacts.

@@ -133,18 +133,19 @@ jobs:
             --screenshots screenshots \
             --baselines tests/accessibility/baselines/${{ matrix.artifact-suffix }}
 
-      # Windows screenshots include the desktop taskbar/clock, so
-      # baseline comparison would flake on every run as the clock
-      # ticks. Until tauri-ui-test can capture just the app window,
-      # we keep the screenshots (still useful for visual review on
-      # gh-pages) but only assert that they are non-empty.
+      # Windows: the screen-level capture includes the OS taskbar
+      # (Start menu, system tray, ticking clock). We mask the bottom
+      # 48 px of the comparison so the clock can't flake the run;
+      # everything above that — title bar, app content — is stable.
       - name: Run E2E tests (Windows)
         if: matrix.platform == 'windows-latest'
         run: |
           ${{ matrix.test_binary }} `
             --binary ${{ matrix.app_binary }} `
             --fixture-dir in `
-            --screenshots screenshots
+            --screenshots screenshots `
+            --baselines tests/accessibility/baselines/${{ matrix.artifact-suffix }} `
+            --mask-bottom 48
 
       - name: Upload screenshots
         if: always()
