@@ -239,6 +239,70 @@ Create a standalone validation script that runs inside Adobe Illustrator
 The Rust backend already validates these on load (see `ai_parser.rs`),
 but catching errors in Illustrator is faster feedback for the artist.
 
+### Illustrator script — release / distribution pipeline
+The validator above only helps if the artist actually has it installed.
+Today the script (when written) lives in the repo and the artist would
+have to clone the repo, copy the `.jsx`, and update by hand on every
+change. Need a real distribution path. Options to evaluate:
+
+- **Bundle it into the Tauri app**: ship the `.jsx` next to the binary
+  and add an "Install Illustrator script" action that copies it into
+  the user's `~/Library/Application Support/Adobe/Adobe Illustrator
+  <ver>/<lang>/Scripts/` (macOS) / `%APPDATA%\Adobe\Adobe Illustrator
+  <ver>\<lang>\Scripts\` (Windows) directory. Could also bundle a
+  small "Update script" button that re-copies the latest version.
+- **GitHub-Actions release artefact**: the existing `build-tauri.yml`
+  release job already publishes `.AppImage` / `.dmg` / `.msi` to a
+  tagged release. Add the `.jsx` to that release with a stable URL
+  (`releases/latest/download/hp-validator.jsx`) so the artist (and
+  the in-app installer) can fetch the current version.
+- **Versioning**: tag the script with the same `vX.Y.Z` as the
+  editor, so the validator and parser stay in lock-step (whenever
+  the parser tightens, both move). Update the tauri-action step to
+  pick up `crates/illustrator-validator/dist/hp-validator.jsx`.
+- **Editor compatibility check**: have the script print its own
+  version into a layer-comment that the Rust parser reads at load.
+  Mismatch → editor warns "your AI was validated by an older script
+  — re-run validation". Catches the "did the artist run the new
+  validator" question without asking.
+
+### Tauri warning / error UX — currently a raw dump
+`load_pdf` returns `metadata.warnings` as `Vec<String>` and the Elm
+side displays them as a flat list under the canvas. Some cases:
+
+- `Layer 'X': N unclosed path(s) — discarded` (now auto-closed but
+  still flagged so the artist can fix the source)
+- `Layer 'A' is fully contained within Layer 'B' (95% overlap) — discarded`
+- `Layer 'A' overlaps Layer 'B' (45% of smaller area) — Layer 'A' discarded`
+- `MULTI_OBJECT: layer 'X' has 3 polygons, discarded 1 independent objects`
+- `SKIPPED: 'Y' has no vector polygon`
+- `COVERED: 'Z' removed (hidden under another brick)`
+
+Today the user gets a wall of these on every load, can't sort, can't
+filter, can't open the offending layer in Illustrator with one click,
+can't tell "this is a real problem" from "the parser handled it". We
+should:
+
+1. **Structured warnings on the wire** — replace `Vec<String>` with
+   `Vec<{severity, kind, layer_name, related_layer, message}>` so
+   the frontend can group / sort / filter by severity (info /
+   warning / error) and kind (unclosed / overlap / containment /
+   skipped / covered).
+2. **Collapsible panel in Elm** — group by severity, default
+   collapse "info" (auto-fixed), expand "warning" / "error". Show a
+   count badge per group. Click a row → highlight that layer on the
+   canvas.
+3. **"Open in Illustrator" link** per warning row — copy a
+   `aiFile://...?layer=X` URL to clipboard (or open it via a Tauri
+   command if Illustrator's URL scheme works) so the artist can
+   jump straight to the broken layer.
+4. **Suppress duplicates** — many warnings repeat the same layer
+   name; collapse identical messages with a count.
+5. **Persist dismissals** — once the artist acknowledges "I know
+   about Layer 320", don't surface it on every reload of the same
+   AI file. Tied to the AI file's content hash; a re-export by
+   the artist invalidates dismissals.
+
 ## ~~Nice-to-have~~
 
 ### ~~Tauri desktop app~~

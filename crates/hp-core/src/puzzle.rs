@@ -891,4 +891,107 @@ mod tests {
         eprintln!("Pieces: {}", pieces.len());
         assert_eq!(pieces.len(), 60, "Expected 60 pieces");
     }
+
+    // ── Bezier-native adjacency + areas (synthetic geometry) ───────────
+
+    use crate::bezier::{BezierPath, Segment};
+
+    /// Build a bezier path that traces an axis-aligned rectangle (x..x+w, y..y+h)
+    /// in pymu coordinates. Helper for the synthetic adjacency tests.
+    fn rect(x: f64, y: f64, w: f64, h: f64) -> BezierPath {
+        BezierPath {
+            start: [x, y],
+            segments: vec![
+                Segment::Line { to: [x + w, y] },
+                Segment::Line { to: [x + w, y + h] },
+                Segment::Line { to: [x, y + h] },
+                Segment::Line { to: [x, y] },
+            ],
+        }
+    }
+
+    fn brick(id: &str, x: i32, y: i32, w: i32, h: i32) -> Brick {
+        Brick {
+            id: id.to_string(),
+            x, y, width: w, height: h,
+            brick_type: "vector_brick".to_string(),
+        }
+    }
+
+    #[test]
+    fn build_adjacency_bezier_two_rectangles_sharing_edge() {
+        // Two unit rectangles touching at x=10 — A on the left, B on the right.
+        // Shared edge length = 10 → above the 5-pymu min_border floor.
+        let bricks = vec![brick("a", 0, 0, 10, 10), brick("b", 10, 0, 10, 10)];
+        let mut beziers: HashMap<String, Vec<BezierPath>> = HashMap::new();
+        beziers.insert("a".into(), vec![rect(0.0, 0.0, 10.0, 10.0)]);
+        beziers.insert("b".into(), vec![rect(10.0, 0.0, 10.0, 10.0)]);
+
+        let adj = build_adjacency_bezier(&bricks, &beziers, 5.0);
+        assert!(
+            adj.get("a").map(|s| s.contains("b")).unwrap_or(false),
+            "a → b adjacency missing: {:?}", adj
+        );
+        assert!(
+            adj.get("b").map(|s| s.contains("a")).unwrap_or(false),
+            "b → a adjacency missing: {:?}", adj
+        );
+    }
+
+    #[test]
+    fn build_adjacency_bezier_separated_rectangles_are_not_adjacent() {
+        // 100-unit gap between A and B → no shared edge, no adjacency.
+        let bricks = vec![brick("a", 0, 0, 10, 10), brick("b", 110, 0, 10, 10)];
+        let mut beziers: HashMap<String, Vec<BezierPath>> = HashMap::new();
+        beziers.insert("a".into(), vec![rect(0.0, 0.0, 10.0, 10.0)]);
+        beziers.insert("b".into(), vec![rect(110.0, 0.0, 10.0, 10.0)]);
+
+        let adj = build_adjacency_bezier(&bricks, &beziers, 5.0);
+        assert!(adj.get("a").map(|s| !s.contains("b")).unwrap_or(true));
+        assert!(adj.get("b").map(|s| !s.contains("a")).unwrap_or(true));
+    }
+
+    #[test]
+    fn compute_bezier_areas_rectangle_matches_w_times_h() {
+        let bricks = vec![brick("r", 0, 0, 50, 30)];
+        let mut beziers: HashMap<String, Vec<BezierPath>> = HashMap::new();
+        beziers.insert("r".into(), vec![rect(0.0, 0.0, 50.0, 30.0)]);
+        let areas = compute_bezier_areas(&bricks, &beziers);
+        let a = areas.get("r").copied().unwrap_or(0.0);
+        // Allow 1% slack — areas computed via shoelace on a coarse
+        // tessellated ring; an exact rectangle is a degenerate case
+        // where the chord polygon equals the analytical shape.
+        assert!((a - 1500.0).abs() < 15.0, "expected ~1500, got {}", a);
+    }
+
+    #[test]
+    fn compute_bezier_areas_triangle_matches_half_base_times_height() {
+        // Right triangle with legs 100 along x and y → area = 5000.
+        let tri = BezierPath {
+            start: [0.0, 0.0],
+            segments: vec![
+                Segment::Line { to: [100.0, 0.0] },
+                Segment::Line { to: [0.0, 100.0] },
+                Segment::Line { to: [0.0, 0.0] },
+            ],
+        };
+        let bricks = vec![brick("t", 0, 0, 100, 100)];
+        let mut beziers: HashMap<String, Vec<BezierPath>> = HashMap::new();
+        beziers.insert("t".into(), vec![tri]);
+        let areas = compute_bezier_areas(&bricks, &beziers);
+        let a = areas.get("t").copied().unwrap_or(0.0);
+        assert!((a - 5000.0).abs() < 50.0, "expected ~5000, got {}", a);
+    }
+
+    #[test]
+    fn compute_bezier_areas_missing_brick_falls_back_to_bbox() {
+        // Brick declared without a bezier path: the merge / sort step
+        // shouldn't panic. The function falls back to bbox area
+        // (`b.area()`) so adjacency never sees a zero divisor.
+        let bricks = vec![brick("ghost", 0, 0, 10, 10)];
+        let beziers: HashMap<String, Vec<BezierPath>> = HashMap::new();
+        let areas = compute_bezier_areas(&bricks, &beziers);
+        // 10 × 10 = 100 (b.area() returns w*h).
+        assert_eq!(areas.get("ghost").copied(), Some(100.0));
+    }
 }

@@ -563,4 +563,108 @@ mod tests {
             .count();
         eprintln!("Bricks with rasters: {}/{}", raster_count, bricks_node.children.len());
     }
+
+    // ── Raster canary ───────────────────────────────────────────────────
+    //
+    // The user has explicitly de-prioritised raster-handling testing
+    // ("not sure what is there to test, a canary that it loads at
+    // all would be enough"). Synthetic blob: build a minimal byte
+    // stream matching the `Xh` + `%%BeginData ... XI` shape the
+    // parser expects. If `extract_raster_image` ever returns None
+    // for this we've broken the raster pipeline at the regex /
+    // byte-arithmetic level. No fixture dependency so it works on a
+    // stripped checkout.
+
+    #[test]
+    fn raster_canary_extracts_synthetic_2x2_image() {
+        let mut blob: Vec<u8> = Vec::new();
+        blob.extend_from_slice(b"[1 0 0 1 0 0] 2 2 8 Xh\n");
+        // The BeginData regex is `%%BeginData:\s*\d+[^\r\n]*XI[\r\n]+`,
+        // so `XI` has to live on the same line as the header.
+        blob.extend_from_slice(b"%%BeginData: 12 Hex Bytes XI\n");
+        // (0,0) red, (1,0) green, (0,1) blue, (1,1) white (white → alpha 0).
+        blob.extend_from_slice(&[
+            255, 0, 0,
+            0, 255, 0,
+            0, 0, 255,
+            255, 255, 255,
+        ]);
+
+        let img = extract_raster_image(&blob).expect("synthetic blob should parse");
+        assert_eq!(img.width(), 2);
+        assert_eq!(img.height(), 2);
+        let red = img.get_pixel(0, 0);
+        assert_eq!(red[0], 255, "red pixel red channel");
+        assert_eq!(red[3], 255, "red pixel should be opaque");
+        let white = img.get_pixel(1, 1);
+        assert_eq!(white[3], 0, "white pixel should be alpha-zeroed");
+    }
+
+    // ── compute_pdf_offset (synthetic pixmaps) ──────────────────────────
+
+    use image::{Rgba, RgbaImage};
+
+    fn pixmap_with_first_opaque_at(w: u32, h: u32, fx: u32, fy: u32) -> RgbaImage {
+        let mut img = RgbaImage::new(w, h);
+        // All pixels transparent by default. Set a 2×2 opaque blob at
+        // (fx, fy) so the first-opaque scan lands deterministically.
+        for dy in 0..2 {
+            for dx in 0..2 {
+                if fx + dx < w && fy + dy < h {
+                    img.put_pixel(fx + dx, fy + dy, Rgba([255, 0, 0, 255]));
+                }
+            }
+        }
+        img
+    }
+
+    #[test]
+    fn compute_pdf_offset_returns_diff_between_actual_and_expected() {
+        // Render produced first opaque pixel at (50, 100). We expected
+        // it at (10, 5). Offset = (expected - actual) = (-40, -95).
+        let img = pixmap_with_first_opaque_at(200, 200, 50, 100);
+        let offset = compute_pdf_offset(&img, 10, 5);
+        assert_eq!(offset, (-40, -95));
+    }
+
+    #[test]
+    fn compute_pdf_offset_snaps_sub_pixel_drift_to_zero() {
+        // Within ±1 px of expected → snap to (0, 0). Avoids needless
+        // re-composes for trivial rounding noise.
+        let img = pixmap_with_first_opaque_at(50, 50, 10, 10);
+        let offset = compute_pdf_offset(&img, 11, 9);
+        assert_eq!(offset, (0, 0));
+    }
+
+    #[test]
+    fn compute_pdf_offset_empty_image_returns_zero() {
+        // No opaque pixels at all → no detection possible → (0, 0).
+        let img = RgbaImage::new(50, 50);
+        let offset = compute_pdf_offset(&img, 10, 10);
+        assert_eq!(offset, (0, 0));
+    }
+
+    // ── compose_ocg_canvas: dimension contract ─────────────────────────
+
+    #[test]
+    fn compose_ocg_canvas_returns_canvas_sized_image() {
+        // The composer takes a full-page MuPDF pixmap and pastes it
+        // onto a fresh `canvas_width × canvas_height` RGBA. Whatever
+        // the input pixmap size, output dims must equal canvas dims
+        // — downstream consumers (composite save, hybrid render)
+        // index into the canvas and would corrupt memory if these
+        // drifted.
+        let pixmap = RgbaImage::new(800, 1200);
+        let out = compose_ocg_canvas(
+            &pixmap,
+            "bricks",
+            30.0,
+            (10.0, 20.0, 100.0, 200.0),
+            120,
+            240,
+            (0, 0),
+        );
+        assert_eq!(out.width(), 120);
+        assert_eq!(out.height(), 240);
+    }
 }

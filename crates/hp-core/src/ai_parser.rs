@@ -1408,7 +1408,7 @@ mod tests {
         eprintln!("First brick: {} at ({}, {}) {}x{}", first.name, first.x, first.y, first.width, first.height);
     }
 
-    // ── Auto-close unit tests ───────────────────────────────────────────
+    // ── Auto-close unit tests (PR #75) ──────────────────────────────────
     //
     // `parse_path_lines` used to drop any sub-path whose start vertex
     // didn't match the last segment endpoint — bricks where every
@@ -1517,5 +1517,145 @@ mod tests {
         );
         let poly = layer_320.polygon.as_ref().unwrap();
         assert!(poly.len() >= 3, "'Layer 320' polygon has too few vertices ({})", poly.len());
+    }
+
+    // ── parse_path_lines: vector cleanup edge cases ────────────────────
+
+    /// AI files store coordinates in their own y-up space; the parser
+    /// converts to PyMuPDF y-down via `pymu_y = y_base - ai_y`. Pin the
+    /// transform so a refactor doesn't silently flip handedness.
+    #[test]
+    fn parse_path_lines_translates_ai_to_pymu_coords() {
+        // y_base = 100, offset_x = 5 → AI (10, 30) becomes pymu (15, 70).
+        let lines: Vec<Vec<&str>> = vec![
+            vec!["10", "30", "m"],
+            vec!["20", "30", "L"],
+            vec!["20", "40", "L"],
+            vec!["10", "40", "L"],
+            vec!["f"],
+        ];
+        let (polys, _) = parse_path_lines(&lines, 5.0, 100.0);
+        assert_eq!(polys.len(), 1);
+        assert_eq!(polys[0][0], [15.0, 70.0], "first vertex should be transformed");
+        assert_eq!(polys[0][1], [25.0, 70.0]);
+        assert_eq!(polys[0][2], [25.0, 60.0]);
+    }
+
+    /// Two `m` operators in a row → two separate sub-paths returned.
+    /// Both are auto-closed if the artist forgot the closing edge.
+    #[test]
+    fn parse_path_lines_handles_multiple_subpaths() {
+        let lines: Vec<Vec<&str>> = vec![
+            vec!["0", "0", "m"],
+            vec!["10", "0", "L"],
+            vec!["10", "10", "L"],
+            vec!["0", "10", "L"],
+            vec!["0", "0", "L"],
+            vec!["100", "100", "m"],
+            vec!["110", "100", "L"],
+            vec!["110", "110", "L"],
+            vec!["100", "110", "L"],
+            vec!["100", "100", "L"],
+        ];
+        let (polys, open_paths) = parse_path_lines(&lines, 0.0, 0.0);
+        assert_eq!(polys.len(), 2, "expected two sub-paths, got {}", polys.len());
+        assert_eq!(open_paths, 0, "both sub-paths are explicitly closed");
+    }
+
+    /// A `C` operator should tessellate the cubic into many vertices
+    /// (1 moveto + 8 interpolated + 1 endpoint = 10), preserving the
+    /// curve's shape when downstream consumers treat it as a polygon.
+    /// We assert "many" rather than an exact count because the
+    /// auto-close pass may append one closing vertex when the cubic's
+    /// endpoint differs from the moveto — both behaviours are
+    /// correct, the count is incidental.
+    #[test]
+    fn parse_path_lines_tessellates_cubic_bezier() {
+        // Single moveto, then a cubic from (0,0) to (100,0) bulging.
+        let lines: Vec<Vec<&str>> = vec![
+            vec!["0", "0", "m"],
+            vec!["0", "100", "100", "100", "100", "0", "C"],
+            vec!["f"],
+        ];
+        let (polys, _) = parse_path_lines(&lines, 0.0, 0.0);
+        assert_eq!(polys.len(), 1);
+        // Without tessellation we'd have at most 2 vertices (start + endpoint).
+        // With tessellation we get ~10 — pin a generous floor that catches
+        // any regression to "no tessellation at all".
+        assert!(
+            polys[0].len() >= 9,
+            "expected cubic to tessellate into many vertices, got {}", polys[0].len()
+        );
+        // Some vertex other than start/end should sit off the
+        // straight chord — proves the curve was actually sampled
+        // rather than collapsed to two endpoints.
+        let mid = polys[0][polys[0].len() / 2];
+        assert!(mid[1].abs() > 10.0, "cubic should bulge off the x-axis, mid={:?}", mid);
+    }
+
+    // ── parse_path_lines_bezier: same edges, bezier flavour ────────────
+
+    /// The bezier extractor must auto-close just like the polygon one
+    /// (regression: NY8 'Layer 320', NY9n b012/b020/b022/b026).
+    #[test]
+    fn parse_path_lines_bezier_auto_closes_open_subpath() {
+        let lines: Vec<Vec<&str>> = vec![
+            vec!["0", "0", "m"],
+            vec!["10", "0", "L"],
+            vec!["10", "10", "L"],
+        ];
+        let (paths, open_paths) = parse_path_lines_bezier(&lines, 0.0, 0.0);
+        assert_eq!(paths.len(), 1);
+        assert_eq!(open_paths, 1, "open sub-path should still bump open_paths");
+        // The auto-close appends a final Line back to start. We drew 2
+        // segments, plus the implicit closing segment → 3 segments.
+        assert_eq!(paths[0].segments.len(), 3, "auto-close should append a closing Line");
+        assert_eq!(
+            paths[0].segments.last().unwrap().end(),
+            paths[0].start,
+            "last segment must end at start vertex"
+        );
+    }
+
+    /// The bezier extractor stores a `C` operator as a `Segment::Cubic`
+    /// — no tessellation. This is the whole reason for keeping a
+    /// separate bezier path: the merge can preserve the curve.
+    #[test]
+    fn parse_path_lines_bezier_preserves_cubic_segments() {
+        use crate::bezier::Segment;
+        let lines: Vec<Vec<&str>> = vec![
+            vec!["0", "0", "m"],
+            vec!["0", "100", "100", "100", "100", "0", "C"],
+            vec!["f"],
+        ];
+        let (paths, _) = parse_path_lines_bezier(&lines, 0.0, 0.0);
+        assert_eq!(paths.len(), 1);
+        let cubic = paths[0].segments.iter().find(|s| matches!(s, Segment::Cubic { .. }));
+        assert!(cubic.is_some(), "cubic operator must produce a Segment::Cubic");
+    }
+
+    /// Multiple `m`-separated sub-paths come back as multiple
+    /// BezierPaths in order. Coordinates are flipped to PyMuPDF
+    /// y-down via `pymu_y = y_base - ai_y`; `y_base = 110` here so
+    /// the two startpoints land at intuitive values.
+    #[test]
+    fn parse_path_lines_bezier_handles_multiple_subpaths() {
+        let lines: Vec<Vec<&str>> = vec![
+            vec!["0", "0", "m"],
+            vec!["10", "0", "L"],
+            vec!["10", "10", "L"],
+            vec!["0", "10", "L"],
+            vec!["0", "0", "L"],
+            vec!["100", "100", "m"],
+            vec!["110", "100", "L"],
+            vec!["110", "110", "L"],
+            vec!["100", "110", "L"],
+            vec!["100", "100", "L"],
+        ];
+        let (paths, _) = parse_path_lines_bezier(&lines, 0.0, 110.0);
+        assert_eq!(paths.len(), 2);
+        // y_base=110 → AI y=0 maps to pymu y=110, AI y=100 maps to pymu y=10.
+        assert_eq!(paths[0].start, [0.0, 110.0]);
+        assert_eq!(paths[1].start, [100.0, 10.0]);
     }
 }
