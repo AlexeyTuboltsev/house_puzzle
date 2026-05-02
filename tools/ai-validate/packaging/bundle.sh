@@ -38,6 +38,7 @@ LIB_ORDER=(
     "lib/fixes.jsx"
     "lib/render_md.jsx"
     "lib/update_check.jsx"
+    "lib/ui.jsx"
 )
 
 {
