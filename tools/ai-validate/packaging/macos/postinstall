@@ -76,6 +76,34 @@ if [[ $INSTALLED_COUNT -eq 0 ]]; then
     exit 0
 fi
 
+# Best-effort: prime the update-check cache so the script can warn
+# about future versions without itself having to do a background HTTPS
+# refresh (Illustrator ExtendScript on macOS has no silent shell-out
+# path — File.execute on .scpt opens Script Editor, on .sh opens
+# Terminal). Populating it here means the cache is at least as fresh
+# as the most recent install.
+#
+# Postinstall runs as root for system-installed pkgs, so we have to
+# write to the LOGGED-IN user's Application Support, not root's. Pull
+# that user from the console-owner trick that's standard on macOS.
+LOGGED_IN_USER=$(stat -f %Su /dev/console 2>/dev/null || true)
+if [[ -n "$LOGGED_IN_USER" && "$LOGGED_IN_USER" != "root" ]]; then
+    USER_HOME=$(dscl . -read "/Users/$LOGGED_IN_USER" NFSHomeDirectory 2>/dev/null | awk '{print $2}')
+    if [[ -n "$USER_HOME" ]]; then
+        CACHE_DIR="$USER_HOME/Library/Application Support/ai-validate"
+        mkdir -p "$CACHE_DIR" || true
+        if curl -fsSL --max-time 5 \
+            -o "$CACHE_DIR/script-version-cache.json" \
+            "https://raw.githubusercontent.com/AlexeyTuboltsev/house_puzzle/main/tools/ai-validate/script-version.json"
+        then
+            chown "$LOGGED_IN_USER" "$CACHE_DIR" "$CACHE_DIR/script-version-cache.json" || true
+            echo "[postinstall] primed update cache at $CACHE_DIR/script-version-cache.json"
+        else
+            echo "[postinstall] update cache prime skipped (offline or fetch failed)"
+        fi
+    fi
+fi
+
 # Clean staging on success.
 rm -rf "$STAGING"
 echo "[postinstall] done — $INSTALLED_COUNT install(s)"

@@ -145,31 +145,20 @@ function refreshManifestInBackground(url, cacheFile) {
         // default handler — for .vbs that's wscript by default.
         vbs.execute();
     } else {
-        var sh = new File(helperDir.fsName + "/ai-validate-update.sh");
-        sh.encoding = "UTF-8";
-        sh.open("w");
-        sh.write(
-            "#!/bin/bash\n" +
-            "curl -fsSL --max-time 5 -o " + shQuote(cachePath) + " " + shQuote(url) + " || true\n"
-        );
-        sh.close();
-        // chmod +x and detach. File.execute on a .sh opens it in
-        // Terminal — instead, run via /bin/bash -c so it stays headless.
-        var bash = new File("/bin/bash");
-        // ExtendScript can't really "spawn" — easiest reliable path is
-        // to invoke via AppleScript's `do shell script ... &` so it
-        // detaches. AppleScript runs via osascript.
-        var detach = new File(helperDir.fsName + "/ai-validate-update-detach.scpt");
-        detach.encoding = "UTF-8";
-        detach.open("w");
-        detach.write(
-            "do shell script \"chmod +x " + sh.fsName + " && nohup " + sh.fsName + " >/dev/null 2>&1 &\"\n"
-        );
-        detach.close();
-        detach.execute();
+        // macOS: skip the background refresh. There is no way to spawn
+        // a silent shell command from Illustrator ExtendScript — every
+        // route either pops a window (File.execute on .sh opens
+        // Terminal, on .scpt opens Script Editor as the user just
+        // observed in the wild) or doesn't actually run (no $.system /
+        // system.callSystem in Illustrator's ES engine).
+        //
+        // Until a proper macOS-side refresher ships (likely a launchd
+        // plist installed by the .pkg's postinstall, doing curl once
+        // a day in the user's session), the cache is populated only at
+        // .pkg install time — see packaging/macos/postinstall. That's
+        // good enough for the common case (artist re-installs every
+        // few releases) and avoids the user-visible popup.
+        return;
     }
 }
 
-function shQuote(s) {
-    return "'" + String(s).replace(/'/g, "'\\''") + "'";
-}
