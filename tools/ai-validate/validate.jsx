@@ -9,7 +9,9 @@
 //   - Vector and raster move together (see lib/raster_move.jsx in later
 //     phases).
 //   - One JSON report per run at /tmp/ai-validate-report.json.
-//   - No alert() in headless mode — it blocks Illustrator.
+//   - No alert() in headless mode — it blocks Illustrator. Interactive
+//     mode (bundled .jsx) does use ScriptUI dialogs; that's fine
+//     because the artist just clicked File > Scripts > ai-validate.
 
 #target illustrator
 
@@ -20,6 +22,7 @@
 #include "lib/fixes.jsx"
 #include "lib/render_md.jsx"
 #include "lib/update_check.jsx"
+#include "lib/ui.jsx"
 
 (function main() {
     var REPORT_VERSION = 1;
@@ -27,9 +30,19 @@
     var MODE_PATH   = "/tmp/ai-validate-mode.txt";
     var TARGET_PATH = "/tmp/ai-validate-target.txt";
 
+    // Bundled builds set AI_VALIDATE_VERSION via packaging/bundle.sh.
+    // Its presence is the ONLY signal that we're talking to a human
+    // through ScriptUI dialogs vs being driven by run.sh in dev. In
+    // bundled mode we ignore the /tmp scaffolding files entirely —
+    // that's where stale targets like _NY1.ai used to leak in (a
+    // previous run.sh invocation wrote /tmp/ai-validate-target.txt
+    // and we'd then app.open() that file even with no doc visible
+    // to the artist).
+    var INTERACTIVE = (typeof AI_VALIDATE_VERSION === "string");
+
     var report = {
         version: REPORT_VERSION,
-        mode: readMode(MODE_PATH),
+        mode: "report",
         file: null,
         findings: [],
         summary: null,
@@ -39,99 +52,63 @@
     };
 
     logReset();
-    logInfo("validate.jsx: start", { mode: report.mode });
+    logInfo("validate.jsx: start", { interactive: INTERACTIVE });
 
     // Non-blocking: alerts only if a previous run cached a newer
-    // manifest. Refreshes the cache in the background for next time.
-    // Bundled builds set AI_VALIDATE_VERSION + AI_VALIDATE_MANIFEST_URL;
-    // dev (un-bundled) runs skip the check.
+    // manifest. Refresh of the cache itself is handled out-of-band on
+    // macOS (launchd plist) and silently in-process on Windows
+    // (VBScript via wscript). Dev runs without the bundle constants
+    // skip the check.
     maybeWarnAboutUpdate();
 
+    var doc = null;
+
     try {
-        var target = readTrimmed(TARGET_PATH);
-        logInfo("target read", { target: target });
-        var doc = pickDocument(target);
-        if (!doc) {
-            report.error = target
-                ? ("could not find or open: " + target)
-                : "no document open and no target file specified";
-            logError("no document selected", { error: report.error });
-            writeReport(REPORT_PATH, report);
-            return;
+        if (INTERACTIVE) {
+            if (app.documents.length === 0) {
+                showNoDocumentAlert();
+                return;
+            }
+            doc = app.activeDocument;
+            report.mode = "report"; // start with report; preview decides whether to fix
+        } else {
+            // Dev / run.sh path — read /tmp scaffolding so the shell
+            // driver can target a specific file.
+            report.mode = readMode(MODE_PATH);
+            var target = readTrimmed(TARGET_PATH);
+            doc = pickDocument(target);
+            if (!doc) {
+                report.error = target
+                    ? ("could not find or open: " + target)
+                    : "no document open and no target file specified";
+                logError("no document selected", { error: report.error });
+                writeReport(REPORT_PATH, report);
+                return;
+            }
         }
+
         report.file = doc.fullName ? doc.fullName.fsName : doc.name;
         logInfo("document selected", { file: report.file });
 
-        logInfo("walk_paths: begin");
-        report.snapshot = walkPaths(doc);
-        logInfo("walk_paths: end", {
-            bricks: report.snapshot.bricks ? report.snapshot.bricks.length : 0,
-            top_layers: doc.layers.length
-        });
+        // Always start with a read-only walk + checks, regardless of
+        // mode. In interactive mode the result feeds the preview
+        // dialog; in fix mode (dev) it's the baseline before the
+        // unlock pre-pass overwrites it.
+        runReportPass(doc, report);
 
-        logInfo("runChecks: begin");
-        report.findings = runChecks(report.snapshot);
-        report.summary  = summarize(report.findings);
-        logInfo("runChecks: end", {
-            findings: report.findings.length,
-            errors: report.summary.by_severity.error || 0,
-            warnings: report.summary.by_severity.warning || 0
-        });
+        if (INTERACTIVE) {
+            var goFix = showPreviewDialog(report);
+            if (!goFix) {
+                logInfo("interactive: cancel — writing report only");
+                writeReport(REPORT_PATH, report);
+                writeMarkdown(report);
+                return;
+            }
+            report.mode = "fix";
+        }
 
         if (report.mode === "fix") {
-            // Pre-pass: unlock every locked layer AND every locked
-            // pageItem AND make hidden layers visible — Illustrator's
-            // pathItem.editable is false if any of those are set.
-            // Per artist instruction, we do NOT re-lock / re-hide
-            // afterwards. Recorded in report.unlocked so the .md
-            // surfaces exactly what changed.
-            report.unlocked = unlockAllLayers(doc);
-            logInfo("fix mode: pre-unlock", {
-                layers: report.unlocked.layers.length,
-                page_items: report.unlocked.page_items,
-                hidden_shown: report.unlocked.hidden_layers_shown.length
-            });
-            // Re-walk + re-check after the unlock so subsequent
-            // findings reflect the now-editable layers.
-            report.snapshot = walkPaths(doc);
-            report.findings = runChecks(report.snapshot);
-
-            // Convergence loop: a single pass of fixes can create new
-            // findings (e.g. snap_drift_cluster shortens an edge below
-            // 1 pymu, which becomes a new sub_pymu_edge). Re-walk and
-            // re-fix until no more fixes are applied, capped at 5
-            // iterations as a safety against pathological cycles.
-            var iterations = [];
-            var MAX_ITER = 8;
-            // Cross-iteration blacklist — once a fix has provably
-            // failed (locked layer, non-editable path, ...), don't
-            // retry it on subsequent iterations. Earlier we observed
-            // _NY7's locked Layer 4 having close_path attempted three
-            // times across iterations, each one apparently leaving
-            // Illustrator in worse shape; one attempt is plenty.
-            var failedFixes = {};
-            for (var iter = 0; iter < MAX_ITER; iter++) {
-                logInfo("fix iter: begin", { iter: iter, blacklisted: countKeys(failedFixes) });
-                var pass = runFixes(doc, report.snapshot, report.findings, failedFixes);
-                iterations.push(pass);
-                report.snapshot = walkPaths(doc);
-                report.findings = runChecks(report.snapshot);
-                logInfo("fix iter: end", {
-                    iter: iter,
-                    applied: pass.applied.length,
-                    skipped: pass.skipped.length,
-                    error: pass.error,
-                    remaining_findings: report.findings.length
-                });
-                if (!pass.applied || pass.applied.length === 0) break;
-            }
-            report.summary = summarize(report.findings);
-            report.fixes   = collapseIterations(iterations);
-            logInfo("fix mode: converged", {
-                iterations: report.fixes.iterations,
-                total_applied: report.fixes.applied.length,
-                remaining: report.findings.length
-            });
+            runFixLoop(doc, report);
         }
     } catch (e) {
         var msg = String(e) + (e.line ? " (line " + e.line + ")" : "");
@@ -142,13 +119,103 @@
 
     writeReport(REPORT_PATH, report);
     writeMarkdown(report);
+
+    if (INTERACTIVE && report.mode === "fix") {
+        showSummaryDialog(report);
+    } else if (INTERACTIVE && report.error) {
+        // Interactive caller should still hear about catastrophic
+        // failures even before the preview ran (rare).
+        alert("ai-validate: " + report.error);
+    }
 })();
+
+// Walk + check the document without mutating anything. Populates
+// report.snapshot, report.findings, report.summary.
+function runReportPass(doc, report) {
+    logInfo("walk_paths: begin");
+    report.snapshot = walkPaths(doc);
+    logInfo("walk_paths: end", {
+        bricks: report.snapshot.bricks ? report.snapshot.bricks.length : 0,
+        top_layers: doc.layers.length
+    });
+
+    logInfo("runChecks: begin");
+    report.findings = runChecks(report.snapshot);
+    report.summary  = summarize(report.findings);
+    logInfo("runChecks: end", {
+        findings: report.findings.length,
+        errors: report.summary.by_severity.error || 0,
+        warnings: report.summary.by_severity.warning || 0
+    });
+}
+
+// Pre-unlock + iterative fix loop. Mutates the document. Populates
+// report.fixes, report.unlocked, and refreshes report.snapshot /
+// report.findings / report.summary to the post-fix state.
+function runFixLoop(doc, report) {
+    var INTERACTIVE = (typeof AI_VALIDATE_VERSION === "string");
+    var progress = INTERACTIVE ? openProgressPalette(8) : null;
+
+    try {
+        // Pre-pass: unlock every locked layer AND every locked
+        // pageItem AND make hidden layers visible — Illustrator's
+        // pathItem.editable is false if any of those are set. Per
+        // artist instruction, we do NOT re-lock / re-hide afterwards.
+        // Recorded in report.unlocked so the .md surfaces what changed.
+        report.unlocked = unlockAllLayers(doc);
+        logInfo("fix mode: pre-unlock", {
+            layers: report.unlocked.layers.length,
+            page_items: report.unlocked.page_items,
+            hidden_shown: report.unlocked.hidden_layers_shown.length
+        });
+        // Re-walk + re-check after the unlock so subsequent findings
+        // reflect the now-editable layers.
+        report.snapshot = walkPaths(doc);
+        report.findings = runChecks(report.snapshot);
+
+        // Convergence loop: a single pass of fixes can create new
+        // findings (e.g. snap_drift_cluster shortens an edge below
+        // 1 pymu, which becomes a new sub_pymu_edge). Re-walk and
+        // re-fix until no more fixes are applied, capped at MAX_ITER.
+        var iterations = [];
+        var MAX_ITER = 8;
+        // Cross-iteration blacklist — once a fix has provably failed
+        // (locked layer, non-editable path, ...), don't retry it.
+        var failedFixes = {};
+        for (var iter = 0; iter < MAX_ITER; iter++) {
+            updateProgressPalette(progress, iter,
+                "Fix pass " + (iter + 1) + " of up to " + MAX_ITER + "…");
+            logInfo("fix iter: begin", { iter: iter, blacklisted: countKeys(failedFixes) });
+            var pass = runFixes(doc, report.snapshot, report.findings, failedFixes);
+            iterations.push(pass);
+            report.snapshot = walkPaths(doc);
+            report.findings = runChecks(report.snapshot);
+            logInfo("fix iter: end", {
+                iter: iter,
+                applied: pass.applied.length,
+                skipped: pass.skipped.length,
+                error: pass.error,
+                remaining_findings: report.findings.length
+            });
+            if (!pass.applied || pass.applied.length === 0) break;
+        }
+        report.summary = summarize(report.findings);
+        report.fixes   = collapseIterations(iterations);
+        logInfo("fix mode: converged", {
+            iterations: report.fixes.iterations,
+            total_applied: report.fixes.applied.length,
+            remaining: report.findings.length
+        });
+    } finally {
+        closeProgressPalette(progress);
+    }
+}
 
 function writeMarkdown(report) {
     var md = renderMarkdown(report);
-    // Always drop a /tmp copy so callers (run.sh, CI) have a stable path.
+    // Always drop a /tmp copy so dev callers (run.sh, CI) have a stable path.
     writeText("/tmp/ai-validate-report.md", md);
-    // Also drop one next to the source .ai so the artist can find it
+    // Drop one next to the source .ai so the artist can find it
     // in Finder without leaving the working folder. Filename:
     // "<basename>.report.md".
     if (report.file) {
@@ -186,9 +253,6 @@ function collapseIterations(iters) {
         }
         if (iters[i].error) errors.push("iter " + i + ": " + iters[i].error);
     }
-    // Earlier iterations' skipped lists often resolve in later passes
-    // once a prerequisite fix has run; the last iteration is the only
-    // one whose skipped list reflects the converged state.
     var lastSkipped = iters.length > 0 ? (iters[iters.length - 1].skipped || []) : [];
     return {
         applied: applied,
@@ -211,8 +275,9 @@ function summarize(findings) {
     return { total: findings.length, by_severity: bySeverity, by_kind: byKind };
 }
 
-// Resolve the document the caller asked for. If no target path was
-// passed, fall back to the currently active document (legacy behaviour).
+// Resolve the document the caller asked for (dev / run.sh path only).
+// If no target path was passed, fall back to the currently active
+// document.
 function pickDocument(targetPath) {
     if (targetPath) {
         for (var i = 0; i < app.documents.length; i++) {
