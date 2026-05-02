@@ -145,19 +145,18 @@ function refreshManifestInBackground(url, cacheFile) {
         // default handler — for .vbs that's wscript by default.
         vbs.execute();
     } else {
-        // macOS: skip the background refresh. There is no way to spawn
-        // a silent shell command from Illustrator ExtendScript — every
-        // route either pops a window (File.execute on .sh opens
-        // Terminal, on .scpt opens Script Editor as the user just
-        // observed in the wild) or doesn't actually run (no $.system /
-        // system.callSystem in Illustrator's ES engine).
+        // macOS: the script itself doesn't refresh — refresh is handled
+        // out-of-band by a per-user launchd agent installed by the
+        // .pkg's postinstall (com.alexeytuboltsev.ai-validate-updater,
+        // fires once per 24 h via StartInterval). We can't do it from
+        // here because Illustrator's ExtendScript engine has no silent
+        // shell-out: File.execute on .sh opens Terminal, on .scpt
+        // opens Script Editor (artist-reported on sv0.1.1), and
+        // there's no $.system / system.callSystem to lean on.
         //
-        // Until a proper macOS-side refresher ships (likely a launchd
-        // plist installed by the .pkg's postinstall, doing curl once
-        // a day in the user's session), the cache is populated only at
-        // .pkg install time — see packaging/macos/postinstall. That's
-        // good enough for the common case (artist re-installs every
-        // few releases) and avoids the user-visible popup.
+        // The cache file lives at the same Folder.userData path the
+        // launchd refresh.sh writes to, so the read above transparently
+        // sees whatever the agent fetched last.
         return;
     }
 }

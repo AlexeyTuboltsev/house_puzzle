@@ -76,30 +76,101 @@ if [[ $INSTALLED_COUNT -eq 0 ]]; then
     exit 0
 fi
 
-# Best-effort: prime the update-check cache so the script can warn
-# about future versions without itself having to do a background HTTPS
-# refresh (Illustrator ExtendScript on macOS has no silent shell-out
-# path — File.execute on .scpt opens Script Editor, on .sh opens
-# Terminal). Populating it here means the cache is at least as fresh
-# as the most recent install.
+# Set up the update-check cache + a per-user LaunchAgent that refreshes
+# it daily. Why a launchd agent? ExtendScript on macOS Illustrator has
+# no silent shell-out — File.execute on .scpt opens Script Editor, on
+# .sh opens Terminal — so the script itself can't refresh in
+# background. launchd is the proper macOS way: runs in the user's
+# session, no UI, fires once per 24h.
 #
-# Postinstall runs as root for system-installed pkgs, so we have to
-# write to the LOGGED-IN user's Application Support, not root's. Pull
-# that user from the console-owner trick that's standard on macOS.
+# Postinstall runs as root for system pkg installs, so all user-facing
+# paths (cache, refresh script, LaunchAgent plist) need ownership
+# explicitly set to the logged-in user. Pull that user from
+# /dev/console's owner — standard macOS idiom.
 LOGGED_IN_USER=$(stat -f %Su /dev/console 2>/dev/null || true)
+LOGGED_IN_UID=""
 if [[ -n "$LOGGED_IN_USER" && "$LOGGED_IN_USER" != "root" ]]; then
+    LOGGED_IN_UID=$(id -u "$LOGGED_IN_USER" 2>/dev/null || true)
+fi
+
+if [[ -n "$LOGGED_IN_USER" && "$LOGGED_IN_USER" != "root" && -n "$LOGGED_IN_UID" ]]; then
     USER_HOME=$(dscl . -read "/Users/$LOGGED_IN_USER" NFSHomeDirectory 2>/dev/null | awk '{print $2}')
     if [[ -n "$USER_HOME" ]]; then
         CACHE_DIR="$USER_HOME/Library/Application Support/ai-validate"
-        mkdir -p "$CACHE_DIR" || true
-        if curl -fsSL --max-time 5 \
-            -o "$CACHE_DIR/script-version-cache.json" \
-            "https://raw.githubusercontent.com/AlexeyTuboltsev/house_puzzle/main/tools/ai-validate/script-version.json"
-        then
-            chown "$LOGGED_IN_USER" "$CACHE_DIR" "$CACHE_DIR/script-version-cache.json" || true
-            echo "[postinstall] primed update cache at $CACHE_DIR/script-version-cache.json"
+        REFRESH_SH="$CACHE_DIR/refresh.sh"
+        LAUNCH_AGENTS_DIR="$USER_HOME/Library/LaunchAgents"
+        PLIST_PATH="$LAUNCH_AGENTS_DIR/com.alexeytuboltsev.ai-validate-updater.plist"
+
+        mkdir -p "$CACHE_DIR" "$LAUNCH_AGENTS_DIR" || true
+
+        # Refresh script — what launchd fires daily (and once at load).
+        cat > "$REFRESH_SH" <<'REFRESH_EOF'
+#!/bin/bash
+# ai-validate manifest refresh — invoked by launchd. Writes the latest
+# script-version.json into the local cache so ai-validate.jsx can warn
+# the artist about new releases.
+set -e
+CACHE_DIR="$HOME/Library/Application Support/ai-validate"
+mkdir -p "$CACHE_DIR"
+curl -fsSL --max-time 10 \
+    -o "$CACHE_DIR/script-version-cache.json" \
+    "https://raw.githubusercontent.com/AlexeyTuboltsev/house_puzzle/main/tools/ai-validate/script-version.json"
+REFRESH_EOF
+        chmod 755 "$REFRESH_SH"
+
+        # LaunchAgent plist. RunAtLoad gives an immediate refresh on
+        # bootstrap (and on next login); StartInterval=86400 cycles
+        # every 24 h while the user session is active. ProcessType:
+        # Background hints to launchd this is low-priority.
+        cat > "$PLIST_PATH" <<PLIST_EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.alexeytuboltsev.ai-validate-updater</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>$REFRESH_SH</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>StartInterval</key>
+    <integer>86400</integer>
+    <key>ProcessType</key>
+    <string>Background</string>
+    <key>StandardOutPath</key>
+    <string>/dev/null</string>
+    <key>StandardErrorPath</key>
+    <string>/dev/null</string>
+</dict>
+</plist>
+PLIST_EOF
+
+        chown -R "$LOGGED_IN_USER" "$CACHE_DIR" "$LAUNCH_AGENTS_DIR" || true
+        chmod 644 "$PLIST_PATH"
+
+        # Bootstrap into the user's launchd session. bootout first
+        # handles re-installs (bootstrap of an already-loaded plist
+        # errors). Both ops tolerate failure — installer should not
+        # abort if launchd refuses.
+        launchctl bootout "gui/$LOGGED_IN_UID" "$PLIST_PATH" 2>/dev/null || true
+        if launchctl bootstrap "gui/$LOGGED_IN_UID" "$PLIST_PATH" 2>>"$LOG"; then
+            echo "[postinstall] launchd agent loaded (gui/$LOGGED_IN_UID) — daily refresh active"
         else
-            echo "[postinstall] update cache prime skipped (offline or fetch failed)"
+            echo "[postinstall] launchd bootstrap failed — agent will pick up at next login"
+        fi
+
+        # Backstop: prime the cache synchronously now, in case the
+        # bootstrap above failed and RunAtLoad never fires this
+        # session.
+        if [[ ! -s "$CACHE_DIR/script-version-cache.json" ]]; then
+            curl -fsSL --max-time 5 \
+                -o "$CACHE_DIR/script-version-cache.json" \
+                "https://raw.githubusercontent.com/AlexeyTuboltsev/house_puzzle/main/tools/ai-validate/script-version.json" \
+                || echo "[postinstall] cache prime failed (offline?)"
+            chown "$LOGGED_IN_USER" "$CACHE_DIR/script-version-cache.json" 2>/dev/null || true
         fi
     fi
 fi
