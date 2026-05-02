@@ -61,120 +61,147 @@ function fillFindingsListbox(lb, findings) {
     }
 }
 
-// Returns true if user clicked "Fix what's fixable", false on Cancel
-// or if there's nothing to fix and the user dismissed the dialog.
-function showPreviewDialog(report) {
-    var basename = basenameOf(report.file);
-    var s = report.summary || { total: 0, by_severity: {} };
+// Build a one-line summary string for the panel header from the
+// summary object on `report.summary`.
+function summaryHeadline(s) {
+    if (!s) return "";
     var nErr  = s.by_severity.error   || 0;
     var nWarn = s.by_severity.warning || 0;
-
-    var w = new Window("dialog", "ai-validate " + aiValidateVersionLabel());
-    w.alignChildren = "fill";
-    w.preferredSize.width = 720;
-    w.spacing = 8;
-    w.margins = 16;
-
-    var fileLine = w.add("statictext", undefined, "File: " + basename);
-    fileLine.graphics.font = ScriptUI.newFont(fileLine.graphics.font.name, "BOLD",
-                                              fileLine.graphics.font.size);
-
-    var summaryText;
-    if (s.total === 0) {
-        summaryText = "No issues found — the file looks clean.";
-    } else {
-        summaryText = "Found " + s.total + " issue(s) — " +
-                      nErr + " error(s), " + nWarn + " warning(s).";
-    }
-    w.add("statictext", undefined, summaryText);
-
-    if (s.total > 0) {
-        var lb = w.add("listbox", undefined, [], {
-            multiselect: false,
-            numberOfColumns: 3,
-            showHeaders: true,
-            columnTitles: ["Severity", "Issue", "Where"]
-        });
-        lb.preferredSize = [700, 320];
-        fillFindingsListbox(lb, report.findings);
-
-        var note = w.add("statictext", undefined,
-            "“Fix what’s fixable” applies deterministic auto-fixes " +
-            "(snap drift, close paths, delete tiny stray geometry, ...). Issues that " +
-            "need manual review (overlaps, bezier loops, ...) will remain in the " +
-            "report.",
-            { multiline: true });
-        note.preferredSize.width = 700;
-    }
-
-    var btns = w.add("group");
-    btns.alignment = "right";
-    var cancelBtn = btns.add("button", undefined, "Cancel", { name: "cancel" });
-    var fixBtn    = btns.add("button", undefined, "Fix what’s fixable", { name: "ok" });
-    fixBtn.enabled = (s.total > 0);
-    if (s.total === 0) fixBtn.text = "OK";
-
-    var result = w.show();
-    return result === 1; // OK button → fix
+    if (s.total === 0) return "No issues — the file looks clean.";
+    return s.total + " issue(s) — " + nErr + " error(s), " + nWarn + " warning(s).";
 }
 
-function showSummaryDialog(report) {
-    var basename = basenameOf(report.file);
-    var fixes = report.fixes || { applied: [], skipped: [], iterations: 0 };
-    var nApplied   = fixes.applied  ? fixes.applied.length  : 0;
-    var nRemaining = report.findings ? report.findings.length : 0;
+// Walk doc.layers (and sub-layers) and return the layer matching the
+// given slash-separated path, e.g. "bricks/Layer 7". Returns null if
+// no match (e.g. the layer was renamed or deleted between scans).
+function findLayerByPath(doc, layerPath) {
+    if (!layerPath) return null;
+    var parts = layerPath.split("/");
+    var current = doc;
+    for (var i = 0; i < parts.length; i++) {
+        var found = null;
+        try {
+            for (var j = 0; j < current.layers.length; j++) {
+                if (current.layers[j].name === parts[i]) {
+                    found = current.layers[j];
+                    break;
+                }
+            }
+        } catch (e) { return null; }
+        if (!found) return null;
+        current = found;
+    }
+    return (current === doc) ? null : current;
+}
 
-    var w = new Window("dialog", "ai-validate " + aiValidateVersionLabel() + " — done");
+// Set the document's active layer so the Layers panel highlights it
+// and Illustrator's selection focuses there. Tolerant: if the layer
+// can't be found or activeLayer assignment fails, silently no-op.
+function jumpToLayer(doc, layerPath) {
+    var layer = findLayerByPath(doc, layerPath);
+    if (!layer) return;
+    try { doc.activeLayer = layer; } catch (e) { /* tolerate */ }
+}
+
+// Non-modal panel shown to the artist after the initial report walk.
+// Keeps the artist in control: they look at the list, click a row to
+// jump to that layer in Illustrator, fix manually, click Refresh to
+// re-scan. Auto-fix is just one of three actions, not the only path.
+//
+// `runReport` and `runFix` are callbacks the caller (validate.jsx)
+// passes in. They know how to mutate `report` in-place (re-walk,
+// re-check, run the convergence loop). We drive them from button
+// handlers.
+//
+// palette.show() blocks the calling script until the user clicks
+// Close (or the X). While the panel is up, the artist can interact
+// with the document freely — palette ≠ dialog modality-wise.
+function showInteractivePanel(doc, report, runReport, runFix) {
+    var basename = basenameOf(report.file);
+
+    var w = new Window("palette", "ai-validate " + aiValidateVersionLabel());
     w.alignChildren = "fill";
-    w.preferredSize.width = 720;
+    w.preferredSize.width = 760;
     w.spacing = 8;
-    w.margins = 16;
+    w.margins = 12;
 
     var fileLine = w.add("statictext", undefined, "File: " + basename);
     fileLine.graphics.font = ScriptUI.newFont(fileLine.graphics.font.name, "BOLD",
                                               fileLine.graphics.font.size);
 
-    var headline = "Applied " + nApplied + " fix(es). ";
-    if (nRemaining === 0) {
-        headline += "No issues remain.";
-    } else {
-        headline += nRemaining + " issue(s) remain — manual review needed.";
-    }
-    w.add("statictext", undefined, headline);
+    var summaryLine = w.add("statictext", undefined, summaryHeadline(report.summary));
 
-    if (report.error) {
-        var errLine = w.add("statictext", undefined, "⚠ " + report.error,
-                            { multiline: true });
-        errLine.preferredSize.width = 700;
-    }
+    var lb = w.add("listbox", undefined, [], {
+        multiselect: false,
+        numberOfColumns: 3,
+        showHeaders: true,
+        columnTitles: ["Severity", "Issue", "Where"]
+    });
+    lb.preferredSize = [740, 380];
+    fillFindingsListbox(lb, report.findings);
 
-    if (nRemaining > 0) {
-        var lb = w.add("listbox", undefined, [], {
-            multiselect: false,
-            numberOfColumns: 3,
-            showHeaders: true,
-            columnTitles: ["Severity", "Issue", "Where"]
-        });
-        lb.preferredSize = [700, 280];
-        fillFindingsListbox(lb, report.findings);
-    }
+    // Click a row → jump to that layer in Illustrator. The active
+    // layer change is reflected in the Layers panel; the artist still
+    // has to click into the canvas to actually edit, but at least
+    // they don't have to scroll the Layers panel by hand.
+    lb.onChange = function () {
+        if (!lb.selection) return;
+        var idx = lb.selection.index;
+        var f = report.findings[idx];
+        if (f) jumpToLayer(doc, f.layer_path);
+    };
 
-    if (report.file) {
-        var stem = report.file.replace(/\.[^.]+$/, "");
-        var mdPath = stem + ".report.md";
-        w.add("statictext", undefined, "Detailed report saved to:");
-        var pathTxt = w.add("edittext", undefined, mdPath, { readonly: true });
-        pathTxt.preferredSize.width = 700;
-        // The artist needs to Save the document for vector edits to
-        // persist on disk; remind them in the dialog.
-        w.add("statictext", undefined,
-            "Don’t forget to Save the document — auto-fixes are still in-memory until you do.",
-            { multiline: true });
-    }
+    var hint = w.add("statictext", undefined,
+        "Click a row to jump to that layer in the Layers panel. Fix " +
+        "manually in Illustrator, then click Refresh to re-scan. " +
+        "“Fix what’s fixable” applies deterministic auto-fixes; " +
+        "manual-review issues stay in the list.",
+        { multiline: true });
+    hint.preferredSize.width = 740;
 
     var btns = w.add("group");
     btns.alignment = "right";
-    btns.add("button", undefined, "OK", { name: "ok" });
+    var refreshBtn = btns.add("button", undefined, "Refresh");
+    var fixBtn     = btns.add("button", undefined, "Fix what’s fixable");
+    var closeBtn   = btns.add("button", undefined, "Close", { name: "cancel" });
+
+    function repaintList() {
+        lb.removeAll();
+        fillFindingsListbox(lb, report.findings);
+        summaryLine.text = summaryHeadline(report.summary);
+        try { w.update(); } catch (e) {}
+    }
+
+    refreshBtn.onClick = function () {
+        refreshBtn.enabled = false;
+        fixBtn.enabled = false;
+        try {
+            runReport();
+            repaintList();
+        } finally {
+            refreshBtn.enabled = true;
+            fixBtn.enabled = true;
+        }
+    };
+
+    fixBtn.onClick = function () {
+        refreshBtn.enabled = false;
+        fixBtn.enabled = false;
+        try {
+            runFix();
+            repaintList();
+            // Append a "Save your work" reminder to the summary line
+            // — the panel stays open afterwards so the artist sees it.
+            summaryLine.text = summaryHeadline(report.summary) +
+                "  •  Save the document to keep changes.";
+        } finally {
+            refreshBtn.enabled = true;
+            fixBtn.enabled = true;
+        }
+    };
+
+    closeBtn.onClick = function () { w.close(); };
+
     w.show();
 }
 
