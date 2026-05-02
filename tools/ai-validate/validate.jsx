@@ -90,21 +90,35 @@
         report.file = doc.fullName ? doc.fullName.fsName : doc.name;
         logInfo("document selected", { file: report.file });
 
-        // Always start with a read-only walk + checks, regardless of
-        // mode. In interactive mode the result feeds the preview
-        // dialog; in fix mode (dev) it's the baseline before the
-        // unlock pre-pass overwrites it.
+        // Always start with a read-only walk + checks. In interactive
+        // mode the panel takes over from here; in dev mode the result
+        // is either written straight out (report mode) or used as the
+        // baseline before the fix loop's unlock pre-pass overwrites it
+        // (fix mode).
         runReportPass(doc, report);
 
         if (INTERACTIVE) {
-            var goFix = showPreviewDialog(report);
-            if (!goFix) {
-                logInfo("interactive: cancel — writing report only");
-                writeReport(REPORT_PATH, report);
-                writeMarkdown(report);
-                return;
-            }
-            report.mode = "fix";
+            // Hand off to the non-blocking panel. It stays open while
+            // the artist navigates the document and fixes things by
+            // hand or via auto-fix; the script blocks here until the
+            // user closes the panel.
+            showInteractivePanel(doc, report,
+                function () {
+                    // refresh callback — re-walk + re-check.
+                    runReportPass(doc, report);
+                    writeReport(REPORT_PATH, report);
+                    writeMarkdown(report);
+                },
+                function () {
+                    // fix callback — run convergence loop, persist the
+                    // post-fix report. report.mode flips to "fix"
+                    // permanently once auto-fix runs at least once.
+                    report.mode = "fix";
+                    runFixLoop(doc, report);
+                    writeReport(REPORT_PATH, report);
+                    writeMarkdown(report);
+                });
+            return;
         }
 
         if (report.mode === "fix") {
@@ -120,11 +134,9 @@
     writeReport(REPORT_PATH, report);
     writeMarkdown(report);
 
-    if (INTERACTIVE && report.mode === "fix") {
-        showSummaryDialog(report);
-    } else if (INTERACTIVE && report.error) {
-        // Interactive caller should still hear about catastrophic
-        // failures even before the preview ran (rare).
+    if (INTERACTIVE && report.error) {
+        // Interactive catastrophic-failure path (e.g. exception
+        // before the panel opened). Surface to the artist directly.
         alert("ai-validate: " + report.error);
     }
 })();
