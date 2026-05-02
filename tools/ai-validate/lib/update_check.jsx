@@ -145,31 +145,19 @@ function refreshManifestInBackground(url, cacheFile) {
         // default handler — for .vbs that's wscript by default.
         vbs.execute();
     } else {
-        var sh = new File(helperDir.fsName + "/ai-validate-update.sh");
-        sh.encoding = "UTF-8";
-        sh.open("w");
-        sh.write(
-            "#!/bin/bash\n" +
-            "curl -fsSL --max-time 5 -o " + shQuote(cachePath) + " " + shQuote(url) + " || true\n"
-        );
-        sh.close();
-        // chmod +x and detach. File.execute on a .sh opens it in
-        // Terminal — instead, run via /bin/bash -c so it stays headless.
-        var bash = new File("/bin/bash");
-        // ExtendScript can't really "spawn" — easiest reliable path is
-        // to invoke via AppleScript's `do shell script ... &` so it
-        // detaches. AppleScript runs via osascript.
-        var detach = new File(helperDir.fsName + "/ai-validate-update-detach.scpt");
-        detach.encoding = "UTF-8";
-        detach.open("w");
-        detach.write(
-            "do shell script \"chmod +x " + sh.fsName + " && nohup " + sh.fsName + " >/dev/null 2>&1 &\"\n"
-        );
-        detach.close();
-        detach.execute();
+        // macOS: the script itself doesn't refresh — refresh is handled
+        // out-of-band by a per-user launchd agent installed by the
+        // .pkg's postinstall (com.alexeytuboltsev.ai-validate-updater,
+        // fires once per 24 h via StartInterval). We can't do it from
+        // here because Illustrator's ExtendScript engine has no silent
+        // shell-out: File.execute on .sh opens Terminal, on .scpt
+        // opens Script Editor (artist-reported on sv0.1.1), and
+        // there's no $.system / system.callSystem to lean on.
+        //
+        // The cache file lives at the same Folder.userData path the
+        // launchd refresh.sh writes to, so the read above transparently
+        // sees whatever the agent fetched last.
+        return;
     }
 }
 
-function shQuote(s) {
-    return "'" + String(s).replace(/'/g, "'\\''") + "'";
-}
