@@ -19,6 +19,7 @@
 #include "lib/checks.jsx"
 #include "lib/fixes.jsx"
 #include "lib/render_md.jsx"
+#include "lib/update_check.jsx"
 
 (function main() {
     var REPORT_VERSION = 1;
@@ -39,6 +40,12 @@
 
     logReset();
     logInfo("validate.jsx: start", { mode: report.mode });
+
+    // Non-blocking: alerts only if a previous run cached a newer
+    // manifest. Refreshes the cache in the background for next time.
+    // Bundled builds set AI_VALIDATE_VERSION + AI_VALIDATE_MANIFEST_URL;
+    // dev (un-bundled) runs skip the check.
+    maybeWarnAboutUpdate();
 
     try {
         var target = readTrimmed(TARGET_PATH);
