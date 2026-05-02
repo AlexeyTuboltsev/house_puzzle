@@ -39,6 +39,10 @@ function maybeWarnAboutUpdate() {
         var current = (typeof AI_VALIDATE_VERSION === "string") ? AI_VALIDATE_VERSION : null;
         var manifestUrl = (typeof AI_VALIDATE_MANIFEST_URL === "string") ? AI_VALIDATE_MANIFEST_URL : null;
         if (!current || !manifestUrl) return; // dev mode (no bundle constants)
+        // Dev wrapper sentinel: AI_VALIDATE_VERSION = "(dev)" gets us
+        // into interactive mode but should never trip the update
+        // alert. Only real semver gets compared against the cache.
+        if (!/^\d+\.\d+\.\d+$/.test(current)) return;
 
         // Read the previous run's cache and show warning if newer.
         var cached = readManifestCache(cacheFile);
