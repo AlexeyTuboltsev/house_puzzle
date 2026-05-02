@@ -4,9 +4,15 @@ on:
   push:
     branches:
       - main
+    paths-ignore:
+      - 'tools/ai-validate/**'
+      - '.github/workflows/release-ai-validate.yml'
   pull_request:
     branches:
       - main
+    paths-ignore:
+      - 'tools/ai-validate/**'
+      - '.github/workflows/release-ai-validate.yml'
 
 env:
   CARGO_TERM_COLOR: always

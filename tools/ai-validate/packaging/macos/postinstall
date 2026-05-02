@@ -1,0 +1,46 @@
+#!/bin/bash
+# packaging/macos/postinstall — runs as part of the .pkg install.
+#
+# pkgbuild stages our bundled .jsx into /tmp/ai-validate-staging/. We
+# locate every installed Adobe Illustrator and copy the file into each
+# one's Presets/en_US/Scripts so the artist sees it under
+# File > Scripts. Multi-version coexistence (2022 + 2024 side-by-side)
+# is intentionally supported.
+
+set -euo pipefail
+
+STAGING="/tmp/ai-validate-staging"
+BUNDLE="$STAGING/ai-validate.jsx"
+
+if [[ ! -f "$BUNDLE" ]]; then
+    echo "[postinstall] bundle missing at $BUNDLE — aborting"
+    exit 1
+fi
+
+shopt -s nullglob
+TARGETS=(/Applications/Adobe\ Illustrator*)
+if [[ ${#TARGETS[@]} -eq 0 ]]; then
+    # No /Applications hit — try mdfind as a fallback (handles
+    # custom install locations).
+    while IFS= read -r app; do
+        TARGETS+=("$app")
+    done < <(mdfind 'kMDItemCFBundleIdentifier == "com.adobe.illustrator"' 2>/dev/null)
+fi
+
+if [[ ${#TARGETS[@]} -eq 0 ]]; then
+    osascript -e 'display dialog "No Adobe Illustrator install was detected. ai-validate.jsx is at /tmp/ai-validate-staging/ai-validate.jsx — drop it into Illustrator'\''s Scripts folder manually." buttons {"OK"} default button 1' || true
+    exit 0
+fi
+
+for app in "${TARGETS[@]}"; do
+    scripts_dir="$app/Contents/Presets/en_US/Scripts"
+    if [[ -d "$scripts_dir" ]]; then
+        cp "$BUNDLE" "$scripts_dir/ai-validate.jsx"
+        chmod 644 "$scripts_dir/ai-validate.jsx"
+        echo "[postinstall] installed → $scripts_dir/ai-validate.jsx"
+    fi
+done
+
+# Clean staging.
+rm -rf "$STAGING"
+exit 0

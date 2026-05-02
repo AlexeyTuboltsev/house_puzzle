@@ -1,0 +1,159 @@
+name: Release ai-validate
+
+# Triggered by tags shaped `sv*` — short for "script version". The
+# main app's release pipeline (build-tauri.yml) listens on `v*` tags,
+# so the two release lanes never overlap.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to build (e.g. 0.1.0). Leave empty to use packaging/version.txt."
+        required: false
+        default: ""
+  push:
+    tags:
+      - "sv*"
+
+permissions:
+  contents: write
+
+jobs:
+  resolve-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.pick.outputs.version }}
+      tag: ${{ steps.pick.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: pick
+        name: Resolve version
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            # tag is `svX.Y.Z` → strip leading sv
+            TAG="${GITHUB_REF#refs/tags/}"
+            VER="${TAG#sv}"
+          elif [[ -n "${{ inputs.version }}" ]]; then
+            VER="${{ inputs.version }}"
+            TAG="sv${VER}"
+          else
+            VER="$(cat tools/ai-validate/packaging/version.txt | tr -d '[:space:]')"
+            TAG="sv${VER}"
+          fi
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG"     >> "$GITHUB_OUTPUT"
+          echo "Resolved version=$VER tag=$TAG"
+
+  bundle:
+    needs: resolve-version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ needs.resolve-version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bundle .jsx
+        working-directory: tools/ai-validate
+        env:
+          VERSION: ${{ needs.resolve-version.outputs.version }}
+        run: ./packaging/bundle.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jsx-bundle
+          path: tools/ai-validate/dist/ai-validate-*.jsx
+          if-no-files-found: error
+
+  build-windows:
+    needs: [resolve-version, bundle]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: jsx-bundle
+          path: tools/ai-validate/dist
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+      - name: Build installer
+        shell: cmd
+        working-directory: tools/ai-validate/packaging/windows
+        run: |
+          iscc /DAppVersion=${{ needs.resolve-version.outputs.version }} ^
+               /DBundleSrc=..\..\dist\ai-validate-${{ needs.resolve-version.outputs.version }}.jsx ^
+               installer.iss
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: tools/ai-validate/dist/ai-validate-*-setup.exe
+          if-no-files-found: error
+
+  build-macos:
+    needs: [resolve-version, bundle]
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: jsx-bundle
+          path: tools/ai-validate/dist
+      - name: Build .pkg
+        working-directory: tools/ai-validate
+        env:
+          VERSION: ${{ needs.resolve-version.outputs.version }}
+        run: ./packaging/macos/build-pkg.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-pkg
+          path: tools/ai-validate/dist/ai-validate-*.pkg
+          if-no-files-found: error
+
+  release:
+    needs: [resolve-version, build-windows, build-macos]
+    if: startsWith(github.ref, 'refs/tags/sv')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-installer
+          path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: macos-pkg
+          path: dist
+      - name: Refresh script-version.json on main
+        env:
+          VER: ${{ needs.resolve-version.outputs.version }}
+          TAG: ${{ needs.resolve-version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          DATE=$(date -u +%Y-%m-%d)
+          cat > tools/ai-validate/script-version.json <<EOF
+          {
+            "version": "$VER",
+            "released": "$DATE",
+            "release_notes_url": "https://github.com/${{ github.repository }}/releases/tag/$TAG",
+            "platforms": {
+              "windows": "https://github.com/${{ github.repository }}/releases/download/$TAG/ai-validate-$VER-setup.exe",
+              "macos":   "https://github.com/${{ github.repository }}/releases/download/$TAG/ai-validate-$VER.pkg"
+            }
+          }
+          EOF
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git checkout main
+          git add tools/ai-validate/script-version.json
+          if ! git diff --cached --quiet; then
+            git commit -m "release(ai-validate): publish $TAG manifest"
+            git push origin main
+          fi
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.resolve-version.outputs.tag }}
+          name: ai-validate ${{ needs.resolve-version.outputs.version }}
+          files: |
+            dist/*.exe
+            dist/*.pkg
+          generate_release_notes: true
