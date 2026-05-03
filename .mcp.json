@@ -10,6 +10,11 @@
         "--transport",
         "stdio"
       ]
+    },
+    "firecrawl": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "firecrawl-mcp"]
     }
   }
 }

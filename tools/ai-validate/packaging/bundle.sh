@@ -42,6 +42,15 @@ LIB_ORDER=(
 )
 
 {
+    # `#target illustrator` is the only directive we keep at the top
+    # of the bundle. `#targetengine` directives appear to be silently
+    # stripped by Illustrator's File > Scripts menu invocation, so
+    # we don't try to attach a named persistent engine via the
+    # directive route. Instead, validate.jsx's BT bootstrap re-
+    # dispatches the script into BridgeTalk's persistent engine —
+    # works regardless of how the bundle was launched.
+    echo "#target illustrator"
+    echo ""
     echo "// ai-validate $VERSION — bundled"
     echo "// generated $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
     echo "// DO NOT EDIT — regenerate via packaging/bundle.sh"
@@ -60,15 +69,17 @@ LIB_ORDER=(
         echo "// =============================================================="
         echo "// $f"
         echo "// =============================================================="
-        # Strip #include lines from sources (already inlined here).
-        grep -v '^#include' "$f"
+        # Strip #include and #target / #targetengine lines from each
+        # source — we inline contents here and the directives at the
+        # top of the bundle are the canonical ones.
+        grep -v -E '^#include|^#target' "$f"
         echo ""
     done
-    # validate.jsx last, with its #include directives also stripped.
+    # validate.jsx last, with its #include + #target directives stripped.
     echo "// =============================================================="
     echo "// validate.jsx (entry)"
     echo "// =============================================================="
-    grep -v '^#include' validate.jsx
+    grep -v -E '^#include|^#target' validate.jsx
 } > "$OUT_FILE"
 
 echo "[bundle] $OUT_FILE ($(wc -l < "$OUT_FILE") lines, $(wc -c < "$OUT_FILE") bytes)"

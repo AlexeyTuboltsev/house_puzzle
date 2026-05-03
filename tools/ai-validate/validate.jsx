@@ -12,8 +12,12 @@
 //   - No alert() in headless mode — it blocks Illustrator. Interactive
 //     mode (bundled .jsx) does use ScriptUI dialogs; that's fine
 //     because the artist just clicked File > Scripts > ai-validate.
-
-#target illustrator
+//
+// NB: #target / #targetengine directives are intentionally NOT in this
+// file. The dev wrapper (ai-validate.jsx) and the production bundle
+// own them, declared once at the very top. Re-declaring them here
+// breaks the named-engine load when this file is reached via
+// $.evalFile from the wrapper (Illustrator's parser silently aborts).
 
 #include "lib/json2.jsx"
 #include "lib/log.jsx"
@@ -23,6 +27,16 @@
 #include "lib/render_md.jsx"
 #include "lib/update_check.jsx"
 #include "lib/ui.jsx"
+
+// Captured at parse time so the panel's BT-dispatch handlers know
+// which file to $.evalFile when the user clicks Refresh / Fix.
+// In dev: the /Users/varya/.../validate.jsx path. In production
+// bundle: the /Applications/.../Scripts/ai-validate.jsx path.
+// Either way, re-evaluating this file via BridgeTalk re-runs all the
+// helpers in the BT engine where doc access works from palette
+// callbacks.
+var AI_VALIDATE_ENTRY_PATH = null;
+try { AI_VALIDATE_ENTRY_PATH = $.fileName; } catch (eP) {}
 
 (function main() {
     var REPORT_VERSION = 1;
@@ -40,6 +54,57 @@
     // to the artist).
     var INTERACTIVE = (typeof AI_VALIDATE_VERSION === "string");
 
+    // BridgeTalk bootstrap. ScriptUI palette() windows die when their
+    // host script's engine context tears down. File > Scripts and
+    // Cmd+F12 both launch us in a default ephemeral engine where
+    // palettes can't persist. So: if we haven't yet been routed
+    // through BridgeTalk's persistent engine, send ourselves to it
+    // and exit. The BT body sets AI_VALIDATE_BT_READY so this branch
+    // is a no-op on the re-entry.
+    //
+    // Action-mode BT dispatches (Refresh / Fix from the panel) also
+    // set AI_VALIDATE_BT_READY, so the action-mode branch below sees
+    // it and skips this re-dispatch.
+    //
+    // Only applicable in interactive mode (i.e. when AI_VALIDATE_VERSION
+    // is set — bundled or dev wrapper). The headless run.sh path
+    // doesn't need a persistent engine.
+    if (INTERACTIVE && typeof AI_VALIDATE_BT_READY === "undefined") {
+        var selfPath = AI_VALIDATE_ENTRY_PATH;
+        try { if (!selfPath) selfPath = $.fileName; } catch (eFn) {}
+        if (selfPath) {
+            // Forward the version + manifest constants through the BT
+            // body. In the production bundle these are baked into the
+            // bundle text at top, so the BT-eval'd copy already has
+            // them — passing them again is a no-op overwrite. In dev,
+            // the wrapper sets them in the default engine ONLY; the BT
+            // engine is fresh, so without this propagation INTERACTIVE
+            // would be false on the BT side and the panel would never
+            // open.
+            var verLit = (typeof AI_VALIDATE_VERSION === "string")
+                ? JSON.stringify(AI_VALIDATE_VERSION) : "undefined";
+            var manLit = (typeof AI_VALIDATE_MANIFEST_URL === "string")
+                ? JSON.stringify(AI_VALIDATE_MANIFEST_URL) : "undefined";
+
+            var btBoot = new BridgeTalk();
+            btBoot.target = BridgeTalk.appSpecifier;
+            btBoot.body =
+                "AI_VALIDATE_BT_READY = true;\n" +
+                "AI_VALIDATE_ACTION = undefined;\n" +
+                "AI_VALIDATE_VERSION = " + verLit + ";\n" +
+                "AI_VALIDATE_MANIFEST_URL = " + manLit + ";\n" +
+                "$.evalFile(new File(" + JSON.stringify(selfPath) + "));\n";
+            btBoot.onError = function (resp) {
+                alert("ai-validate BT bootstrap failed:\n" +
+                      (resp && resp.body ? resp.body : String(resp)));
+            };
+            btBoot.send();
+        } else {
+            alert("ai-validate: couldn't determine script path for BridgeTalk re-dispatch.");
+        }
+        return;
+    }
+
     var report = {
         version: REPORT_VERSION,
         mode: "report",
@@ -51,8 +116,57 @@
         error: null
     };
 
+    // Action mode: BT-dispatched fix/refresh from the panel's button
+    // onClick handlers. Each BT message body $.evalFile()s this very
+    // file with AI_VALIDATE_ACTION set ("report" or "fix") to trigger
+    // the headless code path below — runs the requested action,
+    // writes /tmp/ai-validate-report.json, returns. The panel's
+    // onResult callback re-reads the file and updates its UI.
+    //
+    // Why a flag instead of a separate entry script: BT message
+    // bodies appear to run in fresh engine contexts (writeReport et
+    // al. defined elsewhere are not visible). Re-evaluating
+    // validate.jsx in the BT body brings every helper back into scope
+    // and reuses one source-of-truth for the report pipeline.
+    if (typeof AI_VALIDATE_ACTION === "string") {
+        // Capture the action and IMMEDIATELY clear the global. BT
+        // engine state persists across messages, so leaving it set
+        // would cause the NEXT validate.jsx eval (e.g. from re-
+        // opening the panel via File > Scripts > ai-validate) to
+        // re-enter this branch and skip the interactive path. Bug
+        // observed in the wild as "I closed the panel, now the
+        // script doesn't open again."
+        var theAction = AI_VALIDATE_ACTION;
+        AI_VALIDATE_ACTION = undefined;
+
+        var REPORT_PATH_ACT = "/tmp/ai-validate-report.json";
+        var actionReport = {
+            version: REPORT_VERSION, mode: theAction, file: null,
+            findings: [], summary: null, fixes: null, snapshot: null, error: null
+        };
+        try {
+            var actDoc = app.activeDocument;
+            if (!actDoc) {
+                actionReport.error = "no active document";
+            } else {
+                actionReport.file = actDoc.fullName ? actDoc.fullName.fsName : actDoc.name;
+                runReportPass(actDoc, actionReport);
+                if (theAction === "fix") {
+                    runFixLoop(actDoc, actionReport);
+                }
+            }
+        } catch (eAct) {
+            actionReport.error = String(eAct) + (eAct.line ? " (line " + eAct.line + ")" : "");
+        }
+        writeReport(REPORT_PATH_ACT, actionReport);
+        writeMarkdown(actionReport);
+        return;
+    }
+
     logReset();
-    logInfo("validate.jsx: start", { interactive: INTERACTIVE });
+    var engineName = "?";
+    try { engineName = $.engineName; } catch (e) {}
+    logInfo("validate.jsx: start", { interactive: INTERACTIVE, engine: engineName });
 
     // Non-blocking: alerts only if a previous run cached a newer
     // manifest. Refresh of the cache itself is handled out-of-band on
@@ -90,37 +204,20 @@
         report.file = doc.fullName ? doc.fullName.fsName : doc.name;
         logInfo("document selected", { file: report.file });
 
-        // Always start with a read-only walk + checks. In interactive
-        // mode the panel takes over from here; in dev mode the result
-        // is either written straight out (report mode) or used as the
-        // baseline before the fix loop's unlock pre-pass overwrites it
-        // (fix mode).
-        runReportPass(doc, report);
-
         if (INTERACTIVE) {
-            // Hand off to the non-blocking panel. It stays open while
-            // the artist navigates the document and fixes things by
-            // hand or via auto-fix; the script blocks here until the
-            // user closes the panel.
-            showInteractivePanel(doc, report,
-                function () {
-                    // refresh callback — re-walk + re-check.
-                    runReportPass(doc, report);
-                    writeReport(REPORT_PATH, report);
-                    writeMarkdown(report);
-                },
-                function () {
-                    // fix callback — run convergence loop, persist the
-                    // post-fix report. report.mode flips to "fix"
-                    // permanently once auto-fix runs at least once.
-                    report.mode = "fix";
-                    runFixLoop(doc, report);
-                    writeReport(REPORT_PATH, report);
-                    writeMarkdown(report);
-                });
+            // Hand off to the non-blocking panel WITHOUT pre-walking.
+            // The panel paints empty/scanning, then BT-dispatches the
+            // initial walk + check itself. This avoids the ~5s "menu
+            // → panel" gap on large files where Illustrator looked
+            // frozen with no UI feedback. All subsequent walks (refresh)
+            // and fixes flow through the same BT-dispatched pipeline.
+            showInteractivePanel(doc, report);
             return;
         }
 
+        // Dev / run.sh path is still synchronous: walk + (optionally)
+        // fix, write the report and exit.
+        runReportPass(doc, report);
         if (report.mode === "fix") {
             runFixLoop(doc, report);
         }
