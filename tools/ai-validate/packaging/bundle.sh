@@ -42,13 +42,14 @@ LIB_ORDER=(
 )
 
 {
-    # ExtendScript directives MUST be at the top of the file, before
-    # any code — `#target` selects the host app, `#targetengine` opts
-    # into a named persistent engine so the ScriptUI palette survives
-    # past the script's natural end (otherwise palette closes the
-    # instant the engine context tears down).
+    # `#target illustrator` is the only directive we keep at the top
+    # of the bundle. `#targetengine` directives appear to be silently
+    # stripped by Illustrator's File > Scripts menu invocation, so
+    # we don't try to attach a named persistent engine via the
+    # directive route. Instead, validate.jsx's BT bootstrap re-
+    # dispatches the script into BridgeTalk's persistent engine —
+    # works regardless of how the bundle was launched.
     echo "#target illustrator"
-    echo "#targetengine \"ai-validate-panel\""
     echo ""
     echo "// ai-validate $VERSION — bundled"
     echo "// generated $(date -u '+%Y-%m-%dT%H:%M:%SZ')"

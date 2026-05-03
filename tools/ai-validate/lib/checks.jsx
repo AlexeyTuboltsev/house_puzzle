@@ -45,7 +45,7 @@ var GRID_CLUSTER_RADIUS = 1.0;   // pymu  — single-link cluster radius
 var CORNER_JITTER_MIN  = 0.05;   // pymu  — below this, considered "matched"
 var CORNER_JITTER_MAX  = 1.0;    // pymu  — above this, not the same corner
 
-var REQUIRED_TOP_LAYERS = ["bricks", "screen", "background"];
+var REQUIRED_TOP_LAYERS = ["bricks", "screen", "background", "lights"];
 var BRICK_CONTAINER_PREFIX = "bricks/";
 
 // --- entry point --------------------------------------------------------

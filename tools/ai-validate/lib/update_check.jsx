@@ -33,29 +33,41 @@
 
 var UPDATE_CHECK_MIN_AGE_HOURS = 12;
 
-function maybeWarnAboutUpdate() {
+// Returns the cached manifest if a newer version is available, else
+// null. Side-effect: kicks off a background refresh if the cache is
+// stale, so the next session sees a current manifest. Used by the
+// panel to render an in-UI banner instead of the old modal alert.
+function getAvailableUpdateManifest() {
     try {
         var cacheFile = updateCheckCacheFile();
         var current = (typeof AI_VALIDATE_VERSION === "string") ? AI_VALIDATE_VERSION : null;
         var manifestUrl = (typeof AI_VALIDATE_MANIFEST_URL === "string") ? AI_VALIDATE_MANIFEST_URL : null;
-        if (!current || !manifestUrl) return; // dev mode (no bundle constants)
-        // Dev wrapper sentinel: AI_VALIDATE_VERSION = "(dev)" gets us
-        // into interactive mode but should never trip the update
-        // alert. Only real semver gets compared against the cache.
-        if (!/^\d+\.\d+\.\d+$/.test(current)) return;
+        if (!current || !manifestUrl) return null; // dev mode
+        // Dev sentinel "(dev)" must never participate.
+        if (!/^\d+\.\d+\.\d+$/.test(current)) return null;
 
-        // Read the previous run's cache and show warning if newer.
         var cached = readManifestCache(cacheFile);
-        if (cached && cached.version && versionLessThan(current, cached.version)) {
-            showUpdateAlert(current, cached);
-        }
 
-        // Kick off a background refresh if the cache is stale.
         if (cacheIsStale(cacheFile, UPDATE_CHECK_MIN_AGE_HOURS)) {
             refreshManifestInBackground(manifestUrl, cacheFile);
         }
+
+        if (cached && cached.version && versionLessThan(current, cached.version)) {
+            return cached;
+        }
+        return null;
     } catch (e) {
         try { logWarn("update_check failed", { error: String(e) }); } catch (eLog) {}
+        return null;
+    }
+}
+
+// Legacy entry — keeps any direct callers working. The panel now uses
+// getAvailableUpdateManifest() and renders inline instead of alerting.
+function maybeWarnAboutUpdate() {
+    var m = getAvailableUpdateManifest();
+    if (m) {
+        try { showUpdateAlert(AI_VALIDATE_VERSION, m); } catch (e) {}
     }
 }
 
