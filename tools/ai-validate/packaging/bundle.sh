@@ -42,6 +42,14 @@ LIB_ORDER=(
 )
 
 {
+    # ExtendScript directives MUST be at the top of the file, before
+    # any code — `#target` selects the host app, `#targetengine` opts
+    # into a named persistent engine so the ScriptUI palette survives
+    # past the script's natural end (otherwise palette closes the
+    # instant the engine context tears down).
+    echo "#target illustrator"
+    echo "#targetengine \"ai-validate-panel\""
+    echo ""
     echo "// ai-validate $VERSION — bundled"
     echo "// generated $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
     echo "// DO NOT EDIT — regenerate via packaging/bundle.sh"
@@ -60,15 +68,17 @@ LIB_ORDER=(
         echo "// =============================================================="
         echo "// $f"
         echo "// =============================================================="
-        # Strip #include lines from sources (already inlined here).
-        grep -v '^#include' "$f"
+        # Strip #include and #target / #targetengine lines from each
+        # source — we inline contents here and the directives at the
+        # top of the bundle are the canonical ones.
+        grep -v -E '^#include|^#target' "$f"
         echo ""
     done
-    # validate.jsx last, with its #include directives also stripped.
+    # validate.jsx last, with its #include + #target directives stripped.
     echo "// =============================================================="
     echo "// validate.jsx (entry)"
     echo "// =============================================================="
-    grep -v '^#include' validate.jsx
+    grep -v -E '^#include|^#target' validate.jsx
 } > "$OUT_FILE"
 
 echo "[bundle] $OUT_FILE ($(wc -l < "$OUT_FILE") lines, $(wc -c < "$OUT_FILE") bytes)"

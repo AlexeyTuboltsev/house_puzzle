@@ -26,6 +26,15 @@
 // THIS wrapper is for the developer's machine only.
 
 #target illustrator
+// ScriptUI palette() windows are destroyed the moment their host
+// script's engine context tears down. Without a named engine, the
+// wrapper's main runs on the default one-shot engine, $.evalFile
+// returns, the engine dies, and the panel disappears before the
+// artist ever sees it ("I ran the script, nothing happened").
+// "session" lifetime keeps the engine alive for the rest of the
+// Illustrator session — palette + its onClick closures remain
+// usable. Re-running the script reuses the same engine.
+#targetengine "ai-validate-panel"
 
 var AI_VALIDATE_VERSION = "(dev)";
 var AI_VALIDATE_MANIFEST_URL = "";

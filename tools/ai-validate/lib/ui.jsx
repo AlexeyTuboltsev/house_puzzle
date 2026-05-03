@@ -205,6 +205,7 @@ function showFindingInDoc(doc, finding) {
 // with the document freely — palette ≠ dialog modality-wise.
 function showInteractivePanel(doc, report, runReport, runFix) {
     var basename = basenameOf(report.file);
+    try { logInfo("ui: building panel", { findings: report.findings.length }); } catch (e) {}
 
     var w = new Window("palette", "ai-validate " + aiValidateVersionLabel());
     w.alignChildren = "fill";
@@ -289,7 +290,9 @@ function showInteractivePanel(doc, report, runReport, runFix) {
 
     closeBtn.onClick = function () { w.close(); };
 
+    try { logInfo("ui: about to show panel"); } catch (e) {}
     w.show();
+    try { logInfo("ui: panel closed"); } catch (e) {}
 }
 
 // Non-modal palette shown during the fix loop so the artist sees
