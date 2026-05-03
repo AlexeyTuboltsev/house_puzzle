@@ -82,53 +82,42 @@ jobs:
           sed -i.bak "s/version: 'dev'/version: '$VERSION'/" dist/index.html
           rm -f tauri.conf.json.bak Cargo.toml.bak dist/index.html.bak
 
+      # Bundle + sign (when secrets are present) + emit latest.json,
+      # then on tag pushes create / update the GitHub release with the
+      # signed bundles, .sig files and latest.json. The Tauri updater
+      # plugin in the running app polls latest.json and verifies the
+      # downloaded bundle's signature against the public key in
+      # tauri.conf.json before replacing the binary.
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: crates/hp-tauri
           args: ${{ matrix.args }}
+          tagName: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
+          releaseName: ${{ startsWith(github.ref, 'refs/tags/v') && format('House Puzzle {0}', github.ref_name) || '' }}
+          releaseDraft: false
+          prerelease: false
+          includeUpdaterJson: true
 
-      - name: Collect and rename artifacts
-        shell: bash
-        run: |
-          mkdir -p release-artifacts/${{ matrix.artifact-suffix }}
-          SUFFIX=${{ matrix.artifact-suffix }}
-
-          # Find and copy artifacts with platform prefix
-          find target -name "*.deb" -path "*/bundle/*" | while read f; do
-            base=$(basename "$f")
-            cp "$f" "release-artifacts/${SUFFIX}/${SUFFIX}-${base}"
-          done
-          find target -name "*.AppImage" -path "*/bundle/*" | while read f; do
-            base=$(basename "$f")
-            cp "$f" "release-artifacts/${SUFFIX}/${SUFFIX}-${base}"
-            chmod +x "release-artifacts/${SUFFIX}/${SUFFIX}-${base}"
-          done
-          find target -name "*.dmg" -path "*/bundle/*" | while read f; do
-            base=$(basename "$f")
-            cp "$f" "release-artifacts/${SUFFIX}/${SUFFIX}-${base}"
-          done
-          find target -name "*.msi" -path "*/bundle/*" | while read f; do
-            base=$(basename "$f")
-            cp "$f" "release-artifacts/${SUFFIX}/${SUFFIX}-${base}"
-          done
-          find target -name "*.exe" -path "*/bundle/nsis/*" | while read f; do
-            base=$(basename "$f")
-            cp "$f" "release-artifacts/${SUFFIX}/${SUFFIX}-${base}"
-          done
-
-          echo "Release artifacts for ${SUFFIX}:"
-          ls -la release-artifacts/${SUFFIX}/ || echo "(none)"
-
-      - name: Upload release artifacts
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: release-artifacts/${{ matrix.artifact-suffix }}/*
-
+      # Workflow-dispatch (non-tag) runs still upload the per-platform
+      # bundle dir as a CI artifact so we can grab a build for testing
+      # without making a release. Includes the .sig files + latest.json
+      # when signing was active.
       - uses: actions/upload-artifact@v4
         with:
           name: tauri-${{ matrix.artifact-suffix }}
-          path: release-artifacts/${{ matrix.artifact-suffix }}/
+          path: |
+            target/**/bundle/**/*.deb
+            target/**/bundle/**/*.AppImage
+            target/**/bundle/**/*.AppImage.sig
+            target/**/bundle/**/*.dmg
+            target/**/bundle/**/*.dmg.sig
+            target/**/bundle/**/*.msi
+            target/**/bundle/**/*.msi.sig
+            target/**/bundle/**/*.exe
+            target/**/bundle/**/*.exe.sig
+            target/**/bundle/latest.json
           if-no-files-found: warn
