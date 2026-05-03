@@ -65,9 +65,51 @@ Resolved: Tauri app bundle handles this natively.
 Full /api/export without browser — server-side outline path generation.
 
 ### Extensive logging + remote error reporting
-Add structured logging throughout the pipeline (parse, render, merge, export).
-Eventually: opt-in home-calling that sends error logs to a remote endpoint
-so client-reported issues can be diagnosed without access to their machine.
+Add structured logging throughout the pipeline (parse, render, merge,
+export). Today the code uses `eprintln!` ad-hoc, which works in dev
+but vanishes in distributed builds — when a user reports a bug we
+have nothing to look at.
+
+**Local logging — `tauri-plugin-log`.**
+Cross-stack structured logging that writes to a rotating file under
+the OS app-data dir AND streams to the WebView console + stdout.
+Both the Rust side and the Elm side log through the same sink, so
+"piece dropped, wave 4 -> wave 2" from Elm and "compose_clipped:
+canvas=450x820 offset=(-24,0)" from Rust end up in one chronologically
+ordered file. Configurable per-target log levels, redacts paths to
+`~` by default. Once integrated, an "Export logs" / "Copy logs"
+button is trivial — opens the log file in the OS file manager or
+copies the last N lines to clipboard.
+
+**Remote error reporting — Sentry-style.**
+For client-reported bugs we want the log + a stack trace + redacted
+system info (OS, app version, AI file metadata — never the file
+itself) sent to a remote endpoint we can grep. Options:
+
+- **Sentry** — has Rust SDK (`sentry`) and JS SDK. Free tier covers
+  5k errors/month, enough for a small desktop tool. Plugs into
+  `tauri-plugin-log` as an additional sink for `error!` and above.
+- **GlitchTip** — open-source, Sentry-compatible API. Self-host or
+  use their hosted free tier. Same SDKs as Sentry work against it.
+- **DIY webhook** — `tauri-plugin-log` + a small Rust command that
+  POSTs `error!` lines to a private endpoint (Cloudflare Worker,
+  GitHub Issue API with a bot, etc.). Cheapest, lowest fidelity.
+
+Privacy: must be opt-in (toggle in settings, default off in EU
+distributions), and payload must be transparent — show the user
+what we'd send before they confirm. AI file content is sensitive;
+ship metadata only.
+
+**User-facing "Report bug" flow.**
+Button somewhere accessible (Help menu, About panel, error toast).
+Bundles last N log lines + redacted system info into a single
+payload. Two mode options:
+
+1. Pre-fill a GitHub issue with the log inlined (opens the user's
+   browser via `tauri-plugin-shell::shell.open`). User reviews,
+   submits.
+2. Direct POST to the configured remote sink, with a confirmation
+   dialog showing the payload first.
 
 ### Update checker — doesn't fire (confirmed broken v0.4.0 → v0.4.1)
 tauri-plugin-updater integrated (PR #56), `check_for_updates` command
@@ -266,9 +308,12 @@ change. Need a real distribution path. Options to evaluate:
   — re-run validation". Catches the "did the artist run the new
   validator" question without asking.
 
-### Persist user settings between sessions
+### Persist user settings + window state between sessions
 Several UI knobs live in the DOM/Elm only and reset on every launch:
 
+- Window size + position (currently `tauri.conf.json` hard-codes
+  `width: 1280, height: 800, center: true` and ignores how the user
+  last sized the window).
 - `--tools-width` (right panel width — set by dragging `.resize-handle`,
   default now 40vw, never persisted).
 - Zoom level / pan position on the canvas.
@@ -278,13 +323,18 @@ Several UI knobs live in the DOM/Elm only and reset on every launch:
   the directory; the actual selected file isn't restored).
 - Selected wave / piece editor mode state.
 
-Tauri has `tauri-plugin-store` for typed key/value JSON state on disk
-(survives reboots). Wire it up so:
+Two Tauri plugins together handle this cleanly:
 
-1. On change, debounce-save each setting to the store.
-2. On startup, read the store and seed the model + CSS custom
-   properties before the first render (avoid layout flash).
-3. Keep the schema versioned so adding/removing fields stays safe.
+- `tauri-plugin-window-state` — drop-in window position/size restore.
+  Three lines (`Cargo.toml` dep + `.plugin(...)` registration +
+  capability entry); no app code change beyond that. Window state
+  saves to `<app_data>/.window-state.json` automatically.
+- `tauri-plugin-store` — typed key/value JSON for everything else.
+  Survives reboots. Wire it up so:
+  1. On change, debounce-save each setting to the store.
+  2. On startup, read the store and seed the model + CSS custom
+     properties before the first render (avoid layout flash).
+  3. Keep the schema versioned so adding/removing fields stays safe.
 
 Could also consider per-AI-file overrides (e.g. zoom level remembered
 per file content hash) once the basic global settings work.
