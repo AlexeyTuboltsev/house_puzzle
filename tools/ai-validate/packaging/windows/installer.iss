@@ -65,55 +65,106 @@ begin
   TargetDirs[GetArrayLength(TargetDirs) - 1] := Dir;
 end;
 
-procedure DiscoverIllustratorTargets();
+// Add a Scripts dir to TargetDirs only if it's not already there
+// (registry + filesystem discovery may both find the same install).
+procedure AddTargetDirUnique(Dir: string);
+var
+  i: Integer;
+begin
+  for i := 0 to GetArrayLength(TargetDirs) - 1 do
+    if CompareText(TargetDirs[i], Dir) = 0 then exit;
+  AddTargetDir(Dir);
+end;
+
+// Walk <install>\Presets\* and add every <locale>\Scripts dir that
+// actually exists. Locale subfolder is en_US, de_DE, ja_JP, ru_RU,
+// fr_FR, etc. depending on the artist's UI language; we don't
+// hardcode any of them.
+procedure AddPresetsLocaleDirs(InstallPath: string);
+var
+  PresetsDir: string;
+  FindRec: TFindRec;
+  CandidateScripts: string;
+begin
+  if InstallPath = '' then exit;
+  PresetsDir := AddBackslash(InstallPath) + 'Presets';
+  if not DirExists(PresetsDir) then exit;
+  if FindFirst(AddBackslash(PresetsDir) + '*', FindRec) then
+  try
+    repeat
+      if ((FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY) <> 0)
+          and (FindRec.Name <> '.') and (FindRec.Name <> '..') then
+      begin
+        CandidateScripts := AddBackslash(PresetsDir) + FindRec.Name + '\Scripts';
+        if DirExists(CandidateScripts) then
+          AddTargetDirUnique(CandidateScripts);
+      end;
+    until not FindNext(FindRec);
+  finally
+    FindClose(FindRec);
+  end;
+end;
+
+// For a given registry view, walk every subkey of
+// SOFTWARE\Adobe\Adobe Illustrator and collect Scripts dirs from
+// each install's Presets\<locale> folders.
+procedure DiscoverViaRegistry(RootKey: Integer);
 var
   Subkeys: TArrayOfString;
-  LocaleDirs: TArrayOfString;
-  i, j: Integer;
-  InstallPath, PresetsDir, CandidateScripts: string;
-  FoundLocale: Boolean;
+  i: Integer;
+  InstallPath: string;
+begin
+  if not RegGetSubkeyNames(RootKey, ADOBE_REG_ROOT, Subkeys) then exit;
+  for i := 0 to GetArrayLength(Subkeys) - 1 do
+  begin
+    if RegQueryStringValue(RootKey, ADOBE_REG_ROOT + '\' + Subkeys[i], 'InstallPath', InstallPath) then
+      AddPresetsLocaleDirs(InstallPath);
+  end;
+end;
+
+// Filesystem fallback: scan C:\Program Files\Adobe\ for any folder
+// matching `Adobe Illustrator*` and treat it as an Illustrator
+// install. Necessary when the registry is missing / mangled (Adobe
+// Cleaner ran, Creative Cloud reset, custom install path, stub
+// install hasn't populated the keys yet, etc.) but the app is
+// actually installed on disk.
+procedure DiscoverViaFilesystem(AdobeRoot: string);
+var
   FindRec: TFindRec;
+  CandidateDir: string;
+begin
+  if not DirExists(AdobeRoot) then exit;
+  if FindFirst(AddBackslash(AdobeRoot) + 'Adobe Illustrator*', FindRec) then
+  try
+    repeat
+      if ((FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY) <> 0)
+          and (FindRec.Name <> '.') and (FindRec.Name <> '..') then
+      begin
+        CandidateDir := AddBackslash(AdobeRoot) + FindRec.Name;
+        AddPresetsLocaleDirs(CandidateDir);
+      end;
+    until not FindNext(FindRec);
+  finally
+    FindClose(FindRec);
+  end;
+end;
+
+procedure DiscoverIllustratorTargets();
 begin
   SetArrayLength(TargetDirs, 0);
 
-  // Try the 64-bit view first (Adobe ships 64-bit only on Win10/11);
-  // fall back to the 32-bit view in case some older install lives
-  // in WOW6432Node.
-  if not RegGetSubkeyNames(HKLM64, ADOBE_REG_ROOT, Subkeys) then
-    if not RegGetSubkeyNames(HKLM32, ADOBE_REG_ROOT, Subkeys) then
-      exit;
-
-  for i := 0 to GetArrayLength(Subkeys) - 1 do
-  begin
-    if not RegQueryStringValue(HKLM64, ADOBE_REG_ROOT + '\' + Subkeys[i], 'InstallPath', InstallPath) then
-      if not RegQueryStringValue(HKLM32, ADOBE_REG_ROOT + '\' + Subkeys[i], 'InstallPath', InstallPath) then
-        continue;
-    if InstallPath = '' then continue;
-
-    // Illustrator places scripts under <install>\Presets\<locale>\Scripts
-    // — the locale folder is en_US, de_DE, ja_JP, fr_FR, etc. depending
-    // on the artist's chosen UI language. Enumerate Presets\* and pick
-    // every subfolder that actually has a Scripts dir.
-    PresetsDir := AddBackslash(InstallPath) + 'Presets';
-    if not DirExists(PresetsDir) then
-      continue;
-
-    SetArrayLength(LocaleDirs, 0);
-    if FindFirst(AddBackslash(PresetsDir) + '*', FindRec) then
-    try
-      repeat
-        if (FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY) <> 0 then
-          if (FindRec.Name <> '.') and (FindRec.Name <> '..') then
-          begin
-            CandidateScripts := AddBackslash(PresetsDir) + FindRec.Name + '\Scripts';
-            if DirExists(CandidateScripts) then
-              AddTargetDir(CandidateScripts);
-          end;
-      until not FindNext(FindRec);
-    finally
-      FindClose(FindRec);
-    end;
-  end;
+  // 1. Native (64-bit) registry view — where Illustrator 2018+
+  //    actually registers itself.
+  DiscoverViaRegistry(HKLM64);
+  // 2. WOW6432Node fallback for any legacy 32-bit registration.
+  DiscoverViaRegistry(HKLM32);
+  // 3. Per-user fallback — Creative Cloud "Install for me" puts
+  //    Illustrator under HKCU instead of HKLM.
+  DiscoverViaRegistry(HKCU);
+  // 4. Filesystem fallback in case the registry is missing /
+  //    incomplete but the app is actually on disk.
+  DiscoverViaFilesystem(ExpandConstant('{commonpf64}\Adobe'));
+  DiscoverViaFilesystem(ExpandConstant('{commonpf32}\Adobe'));
 end;
 
 function YesNo(B: Boolean): string;
@@ -239,6 +290,57 @@ begin
     Lines := Lines + '  HKLM32: not found' + #13#10;
 end;
 
+procedure DumpFilesystemScan(var Lines: string; const RootName, AdobeRoot: string);
+var
+  FindRec: TFindRec;
+  CandidateDir, PresetsDir: string;
+  PresetsRec: TFindRec;
+begin
+  Lines := Lines + 'Filesystem scan: ' + RootName + ' = ' + AdobeRoot + #13#10;
+  if not DirExists(AdobeRoot) then
+  begin
+    Lines := Lines + '  (not present)' + #13#10;
+    exit;
+  end;
+  if not FindFirst(AddBackslash(AdobeRoot) + 'Adobe Illustrator*', FindRec) then
+  begin
+    Lines := Lines + '  (no "Adobe Illustrator*" subdirs)' + #13#10;
+    exit;
+  end;
+  try
+    repeat
+      if ((FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY) <> 0)
+          and (FindRec.Name <> '.') and (FindRec.Name <> '..') then
+      begin
+        CandidateDir := AddBackslash(AdobeRoot) + FindRec.Name;
+        Lines := Lines + '  ' + FindRec.Name + #13#10;
+        PresetsDir := AddBackslash(CandidateDir) + 'Presets';
+        Lines := Lines + '    Presets dir exists: ' + YesNo(DirExists(PresetsDir)) + #13#10;
+        if DirExists(PresetsDir) then
+        begin
+          if FindFirst(AddBackslash(PresetsDir) + '*', PresetsRec) then
+          try
+            repeat
+              if ((PresetsRec.Attributes and FILE_ATTRIBUTE_DIRECTORY) <> 0)
+                  and (PresetsRec.Name <> '.') and (PresetsRec.Name <> '..') then
+              begin
+                Lines := Lines + '      Presets\' + PresetsRec.Name +
+                  '\Scripts dir: ' +
+                  YesNo(DirExists(AddBackslash(PresetsDir) + PresetsRec.Name + '\Scripts')) +
+                  #13#10;
+              end;
+            until not FindNext(PresetsRec);
+          finally
+            FindClose(PresetsRec);
+          end;
+        end;
+      end;
+    until not FindNext(FindRec);
+  finally
+    FindClose(FindRec);
+  end;
+end;
+
 function BuildDiagnosticReport(): string;
 var
   Lines: string;
@@ -260,6 +362,10 @@ begin
   DumpAdobeRoot(Lines, 'HKLM32', HKLM32);
   Lines := Lines + #13#10;
   DumpAppPaths(Lines);
+  Lines := Lines + #13#10;
+  DumpFilesystemScan(Lines, 'commonpf64', ExpandConstant('{commonpf64}\Adobe'));
+  Lines := Lines + #13#10;
+  DumpFilesystemScan(Lines, 'commonpf32', ExpandConstant('{commonpf32}\Adobe'));
   Result := Lines;
 end;
 
