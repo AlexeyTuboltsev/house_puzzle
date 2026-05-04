@@ -14,7 +14,16 @@
 //
 // `data` is optional; if present it's JSON.stringify'd onto the line.
 
-var LOG_PATH = "/tmp/ai-validate-debug.log";
+// On Windows there is no /tmp; resolve to the OS temp dir so the log
+// is actually writable. On macOS / Linux keep /tmp so dev callers
+// (run.sh) read from the same place.
+function __aiValidateLogDir() {
+    try {
+        if ($.os.indexOf("Windows") >= 0) return Folder.temp.fsName;
+    } catch (e) {}
+    return "/tmp";
+}
+var LOG_PATH = __aiValidateLogDir() + "/ai-validate-debug.log";
 var __LOG_SEQ = 0;
 var __LOG_START = null;
 

@@ -38,11 +38,29 @@
 var AI_VALIDATE_ENTRY_PATH = null;
 try { AI_VALIDATE_ENTRY_PATH = $.fileName; } catch (eP) {}
 
+// Windows has no /tmp, so the bundled `.jsx` running inside
+// Illustrator on Windows can't write the panel-handoff report to a
+// hardcoded `/tmp/...` path — `File("/tmp/...")` resolves to
+// `C:\tmp\...` which usually doesn't exist (and isn't writable from
+// non-admin Illustrator). The panel then gets nothing back and looks
+// like it "stops parsing the document." Use the OS temp dir on
+// Windows; keep `/tmp/` on macOS / Linux so the dev `run.sh` driver
+// (which hardcodes `/tmp/`) still works.
+function aiValidateTempDir() {
+    try {
+        if ($.os.indexOf("Windows") >= 0) {
+            return Folder.temp.fsName;
+        }
+    } catch (e) {}
+    return "/tmp";
+}
+
 (function main() {
     var REPORT_VERSION = 1;
-    var REPORT_PATH = "/tmp/ai-validate-report.json";
-    var MODE_PATH   = "/tmp/ai-validate-mode.txt";
-    var TARGET_PATH = "/tmp/ai-validate-target.txt";
+    var TMP_DIR     = aiValidateTempDir();
+    var REPORT_PATH = TMP_DIR + "/ai-validate-report.json";
+    var MODE_PATH   = TMP_DIR + "/ai-validate-mode.txt";
+    var TARGET_PATH = TMP_DIR + "/ai-validate-target.txt";
 
     // Bundled builds set AI_VALIDATE_VERSION via packaging/bundle.sh.
     // Its presence is the ONLY signal that we're talking to a human
@@ -139,7 +157,7 @@ try { AI_VALIDATE_ENTRY_PATH = $.fileName; } catch (eP) {}
         var theAction = AI_VALIDATE_ACTION;
         AI_VALIDATE_ACTION = undefined;
 
-        var REPORT_PATH_ACT = "/tmp/ai-validate-report.json";
+        var REPORT_PATH_ACT = aiValidateTempDir() + "/ai-validate-report.json";
         var actionReport = {
             version: REPORT_VERSION, mode: theAction, file: null,
             findings: [], summary: null, fixes: null, snapshot: null, error: null
@@ -322,8 +340,10 @@ function runFixLoop(doc, report) {
 
 function writeMarkdown(report) {
     var md = renderMarkdown(report);
-    // Always drop a /tmp copy so dev callers (run.sh, CI) have a stable path.
-    writeText("/tmp/ai-validate-report.md", md);
+    // Always drop a temp-dir copy so dev callers (run.sh, CI) have a
+    // stable path. Same `aiValidateTempDir()` rule: /tmp on macOS /
+    // Linux, %TEMP% on Windows.
+    writeText(aiValidateTempDir() + "/ai-validate-report.md", md);
     // Drop one next to the source .ai so the artist can find it
     // in Finder without leaving the working folder. Filename:
     // "<basename>.report.md".
