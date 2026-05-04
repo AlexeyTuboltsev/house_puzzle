@@ -116,6 +116,214 @@ begin
   end;
 end;
 
+function YesNo(B: Boolean): string;
+begin
+  if B then Result := 'yes' else Result := 'no';
+end;
+
+function GetWindowsVersionString(): string;
+var
+  ProductName, BuildNumber, DisplayVersion, ReleaseId: string;
+begin
+  if not RegQueryStringValue(HKLM64, 'SOFTWARE\Microsoft\Windows NT\CurrentVersion', 'ProductName', ProductName) then
+    if not RegQueryStringValue(HKLM, 'SOFTWARE\Microsoft\Windows NT\CurrentVersion', 'ProductName', ProductName) then
+      ProductName := '<unknown>';
+  if not RegQueryStringValue(HKLM64, 'SOFTWARE\Microsoft\Windows NT\CurrentVersion', 'CurrentBuildNumber', BuildNumber) then
+    if not RegQueryStringValue(HKLM, 'SOFTWARE\Microsoft\Windows NT\CurrentVersion', 'CurrentBuildNumber', BuildNumber) then
+      BuildNumber := '<unknown>';
+  RegQueryStringValue(HKLM64, 'SOFTWARE\Microsoft\Windows NT\CurrentVersion', 'DisplayVersion', DisplayVersion);
+  RegQueryStringValue(HKLM64, 'SOFTWARE\Microsoft\Windows NT\CurrentVersion', 'ReleaseId', ReleaseId);
+
+  Result := ProductName + ' (build ' + BuildNumber;
+  if DisplayVersion <> '' then
+    Result := Result + ', ' + DisplayVersion
+  else if ReleaseId <> '' then
+    Result := Result + ', ' + ReleaseId;
+  Result := Result + ')';
+  if IsWin64 then
+    Result := Result + ' [OS 64-bit]'
+  else
+    Result := Result + ' [OS 32-bit]';
+end;
+
+procedure DumpAdobeIllustratorRegistry(var Lines: string; const ViewName: string; const RootKey: Integer);
+var
+  Subkeys: TArrayOfString;
+  i: Integer;
+  InstallPath, PresetsDir: string;
+  FindRec: TFindRec;
+begin
+  Lines := Lines + 'Registry ' + ViewName + '\' + ADOBE_REG_ROOT + ':' + #13#10;
+  if not RegGetSubkeyNames(RootKey, ADOBE_REG_ROOT, Subkeys) then
+  begin
+    Lines := Lines + '  (key not present in this view)' + #13#10;
+    exit;
+  end;
+  if GetArrayLength(Subkeys) = 0 then
+  begin
+    Lines := Lines + '  (key exists but has no subkeys)' + #13#10;
+    exit;
+  end;
+  for i := 0 to GetArrayLength(Subkeys) - 1 do
+  begin
+    Lines := Lines + '  ' + Subkeys[i] + #13#10;
+    if RegQueryStringValue(RootKey, ADOBE_REG_ROOT + '\' + Subkeys[i], 'InstallPath', InstallPath) then
+      Lines := Lines + '    InstallPath = ' + InstallPath + #13#10
+    else begin
+      Lines := Lines + '    InstallPath = (value missing)' + #13#10;
+      InstallPath := '';
+    end;
+
+    if InstallPath <> '' then
+    begin
+      PresetsDir := AddBackslash(InstallPath) + 'Presets';
+      Lines := Lines + '    Presets dir exists: ' + YesNo(DirExists(PresetsDir)) + #13#10;
+      if DirExists(PresetsDir) then
+      begin
+        if FindFirst(AddBackslash(PresetsDir) + '*', FindRec) then
+        try
+          repeat
+            if ((FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY) <> 0)
+                and (FindRec.Name <> '.') and (FindRec.Name <> '..') then
+            begin
+              Lines := Lines + '      Presets\' + FindRec.Name +
+                '\Scripts dir: ' +
+                YesNo(DirExists(AddBackslash(PresetsDir) + FindRec.Name + '\Scripts')) +
+                #13#10;
+            end;
+          until not FindNext(FindRec);
+        finally
+          FindClose(FindRec);
+        end;
+      end;
+    end;
+  end;
+end;
+
+procedure DumpAdobeRoot(var Lines: string; const ViewName: string; const RootKey: Integer);
+var
+  Subkeys: TArrayOfString;
+  i: Integer;
+begin
+  Lines := Lines + 'Registry ' + ViewName + '\SOFTWARE\Adobe (subkeys, raw):' + #13#10;
+  if not RegGetSubkeyNames(RootKey, 'SOFTWARE\Adobe', Subkeys) then
+  begin
+    Lines := Lines + '  (SOFTWARE\Adobe not present)' + #13#10;
+    exit;
+  end;
+  if GetArrayLength(Subkeys) = 0 then
+  begin
+    Lines := Lines + '  (no subkeys)' + #13#10;
+    exit;
+  end;
+  for i := 0 to GetArrayLength(Subkeys) - 1 do
+    Lines := Lines + '  ' + Subkeys[i] + #13#10;
+end;
+
+procedure DumpAppPaths(var Lines: string);
+var
+  Path: string;
+begin
+  Lines := Lines + 'App Paths\Illustrator.exe:' + #13#10;
+  if RegQueryStringValue(HKLM64,
+      'SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\Illustrator.exe',
+      '', Path) then
+    Lines := Lines + '  HKLM64 (default) = ' + Path + #13#10
+  else
+    Lines := Lines + '  HKLM64: not found' + #13#10;
+  if RegQueryStringValue(HKLM32,
+      'SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\Illustrator.exe',
+      '', Path) then
+    Lines := Lines + '  HKLM32 (default) = ' + Path + #13#10
+  else
+    Lines := Lines + '  HKLM32: not found' + #13#10;
+end;
+
+function BuildDiagnosticReport(): string;
+var
+  Lines: string;
+begin
+  Lines := '== ai-validate installer diagnostic ==' + #13#10;
+  Lines := Lines + 'ai-validate version: {#AppVersion}' + #13#10;
+  Lines := Lines + 'Installer 64-bit mode: ' + YesNo(Is64BitInstallMode) + #13#10;
+  Lines := Lines + 'Admin install mode:    ' + YesNo(IsAdminInstallMode) + #13#10;
+  Lines := Lines + 'Windows: ' + GetWindowsVersionString() + #13#10;
+  Lines := Lines + #13#10;
+  DumpAdobeIllustratorRegistry(Lines, 'HKLM64', HKLM64);
+  Lines := Lines + #13#10;
+  DumpAdobeIllustratorRegistry(Lines, 'HKLM32', HKLM32);
+  Lines := Lines + #13#10;
+  DumpAdobeIllustratorRegistry(Lines, 'HKCU',   HKCU);
+  Lines := Lines + #13#10;
+  DumpAdobeRoot(Lines, 'HKLM64', HKLM64);
+  Lines := Lines + #13#10;
+  DumpAdobeRoot(Lines, 'HKLM32', HKLM32);
+  Lines := Lines + #13#10;
+  DumpAppPaths(Lines);
+  Result := Lines;
+end;
+
+procedure ShowDiagnosticForm(const Report: string);
+var
+  Form: TSetupForm;
+  Memo: TNewMemo;
+  Hint: TNewStaticText;
+  OkBtn: TNewButton;
+begin
+  Form := CreateCustomForm;
+  try
+    Form.Caption := 'ai-validate — Adobe Illustrator not detected';
+    Form.ClientWidth := ScaleX(640);
+    Form.ClientHeight := ScaleY(500);
+    Form.Position := poScreenCenter;
+    Form.BorderStyle := bsDialog;
+
+    Hint := TNewStaticText.Create(Form);
+    Hint.Parent := Form;
+    Hint.Left := ScaleX(12);
+    Hint.Top := ScaleY(8);
+    Hint.AutoSize := False;
+    Hint.WordWrap := True;
+    Hint.Width := ScaleX(616);
+    Hint.Height := ScaleY(76);
+    Hint.Caption :=
+      'No Adobe Illustrator installation could be detected. The script ' +
+      'is staged at ' + ExpandConstant('{app}\ai-validate.jsx') + ' — you ' +
+      'can install it manually via File > Scripts > Other Script...' + #13#10 +
+      'To help fix the installer for your machine, please copy the ' +
+      'diagnostic info below (click into the box, Ctrl+A, Ctrl+C) and ' +
+      'send it back.';
+
+    Memo := TNewMemo.Create(Form);
+    Memo.Parent := Form;
+    Memo.Left := ScaleX(12);
+    Memo.Top := ScaleY(92);
+    Memo.Width := ScaleX(616);
+    Memo.Height := ScaleY(366);
+    Memo.ScrollBars := ssBoth;
+    Memo.ReadOnly := True;
+    Memo.WantReturns := False;
+    Memo.WordWrap := False;
+    Memo.Font.Name := 'Consolas';
+    Memo.Font.Size := 9;
+    Memo.Lines.Text := Report;
+
+    OkBtn := TNewButton.Create(Form);
+    OkBtn.Parent := Form;
+    OkBtn.Caption := 'Close';
+    OkBtn.Width := ScaleX(80);
+    OkBtn.Height := ScaleY(25);
+    OkBtn.Left := ScaleX(548);
+    OkBtn.Top := ScaleY(466);
+    OkBtn.ModalResult := mrOk;
+    OkBtn.Default := True;
+
+    Form.ShowModal;
+  finally
+    Form.Free;
+  end;
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   i: Integer;
@@ -126,10 +334,7 @@ begin
     DiscoverIllustratorTargets();
     if GetArrayLength(TargetDirs) = 0 then
     begin
-      MsgBox('No Adobe Illustrator installation was detected.' + #13#10 +
-             'You can install ai-validate.jsx manually:' + #13#10 +
-             'File > Scripts > Other Script... → ' + ExpandConstant('{app}\ai-validate.jsx'),
-             mbInformation, MB_OK);
+      ShowDiagnosticForm(BuildDiagnosticReport());
       exit;
     end;
     src := ExpandConstant('{app}\ai-validate.jsx');
