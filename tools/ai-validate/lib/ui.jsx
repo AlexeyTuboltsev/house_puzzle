@@ -460,7 +460,14 @@ function showInteractivePanel(doc, report) {
     // BT bodies write back to the canonical /tmp file.
     function loadReportFromTmp() {
         try {
-            var f = new File("/tmp/ai-validate-report.json");
+            // Match the writer side in validate.jsx — /tmp on macOS /
+            // Linux, %TEMP% on Windows. Hardcoded /tmp/ here was the
+            // bug that made the panel never repaint on Win 11.
+            var tmpDir = "/tmp";
+            try {
+                if ($.os.indexOf("Windows") >= 0) tmpDir = Folder.temp.fsName;
+            } catch (eD) {}
+            var f = new File(tmpDir + "/ai-validate-report.json");
             if (!f.exists) return;
             f.encoding = "UTF-8";
             f.open("r");
