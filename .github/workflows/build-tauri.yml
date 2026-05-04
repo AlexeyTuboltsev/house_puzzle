@@ -102,10 +102,43 @@ jobs:
           prerelease: false
           includeUpdaterJson: true
 
-      # Workflow-dispatch (non-tag) runs still upload the per-platform
-      # bundle dir as a CI artifact so we can grab a build for testing
-      # without making a release. Includes the .sig files + latest.json
-      # when signing was active.
+      # `tauri-apps/tauri-action@v0.6.x` skips uploading the .sig
+      # files and the updater bundles (.AppImage.tar.gz, .msi.zip,
+      # .nsis.zip) — its "Found artifacts:" filter only picks the
+      # primary install bundles (.deb/.dmg/.AppImage/.msi/.exe), and
+      # it then aborts `latest.json` with "Signature not found for
+      # the updater JSON. Skipping upload..." because the .sig files
+      # never made it into its upload set. Workaround: do the upload
+      # ourselves here from `target/**/bundle/**`.
+      - name: Upload updater sigs + update bundles to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          # Collect both the update-archive bundles and every .sig.
+          # Use -print0 to handle the spaces in "House Puzzle..." names.
+          find target -path "*/bundle/*" \( \
+              -name "*.sig" \
+              -o -name "*.AppImage.tar.gz" \
+              -o -name "*.app.tar.gz" \
+              -o -name "*.msi.zip" \
+              -o -name "*.nsis.zip" \
+            \) -print0 \
+            | while IFS= read -r -d '' f; do
+                echo "Uploading: $f"
+                gh release upload "$TAG" "$f" --repo "$REPO" --clobber || {
+                  echo "::warning::failed to upload $f"
+                }
+              done
+
+      # Always-on artifact upload — matches what tauri-action skipped,
+      # plus the update-archive bundles and their .sig pairs. Used by
+      # workflow_dispatch runs (no release) so we can grab a build
+      # locally; on tag pushes the data also went to the release via
+      # the step above.
       - uses: actions/upload-artifact@v4
         with:
           name: tauri-${{ matrix.artifact-suffix }}
@@ -113,11 +146,100 @@ jobs:
             target/**/bundle/**/*.deb
             target/**/bundle/**/*.AppImage
             target/**/bundle/**/*.AppImage.sig
+            target/**/bundle/**/*.AppImage.tar.gz
+            target/**/bundle/**/*.AppImage.tar.gz.sig
             target/**/bundle/**/*.dmg
-            target/**/bundle/**/*.dmg.sig
+            target/**/bundle/**/*.app.tar.gz
+            target/**/bundle/**/*.app.tar.gz.sig
             target/**/bundle/**/*.msi
             target/**/bundle/**/*.msi.sig
+            target/**/bundle/**/*.msi.zip
+            target/**/bundle/**/*.msi.zip.sig
             target/**/bundle/**/*.exe
             target/**/bundle/**/*.exe.sig
-            target/**/bundle/latest.json
+            target/**/bundle/**/*.nsis.zip
+            target/**/bundle/**/*.nsis.zip.sig
           if-no-files-found: warn
+
+  # After all platforms have built and uploaded their .sig + update
+  # bundles, aggregate the per-platform .sig file contents into a
+  # single latest.json the running app's tauri-plugin-updater will
+  # read.
+  build-latest-json:
+    needs: build-tauri
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download .sig files from the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          mkdir -p sigs
+          gh release download "$TAG" --pattern "*.sig" --dir sigs --repo "$REPO"
+          ls -la sigs/
+
+      - name: Build latest.json
+        env:
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          python3 - <<'PY'
+          import datetime
+          import glob
+          import json
+          import os
+          import urllib.parse
+
+          tag = os.environ["TAG"]
+          repo = os.environ["REPO"]
+          version = tag[1:] if tag.startswith("v") else tag
+          base_url = f"https://github.com/{repo}/releases/download/{tag}"
+
+          # Per-platform: pick the right update-bundle .sig.
+          # Pattern is matched against the basename (after GitHub
+          # rewrites spaces to dots in the asset name).
+          plan = {
+              "linux-x86_64":  ".AppImage.tar.gz.sig",
+              "darwin-aarch64": "_aarch64.app.tar.gz.sig",
+              "darwin-x86_64":  "_x64.app.tar.gz.sig",
+              "windows-x86_64": ".nsis.zip.sig",
+          }
+
+          platforms = {}
+          for key, suffix in plan.items():
+              matches = sorted(glob.glob(f"sigs/*{suffix}"))
+              if not matches:
+                  print(f"WARN: no .sig matches *{suffix} for {key}")
+                  continue
+              sig_path = matches[0]
+              with open(sig_path) as f:
+                  signature = f.read().strip()
+              # Bundle filename is the .sig name minus the trailing ".sig"
+              bundle_name = os.path.basename(sig_path)[:-4]
+              platforms[key] = {
+                  "signature": signature,
+                  "url": f"{base_url}/{urllib.parse.quote(bundle_name)}",
+              }
+
+          manifest = {
+              "version": version,
+              "notes": f"Release {tag}",
+              "pub_date": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+              "platforms": platforms,
+          }
+          with open("latest.json", "w") as f:
+              json.dump(manifest, f, indent=2)
+          print(json.dumps(manifest, indent=2))
+          PY
+
+      - name: Upload latest.json to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh release upload "$TAG" latest.json --repo "$REPO" --clobber
