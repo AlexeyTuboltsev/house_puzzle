@@ -29,6 +29,11 @@ DefaultGroupName=ai-validate
 DisableDirPage=yes
 DisableProgramGroupPage=yes
 PrivilegesRequired=admin
+; Run the installer as a 64-bit process on 64-bit Windows so HKLM
+; reads the native registry view. Without this, HKLM points at
+; WOW6432Node and we miss every modern Illustrator install (Adobe
+; only ships Illustrator as 64-bit on Windows since CC 2018).
+ArchitecturesInstallIn64BitMode=x64compatible
 OutputBaseFilename=ai-validate-{#AppVersion}-setup
 OutputDir=..\..\dist
 Compression=lzma2
@@ -44,33 +49,69 @@ Source: "{#BundleSrc}"; DestDir: "{app}"; DestName: "ai-validate.jsx"; Flags: ig
 
 [Code]
 const
-  // Adobe registers each Illustrator version under a separate key. We
-  // walk HKLM\SOFTWARE\Adobe\Adobe Illustrator and grab every subkey
-  // that has an InstallPath value.
+  // Adobe registers each installed Illustrator version under a
+  // separate key. We walk HKLM\SOFTWARE\Adobe\Adobe Illustrator and
+  // grab every subkey that has an InstallPath value. HKLM64 is
+  // explicit so we read the native registry view even if the
+  // installer ever runs in 32-bit mode (older Win or legacy ISCC).
   ADOBE_REG_ROOT = 'SOFTWARE\Adobe\Adobe Illustrator';
 
 var
   TargetDirs: TArrayOfString;
 
+procedure AddTargetDir(Dir: string);
+begin
+  SetArrayLength(TargetDirs, GetArrayLength(TargetDirs) + 1);
+  TargetDirs[GetArrayLength(TargetDirs) - 1] := Dir;
+end;
+
 procedure DiscoverIllustratorTargets();
 var
   Subkeys: TArrayOfString;
-  i: Integer;
-  InstallPath, ScriptsDir: string;
+  LocaleDirs: TArrayOfString;
+  i, j: Integer;
+  InstallPath, PresetsDir, CandidateScripts: string;
+  FoundLocale: Boolean;
+  FindRec: TFindRec;
 begin
   SetArrayLength(TargetDirs, 0);
-  if not RegGetSubkeyNames(HKLM, ADOBE_REG_ROOT, Subkeys) then
-    exit;
+
+  // Try the 64-bit view first (Adobe ships 64-bit only on Win10/11);
+  // fall back to the 32-bit view in case some older install lives
+  // in WOW6432Node.
+  if not RegGetSubkeyNames(HKLM64, ADOBE_REG_ROOT, Subkeys) then
+    if not RegGetSubkeyNames(HKLM32, ADOBE_REG_ROOT, Subkeys) then
+      exit;
+
   for i := 0 to GetArrayLength(Subkeys) - 1 do
   begin
-    if RegQueryStringValue(HKLM, ADOBE_REG_ROOT + '\' + Subkeys[i], 'InstallPath', InstallPath) then
-    begin
-      ScriptsDir := AddBackslash(InstallPath) + 'Presets\en_US\Scripts';
-      if DirExists(ScriptsDir) then
-      begin
-        SetArrayLength(TargetDirs, GetArrayLength(TargetDirs) + 1);
-        TargetDirs[GetArrayLength(TargetDirs) - 1] := ScriptsDir;
-      end;
+    if not RegQueryStringValue(HKLM64, ADOBE_REG_ROOT + '\' + Subkeys[i], 'InstallPath', InstallPath) then
+      if not RegQueryStringValue(HKLM32, ADOBE_REG_ROOT + '\' + Subkeys[i], 'InstallPath', InstallPath) then
+        continue;
+    if InstallPath = '' then continue;
+
+    // Illustrator places scripts under <install>\Presets\<locale>\Scripts
+    // — the locale folder is en_US, de_DE, ja_JP, fr_FR, etc. depending
+    // on the artist's chosen UI language. Enumerate Presets\* and pick
+    // every subfolder that actually has a Scripts dir.
+    PresetsDir := AddBackslash(InstallPath) + 'Presets';
+    if not DirExists(PresetsDir) then
+      continue;
+
+    SetArrayLength(LocaleDirs, 0);
+    if FindFirst(AddBackslash(PresetsDir) + '*', FindRec) then
+    try
+      repeat
+        if (FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY) <> 0 then
+          if (FindRec.Name <> '.') and (FindRec.Name <> '..') then
+          begin
+            CandidateScripts := AddBackslash(PresetsDir) + FindRec.Name + '\Scripts';
+            if DirExists(CandidateScripts) then
+              AddTargetDir(CandidateScripts);
+          end;
+      until not FindNext(FindRec);
+    finally
+      FindClose(FindRec);
     end;
   end;
 end;
