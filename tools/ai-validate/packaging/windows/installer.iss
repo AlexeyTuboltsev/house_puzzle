@@ -237,10 +237,10 @@ begin
             if ((FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY) <> 0)
                 and (FindRec.Name <> '.') and (FindRec.Name <> '..') then
             begin
-              Lines := Lines + '      Presets\' + FindRec.Name +
-                '\Scripts dir: ' +
-                YesNo(DirExists(AddBackslash(PresetsDir) + FindRec.Name + '\Scripts')) +
-                #13#10;
+              Lines := Lines + '      Presets\' + FindRec.Name
+                + '\Scripts dir: '
+                + YesNo(DirExists(AddBackslash(PresetsDir) + FindRec.Name + '\Scripts'))
+                + #13#10;
             end;
           until not FindNext(FindRec);
         finally
@@ -324,10 +324,10 @@ begin
               if ((PresetsRec.Attributes and FILE_ATTRIBUTE_DIRECTORY) <> 0)
                   and (PresetsRec.Name <> '.') and (PresetsRec.Name <> '..') then
               begin
-                Lines := Lines + '      Presets\' + PresetsRec.Name +
-                  '\Scripts dir: ' +
-                  YesNo(DirExists(AddBackslash(PresetsDir) + PresetsRec.Name + '\Scripts')) +
-                  #13#10;
+                Lines := Lines + '      Presets\' + PresetsRec.Name
+                  + '\Scripts dir: '
+                  + YesNo(DirExists(AddBackslash(PresetsDir) + PresetsRec.Name + '\Scripts'))
+                  + #13#10;
               end;
             until not FindNext(PresetsRec);
           finally
