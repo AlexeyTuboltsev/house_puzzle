@@ -17,11 +17,112 @@ function basenameOf(p) {
     return (i >= 0) ? p.substring(i + 1) : p;
 }
 
+// Build a multi-line text dump describing the runtime environment:
+// ai-validate version, OS string, Illustrator version + install
+// path, the locale subfolders we find under <install>/Presets, and
+// whether ai-validate.jsx is actually staged in each one. This is
+// the equivalent of the Windows-installer registry probe but run
+// from inside Illustrator — useful when the installer claims it
+// finished but the script can't be found, or when we need a single
+// paste that tells us "where is Illustrator on this machine".
+function buildEnvironmentReport() {
+    var lines = [];
+    lines.push("ai-validate:         " + aiValidateVersionLabel());
+
+    try { lines.push("Script file:         " + $.fileName); } catch (e) {}
+    try { lines.push("Operating system:    " + $.os); } catch (e) {}
+    try { lines.push("ExtendScript locale: " + $.locale); } catch (e) {}
+    try {
+        lines.push("Illustrator:         " + app.name + " " + app.version);
+    } catch (e) {
+        lines.push("Illustrator:         (version unknown)");
+    }
+
+    var installPath = "";
+    try { installPath = app.path.fsName; } catch (e) {}
+    if (installPath) {
+        lines.push("Install path:        " + installPath);
+    } else {
+        lines.push("Install path:        (unknown)");
+        return lines.join("\n");
+    }
+
+    var presetsFolder = new Folder(installPath + "/Presets");
+    lines.push("Presets dir exists:  " + (presetsFolder.exists ? "yes" : "no"));
+    if (!presetsFolder.exists) {
+        return lines.join("\n");
+    }
+
+    // Walk Presets/* and report every locale subfolder, whether it
+    // has a Scripts dir, and whether ai-validate.jsx is actually
+    // installed in that Scripts dir. Same logic as the Windows
+    // installer's DiscoverIllustratorTargets() — running from inside
+    // Illustrator we don't need the registry, app.path tells us
+    // exactly where Illustrator was installed.
+    var subs = presetsFolder.getFiles(function (f) { return f instanceof Folder; });
+    if (!subs || subs.length === 0) {
+        lines.push("  (Presets has no subfolders)");
+    } else {
+        lines.push("Locale folders under Presets:");
+        for (var i = 0; i < subs.length; i++) {
+            var name = subs[i].name;
+            var scriptsDir = new Folder(subs[i].fsName + "/Scripts");
+            var bundlePath = scriptsDir.fsName + "/ai-validate.jsx";
+            var bundleHere = scriptsDir.exists && (new File(bundlePath)).exists;
+            lines.push(
+                "  " + name +
+                "/Scripts: " + (scriptsDir.exists ? "yes" : "no") +
+                "    ai-validate.jsx here: " + (bundleHere ? "yes" : "no")
+            );
+        }
+    }
+
+    return lines.join("\n");
+}
+
 function showNoDocumentAlert() {
-    alert(
-        "ai-validate " + aiValidateVersionLabel() + "\n\n" +
-        "Open the .ai file you want to validate first, then run this script again."
+    var report = buildEnvironmentReport();
+
+    var w = new Window("dialog", "ai-validate " + aiValidateVersionLabel());
+    w.alignChildren = "fill";
+    w.preferredSize.width = 640;
+    w.spacing = 8;
+    w.margins = 12;
+
+    w.add(
+        "statictext",
+        undefined,
+        "Open the .ai file you want to validate first, then run this script again.",
+        { multiline: true }
     );
+
+    w.add(
+        "statictext",
+        undefined,
+        "If you're reporting an installation issue, please copy the diagnostic info below (click into the box, Ctrl+A / ⌘A, then Ctrl+C / ⌘C) and send it back.",
+        { multiline: true }
+    );
+
+    var edit = w.add(
+        "edittext",
+        undefined,
+        report,
+        { multiline: true, scrolling: true, readonly: true }
+    );
+    edit.preferredSize = [620, 220];
+    // Monospace so registry / file paths line up. Falls back to the
+    // default font if "Consolas" / "Menlo" aren't available.
+    try {
+        var monoName = ($.os.indexOf("Windows") >= 0) ? "Consolas" : "Menlo";
+        edit.graphics.font = ScriptUI.newFont(monoName, "REGULAR", 11);
+    } catch (eFont) {}
+
+    var btnGroup = w.add("group");
+    btnGroup.alignment = "right";
+    var ok = btnGroup.add("button", undefined, "Close", { name: "ok" });
+    ok.onClick = function () { w.close(); };
+
+    w.show();
 }
 
 // Pretty short identifier for a finding row.
