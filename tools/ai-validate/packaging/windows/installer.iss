@@ -376,7 +376,11 @@ var
   Hint: TNewStaticText;
   OkBtn: TNewButton;
 begin
-  Form := CreateCustomForm;
+  // `CreateCustomForm` was wrong — that helper doesn't exist in
+  // Inno Setup. To get a free-standing modal form you instantiate
+  // `TSetupForm` directly with the WizardForm as owner so it gets
+  // disposed cleanly when the wizard closes.
+  Form := TSetupForm.Create(WizardForm);
   try
     Form.Caption := 'ai-validate — Adobe Illustrator not detected';
     Form.ClientWidth := ScaleX(640);
