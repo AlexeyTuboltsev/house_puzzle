@@ -117,22 +117,40 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
           REPO: ${{ github.repository }}
+        # Don't let `pipefail` / `set -e` abort silently when find
+        # returns 0 hits — we want diagnostics in the log.
         run: |
-          # Collect both the update-archive bundles and every .sig.
-          # Use -print0 to handle the spaces in "House Puzzle..." names.
-          find target -path "*/bundle/*" \( \
+          set +e
+          echo "=== upload updater sigs: cwd + bundle dir diagnostic ==="
+          echo "pwd: $(pwd)"
+          echo "target/ direct listing:"
+          ls -la target 2>&1 | head -10 || echo "  (no target/ dir)"
+          echo "all bundle/ paths under target/:"
+          find target -path "*/bundle/*" -maxdepth 6 2>&1 | head -40 \
+            || echo "  (find failed)"
+
+          echo "=== collecting updater sigs + update-archive bundles ==="
+          mapfile -d '' -t SIGS < <(find target -path "*/bundle/*" \( \
               -name "*.sig" \
               -o -name "*.AppImage.tar.gz" \
               -o -name "*.app.tar.gz" \
               -o -name "*.msi.zip" \
               -o -name "*.nsis.zip" \
-            \) -print0 \
-            | while IFS= read -r -d '' f; do
-                echo "Uploading: $f"
-                gh release upload "$TAG" "$f" --repo "$REPO" --clobber || {
-                  echo "::warning::failed to upload $f"
-                }
-              done
+            \) -print0)
+          echo "Found ${#SIGS[@]} updater file(s)"
+
+          if [ "${#SIGS[@]}" -eq 0 ]; then
+            echo "::warning::No .sig / updater-archive files found in target/**/bundle/**."
+            echo "::warning::tauri-action@v0.6.x may be cleaning bundle output after its own upload."
+            exit 0
+          fi
+
+          for f in "${SIGS[@]}"; do
+            echo "Uploading: $f"
+            if ! gh release upload "$TAG" "$f" --repo "$REPO" --clobber; then
+              echo "::warning::failed to upload $f"
+            fi
+          done
 
       # Always-on artifact upload — matches what tauri-action skipped,
       # plus the update-archive bundles and their .sig pairs. Used by
