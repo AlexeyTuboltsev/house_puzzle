@@ -91,7 +91,7 @@ jobs:
       #
       # The signing pipeline only engages when `bundle.createUpdaterArtifacts`
       # is true in tauri.conf.json. Without that, tauri silently skips
-      # generating .sig files and tauri-action's `uploadUpdaterJson`
+      # generating .sig files and tauri-action's `includeUpdaterJson`
       # bails with "Signature not found for the updater JSON" — see
       # https://github.com/tauri-apps/tauri-action/issues/1098 .
       - uses: tauri-apps/tauri-action@v0
@@ -106,7 +106,7 @@ jobs:
           releaseName: ${{ startsWith(github.ref, 'refs/tags/v') && format('House Puzzle {0}', github.ref_name) || '' }}
           releaseDraft: false
           prerelease: false
-          uploadUpdaterJson: true
+          includeUpdaterJson: true
 
       # Always-on artifact upload of every install bundle, updater
       # archive, and .sig file. Used by workflow_dispatch runs (no
