@@ -82,12 +82,14 @@ jobs:
           sed -i.bak "s/version: 'dev'/version: '$VERSION'/" dist/index.html
           rm -f tauri.conf.json.bak Cargo.toml.bak dist/index.html.bak
 
-      # Bundle + sign (when secrets are present) + emit latest.json,
-      # then on tag pushes create / update the GitHub release with the
-      # signed bundles, .sig files and latest.json. The Tauri updater
-      # plugin in the running app polls latest.json and verifies the
-      # downloaded bundle's signature against the public key in
-      # tauri.conf.json before replacing the binary.
+      # Build + sign only — DO NOT let tauri-action create or upload
+      # to the GitHub release. With v0.6.x its post-upload step wipes
+      # the .sig + updater-archive files from the bundle dir before
+      # any follow-up step can pick them up (run #25373612231 confirmed
+      # via diagnostic: 8 .sig files exist at 11:31:21 when tauri-action
+      # lists them; 5 s later they're gone). We do the release upload
+      # ourselves below, which keeps the bundle dir intact and lets us
+      # ship every artifact tauri-action's filter drops.
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -96,56 +98,66 @@ jobs:
         with:
           projectPath: crates/hp-tauri
           args: ${{ matrix.args }}
-          tagName: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
-          releaseName: ${{ startsWith(github.ref, 'refs/tags/v') && format('House Puzzle {0}', github.ref_name) || '' }}
-          releaseDraft: false
-          prerelease: false
-          includeUpdaterJson: true
+          # tagName intentionally empty — we own the release.
+          tagName: ''
 
-      # `tauri-apps/tauri-action@v0.6.x` skips uploading the .sig
-      # files and the updater bundles (.AppImage.tar.gz, .msi.zip,
-      # .nsis.zip) — its "Found artifacts:" filter only picks the
-      # primary install bundles (.deb/.dmg/.AppImage/.msi/.exe), and
-      # it then aborts `latest.json` with "Signature not found for
-      # the updater JSON. Skipping upload..." because the .sig files
-      # never made it into its upload set. Workaround: do the upload
-      # ourselves here from `target/**/bundle/**`.
-      - name: Upload updater sigs + update bundles to release
+      # On tag pushes only: ensure a GitHub release exists for the
+      # tag, then upload every artifact (main install bundles,
+      # updater archives, and .sig files). We can't depend on the
+      # release already existing on the first matrix job to finish,
+      # so use `gh release create --notes "..." || true` so the second/
+      # third platform's upload-step doesn't race-create either.
+      - name: Create / upload to GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
           REPO: ${{ github.repository }}
-        # Don't let `pipefail` / `set -e` abort silently when find
-        # returns 0 hits — we want diagnostics in the log.
         run: |
           set +e
-          echo "=== upload updater sigs: cwd + bundle dir diagnostic ==="
-          echo "pwd: $(pwd)"
-          echo "target/ direct listing:"
-          ls -la target 2>&1 | head -10 || echo "  (no target/ dir)"
-          echo "all bundle/ paths under target/:"
-          find target -path "*/bundle/*" -maxdepth 6 2>&1 | head -40 \
-            || echo "  (find failed)"
-
-          echo "=== collecting updater sigs + update-archive bundles ==="
-          mapfile -d '' -t SIGS < <(find target -path "*/bundle/*" \( \
-              -name "*.sig" \
-              -o -name "*.AppImage.tar.gz" \
-              -o -name "*.app.tar.gz" \
-              -o -name "*.msi.zip" \
-              -o -name "*.nsis.zip" \
-            \) -print0)
-          echo "Found ${#SIGS[@]} updater file(s)"
-
-          if [ "${#SIGS[@]}" -eq 0 ]; then
-            echo "::warning::No .sig / updater-archive files found in target/**/bundle/**."
-            echo "::warning::tauri-action@v0.6.x may be cleaning bundle output after its own upload."
-            exit 0
+          # Idempotent release creation — the first matrix job that
+          # gets here wins; the rest see "release already exists" and
+          # carry on.
+          if ! gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+            gh release create "$TAG" \
+              --repo "$REPO" \
+              --title "House Puzzle $TAG" \
+              --notes "Auto-generated from $TAG. See latest.json for the in-app updater manifest." \
+              || true
           fi
 
-          for f in "${SIGS[@]}"; do
+          # Collect every artefact that lives under target/**/bundle/**
+          # and matters either as a user install bundle or as an
+          # updater-pipeline file. mapfile with -d '' for null-
+          # delimited safety against spaces in "House Puzzle" names.
+          mapfile -d '' -t FILES < <(find target -path "*/bundle/*" \( \
+              -name "*.deb" \
+              -o -name "*.AppImage" \
+              -o -name "*.AppImage.sig" \
+              -o -name "*.AppImage.tar.gz" \
+              -o -name "*.AppImage.tar.gz.sig" \
+              -o -name "*.dmg" \
+              -o -name "*.app.tar.gz" \
+              -o -name "*.app.tar.gz.sig" \
+              -o -name "*.msi" \
+              -o -name "*.msi.sig" \
+              -o -name "*.msi.zip" \
+              -o -name "*.msi.zip.sig" \
+              -o -name "*-setup.exe" \
+              -o -name "*-setup.exe.sig" \
+              -o -name "*-setup.nsis.zip" \
+              -o -name "*-setup.nsis.zip.sig" \
+              -o -name "*.rpm" \
+            \) -print0)
+
+          echo "Found ${#FILES[@]} file(s) to upload to release $TAG"
+          if [ "${#FILES[@]}" -eq 0 ]; then
+            echo "::error::no bundles found under target/**/bundle/** — tauri-action may have cleaned them up unexpectedly"
+            exit 1
+          fi
+
+          for f in "${FILES[@]}"; do
             echo "Uploading: $f"
             if ! gh release upload "$TAG" "$f" --repo "$REPO" --clobber; then
               echo "::warning::failed to upload $f"
