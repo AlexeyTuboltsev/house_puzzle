@@ -5,3 +5,9 @@
 !icons/
 !icons/**
 !*.png
+
+# But elm.js is a build artifact compiled from elm/src/Main.elm by
+# `elm make` — CI regenerates it before `cargo build` (see
+# `.github/workflows/build-tauri.yml`). Keep it out of git so the
+# diff stays focused on actual source changes.
+/dist/elm.js
