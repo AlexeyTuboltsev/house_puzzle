@@ -3,6 +3,7 @@
 
 mod commands;
 mod session;
+mod settings;
 
 fn main() {
     let sessions = session::new_session_store();
@@ -15,6 +16,15 @@ fn main() {
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        // Window position/size restore — drop-in, persists to
+        // <app_data>/.window-state.json. No app code needed beyond
+        // the registration.
+        .plugin(tauri_plugin_window_state::Builder::default().build())
+        // Keyed JSON store for everything else (checkbox states,
+        // colors, last import path, sidebar width, ...). Settings
+        // schema lives in `settings.rs`; commands `load_settings` /
+        // `save_settings` wrap it for the frontend.
+        .plugin(tauri_plugin_store::Builder::default().build())
         .manage(sessions)
         .setup(move |app| {
             // In test mode, spawn a watcher thread that polls for commands
@@ -160,6 +170,8 @@ fn main() {
             commands::check_for_updates,
             commands::save_screenshot,
             commands::log_to_stderr,
+            settings::load_settings,
+            settings::save_settings,
         ]);
 
     builder
