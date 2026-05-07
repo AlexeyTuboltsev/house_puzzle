@@ -1,10 +1,16 @@
 // settings.rs — persistent user settings backed by tauri-plugin-store.
 //
 // One JSON file at <app_data>/settings.json, single top-level key
-// "settings", whose value is a JSON object matching the `Settings`
-// struct below. Defaults applied per-field via `serde(default = ...)`
-// so adding a new field is forward-compatible: old stored JSON simply
-// fills in the default for any missing key.
+// "settings", whose value is a JSON object.
+//
+// Defaults live in the FRONTEND (Elm `init`). The store only persists
+// fields the user has explicitly changed — every Settings field is an
+// Option, with `skip_serializing_if = "Option::is_none"` so a freshly
+// installed app sees an empty object on `load_settings` and Elm keeps
+// its own defaults via `Maybe.withDefault`. Trying to centralise
+// defaults in Rust caused a regression on PR #106 (CI run #25499029090):
+// Rust's `show_group_overlay: false` overrode Elm's `True`, and the
+// per-pixel screenshot test diffed.
 //
 // `save_settings` accepts a partial JSON object and merges it into the
 // stored value. The frontend doesn't have to send the whole thing on
@@ -19,75 +25,47 @@ const STORE_FILE: &str = "settings.json";
 const SETTINGS_KEY: &str = "settings";
 const SCHEMA_VERSION: u32 = 1;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Settings {
-    #[serde(default = "default_version")]
-    pub version: u32,
+    /// Schema version — emitted only on first save (set in `save_settings`)
+    /// so existing-without-version stores continue to round-trip cleanly.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<u32>,
 
-    /// Absolute path of the last AI file the user opened. `None` until
-    /// they pick something through the file picker.
-    #[serde(default)]
+    /// Absolute path of the last AI file the user opened.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_import_path: Option<String>,
 
-    // ---- toggles (Elm Model.show*)
-    #[serde(default = "default_true")]
-    pub show_outlines: bool,
-    #[serde(default)]
-    pub show_grid: bool,
-    #[serde(default)]
-    pub show_numbers: bool,
-    #[serde(default)]
-    pub show_lights: bool,
-    #[serde(default)]
-    pub show_group_overlay: bool,
-    #[serde(default)]
-    pub show_wave_overlay: bool,
-    #[serde(default)]
-    pub show_only_blueprint: bool,
+    // ---- toggles
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub show_outlines: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub show_grid: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub show_numbers: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub show_lights: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub show_group_overlay: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub show_wave_overlay: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub show_only_blueprint: Option<bool>,
 
     // ---- colors (HSL hue, 0..360)
-    #[serde(default)]
-    pub grid_hue: f64,
-    #[serde(default)]
-    pub outline_hue: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub grid_hue: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outline_hue: Option<f64>,
 
     // ---- right sidebar width (--tools-width CSS var, in vw)
-    #[serde(default = "default_tools_width")]
-    pub tools_width_vw: f64,
-}
-
-fn default_version() -> u32 {
-    SCHEMA_VERSION
-}
-fn default_true() -> bool {
-    true
-}
-fn default_tools_width() -> f64 {
-    40.0
-}
-
-impl Default for Settings {
-    fn default() -> Self {
-        Settings {
-            version: SCHEMA_VERSION,
-            last_import_path: None,
-            show_outlines: true,
-            show_grid: false,
-            show_numbers: false,
-            show_lights: false,
-            show_group_overlay: false,
-            show_wave_overlay: false,
-            show_only_blueprint: false,
-            grid_hue: 0.0,
-            outline_hue: 0.0,
-            tools_width_vw: 40.0,
-        }
-    }
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tools_width_vw: Option<f64>,
 }
 
 /// Read the persisted settings. Missing file or unreadable contents
-/// return the defaults — the call never errors at this layer; the
-/// frontend always gets a usable Settings.
+/// return an empty Settings (all fields None). The frontend layers
+/// its own defaults on top via `Maybe.withDefault`.
 #[tauri::command]
 pub fn load_settings(app: AppHandle) -> Settings {
     let store = match app.store(STORE_FILE) {
@@ -104,13 +82,14 @@ pub fn load_settings(app: AppHandle) -> Settings {
 /// Merge `partial` (any subset of Settings keys) into the stored
 /// JSON object and flush to disk. Unknown keys are passed through
 /// unchanged so a future-version frontend won't lose data when read
-/// by an older binary.
+/// by an older binary. Stamps `version` on every write so the file
+/// can be migrated explicitly later.
 #[tauri::command]
 pub fn save_settings(app: AppHandle, partial: Value) -> Result<(), String> {
     let store = app.store(STORE_FILE).map_err(|e| e.to_string())?;
     let current = store
         .get(SETTINGS_KEY)
-        .unwrap_or_else(|| serde_json::to_value(Settings::default()).unwrap());
+        .unwrap_or_else(|| Value::Object(serde_json::Map::new()));
     let mut current_obj = match current {
         Value::Object(o) => o,
         _ => serde_json::Map::new(),
@@ -120,6 +99,7 @@ pub fn save_settings(app: AppHandle, partial: Value) -> Result<(), String> {
             current_obj.insert(k, v);
         }
     }
+    current_obj.insert("version".to_string(), Value::Number(SCHEMA_VERSION.into()));
     store.set(SETTINGS_KEY, Value::Object(current_obj));
     store.save().map_err(|e| e.to_string())
 }
