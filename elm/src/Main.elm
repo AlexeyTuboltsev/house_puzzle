@@ -176,9 +176,17 @@ type alias UndoSnapshot =
 {-| Persisted user settings. Single source of truth for default values
 is the Rust side (`crates/hp-tauri/src/settings.rs`); the frontend
 never invents these on its own — `Loading` keeps the UI hidden until
-the typed response from `load_settings` arrives. -}
+the typed response from `load_settings` arrives.
+
+The `version` field is the schema version. Both Rust and Elm assert
+they're at the same `settingsSchemaVersion`; a stored value with a
+different version transitions the app to `BootstrapError` so a stale
+or future-generated settings file fails loud instead of silently
+landing on a half-broken UI. Bump the constant on both sides
+whenever fields are added/removed/retyped. -}
 type alias Settings =
-    { lastImportPath : String
+    { version : Int
+    , lastImportPath : String
     , showOutlines : Bool
     , showGrid : Bool
     , showNumbers : Bool
@@ -190,6 +198,13 @@ type alias Settings =
     , outlineHue : Float
     , toolsWidthVw : Float
     }
+
+
+{-| Bump in lock-step with `SCHEMA_VERSION` in
+`crates/hp-tauri/src/settings.rs`. -}
+settingsSchemaVersion : Int
+settingsSchemaVersion =
+    1
 
 
 {-| Constants known at startup (passed in via flags). Carried in every
@@ -327,7 +342,8 @@ init flags =
 web mode has no backend store to load from. -}
 webDefaultSettings : Settings
 webDefaultSettings =
-    { lastImportPath = ""
+    { version = settingsSchemaVersion
+    , lastImportPath = ""
     , showOutlines = True
     , showGrid = False
     , showNumbers = False
@@ -558,6 +574,7 @@ decodeSettings =
             D.map2 (|>) (D.field name decoder)
     in
     D.succeed Settings
+        |> required "version" D.int
         |> required "last_import_path" D.string
         |> required "show_outlines" D.bool
         |> required "show_grid" D.bool
@@ -718,11 +735,23 @@ updateBoot msg boot fallback =
             else
                 case D.decodeValue decodeSettings dataVal of
                     Ok settings ->
-                        ( Running (initialRunning boot settings)
-                        , Cmd.batch
-                            [ fetchPdfList True
-                            ]
-                        )
+                        if settings.version /= settingsSchemaVersion then
+                            ( BootstrapError boot
+                                ("Settings schema version mismatch: stored "
+                                    ++ String.fromInt settings.version
+                                    ++ " but this build expects "
+                                    ++ String.fromInt settingsSchemaVersion
+                                    ++ ". Delete the settings file under app_data and restart."
+                                )
+                            , Cmd.none
+                            )
+
+                        else
+                            ( Running (initialRunning boot settings)
+                            , Cmd.batch
+                                [ fetchPdfList True
+                                ]
+                            )
 
                     Err err ->
                         ( BootstrapError boot

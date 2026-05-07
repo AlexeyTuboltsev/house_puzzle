@@ -6,10 +6,10 @@
 //
 // Rust is the single source of truth for defaults. Values in
 // `Settings::default()` are what every fresh install starts with;
-// the frontend never has its own defaults. Elm gates its first
-// render on the `load_settings` response (`bootstrapped` flag in
-// Main.elm), so the user never sees Elm's literal init values —
-// those are just type-required placeholders.
+// the frontend never has its own defaults. Elm gates the first
+// render on the `load_settings` response (`AppState.Loading ->
+// Running` transition in Main.elm), so the user never sees Elm's
+// literal init values — they're just type-required placeholders.
 //
 // `#[serde(default)]` on the struct fills missing fields from the
 // Default impl during deserialisation, so a partially-populated
@@ -18,6 +18,12 @@
 // `save_settings` accepts a partial JSON object and merges it into
 // the stored value. The frontend only sends fields that actually
 // changed.
+//
+// SCHEMA_VERSION must stay in lock-step with `settingsSchemaVersion`
+// in `elm/src/Main.elm`. The Elm side rejects (transitions to
+// `BootstrapError`) any stored settings whose `version` doesn't
+// match the constant it was compiled with — keeps stale or
+// future-generated stores from landing on a half-broken UI.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -26,6 +32,8 @@ use tauri_plugin_store::StoreExt;
 
 const STORE_FILE: &str = "settings.json";
 const SETTINGS_KEY: &str = "settings";
+
+/// Bump in lock-step with `settingsSchemaVersion` in `elm/src/Main.elm`.
 const SCHEMA_VERSION: u32 = 1;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

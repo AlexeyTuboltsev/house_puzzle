@@ -6391,7 +6391,8 @@ var $author$project$Main$loadSettings = function (isTauri) {
 			requestId: 'load_settings'
 		}) : $elm$core$Platform$Cmd$none;
 };
-var $author$project$Main$webDefaultSettings = {gridHue: 35.0, lastImportPath: '', outlineHue: 210.0, showGrid: false, showGroupOverlay: true, showLights: false, showNumbers: false, showOnlyBlueprint: false, showOutlines: true, showWaveOverlay: true, toolsWidthVw: 40.0};
+var $author$project$Main$settingsSchemaVersion = 1;
+var $author$project$Main$webDefaultSettings = {gridHue: 35.0, lastImportPath: '', outlineHue: 210.0, showGrid: false, showGroupOverlay: true, showLights: false, showNumbers: false, showOnlyBlueprint: false, showOutlines: true, showWaveOverlay: true, toolsWidthVw: 40.0, version: $author$project$Main$settingsSchemaVersion};
 var $author$project$Main$init = function (flags) {
 	var boot = {isTauri: flags.isTauri, version: flags.version};
 	return flags.isTauri ? _Utils_Tuple2(
@@ -6763,18 +6764,20 @@ var $author$project$Main$BootstrapError = F2(
 	function (a, b) {
 		return {$: 'BootstrapError', a: a, b: b};
 	});
-var $author$project$Main$Settings = function (lastImportPath) {
-	return function (showOutlines) {
-		return function (showGrid) {
-			return function (showNumbers) {
-				return function (showLights) {
-					return function (showGroupOverlay) {
-						return function (showWaveOverlay) {
-							return function (showOnlyBlueprint) {
-								return function (gridHue) {
-									return function (outlineHue) {
-										return function (toolsWidthVw) {
-											return {gridHue: gridHue, lastImportPath: lastImportPath, outlineHue: outlineHue, showGrid: showGrid, showGroupOverlay: showGroupOverlay, showLights: showLights, showNumbers: showNumbers, showOnlyBlueprint: showOnlyBlueprint, showOutlines: showOutlines, showWaveOverlay: showWaveOverlay, toolsWidthVw: toolsWidthVw};
+var $author$project$Main$Settings = function (version) {
+	return function (lastImportPath) {
+		return function (showOutlines) {
+			return function (showGrid) {
+				return function (showNumbers) {
+					return function (showLights) {
+						return function (showGroupOverlay) {
+							return function (showWaveOverlay) {
+								return function (showOnlyBlueprint) {
+									return function (gridHue) {
+										return function (outlineHue) {
+											return function (toolsWidthVw) {
+												return {gridHue: gridHue, lastImportPath: lastImportPath, outlineHue: outlineHue, showGrid: showGrid, showGroupOverlay: showGroupOverlay, showLights: showLights, showNumbers: showNumbers, showOnlyBlueprint: showOnlyBlueprint, showOutlines: showOutlines, showWaveOverlay: showWaveOverlay, toolsWidthVw: toolsWidthVw, version: version};
+											};
 										};
 									};
 								};
@@ -6786,6 +6789,7 @@ var $author$project$Main$Settings = function (lastImportPath) {
 		};
 	};
 };
+var $elm$json$Json$Decode$int = _Json_decodeInt;
 var $author$project$Main$decodeSettings = function () {
 	var required = F2(
 		function (name, decoder) {
@@ -6838,7 +6842,11 @@ var $author$project$Main$decodeSettings = function () {
 												required,
 												'last_import_path',
 												$elm$json$Json$Decode$string,
-												$elm$json$Json$Decode$succeed($author$project$Main$Settings))))))))))));
+												A3(
+													required,
+													'version',
+													$elm$json$Json$Decode$int,
+													$elm$json$Json$Decode$succeed($author$project$Main$Settings)))))))))))));
 }();
 var $elm$json$Json$Decode$decodeValue = _Json_run;
 var $elm$core$Basics$neq = _Utils_notEqual;
@@ -6895,7 +6903,12 @@ var $author$project$Main$updateBoot = F3(
 					var _v1 = A2($elm$json$Json$Decode$decodeValue, $author$project$Main$decodeSettings, dataVal);
 					if (_v1.$ === 'Ok') {
 						var settings = _v1.a;
-						return _Utils_Tuple2(
+						return (!_Utils_eq(settings.version, $author$project$Main$settingsSchemaVersion)) ? _Utils_Tuple2(
+							A2(
+								$author$project$Main$BootstrapError,
+								boot,
+								'Settings schema version mismatch: stored ' + ($elm$core$String$fromInt(settings.version) + (' but this build expects ' + ($elm$core$String$fromInt($author$project$Main$settingsSchemaVersion) + '. Delete the settings file under app_data and restart.')))),
+							$elm$core$Platform$Cmd$none) : _Utils_Tuple2(
 							$author$project$Main$Running(
 								A2($author$project$Main$initialRunning, boot, settings)),
 							$elm$core$Platform$Cmd$batch(
