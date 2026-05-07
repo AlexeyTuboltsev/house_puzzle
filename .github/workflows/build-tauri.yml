@@ -82,6 +82,22 @@ jobs:
           sed -i.bak "s/version: 'dev'/version: '$VERSION'/" dist/index.html
           rm -f tauri.conf.json.bak Cargo.toml.bak dist/index.html.bak
 
+      # Tauri's frontend lives in crates/hp-tauri/dist/elm.js, which is
+      # generated from elm/src/Main.elm. We DON'T track it in git
+      # anymore — CI builds it fresh on every run. Keep this step
+      # immediately before the tauri-action so the bundler picks up
+      # the freshly compiled JS.
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build Elm frontend
+        working-directory: elm
+        run: |
+          npm install -g elm
+          elm make src/Main.elm --output ../crates/hp-tauri/dist/elm.js
+
       # Bundle + sign + (on tag pushes) create the GitHub release with
       # the install bundles, .sig files, the updater archives, and
       # latest.json. The Tauri updater plugin in the running app polls
