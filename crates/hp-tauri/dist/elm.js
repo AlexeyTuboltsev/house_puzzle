@@ -5518,12 +5518,13 @@ var $elm$json$Json$Decode$field = _Json_decodeField;
 var $author$project$Main$GotViewport = function (a) {
 	return {$: 'GotViewport', a: a};
 };
-var $author$project$Main$Idle = {$: 'Idle'};
-var $author$project$Main$ModeInit = {$: 'ModeInit'};
-var $author$project$Main$NotGenerated = {$: 'NotGenerated'};
+var $author$project$Main$Loading = function (a) {
+	return {$: 'Loading', a: a};
+};
+var $author$project$Main$Running = function (a) {
+	return {$: 'Running', a: a};
+};
 var $elm$core$Platform$Cmd$batch = _Platform_batch;
-var $elm$core$Dict$RBEmpty_elm_builtin = {$: 'RBEmpty_elm_builtin'};
-var $elm$core$Dict$empty = $elm$core$Dict$RBEmpty_elm_builtin;
 var $author$project$Main$GotFileList = function (a) {
 	return {$: 'GotFileList', a: a};
 };
@@ -5556,6 +5557,8 @@ var $elm$http$Http$Sending = function (a) {
 	return {$: 'Sending', a: a};
 };
 var $elm$http$Http$Timeout_ = {$: 'Timeout_'};
+var $elm$core$Dict$RBEmpty_elm_builtin = {$: 'RBEmpty_elm_builtin'};
+var $elm$core$Dict$empty = $elm$core$Dict$RBEmpty_elm_builtin;
 var $elm$core$Maybe$isJust = function (maybe) {
 	if (maybe.$ === 'Just') {
 		return true;
@@ -6372,6 +6375,13 @@ var $author$project$Main$fetchPdfList = function (isTauri) {
 		});
 };
 var $elm$browser$Browser$Dom$getViewport = _Browser_withWindow(_Browser_getViewport);
+var $author$project$Main$Idle = {$: 'Idle'};
+var $author$project$Main$ModeInit = {$: 'ModeInit'};
+var $author$project$Main$NotGenerated = {$: 'NotGenerated'};
+var $author$project$Main$initialRunning = F2(
+	function (boot, settings) {
+		return {appMode: $author$project$Main$ModeInit, availableH: 900.0, blueprintBgUrl: $elm$core$Maybe$Nothing, boot: boot, bricksById: $elm$core$Dict$empty, colorPicking: $elm$core$Maybe$Nothing, dragInsertBeforeId: $elm$core$Maybe$Nothing, dragOverGroupId: $elm$core$Maybe$Nothing, dragOverWaveId: $elm$core$Maybe$Nothing, draggingPieceId: $elm$core$Maybe$Nothing, editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, editOriginalGroups: _List_Nil, editOriginalPieces: _List_Nil, editOriginalWaves: _List_Nil, exportCanvasHeight: '900', exportHouseName: 'NewHouse', exportLocation: 'Rome', exportPosition: '0', exportSpacing: '12.0', exporting: false, generateState: $author$project$Main$NotGenerated, groups: _List_Nil, houseUnitsHigh: 15.5, hoveredBrickId: $elm$core$Maybe$Nothing, hoveredPieceId: $elm$core$Maybe$Nothing, lasso: $elm$core$Maybe$Nothing, lightsUrl: $elm$core$Maybe$Nothing, loadState: $author$project$Main$Idle, minBorder: 10, nextGroupId: 1, nextSessionId: 1, nextWaveId: 1, pdfFiles: _List_Nil, pieceGeneration: 0, pieces: _List_Nil, recomputing: false, redoHistory: _List_Nil, seed: 42, selectedFileName: settings.lastImportPath, selectedGroupId: $elm$core$Maybe$Nothing, selectedPieceId: $elm$core$Maybe$Nothing, selectedWaveId: $elm$core$Maybe$Nothing, sessionKey: '', settings: settings, svgScale: 1.0, targetCount: 60, undoHistory: _List_Nil, waves: _List_Nil, zoomGridActive: false, zoomLevel: 1.0};
+	});
 var $elm$core$Platform$Cmd$none = $elm$core$Platform$Cmd$batch(_List_Nil);
 var $author$project$Main$loadSettings = function (isTauri) {
 	return isTauri ? $author$project$Main$tauriInvoke(
@@ -6381,15 +6391,24 @@ var $author$project$Main$loadSettings = function (isTauri) {
 			requestId: 'load_settings'
 		}) : $elm$core$Platform$Cmd$none;
 };
+var $author$project$Main$webDefaultSettings = {gridHue: 35.0, lastImportPath: '', outlineHue: 210.0, showGrid: false, showGroupOverlay: true, showLights: false, showNumbers: false, showOnlyBlueprint: false, showOutlines: true, showWaveOverlay: true, toolsWidthVw: 40.0};
 var $author$project$Main$init = function (flags) {
-	return _Utils_Tuple2(
-		{appMode: $author$project$Main$ModeInit, appVersion: flags.version, availableH: 900.0, blueprintBgUrl: $elm$core$Maybe$Nothing, bricksById: $elm$core$Dict$empty, colorPicking: $elm$core$Maybe$Nothing, dragInsertBeforeId: $elm$core$Maybe$Nothing, dragOverGroupId: $elm$core$Maybe$Nothing, dragOverWaveId: $elm$core$Maybe$Nothing, draggingPieceId: $elm$core$Maybe$Nothing, editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, editOriginalGroups: _List_Nil, editOriginalPieces: _List_Nil, editOriginalWaves: _List_Nil, exportCanvasHeight: '900', exportHouseName: 'NewHouse', exportLocation: 'Rome', exportPosition: '0', exportSpacing: '12.0', exporting: false, generateState: $author$project$Main$NotGenerated, gridHue: 35.0, groups: _List_Nil, houseUnitsHigh: 15.5, hoveredBrickId: $elm$core$Maybe$Nothing, hoveredPieceId: $elm$core$Maybe$Nothing, isTauri: flags.isTauri, lasso: $elm$core$Maybe$Nothing, lightsUrl: $elm$core$Maybe$Nothing, loadState: $author$project$Main$Idle, minBorder: 10, nextGroupId: 1, nextSessionId: 1, nextWaveId: 1, outlineHue: 210.0, pdfFiles: _List_Nil, pieceGeneration: 0, pieces: _List_Nil, recomputing: false, redoHistory: _List_Nil, seed: 42, selectedFileName: '', selectedGroupId: $elm$core$Maybe$Nothing, selectedPieceId: $elm$core$Maybe$Nothing, selectedWaveId: $elm$core$Maybe$Nothing, sessionKey: '', showGrid: false, showGroupOverlay: true, showLights: false, showNumbers: true, showOnlyBlueprint: false, showOutlines: true, showWaveOverlay: true, svgScale: 1.0, targetCount: 60, undoHistory: _List_Nil, waves: _List_Nil, zoomGridActive: false, zoomLevel: 1.0},
+	var boot = {isTauri: flags.isTauri, version: flags.version};
+	return flags.isTauri ? _Utils_Tuple2(
+		$author$project$Main$Loading(boot),
 		$elm$core$Platform$Cmd$batch(
 			_List_fromArray(
 				[
-					$author$project$Main$fetchPdfList(flags.isTauri),
 					A2($elm$core$Task$perform, $author$project$Main$GotViewport, $elm$browser$Browser$Dom$getViewport),
-					$author$project$Main$loadSettings(flags.isTauri)
+					$author$project$Main$loadSettings(true)
+				]))) : _Utils_Tuple2(
+		$author$project$Main$Running(
+			A2($author$project$Main$initialRunning, boot, $author$project$Main$webDefaultSettings)),
+		$elm$core$Platform$Cmd$batch(
+			_List_fromArray(
+				[
+					$author$project$Main$fetchPdfList(false),
+					A2($elm$core$Task$perform, $author$project$Main$GotViewport, $elm$browser$Browser$Dom$getViewport)
 				])));
 };
 var $author$project$Main$ColorPickMove = F2(
@@ -6707,34 +6726,198 @@ var $author$project$Main$testSetValue = _Platform_incomingPort(
 				A2($elm$json$Json$Decode$field, 'testId', $elm$json$Json$Decode$string));
 		},
 		A2($elm$json$Json$Decode$field, 'value', $elm$json$Json$Decode$string)));
-var $author$project$Main$subscriptions = function (model) {
+var $author$project$Main$subscriptions = function (appState) {
+	var running = function () {
+		if (appState.$ === 'Running') {
+			var rm = appState.a;
+			var _v1 = rm.colorPicking;
+			if (_v1.$ === 'Just') {
+				return _List_fromArray(
+					[
+						$elm$browser$Browser$Events$onMouseMove(
+						A3(
+							$elm$json$Json$Decode$map2,
+							$author$project$Main$ColorPickMove,
+							A2($elm$json$Json$Decode$field, 'clientX', $elm$json$Json$Decode$float),
+							A2($elm$json$Json$Decode$field, 'clientY', $elm$json$Json$Decode$float))),
+						$elm$browser$Browser$Events$onMouseUp(
+						$elm$json$Json$Decode$succeed($author$project$Main$EndColorPick))
+					]);
+			} else {
+				return _List_Nil;
+			}
+		} else {
+			return _List_Nil;
+		}
+	}();
+	var always = _List_fromArray(
+		[
+			$elm$browser$Browser$Events$onKeyDown($author$project$Main$keyDecoder),
+			$author$project$Main$tauriResponse($author$project$Main$TauriResponse),
+			$author$project$Main$testSetValue($author$project$Main$TestSetValue)
+		]);
 	return $elm$core$Platform$Sub$batch(
-		_Utils_ap(
-			_List_fromArray(
-				[
-					$elm$browser$Browser$Events$onKeyDown($author$project$Main$keyDecoder),
-					$author$project$Main$tauriResponse($author$project$Main$TauriResponse),
-					$author$project$Main$testSetValue($author$project$Main$TestSetValue)
-				]),
-			function () {
-				var _v0 = model.colorPicking;
-				if (_v0.$ === 'Just') {
-					return _List_fromArray(
-						[
-							$elm$browser$Browser$Events$onMouseMove(
-							A3(
-								$elm$json$Json$Decode$map2,
-								$author$project$Main$ColorPickMove,
-								A2($elm$json$Json$Decode$field, 'clientX', $elm$json$Json$Decode$float),
-								A2($elm$json$Json$Decode$field, 'clientY', $elm$json$Json$Decode$float))),
-							$elm$browser$Browser$Events$onMouseUp(
-							$elm$json$Json$Decode$succeed($author$project$Main$EndColorPick))
-						]);
-				} else {
-					return _List_Nil;
-				}
-			}()));
+		_Utils_ap(always, running));
 };
+var $author$project$Main$BootstrapError = F2(
+	function (a, b) {
+		return {$: 'BootstrapError', a: a, b: b};
+	});
+var $author$project$Main$Settings = function (lastImportPath) {
+	return function (showOutlines) {
+		return function (showGrid) {
+			return function (showNumbers) {
+				return function (showLights) {
+					return function (showGroupOverlay) {
+						return function (showWaveOverlay) {
+							return function (showOnlyBlueprint) {
+								return function (gridHue) {
+									return function (outlineHue) {
+										return function (toolsWidthVw) {
+											return {gridHue: gridHue, lastImportPath: lastImportPath, outlineHue: outlineHue, showGrid: showGrid, showGroupOverlay: showGroupOverlay, showLights: showLights, showNumbers: showNumbers, showOnlyBlueprint: showOnlyBlueprint, showOutlines: showOutlines, showWaveOverlay: showWaveOverlay, toolsWidthVw: toolsWidthVw};
+										};
+									};
+								};
+							};
+						};
+					};
+				};
+			};
+		};
+	};
+};
+var $author$project$Main$decodeSettings = function () {
+	var required = F2(
+		function (name, decoder) {
+			return A2(
+				$elm$json$Json$Decode$map2,
+				$elm$core$Basics$apR,
+				A2($elm$json$Json$Decode$field, name, decoder));
+		});
+	return A3(
+		required,
+		'tools_width_vw',
+		$elm$json$Json$Decode$float,
+		A3(
+			required,
+			'outline_hue',
+			$elm$json$Json$Decode$float,
+			A3(
+				required,
+				'grid_hue',
+				$elm$json$Json$Decode$float,
+				A3(
+					required,
+					'show_only_blueprint',
+					$elm$json$Json$Decode$bool,
+					A3(
+						required,
+						'show_wave_overlay',
+						$elm$json$Json$Decode$bool,
+						A3(
+							required,
+							'show_group_overlay',
+							$elm$json$Json$Decode$bool,
+							A3(
+								required,
+								'show_lights',
+								$elm$json$Json$Decode$bool,
+								A3(
+									required,
+									'show_numbers',
+									$elm$json$Json$Decode$bool,
+									A3(
+										required,
+										'show_grid',
+										$elm$json$Json$Decode$bool,
+										A3(
+											required,
+											'show_outlines',
+											$elm$json$Json$Decode$bool,
+											A3(
+												required,
+												'last_import_path',
+												$elm$json$Json$Decode$string,
+												$elm$json$Json$Decode$succeed($author$project$Main$Settings))))))))))));
+}();
+var $elm$json$Json$Decode$decodeValue = _Json_run;
+var $elm$core$Basics$neq = _Utils_notEqual;
+var $elm$json$Json$Encode$null = _Json_encodeNull;
+var $elm$core$Result$withDefault = F2(
+	function (def, result) {
+		if (result.$ === 'Ok') {
+			var a = result.a;
+			return a;
+		} else {
+			return def;
+		}
+	});
+var $author$project$Main$updateBoot = F3(
+	function (msg, boot, fallback) {
+		if (msg.$ === 'TauriResponse') {
+			var val = msg.a;
+			var requestId = A2(
+				$elm$core$Result$withDefault,
+				'',
+				A2(
+					$elm$json$Json$Decode$decodeValue,
+					A2($elm$json$Json$Decode$field, 'requestId', $elm$json$Json$Decode$string),
+					val));
+			var ok = A2(
+				$elm$core$Result$withDefault,
+				false,
+				A2(
+					$elm$json$Json$Decode$decodeValue,
+					A2($elm$json$Json$Decode$field, 'ok', $elm$json$Json$Decode$bool),
+					val));
+			var errStr = A2(
+				$elm$core$Result$withDefault,
+				'load_settings error',
+				A2(
+					$elm$json$Json$Decode$decodeValue,
+					A2($elm$json$Json$Decode$field, 'error', $elm$json$Json$Decode$string),
+					val));
+			var dataVal = A2(
+				$elm$core$Result$withDefault,
+				$elm$json$Json$Encode$null,
+				A2(
+					$elm$json$Json$Decode$decodeValue,
+					A2($elm$json$Json$Decode$field, 'data', $elm$json$Json$Decode$value),
+					val));
+			if (requestId !== 'load_settings') {
+				return _Utils_Tuple2(fallback, $elm$core$Platform$Cmd$none);
+			} else {
+				if (!ok) {
+					return _Utils_Tuple2(
+						A2($author$project$Main$BootstrapError, boot, errStr),
+						$elm$core$Platform$Cmd$none);
+				} else {
+					var _v1 = A2($elm$json$Json$Decode$decodeValue, $author$project$Main$decodeSettings, dataVal);
+					if (_v1.$ === 'Ok') {
+						var settings = _v1.a;
+						return _Utils_Tuple2(
+							$author$project$Main$Running(
+								A2($author$project$Main$initialRunning, boot, settings)),
+							$elm$core$Platform$Cmd$batch(
+								_List_fromArray(
+									[
+										$author$project$Main$fetchPdfList(true)
+									])));
+					} else {
+						var err = _v1.a;
+						return _Utils_Tuple2(
+							A2(
+								$author$project$Main$BootstrapError,
+								boot,
+								'load_settings response didn\'t match the expected schema:\n' + $elm$json$Json$Decode$errorToString(err)),
+							$elm$core$Platform$Cmd$none);
+					}
+				}
+			}
+		} else {
+			return _Utils_Tuple2(fallback, $elm$core$Platform$Cmd$none);
+		}
+	});
 var $author$project$Main$BrickRef = F5(
 	function (id, x, y, width, height) {
 		return {height: height, id: id, width: width, x: x, y: y};
@@ -6760,7 +6943,7 @@ var $author$project$Main$LoadError = function (a) {
 var $author$project$Main$Loaded = function (a) {
 	return {$: 'Loaded', a: a};
 };
-var $author$project$Main$Loading = {$: 'Loading'};
+var $author$project$Main$LoadingPdf = {$: 'LoadingPdf'};
 var $author$project$Main$ModeGenerate = {$: 'ModeGenerate'};
 var $author$project$Main$ModeGroups = {$: 'ModeGroups'};
 var $author$project$Main$ModePieces = {$: 'ModePieces'};
@@ -6805,93 +6988,21 @@ var $elm$core$List$all = F2(
 			A2($elm$core$Basics$composeL, $elm$core$Basics$not, isOkay),
 			list);
 	});
-var $elm$json$Json$Decode$decodeValue = _Json_run;
-var $elm$core$Result$toMaybe = function (result) {
-	if (result.$ === 'Ok') {
-		var v = result.a;
-		return $elm$core$Maybe$Just(v);
-	} else {
-		return $elm$core$Maybe$Nothing;
-	}
-};
-var $elm$core$Maybe$withDefault = F2(
-	function (_default, maybe) {
-		if (maybe.$ === 'Just') {
-			var value = maybe.a;
-			return value;
-		} else {
-			return _default;
-		}
-	});
-var $author$project$Main$applyLoadedSettings = F2(
-	function (val, model) {
-		var decodeField = F2(
-			function (name, decoder) {
-				return $elm$core$Result$toMaybe(
-					A2(
-						$elm$json$Json$Decode$decodeValue,
-						A2($elm$json$Json$Decode$field, name, decoder),
-						val));
-			});
-		var _float = function (n) {
-			return A2(decodeField, n, $elm$json$Json$Decode$float);
-		};
-		var str = function (n) {
-			return A2(decodeField, n, $elm$json$Json$Decode$string);
-		};
-		var bool = function (n) {
-			return A2(decodeField, n, $elm$json$Json$Decode$bool);
-		};
+var $author$project$Main$applySnapshot = F2(
+	function (snap, model) {
+		var s = model.settings;
 		return _Utils_update(
 			model,
 			{
-				gridHue: A2(
-					$elm$core$Maybe$withDefault,
-					model.gridHue,
-					_float('grid_hue')),
-				outlineHue: A2(
-					$elm$core$Maybe$withDefault,
-					model.outlineHue,
-					_float('outline_hue')),
-				selectedFileName: A2(
-					$elm$core$Maybe$withDefault,
-					model.selectedFileName,
-					str('last_import_path')),
-				showGrid: A2(
-					$elm$core$Maybe$withDefault,
-					model.showGrid,
-					bool('show_grid')),
-				showGroupOverlay: A2(
-					$elm$core$Maybe$withDefault,
-					model.showGroupOverlay,
-					bool('show_group_overlay')),
-				showLights: A2(
-					$elm$core$Maybe$withDefault,
-					model.showLights,
-					bool('show_lights')),
-				showNumbers: A2(
-					$elm$core$Maybe$withDefault,
-					model.showNumbers,
-					bool('show_numbers')),
-				showOnlyBlueprint: A2(
-					$elm$core$Maybe$withDefault,
-					model.showOnlyBlueprint,
-					bool('show_only_blueprint')),
-				showOutlines: A2(
-					$elm$core$Maybe$withDefault,
-					model.showOutlines,
-					bool('show_outlines')),
-				showWaveOverlay: A2(
-					$elm$core$Maybe$withDefault,
-					model.showWaveOverlay,
-					bool('show_wave_overlay'))
+				groups: snap.groups,
+				nextGroupId: snap.nextGroupId,
+				nextWaveId: snap.nextWaveId,
+				pieces: snap.pieces,
+				settings: _Utils_update(
+					s,
+					{gridHue: snap.gridHue, outlineHue: snap.outlineHue}),
+				waves: snap.waves
 			});
-	});
-var $author$project$Main$applySnapshot = F2(
-	function (snap, model) {
-		return _Utils_update(
-			model,
-			{gridHue: snap.gridHue, groups: snap.groups, nextGroupId: snap.nextGroupId, nextWaveId: snap.nextWaveId, outlineHue: snap.outlineHue, pieces: snap.pieces, waves: snap.waves});
 	});
 var $elm$core$Task$onError = _Scheduler_onError;
 var $elm$core$Task$attempt = F2(
@@ -7031,6 +7142,15 @@ var $elm$json$Json$Decode$maybe = function (decoder) {
 				$elm$json$Json$Decode$succeed($elm$core$Maybe$Nothing)
 			]));
 };
+var $elm$core$Maybe$withDefault = F2(
+	function (_default, maybe) {
+		if (maybe.$ === 'Just') {
+			var value = maybe.a;
+			return value;
+		} else {
+			return _default;
+		}
+	});
 var $author$project$Main$decodeLoadResponse = A2(
 	$elm$json$Json$Decode$andThen,
 	function (f) {
@@ -7206,7 +7326,7 @@ var $elm$core$List$drop = F2(
 		}
 	});
 var $author$project$Main$ensureBackgroundCmd = function (model) {
-	return (_Utils_eq(model.blueprintBgUrl, $elm$core$Maybe$Nothing) && (model.isTauri && (!$elm$core$String$isEmpty(model.sessionKey)))) ? $author$project$Main$tauriInvoke(
+	return (_Utils_eq(model.blueprintBgUrl, $elm$core$Maybe$Nothing) && (model.boot.isTauri && (!$elm$core$String$isEmpty(model.sessionKey)))) ? $author$project$Main$tauriInvoke(
 		{
 			args: $elm$json$Json$Encode$object(
 				_List_fromArray(
@@ -7430,9 +7550,15 @@ var $elm$core$Basics$min = F2(
 	function (x, y) {
 		return (_Utils_cmp(x, y) < 0) ? x : y;
 	});
+var $author$project$Main$modSettings = F2(
+	function (f, model) {
+		return _Utils_update(
+			model,
+			{
+				settings: f(model.settings)
+			});
+	});
 var $elm$file$File$name = _File_name;
-var $elm$core$Basics$neq = _Utils_notEqual;
-var $elm$json$Json$Encode$null = _Json_encodeNull;
 var $elm$json$Json$Decode$null = _Json_decodeNull;
 var $elm$json$Json$Decode$nullable = function (decoder) {
 	return $elm$json$Json$Decode$oneOf(
@@ -7752,7 +7878,7 @@ var $elm$core$List$take = F2(
 		return A3($elm$core$List$takeFast, 0, n, list);
 	});
 var $author$project$Main$takeSnapshot = function (model) {
-	return {gridHue: model.gridHue, groups: model.groups, nextGroupId: model.nextGroupId, nextWaveId: model.nextWaveId, outlineHue: model.outlineHue, pieces: model.pieces, waves: model.waves};
+	return {gridHue: model.settings.gridHue, groups: model.groups, nextGroupId: model.nextGroupId, nextWaveId: model.nextWaveId, outlineHue: model.settings.outlineHue, pieces: model.pieces, waves: model.waves};
 };
 var $elm$core$String$toFloat = _String_toFloat;
 var $author$project$Main$FileUploaded = function (a) {
@@ -7780,15 +7906,6 @@ var $author$project$Main$uploadFile = function (file) {
 			url: '/api/upload_file'
 		});
 };
-var $elm$core$Result$withDefault = F2(
-	function (def, result) {
-		if (result.$ === 'Ok') {
-			var a = result.a;
-			return a;
-		} else {
-			return def;
-		}
-	});
 var $author$project$Main$withPieceUrls = F2(
 	function (key, p) {
 		return _Utils_update(
@@ -7817,9 +7934,9 @@ var $author$project$Main$withUndo = F2(
 				}),
 			cmd);
 	});
-var $author$project$Main$update = F2(
+var $author$project$Main$updateRunning = F2(
 	function (msg, model) {
-		update:
+		updateRunning:
 		while (true) {
 			switch (msg.$) {
 				case 'GotFileList':
@@ -7834,7 +7951,7 @@ var $author$project$Main$update = F2(
 						return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 					}
 				case 'PickFile':
-					return model.isTauri ? _Utils_Tuple2(
+					return model.boot.isTauri ? _Utils_Tuple2(
 						model,
 						$author$project$Main$tauriInvoke(
 							{
@@ -7863,7 +7980,7 @@ var $author$project$Main$update = F2(
 							editOriginalWaves: _List_Nil,
 							generateState: $author$project$Main$NotGenerated,
 							lightsUrl: $elm$core$Maybe$Nothing,
-							loadState: $author$project$Main$Loading,
+							loadState: $author$project$Main$LoadingPdf,
 							nextWaveId: 1,
 							pieceGeneration: 0,
 							pieces: _List_Nil,
@@ -7873,7 +7990,7 @@ var $author$project$Main$update = F2(
 							selectedWaveId: $elm$core$Maybe$Nothing,
 							waves: _List_Nil
 						});
-					if (model.isTauri) {
+					if (model.boot.isTauri) {
 						var path = 'in/' + $elm$file$File$name(file);
 						var key = $elm$core$String$fromInt(model.nextSessionId);
 						return _Utils_Tuple2(
@@ -7907,7 +8024,7 @@ var $author$project$Main$update = F2(
 							_Utils_update(
 								model,
 								{nextSessionId: model.nextSessionId + 1, sessionKey: key}),
-							A4($author$project$Main$loadPdf, model.isTauri, key, path, model.availableH));
+							A4($author$project$Main$loadPdf, model.boot.isTauri, key, path, model.availableH));
 					} else {
 						return _Utils_Tuple2(
 							_Utils_update(
@@ -7920,7 +8037,7 @@ var $author$project$Main$update = F2(
 						_Utils_update(
 							model,
 							{appMode: $author$project$Main$ModeInit, blueprintBgUrl: $elm$core$Maybe$Nothing, editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, editOriginalGroups: _List_Nil, editOriginalPieces: _List_Nil, editOriginalWaves: _List_Nil, generateState: $author$project$Main$NotGenerated, lightsUrl: $elm$core$Maybe$Nothing, loadState: $author$project$Main$Idle, nextWaveId: 1, pieceGeneration: 0, pieces: _List_Nil, recomputing: false, selectedFileName: '', selectedPieceId: $elm$core$Maybe$Nothing, selectedWaveId: $elm$core$Maybe$Nothing, sessionKey: '', waves: _List_Nil}),
-						$author$project$Main$fetchPdfList(model.isTauri));
+						$author$project$Main$fetchPdfList(model.boot.isTauri));
 				case 'LoadFile':
 					var path = msg.a;
 					var key = $elm$core$String$fromInt(model.nextSessionId);
@@ -7942,14 +8059,14 @@ var $author$project$Main$update = F2(
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
-							{appMode: $author$project$Main$ModeInit, editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, editOriginalGroups: _List_Nil, editOriginalPieces: _List_Nil, editOriginalWaves: _List_Nil, exportHouseName: houseName, generateState: $author$project$Main$NotGenerated, loadState: $author$project$Main$Loading, nextSessionId: model.nextSessionId + 1, nextWaveId: 1, pieceGeneration: 0, pieces: _List_Nil, recomputing: false, selectedFileName: path, selectedPieceId: $elm$core$Maybe$Nothing, selectedWaveId: $elm$core$Maybe$Nothing, sessionKey: key, waves: _List_Nil}),
+							{appMode: $author$project$Main$ModeInit, editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, editOriginalGroups: _List_Nil, editOriginalPieces: _List_Nil, editOriginalWaves: _List_Nil, exportHouseName: houseName, generateState: $author$project$Main$NotGenerated, loadState: $author$project$Main$LoadingPdf, nextSessionId: model.nextSessionId + 1, nextWaveId: 1, pieceGeneration: 0, pieces: _List_Nil, recomputing: false, selectedFileName: path, selectedPieceId: $elm$core$Maybe$Nothing, selectedWaveId: $elm$core$Maybe$Nothing, sessionKey: key, waves: _List_Nil}),
 						$elm$core$Platform$Cmd$batch(
 							_List_fromArray(
 								[
-									A4($author$project$Main$loadPdf, model.isTauri, key, path, model.availableH),
+									A4($author$project$Main$loadPdf, model.boot.isTauri, key, path, model.availableH),
 									A2(
 									$author$project$Main$saveSettings,
-									model.isTauri,
+									model.boot.isTauri,
 									_List_fromArray(
 										[
 											_Utils_Tuple2(
@@ -8050,7 +8167,7 @@ var $author$project$Main$update = F2(
 				case 'RequestGenerate':
 					var _v5 = model.loadState;
 					if (_v5.$ === 'Loaded') {
-						var logGenCmd = model.isTauri ? $author$project$Main$tauriInvoke(
+						var logGenCmd = model.boot.isTauri ? $author$project$Main$tauriInvoke(
 							{
 								args: $elm$json$Json$Encode$object(
 									_List_fromArray(
@@ -8073,7 +8190,7 @@ var $author$project$Main$update = F2(
 							$elm$core$Platform$Cmd$batch(
 								_List_fromArray(
 									[
-										A5($author$project$Main$mergeBricks, model.isTauri, model.sessionKey, model.targetCount, model.minBorder, model.seed),
+										A5($author$project$Main$mergeBricks, model.boot.isTauri, model.sessionKey, model.targetCount, model.minBorder, model.seed),
 										logGenCmd
 									])));
 					} else {
@@ -8184,12 +8301,17 @@ var $author$project$Main$update = F2(
 				case 'ToggleOutlines':
 					var checked = msg.a;
 					return _Utils_Tuple2(
-						_Utils_update(
-							model,
-							{showOutlines: checked}),
+						A2(
+							$author$project$Main$modSettings,
+							function (s) {
+								return _Utils_update(
+									s,
+									{showOutlines: checked});
+							},
+							model),
 						A2(
 							$author$project$Main$saveSettings,
-							model.isTauri,
+							model.boot.isTauri,
 							_List_fromArray(
 								[
 									_Utils_Tuple2(
@@ -8199,12 +8321,17 @@ var $author$project$Main$update = F2(
 				case 'ToggleGrid':
 					var checked = msg.a;
 					return _Utils_Tuple2(
-						_Utils_update(
-							model,
-							{showGrid: checked}),
+						A2(
+							$author$project$Main$modSettings,
+							function (s) {
+								return _Utils_update(
+									s,
+									{showGrid: checked});
+							},
+							model),
 						A2(
 							$author$project$Main$saveSettings,
-							model.isTauri,
+							model.boot.isTauri,
 							_List_fromArray(
 								[
 									_Utils_Tuple2(
@@ -8214,12 +8341,17 @@ var $author$project$Main$update = F2(
 				case 'ToggleNumbers':
 					var checked = msg.a;
 					return _Utils_Tuple2(
-						_Utils_update(
-							model,
-							{showNumbers: checked}),
+						A2(
+							$author$project$Main$modSettings,
+							function (s) {
+								return _Utils_update(
+									s,
+									{showNumbers: checked});
+							},
+							model),
 						A2(
 							$author$project$Main$saveSettings,
-							model.isTauri,
+							model.boot.isTauri,
 							_List_fromArray(
 								[
 									_Utils_Tuple2(
@@ -8228,7 +8360,7 @@ var $author$project$Main$update = F2(
 								])));
 				case 'ToggleLights':
 					var checked = msg.a;
-					var ensureCmd = (checked && (_Utils_eq(model.lightsUrl, $elm$core$Maybe$Nothing) && model.isTauri)) ? $author$project$Main$tauriInvoke(
+					var ensureCmd = (checked && (_Utils_eq(model.lightsUrl, $elm$core$Maybe$Nothing) && model.boot.isTauri)) ? $author$project$Main$tauriInvoke(
 						{
 							args: $elm$json$Json$Encode$object(
 								_List_fromArray(
@@ -8241,16 +8373,21 @@ var $author$project$Main$update = F2(
 							requestId: 'ensure_lights'
 						}) : $elm$core$Platform$Cmd$none;
 					return _Utils_Tuple2(
-						_Utils_update(
-							model,
-							{showLights: checked}),
+						A2(
+							$author$project$Main$modSettings,
+							function (s) {
+								return _Utils_update(
+									s,
+									{showLights: checked});
+							},
+							model),
 						$elm$core$Platform$Cmd$batch(
 							_List_fromArray(
 								[
 									ensureCmd,
 									A2(
 									$author$project$Main$saveSettings,
-									model.isTauri,
+									model.boot.isTauri,
 									_List_fromArray(
 										[
 											_Utils_Tuple2(
@@ -8261,12 +8398,17 @@ var $author$project$Main$update = F2(
 				case 'ToggleGroupOverlay':
 					var checked = msg.a;
 					return _Utils_Tuple2(
-						_Utils_update(
-							model,
-							{showGroupOverlay: checked}),
+						A2(
+							$author$project$Main$modSettings,
+							function (s) {
+								return _Utils_update(
+									s,
+									{showGroupOverlay: checked});
+							},
+							model),
 						A2(
 							$author$project$Main$saveSettings,
-							model.isTauri,
+							model.boot.isTauri,
 							_List_fromArray(
 								[
 									_Utils_Tuple2(
@@ -8276,12 +8418,17 @@ var $author$project$Main$update = F2(
 				case 'ToggleWaveOverlay':
 					var checked = msg.a;
 					return _Utils_Tuple2(
-						_Utils_update(
-							model,
-							{showWaveOverlay: checked}),
+						A2(
+							$author$project$Main$modSettings,
+							function (s) {
+								return _Utils_update(
+									s,
+									{showWaveOverlay: checked});
+							},
+							model),
 						A2(
 							$author$project$Main$saveSettings,
-							model.isTauri,
+							model.boot.isTauri,
 							_List_fromArray(
 								[
 									_Utils_Tuple2(
@@ -8379,16 +8526,21 @@ var $author$project$Main$update = F2(
 					var checked = msg.a;
 					var ensureCmd = checked ? $author$project$Main$ensureBackgroundCmd(model) : $elm$core$Platform$Cmd$none;
 					return _Utils_Tuple2(
-						_Utils_update(
-							model,
-							{showOnlyBlueprint: checked}),
+						A2(
+							$author$project$Main$modSettings,
+							function (s) {
+								return _Utils_update(
+									s,
+									{showOnlyBlueprint: checked});
+							},
+							model),
 						$elm$core$Platform$Cmd$batch(
 							_List_fromArray(
 								[
 									ensureCmd,
 									A2(
 									$author$project$Main$saveSettings,
-									model.isTauri,
+									model.boot.isTauri,
 									_List_fromArray(
 										[
 											_Utils_Tuple2(
@@ -8896,7 +9048,7 @@ var $author$project$Main$update = F2(
 							_Utils_update(
 								model,
 								{editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, editOriginalGroups: _List_Nil, editOriginalPieces: _List_Nil, editOriginalWaves: _List_Nil, generateState: $author$project$Main$Generated, groups: updatedGroups, pieces: allPieces, recomputing: true, waves: updatedWaves}),
-							A3($author$project$Main$recomputePiecePolygons, model.isTauri, model.sessionKey, allPieces)));
+							A3($author$project$Main$recomputePiecePolygons, model.boot.isTauri, model.sessionKey, allPieces)));
 				case 'CancelEdit':
 					return _Utils_Tuple2(
 						_Utils_update(
@@ -9061,7 +9213,7 @@ var $author$project$Main$update = F2(
 													$elm$core$String$toFloat(model.exportSpacing))))
 										])))
 							]));
-					return model.isTauri ? _Utils_Tuple2(
+					return model.boot.isTauri ? _Utils_Tuple2(
 						_Utils_update(
 							model,
 							{exporting: true}),
@@ -9946,9 +10098,9 @@ var $author$project$Main$update = F2(
 												},
 												model.groups))));
 							case 'GridColorTarget':
-								return _Utils_Tuple2(model.gridHue, 1.0);
+								return _Utils_Tuple2(model.settings.gridHue, 1.0);
 							default:
-								return _Utils_Tuple2(model.outlineHue, 1.0);
+								return _Utils_Tuple2(model.settings.outlineHue, 1.0);
 						}
 					}();
 					var currentHue = _v43.a;
@@ -10010,69 +10162,37 @@ var $author$project$Main$update = F2(
 									$elm$core$Platform$Cmd$none);
 							case 'GridColorTarget':
 								return _Utils_Tuple2(
-									_Utils_update(
-										model,
-										{gridHue: newHue}),
+									A2(
+										$author$project$Main$modSettings,
+										function (s) {
+											return _Utils_update(
+												s,
+												{gridHue: newHue});
+										},
+										model),
 									$elm$core$Platform$Cmd$none);
 							default:
 								return _Utils_Tuple2(
-									_Utils_update(
-										model,
-										{outlineHue: newHue}),
+									A2(
+										$author$project$Main$modSettings,
+										function (s) {
+											return _Utils_update(
+												s,
+												{outlineHue: newHue});
+										},
+										model),
 									$elm$core$Platform$Cmd$none);
 						}
 					}
 				case 'SetSpecialHue':
 					var target = msg.a;
 					var hue = msg.b;
-					var updated = function () {
-						switch (target.$) {
-							case 'GridColorTarget':
-								return _Utils_update(
-									model,
-									{colorPicking: $elm$core$Maybe$Nothing, gridHue: hue});
-							case 'OutlineColorTarget':
-								return _Utils_update(
-									model,
-									{colorPicking: $elm$core$Maybe$Nothing, outlineHue: hue});
-							case 'WaveColorTarget':
-								var wid = target.a;
-								return _Utils_update(
-									model,
-									{
-										colorPicking: $elm$core$Maybe$Nothing,
-										waves: A2(
-											$elm$core$List$map,
-											function (w) {
-												return _Utils_eq(w.id, wid) ? _Utils_update(
-													w,
-													{hue: hue}) : w;
-											},
-											model.waves)
-									});
-							default:
-								var gid = target.a;
-								return _Utils_update(
-									model,
-									{
-										colorPicking: $elm$core$Maybe$Nothing,
-										groups: A2(
-											$elm$core$List$map,
-											function (g) {
-												return _Utils_eq(g.id, gid) ? _Utils_update(
-													g,
-													{hue: hue}) : g;
-											},
-											model.groups)
-									});
-						}
-					}();
 					var saveCmd = function () {
 						switch (target.$) {
 							case 'GridColorTarget':
 								return A2(
 									$author$project$Main$saveSettings,
-									model.isTauri,
+									model.boot.isTauri,
 									_List_fromArray(
 										[
 											_Utils_Tuple2(
@@ -10082,7 +10202,7 @@ var $author$project$Main$update = F2(
 							case 'OutlineColorTarget':
 								return A2(
 									$author$project$Main$saveSettings,
-									model.isTauri,
+									model.boot.isTauri,
 									_List_fromArray(
 										[
 											_Utils_Tuple2(
@@ -10093,6 +10213,63 @@ var $author$project$Main$update = F2(
 								return $elm$core$Platform$Cmd$none;
 						}
 					}();
+					var applyHue = function (m) {
+						switch (target.$) {
+							case 'GridColorTarget':
+								return A2(
+									$author$project$Main$modSettings,
+									function (s) {
+										return _Utils_update(
+											s,
+											{gridHue: hue});
+									},
+									_Utils_update(
+										m,
+										{colorPicking: $elm$core$Maybe$Nothing}));
+							case 'OutlineColorTarget':
+								return A2(
+									$author$project$Main$modSettings,
+									function (s) {
+										return _Utils_update(
+											s,
+											{outlineHue: hue});
+									},
+									_Utils_update(
+										m,
+										{colorPicking: $elm$core$Maybe$Nothing}));
+							case 'WaveColorTarget':
+								var wid = target.a;
+								return _Utils_update(
+									m,
+									{
+										colorPicking: $elm$core$Maybe$Nothing,
+										waves: A2(
+											$elm$core$List$map,
+											function (w) {
+												return _Utils_eq(w.id, wid) ? _Utils_update(
+													w,
+													{hue: hue}) : w;
+											},
+											m.waves)
+									});
+							default:
+								var gid = target.a;
+								return _Utils_update(
+									m,
+									{
+										colorPicking: $elm$core$Maybe$Nothing,
+										groups: A2(
+											$elm$core$List$map,
+											function (g) {
+												return _Utils_eq(g.id, gid) ? _Utils_update(
+													g,
+													{hue: hue}) : g;
+											},
+											m.groups)
+									});
+						}
+					};
+					var updated = applyHue(model);
 					return A2(
 						$author$project$Main$withUndo,
 						model,
@@ -10113,23 +10290,23 @@ var $author$project$Main$update = F2(
 										var _v50 = _v49.a;
 										return A2(
 											$author$project$Main$saveSettings,
-											model.isTauri,
+											model.boot.isTauri,
 											_List_fromArray(
 												[
 													_Utils_Tuple2(
 													'grid_hue',
-													$elm$json$Json$Encode$float(model.gridHue))
+													$elm$json$Json$Encode$float(model.settings.gridHue))
 												]));
 									case 'OutlineColorTarget':
 										var _v51 = _v49.a;
 										return A2(
 											$author$project$Main$saveSettings,
-											model.isTauri,
+											model.boot.isTauri,
 											_List_fromArray(
 												[
 													_Utils_Tuple2(
 													'outline_hue',
-													$elm$json$Json$Encode$float(model.outlineHue))
+													$elm$json$Json$Encode$float(model.settings.outlineHue))
 												]));
 									default:
 										break _v49$2;
@@ -10260,6 +10437,8 @@ var $author$project$Main$update = F2(
 										model,
 										{exporting: false}),
 									$elm$core$Platform$Cmd$none);
+							case 'load_settings':
+								return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 							default:
 								return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 						}
@@ -10284,9 +10463,7 @@ var $author$project$Main$update = F2(
 									return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 								}
 							case 'load_settings':
-								return _Utils_Tuple2(
-									A2($author$project$Main$applyLoadedSettings, dataVal, model),
-									$elm$core$Platform$Cmd$none);
+								return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 							case 'save_settings':
 								return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 							case 'load_pdf':
@@ -10298,7 +10475,7 @@ var $author$project$Main$update = F2(
 										$temp$model = model;
 									msg = $temp$msg;
 									model = $temp$model;
-									continue update;
+									continue updateRunning;
 								} else {
 									var e = _v58.a;
 									return _Utils_Tuple2(
@@ -10319,7 +10496,7 @@ var $author$project$Main$update = F2(
 										$temp$model = model;
 									msg = $temp$msg;
 									model = $temp$model;
-									continue update;
+									continue updateRunning;
 								} else {
 									return _Utils_Tuple2(
 										_Utils_update(
@@ -10428,7 +10605,7 @@ var $author$project$Main$update = F2(
 													A2($elm$core$String$split, '/', path)))));
 									var baseModel = _Utils_update(
 										model,
-										{appMode: $author$project$Main$ModeInit, blueprintBgUrl: $elm$core$Maybe$Nothing, editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, editOriginalGroups: _List_Nil, editOriginalPieces: _List_Nil, editOriginalWaves: _List_Nil, generateState: $author$project$Main$NotGenerated, lightsUrl: $elm$core$Maybe$Nothing, loadState: $author$project$Main$Loading, nextSessionId: model.nextSessionId + 1, nextWaveId: 1, pieceGeneration: 0, pieces: _List_Nil, recomputing: false, selectedFileName: fileName, selectedPieceId: $elm$core$Maybe$Nothing, selectedWaveId: $elm$core$Maybe$Nothing, sessionKey: key, waves: _List_Nil});
+										{appMode: $author$project$Main$ModeInit, blueprintBgUrl: $elm$core$Maybe$Nothing, editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, editOriginalGroups: _List_Nil, editOriginalPieces: _List_Nil, editOriginalWaves: _List_Nil, generateState: $author$project$Main$NotGenerated, lightsUrl: $elm$core$Maybe$Nothing, loadState: $author$project$Main$LoadingPdf, nextSessionId: model.nextSessionId + 1, nextWaveId: 1, pieceGeneration: 0, pieces: _List_Nil, recomputing: false, selectedFileName: fileName, selectedPieceId: $elm$core$Maybe$Nothing, selectedWaveId: $elm$core$Maybe$Nothing, sessionKey: key, waves: _List_Nil});
 									return _Utils_Tuple2(
 										baseModel,
 										$elm$core$Platform$Cmd$batch(
@@ -10455,7 +10632,7 @@ var $author$project$Main$update = F2(
 				case 'TestSetValue':
 					var testId = msg.a.testId;
 					var value = msg.a.value;
-					var logCmd = model.isTauri ? $author$project$Main$tauriInvoke(
+					var logCmd = model.boot.isTauri ? $author$project$Main$tauriInvoke(
 						{
 							args: $elm$json$Json$Encode$object(
 								_List_fromArray(
@@ -10517,6 +10694,27 @@ var $author$project$Main$update = F2(
 			}
 		}
 	});
+var $author$project$Main$update = F2(
+	function (msg, appState) {
+		switch (appState.$) {
+			case 'Running':
+				var rm = appState.a;
+				var _v1 = A2($author$project$Main$updateRunning, msg, rm);
+				var rm2 = _v1.a;
+				var cmd = _v1.b;
+				return _Utils_Tuple2(
+					$author$project$Main$Running(rm2),
+					cmd);
+			case 'Loading':
+				var boot = appState.a;
+				return A3($author$project$Main$updateBoot, msg, boot, appState);
+			case 'NotStarted':
+				var boot = appState.a;
+				return A3($author$project$Main$updateBoot, msg, boot, appState);
+			default:
+				return _Utils_Tuple2(appState, $elm$core$Platform$Cmd$none);
+		}
+	});
 var $elm$html$Html$Attributes$stringProperty = F2(
 	function (key, string) {
 		return A2(
@@ -10526,10 +10724,77 @@ var $elm$html$Html$Attributes$stringProperty = F2(
 	});
 var $elm$html$Html$Attributes$class = $elm$html$Html$Attributes$stringProperty('className');
 var $elm$html$Html$div = _VirtualDom_node('div');
+var $elm$virtual_dom$VirtualDom$style = _VirtualDom_style;
+var $elm$html$Html$Attributes$style = $elm$virtual_dom$VirtualDom$style;
 var $elm$virtual_dom$VirtualDom$text = _VirtualDom_text;
 var $elm$html$Html$text = $elm$virtual_dom$VirtualDom$text;
+var $author$project$Main$viewBootstrapError = function (errMsg) {
+	return A2(
+		$elm$html$Html$div,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('app'),
+				A2($elm$html$Html$Attributes$style, 'display', 'flex'),
+				A2($elm$html$Html$Attributes$style, 'align-items', 'center'),
+				A2($elm$html$Html$Attributes$style, 'justify-content', 'center'),
+				A2($elm$html$Html$Attributes$style, 'flex-direction', 'column'),
+				A2($elm$html$Html$Attributes$style, 'height', '100vh'),
+				A2($elm$html$Html$Attributes$style, 'width', '100vw'),
+				A2($elm$html$Html$Attributes$style, 'background', '#f7f7f7'),
+				A2($elm$html$Html$Attributes$style, 'color', '#c03020'),
+				A2($elm$html$Html$Attributes$style, 'font-family', 'sans-serif')
+			]),
+		_List_fromArray(
+			[
+				A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						A2($elm$html$Html$Attributes$style, 'font-size', '18px'),
+						A2($elm$html$Html$Attributes$style, 'margin-bottom', '12px')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text('House Puzzle couldn\'t start')
+					])),
+				A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						A2($elm$html$Html$Attributes$style, 'max-width', '640px'),
+						A2($elm$html$Html$Attributes$style, 'text-align', 'center'),
+						A2($elm$html$Html$Attributes$style, 'color', '#555')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text(errMsg)
+					]))
+			]));
+};
+var $author$project$Main$viewBootstrapLoader = A2(
+	$elm$html$Html$div,
+	_List_fromArray(
+		[
+			$elm$html$Html$Attributes$class('app'),
+			A2($elm$html$Html$Attributes$style, 'display', 'flex'),
+			A2($elm$html$Html$Attributes$style, 'align-items', 'center'),
+			A2($elm$html$Html$Attributes$style, 'justify-content', 'center'),
+			A2($elm$html$Html$Attributes$style, 'height', '100vh'),
+			A2($elm$html$Html$Attributes$style, 'width', '100vw'),
+			A2($elm$html$Html$Attributes$style, 'background', '#f7f7f7')
+		]),
+	_List_fromArray(
+		[
+			A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('canvas-spinner')
+				]),
+			_List_Nil)
+		]));
 var $author$project$Main$viewBodyOverlay = function (model) {
-	var msg = _Utils_eq(model.loadState, $author$project$Main$Loading) ? $elm$core$Maybe$Just('Parsing PDF\u2026') : (_Utils_eq(model.generateState, $author$project$Main$Compositing) ? $elm$core$Maybe$Just('Generating puzzle\u2026') : (model.recomputing ? $elm$core$Maybe$Just('Updating pieces\u2026') : (model.exporting ? $elm$core$Maybe$Just('Exporting\u2026') : $elm$core$Maybe$Nothing)));
+	var msg = _Utils_eq(model.loadState, $author$project$Main$LoadingPdf) ? $elm$core$Maybe$Just('Parsing PDF\u2026') : (_Utils_eq(model.generateState, $author$project$Main$Compositing) ? $elm$core$Maybe$Just('Generating puzzle\u2026') : (model.recomputing ? $elm$core$Maybe$Just('Updating pieces\u2026') : (model.exporting ? $elm$core$Maybe$Just('Exporting\u2026') : $elm$core$Maybe$Nothing)));
 	if (msg.$ === 'Nothing') {
 		return $elm$html$Html$text('');
 	} else {
@@ -11597,7 +11862,7 @@ var $author$project$Main$viewPieceOverlay = function (appMode) {
 };
 var $author$project$Main$viewMainSvg = F2(
 	function (response, model) {
-		var showOverlayFill = (_Utils_eq(model.appMode, $author$project$Main$ModeGroups) && model.showGroupOverlay) || ((_Utils_eq(model.appMode, $author$project$Main$ModeWaves) && model.showWaveOverlay) || (_Utils_eq(model.appMode, $author$project$Main$ModeExport) && model.showWaveOverlay));
+		var showOverlayFill = (_Utils_eq(model.appMode, $author$project$Main$ModeGroups) && model.settings.showGroupOverlay) || ((_Utils_eq(model.appMode, $author$project$Main$ModeWaves) && model.settings.showWaveOverlay) || (_Utils_eq(model.appMode, $author$project$Main$ModeExport) && model.settings.showWaveOverlay));
 		var piecePositions = $elm$core$Dict$fromList(
 			A2(
 				$elm$core$List$concatMap,
@@ -11725,7 +11990,7 @@ var $author$project$Main$viewMainSvg = F2(
 				return filtered;
 			}
 		}();
-		var numberLabels = ((!model.editMode) && (isGenerated && (model.showNumbers && (_Utils_eq(model.appMode, $author$project$Main$ModePieces) || (_Utils_eq(model.appMode, $author$project$Main$ModeWaves) || _Utils_eq(model.appMode, $author$project$Main$ModeExport)))))) ? A2(
+		var numberLabels = ((!model.editMode) && (isGenerated && (model.settings.showNumbers && (_Utils_eq(model.appMode, $author$project$Main$ModePieces) || (_Utils_eq(model.appMode, $author$project$Main$ModeWaves) || _Utils_eq(model.appMode, $author$project$Main$ModeExport)))))) ? A2(
 			$elm$core$List$filterMap,
 			function (piece) {
 				return A2(
@@ -11978,15 +12243,15 @@ var $author$project$Main$viewMainSvg = F2(
 		var w = $elm$core$String$fromFloat(cw);
 		var compositeOverlays = showComposite ? A2($elm$core$List$map, $author$project$Main$viewBrickOverlay, response.bricks) : _List_Nil;
 		var ch = response.canvas.height;
-		var gridLayer = ((!model.editMode) && (model.showGrid || model.zoomGridActive)) ? A4(
+		var gridLayer = ((!model.editMode) && (model.settings.showGrid || model.zoomGridActive)) ? A4(
 			$author$project$Main$viewGrid,
 			cw,
 			ch,
-			A2($author$project$Main$waveColor, model.gridHue, 1.0),
+			A2($author$project$Main$waveColor, model.settings.gridHue, 1.0),
 			model.houseUnitsHigh) : _List_Nil;
 		var h = $elm$core$String$fromFloat(ch);
 		var lightsLayer = function () {
-			var _v1 = _Utils_Tuple2(model.showLights, model.lightsUrl);
+			var _v1 = _Utils_Tuple2(model.settings.showLights, model.lightsUrl);
 			if (_v1.a && (_v1.b.$ === 'Just')) {
 				var url = _v1.b.a;
 				return _List_fromArray(
@@ -12029,11 +12294,11 @@ var $author$project$Main$viewMainSvg = F2(
 					]),
 				_List_Nil)
 			]) : _List_Nil;
-		var blueprintMode = isGenerated && model.showOnlyBlueprint;
-		var outlineLayer = blueprintMode ? _List_Nil : ((isGenerated && (model.editMode || (model.showOutlines && (_Utils_eq(model.appMode, $author$project$Main$ModePieces) || (_Utils_eq(model.appMode, $author$project$Main$ModeGroups) || (_Utils_eq(model.appMode, $author$project$Main$ModeWaves) || _Utils_eq(model.appMode, $author$project$Main$ModeExport))))))) ? A2(
+		var blueprintMode = isGenerated && model.settings.showOnlyBlueprint;
+		var outlineLayer = blueprintMode ? _List_Nil : ((isGenerated && (model.editMode || (model.settings.showOutlines && (_Utils_eq(model.appMode, $author$project$Main$ModePieces) || (_Utils_eq(model.appMode, $author$project$Main$ModeGroups) || (_Utils_eq(model.appMode, $author$project$Main$ModeWaves) || _Utils_eq(model.appMode, $author$project$Main$ModeExport))))))) ? A2(
 			$elm$core$List$map,
 			$author$project$Main$viewPieceOutline(
-				A2($author$project$Main$waveColor, model.outlineHue, 1.0)),
+				A2($author$project$Main$waveColor, model.settings.outlineHue, 1.0)),
 			visiblePieces) : _List_Nil);
 		var blueprintLayer = (isGenerated && ((!model.editMode) || blueprintMode)) ? A2($elm$core$List$map, $author$project$Main$viewPieceBlueprintPath, model.pieces) : _List_Nil;
 		var bgImageLayer = function () {
@@ -12365,7 +12630,7 @@ var $elm$html$Html$Attributes$boolProperty = F2(
 	});
 var $elm$html$Html$Attributes$disabled = $elm$html$Html$Attributes$boolProperty('disabled');
 var $author$project$Main$viewFileList = function (model) {
-	var isBusy = _Utils_eq(model.loadState, $author$project$Main$Loading);
+	var isBusy = _Utils_eq(model.loadState, $author$project$Main$LoadingPdf);
 	return A2(
 		$elm$html$Html$div,
 		_List_fromArray(
@@ -12425,7 +12690,7 @@ var $author$project$Main$viewStatusBadge = function (model) {
 	switch (_v0.$) {
 		case 'Idle':
 			return $elm$html$Html$text('');
-		case 'Loading':
+		case 'LoadingPdf':
 			return A2(
 				$elm$html$Html$span,
 				_List_fromArray(
@@ -12491,8 +12756,6 @@ var $author$project$Main$StartColorPick = F3(
 	function (a, b, c) {
 		return {$: 'StartColorPick', a: a, b: b, c: c};
 	});
-var $elm$virtual_dom$VirtualDom$style = _VirtualDom_style;
-var $elm$html$Html$Attributes$style = $elm$virtual_dom$VirtualDom$style;
 var $author$project$Main$viewGridColorSwatch = function (model) {
 	return A2(
 		$elm$html$Html$span,
@@ -12502,7 +12765,7 @@ var $author$project$Main$viewGridColorSwatch = function (model) {
 				A2(
 				$elm$html$Html$Attributes$style,
 				'background-color',
-				A2($author$project$Main$waveColor, model.gridHue, 1.0)),
+				A2($author$project$Main$waveColor, model.settings.gridHue, 1.0)),
 				A2(
 				$elm$html$Html$Events$stopPropagationOn,
 				'mousedown',
@@ -12535,7 +12798,7 @@ var $author$project$Main$viewCheckboxGrid = function (model) {
 					[
 						$elm$html$Html$Attributes$type_('checkbox'),
 						$elm$html$Html$Attributes$id('cbGrid'),
-						$elm$html$Html$Attributes$checked(model.showGrid),
+						$elm$html$Html$Attributes$checked(model.settings.showGrid),
 						$elm$html$Html$Events$onCheck($author$project$Main$ToggleGrid)
 					]),
 				_List_Nil),
@@ -12570,7 +12833,7 @@ var $author$project$Main$viewCheckboxLights = function (model) {
 					[
 						$elm$html$Html$Attributes$type_('checkbox'),
 						$elm$html$Html$Attributes$id('cbLights'),
-						$elm$html$Html$Attributes$checked(model.showLights),
+						$elm$html$Html$Attributes$checked(model.settings.showLights),
 						$elm$html$Html$Events$onCheck($author$project$Main$ToggleLights)
 					]),
 				_List_Nil),
@@ -12604,7 +12867,7 @@ var $author$project$Main$viewCheckboxNumbers = function (model) {
 					[
 						$elm$html$Html$Attributes$type_('checkbox'),
 						$elm$html$Html$Attributes$id('cbNumbers'),
-						$elm$html$Html$Attributes$checked(model.showNumbers),
+						$elm$html$Html$Attributes$checked(model.settings.showNumbers),
 						$elm$html$Html$Events$onCheck($author$project$Main$ToggleNumbers)
 					]),
 				_List_Nil),
@@ -12638,7 +12901,7 @@ var $author$project$Main$viewCheckboxOnlyBlueprint = function (model) {
 					[
 						$elm$html$Html$Attributes$type_('checkbox'),
 						$elm$html$Html$Attributes$id('cbOnlyBlueprint'),
-						$elm$html$Html$Attributes$checked(model.showOnlyBlueprint),
+						$elm$html$Html$Attributes$checked(model.settings.showOnlyBlueprint),
 						$elm$html$Html$Events$onCheck($author$project$Main$ToggleOnlyBlueprint)
 					]),
 				_List_Nil),
@@ -12680,10 +12943,10 @@ var $author$project$Main$viewCheckboxOutlines = function (model) {
 				_List_fromArray(
 					[
 						_Utils_Tuple2('checkbox-group', true),
-						_Utils_Tuple2('disabled', model.showOnlyBlueprint)
+						_Utils_Tuple2('disabled', model.settings.showOnlyBlueprint)
 					])),
 				$elm$html$Html$Attributes$title(
-				model.showOnlyBlueprint ? 'Disabled while \"Only blueprint\" is on' : '')
+				model.settings.showOnlyBlueprint ? 'Disabled while \"Only blueprint\" is on' : '')
 			]),
 		_List_fromArray(
 			[
@@ -12693,8 +12956,8 @@ var $author$project$Main$viewCheckboxOutlines = function (model) {
 					[
 						$elm$html$Html$Attributes$type_('checkbox'),
 						$elm$html$Html$Attributes$id('cbOutlines'),
-						$elm$html$Html$Attributes$checked(model.showOutlines),
-						$elm$html$Html$Attributes$disabled(model.showOnlyBlueprint),
+						$elm$html$Html$Attributes$checked(model.settings.showOutlines),
+						$elm$html$Html$Attributes$disabled(model.settings.showOnlyBlueprint),
 						$elm$html$Html$Events$onCheck($author$project$Main$ToggleOutlines)
 					]),
 				_List_Nil),
@@ -12716,7 +12979,7 @@ var $author$project$Main$viewCheckboxOutlines = function (model) {
 						A2(
 						$elm$html$Html$Attributes$style,
 						'background-color',
-						A2($author$project$Main$waveColor, model.outlineHue, 1.0)),
+						A2($author$project$Main$waveColor, model.settings.outlineHue, 1.0)),
 						A2(
 						$elm$html$Html$Events$stopPropagationOn,
 						'mousedown',
@@ -12753,7 +13016,7 @@ var $author$project$Main$viewCheckboxWaveOverlay = function (model) {
 					[
 						$elm$html$Html$Attributes$type_('checkbox'),
 						$elm$html$Html$Attributes$id('cbWaveOverlay'),
-						$elm$html$Html$Attributes$checked(model.showWaveOverlay),
+						$elm$html$Html$Attributes$checked(model.settings.showWaveOverlay),
 						$elm$html$Html$Events$onCheck($author$project$Main$ToggleWaveOverlay)
 					]),
 				_List_Nil),
@@ -13220,7 +13483,7 @@ var $author$project$Main$viewGenerateTools = F2(
 			}
 		}();
 		var isGenerating = _Utils_eq(model.generateState, $author$project$Main$Compositing);
-		var isBusy = _Utils_eq(model.loadState, $author$project$Main$Loading) || (model.recomputing || model.exporting);
+		var isBusy = _Utils_eq(model.loadState, $author$project$Main$LoadingPdf) || (model.recomputing || model.exporting);
 		var hasLights = response.hasLights;
 		return A2(
 			$elm$html$Html$div,
@@ -13398,7 +13661,7 @@ var $author$project$Main$viewCheckboxGroupOverlay = function (model) {
 					[
 						$elm$html$Html$Attributes$type_('checkbox'),
 						$elm$html$Html$Attributes$id('cbGroupOverlay'),
-						$elm$html$Html$Attributes$checked(model.showGroupOverlay),
+						$elm$html$Html$Attributes$checked(model.settings.showGroupOverlay),
 						$elm$html$Html$Events$onCheck($author$project$Main$ToggleGroupOverlay)
 					]),
 				_List_Nil),
@@ -14926,7 +15189,7 @@ var $author$project$Main$viewWaveRow = F4(
 						[
 							A2(
 							$elm$html$Html$span,
-							model.showOnlyBlueprint ? _List_fromArray(
+							model.settings.showOnlyBlueprint ? _List_fromArray(
 								[
 									$elm$html$Html$Attributes$classList(
 									_List_fromArray(
@@ -15610,7 +15873,7 @@ var $author$project$Main$viewWaveTray = F2(
 											}();
 											return _List_fromArray(
 												[
-													A9($author$project$Main$viewWaveTrayThumb, piece, isLocked, model.svgScale, model.hoveredPieceId, model.selectedPieceId, model.pieceGeneration, model.showNumbers, pos, groupCount)
+													A9($author$project$Main$viewWaveTrayThumb, piece, isLocked, model.svgScale, model.hoveredPieceId, model.selectedPieceId, model.pieceGeneration, model.settings.showNumbers, pos, groupCount)
 												]);
 										} else {
 											return _List_Nil;
@@ -15721,7 +15984,7 @@ var $author$project$Main$SetAppMode = function (a) {
 	return {$: 'SetAppMode', a: a};
 };
 var $author$project$Main$viewTitleBar = function (model) {
-	var isLoadingPdf = _Utils_eq(model.loadState, $author$project$Main$Loading);
+	var isLoadingPdf = _Utils_eq(model.loadState, $author$project$Main$LoadingPdf);
 	var isLoaded = function () {
 		var _v0 = model.loadState;
 		if (_v0.$ === 'Loaded') {
@@ -16020,11 +16283,11 @@ var $author$project$Main$viewTitleBar = function (model) {
 					]),
 				_List_fromArray(
 					[
-						$elm$html$Html$text(model.appVersion)
+						$elm$html$Html$text(model.boot.version)
 					]))
 			]));
 };
-var $author$project$Main$view = function (model) {
+var $author$project$Main$viewRunning = function (model) {
 	return A2(
 		$elm$html$Html$div,
 		_List_fromArray(
@@ -16048,6 +16311,20 @@ var $author$project$Main$view = function (model) {
 						]))
 				]),
 			$author$project$Main$viewBottomWaveTray(model)));
+};
+var $author$project$Main$view = function (appState) {
+	switch (appState.$) {
+		case 'NotStarted':
+			return $author$project$Main$viewBootstrapLoader;
+		case 'Loading':
+			return $author$project$Main$viewBootstrapLoader;
+		case 'Running':
+			var rm = appState.a;
+			return $author$project$Main$viewRunning(rm);
+		default:
+			var msg = appState.b;
+			return $author$project$Main$viewBootstrapError(msg);
+	}
 };
 var $author$project$Main$main = $elm$browser$Browser$element(
 	{init: $author$project$Main$init, subscriptions: $author$project$Main$subscriptions, update: $author$project$Main$update, view: $author$project$Main$view});

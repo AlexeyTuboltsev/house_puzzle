@@ -1,20 +1,23 @@
 // settings.rs — persistent user settings backed by tauri-plugin-store.
 //
 // One JSON file at <app_data>/settings.json, single top-level key
-// "settings", whose value is a JSON object.
+// "settings", whose value is a JSON object matching the `Settings`
+// struct below.
 //
-// Defaults live in the FRONTEND (Elm `init`). The store only persists
-// fields the user has explicitly changed — every Settings field is an
-// Option, with `skip_serializing_if = "Option::is_none"` so a freshly
-// installed app sees an empty object on `load_settings` and Elm keeps
-// its own defaults via `Maybe.withDefault`. Trying to centralise
-// defaults in Rust caused a regression on PR #106 (CI run #25499029090):
-// Rust's `show_group_overlay: false` overrode Elm's `True`, and the
-// per-pixel screenshot test diffed.
+// Rust is the single source of truth for defaults. Values in
+// `Settings::default()` are what every fresh install starts with;
+// the frontend never has its own defaults. Elm gates its first
+// render on the `load_settings` response (`bootstrapped` flag in
+// Main.elm), so the user never sees Elm's literal init values —
+// those are just type-required placeholders.
 //
-// `save_settings` accepts a partial JSON object and merges it into the
-// stored value. The frontend doesn't have to send the whole thing on
-// every change.
+// `#[serde(default)]` on the struct fills missing fields from the
+// Default impl during deserialisation, so a partially-populated
+// stored JSON still loads cleanly.
+//
+// `save_settings` accepts a partial JSON object and merges it into
+// the stored value. The frontend only sends fields that actually
+// changed.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -25,47 +28,54 @@ const STORE_FILE: &str = "settings.json";
 const SETTINGS_KEY: &str = "settings";
 const SCHEMA_VERSION: u32 = 1;
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Settings {
-    /// Schema version — emitted only on first save (set in `save_settings`)
-    /// so existing-without-version stores continue to round-trip cleanly.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub version: Option<u32>,
+    pub version: u32,
 
-    /// Absolute path of the last AI file the user opened.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub last_import_path: Option<String>,
+    /// Absolute path of the last AI file the user opened. Empty
+    /// string means "never picked anything".
+    pub last_import_path: String,
 
-    // ---- toggles
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub show_outlines: Option<bool>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub show_grid: Option<bool>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub show_numbers: Option<bool>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub show_lights: Option<bool>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub show_group_overlay: Option<bool>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub show_wave_overlay: Option<bool>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub show_only_blueprint: Option<bool>,
+    // ---- toggles (mirror Elm Model.show*)
+    pub show_outlines: bool,
+    pub show_grid: bool,
+    pub show_numbers: bool,
+    pub show_lights: bool,
+    pub show_group_overlay: bool,
+    pub show_wave_overlay: bool,
+    pub show_only_blueprint: bool,
 
     // ---- colors (HSL hue, 0..360)
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub grid_hue: Option<f64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub outline_hue: Option<f64>,
+    pub grid_hue: f64,
+    pub outline_hue: f64,
 
     // ---- right sidebar width (--tools-width CSS var, in vw)
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub tools_width_vw: Option<f64>,
+    pub tools_width_vw: f64,
 }
 
-/// Read the persisted settings. Missing file or unreadable contents
-/// return an empty Settings (all fields None). The frontend layers
-/// its own defaults on top via `Maybe.withDefault`.
+impl Default for Settings {
+    fn default() -> Self {
+        Settings {
+            version: SCHEMA_VERSION,
+            last_import_path: String::new(),
+            show_outlines: true,
+            show_grid: false,
+            show_numbers: false,
+            show_lights: false,
+            show_group_overlay: true,
+            show_wave_overlay: true,
+            show_only_blueprint: false,
+            grid_hue: 35.0,
+            outline_hue: 210.0,
+            tools_width_vw: 40.0,
+        }
+    }
+}
+
+/// Read the persisted settings, falling back to defaults for any
+/// missing fields and for the missing-file / unreadable-store cases.
+/// The frontend always gets a fully-populated Settings.
 #[tauri::command]
 pub fn load_settings(app: AppHandle) -> Settings {
     let store = match app.store(STORE_FILE) {
