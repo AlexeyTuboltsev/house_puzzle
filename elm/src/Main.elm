@@ -151,7 +151,7 @@ type AppMode
 
 type LoadState
     = Idle
-    | Loading
+    | LoadingPdf
     | Loaded LoadResponse
     | LoadError String
 
@@ -173,8 +173,61 @@ type alias UndoSnapshot =
     }
 
 
-type alias Model =
-    { selectedFileName : String
+{-| Persisted user settings. Single source of truth for default values
+is the Rust side (`crates/hp-tauri/src/settings.rs`); the frontend
+never invents these on its own — `Loading` keeps the UI hidden until
+the typed response from `load_settings` arrives.
+
+The `version` field is the schema version. Both Rust and Elm assert
+they're at the same `settingsSchemaVersion`; a stored value with a
+different version transitions the app to `BootstrapError` so a stale
+or future-generated settings file fails loud instead of silently
+landing on a half-broken UI. Bump the constant on both sides
+whenever fields are added/removed/retyped. -}
+type alias Settings =
+    { version : Int
+    , lastImportPath : String
+    , showOutlines : Bool
+    , showGrid : Bool
+    , showNumbers : Bool
+    , showLights : Bool
+    , showGroupOverlay : Bool
+    , showWaveOverlay : Bool
+    , showOnlyBlueprint : Bool
+    , gridHue : Float
+    , outlineHue : Float
+    , toolsWidthVw : Float
+    }
+
+
+{-| Bump in lock-step with `SCHEMA_VERSION` in
+`crates/hp-tauri/src/settings.rs`. -}
+settingsSchemaVersion : Int
+settingsSchemaVersion =
+    1
+
+
+{-| Constants known at startup (passed in via flags). Carried in every
+AppState variant so the loader / error UI can still display the
+version string and dispatch (or not) Tauri-specific commands. -}
+type alias Boot =
+    { version : String
+    , isTauri : Bool
+    }
+
+
+{-| The whole running app — settings already loaded, ready to render.
+This is the variant the user spends 99% of their time in. -}
+type alias RunningModel =
+    { boot : Boot
+    , settings : Settings
+    , {- Currently-selected entry in the file dropdown. Ephemeral UI
+         state distinct from `settings.lastImportPath` — that one
+         persists across sessions; `selectedFileName` resets when the
+         user hits Reset. On initial load we seed it from
+         `settings.lastImportPath` so the dropdown reflects what was
+         loaded last time. -}
+      selectedFileName : String
     , pdfFiles : List { name : String, path : String }
     , loadState : LoadState
     , targetCount : Int
@@ -185,19 +238,12 @@ type alias Model =
     , pieceGeneration : Int
     , bricksById : Dict String Brick
     , appMode : AppMode
-    , showOutlines : Bool
-    , showGrid : Bool
-    , showNumbers : Bool
-    , showLights : Bool
     , {- Lazily-fetched OCG layer URLs. Backend renders on first use
          via `ensure_lights_image` / `ensure_background_image` and
          echoes the path back; we cache in the model so further toggles
          are free. -}
       lightsUrl : Maybe String
     , blueprintBgUrl : Maybe String
-    , showGroupOverlay : Bool
-    , showWaveOverlay : Bool
-    , showOnlyBlueprint : Bool
     , waves : List Wave
     , nextWaveId : Int
     , groups : List Group
@@ -226,8 +272,6 @@ type alias Model =
     , dragInsertBeforeId : Maybe String
     , lasso : Maybe { x0 : Float, y0 : Float, x1 : Float, y1 : Float }
     , colorPicking : Maybe { target : ColorPickTarget, panelX : Float, panelY : Float, hueOnly : Bool }
-    , gridHue : Float
-    , outlineHue : Float
     , svgScale : Float
     , availableH : Float
     , houseUnitsHigh : Float
@@ -235,83 +279,142 @@ type alias Model =
     , zoomGridActive : Bool
     , sessionKey : String
     , nextSessionId : Int
-    , appVersion : String
-    , isTauri : Bool
     , undoHistory : List UndoSnapshot
     , redoHistory : List UndoSnapshot
     }
 
 
+{-| App-level state machine. The variant determines what the user
+sees and which messages can be processed.
+
+  - `NotStarted` — flags decoded, `init` returned, but we haven't
+    fired any startup commands yet. Transient; usually invisible.
+  - `Loading`    — waiting for the typed `load_settings` response
+    from Rust. The view shows a full-screen loader.
+  - `Running`    — settings parsed, full UI active.
+  - `BootstrapError` — `load_settings` returned an error or the JSON
+    didn't match `decodeSettings`. UI shows a recoverable error
+    screen rather than rendering placeholder values.
+-}
+type AppState
+    = NotStarted Boot
+    | Loading Boot
+    | Running RunningModel
+    | BootstrapError Boot String
+
+
+type alias Model =
+    AppState
+
+
 init : { version : String, isTauri : Bool } -> ( Model, Cmd Msg )
 init flags =
-    ( { selectedFileName = ""
-      , pdfFiles = []
-      , loadState = Idle
-      , targetCount = 60
-      , minBorder = 10
-      , seed = 42
-      , generateState = NotGenerated
-      , pieces = []
-      , pieceGeneration = 0
-      , bricksById = Dict.empty
-      , appMode = ModeInit
-      , showOutlines = True
-      , showGrid = False
-      , showNumbers = True
-      , showLights = False
-      , lightsUrl = Nothing
-      , blueprintBgUrl = Nothing
-      , showGroupOverlay = True
-      , showWaveOverlay = True
-      , showOnlyBlueprint = False
+    let
+        boot =
+            { version = flags.version, isTauri = flags.isTauri }
+    in
+    if flags.isTauri then
+        -- Tauri path: hold the UI in Loading until load_settings
+        -- responds. The Result drives the Loading → Running |
+        -- BootstrapError transition in the TauriResponse handler.
+        ( Loading boot
+        , Cmd.batch
+            [ Task.perform GotViewport Browser.Dom.getViewport
+            , loadSettings True
+            ]
+        )
 
-      , waves = []
-      , nextWaveId = 1
-      , groups = []
-      , nextGroupId = 1
-      , selectedGroupId = Nothing
-      , dragOverGroupId = Nothing
-      , hoveredPieceId = Nothing
-      , hoveredBrickId = Nothing
-      , selectedPieceId = Nothing
-      , selectedWaveId = Nothing
-      , editMode = False
-      , editBrickIds = []
-      , editOriginalBrickIds = []
-      , editOriginalPieces = []
-      , editOriginalWaves = []
-      , editOriginalGroups = []
-      , recomputing = False
-      , exporting = False
-      , exportCanvasHeight = "900"
-      , exportLocation = "Rome"
-      , exportHouseName = "NewHouse"
-      , exportPosition = "0"
-      , exportSpacing = "12.0"
-      , draggingPieceId = Nothing
-      , dragOverWaveId = Nothing
-      , dragInsertBeforeId = Nothing
-      , lasso = Nothing
-      , colorPicking = Nothing
-      , gridHue = 35.0
-      , outlineHue = 210.0
-      , svgScale = 1.0
-      , availableH = 900.0
-      , houseUnitsHigh = 15.5
-      , zoomLevel = 1.0
-      , zoomGridActive = False
-      , sessionKey = ""
-      , nextSessionId = 1
-      , appVersion = flags.version
-      , isTauri = flags.isTauri
-      , undoHistory = []
-      , redoHistory = []
-      }
-    , Cmd.batch
-        [ fetchPdfList flags.isTauri
-        , Task.perform GotViewport Browser.Dom.getViewport
-        ]
-    )
+    else
+        -- Web/dev mode: there's no Rust store to read, so go
+        -- straight to Running with the dev-mode fallback settings.
+        -- The constant mirrors Rust's `Settings::default()` and is
+        -- only used in this branch.
+        ( Running (initialRunning boot webDefaultSettings)
+        , Cmd.batch
+            [ fetchPdfList False
+            , Task.perform GotViewport Browser.Dom.getViewport
+            ]
+        )
+
+
+{-| Dev-mode fallback for non-Tauri runs. Mirrors Rust's
+`Settings::default()` in `crates/hp-tauri/src/settings.rs` because
+web mode has no backend store to load from. -}
+webDefaultSettings : Settings
+webDefaultSettings =
+    { version = settingsSchemaVersion
+    , lastImportPath = ""
+    , showOutlines = True
+    , showGrid = False
+    , showNumbers = False
+    , showLights = False
+    , showGroupOverlay = True
+    , showWaveOverlay = True
+    , showOnlyBlueprint = False
+    , gridHue = 35.0
+    , outlineHue = 210.0
+    , toolsWidthVw = 40.0
+    }
+
+
+{-| Build the initial RunningModel given a Boot + Settings. Called
+both from web-mode init (with `webDefaultSettings`) and from the
+Tauri-mode load_settings success path (with the parsed value). -}
+initialRunning : Boot -> Settings -> RunningModel
+initialRunning boot settings =
+    { boot = boot
+    , settings = settings
+    , selectedFileName = settings.lastImportPath
+    , pdfFiles = []
+    , loadState = Idle
+    , targetCount = 60
+    , minBorder = 10
+    , seed = 42
+    , generateState = NotGenerated
+    , pieces = []
+    , pieceGeneration = 0
+    , bricksById = Dict.empty
+    , appMode = ModeInit
+    , lightsUrl = Nothing
+    , blueprintBgUrl = Nothing
+    , waves = []
+    , nextWaveId = 1
+    , groups = []
+    , nextGroupId = 1
+    , selectedGroupId = Nothing
+    , dragOverGroupId = Nothing
+    , hoveredPieceId = Nothing
+    , hoveredBrickId = Nothing
+    , selectedPieceId = Nothing
+    , selectedWaveId = Nothing
+    , editMode = False
+    , editBrickIds = []
+    , editOriginalBrickIds = []
+    , editOriginalPieces = []
+    , editOriginalWaves = []
+    , editOriginalGroups = []
+    , recomputing = False
+    , exporting = False
+    , exportCanvasHeight = "900"
+    , exportLocation = "Rome"
+    , exportHouseName = "NewHouse"
+    , exportPosition = "0"
+    , exportSpacing = "12.0"
+    , draggingPieceId = Nothing
+    , dragOverWaveId = Nothing
+    , dragInsertBeforeId = Nothing
+    , lasso = Nothing
+    , colorPicking = Nothing
+    , svgScale = 1.0
+    , availableH = 900.0
+    , houseUnitsHigh = 15.5
+    , zoomLevel = 1.0
+    , zoomGridActive = False
+    , sessionKey = ""
+    , nextSessionId = 1
+    , undoHistory = []
+    , redoHistory = []
+    }
 
 
 
@@ -426,6 +529,65 @@ one viewport at a time. -}
 port scrollPieceIntoView : String -> Cmd msg
 
 
+{-| Persisted user settings — fire-and-forget save through the Tauri
+store (settings.json under app_data). No-op outside Tauri. The Rust
+side merges the partial object into the existing stored JSON, so we
+only need to send the fields that actually changed. -}
+saveSettings : Bool -> List ( String, E.Value ) -> Cmd msg
+saveSettings isTauri fields =
+    if isTauri && not (List.isEmpty fields) then
+        tauriInvoke
+            { command = "save_settings"
+            , args = E.object [ ( "partial", E.object fields ) ]
+            , requestId = "save_settings"
+            }
+
+    else
+        Cmd.none
+
+
+{-| Ask the Rust side for the current settings. Response arrives via
+`tauriResponse` with `requestId = "load_settings"` and is decoded by
+`applyLoadedSettings` in the TauriResponse handler. -}
+loadSettings : Bool -> Cmd msg
+loadSettings isTauri =
+    if isTauri then
+        tauriInvoke
+            { command = "load_settings"
+            , args = E.object []
+            , requestId = "load_settings"
+            }
+
+    else
+        Cmd.none
+
+
+{-| Strict decoder for the JSON object returned by `load_settings`.
+Every field is required — `Result.Err` propagates into `BootstrapError`
+so a Rust/Elm schema mismatch is loud and visible instead of silently
+losing values. Field names match `crates/hp-tauri/src/settings.rs`
+(snake_case from serde defaults). -}
+decodeSettings : D.Decoder Settings
+decodeSettings =
+    let
+        required name decoder =
+            D.map2 (|>) (D.field name decoder)
+    in
+    D.succeed Settings
+        |> required "version" D.int
+        |> required "last_import_path" D.string
+        |> required "show_outlines" D.bool
+        |> required "show_grid" D.bool
+        |> required "show_numbers" D.bool
+        |> required "show_lights" D.bool
+        |> required "show_group_overlay" D.bool
+        |> required "show_wave_overlay" D.bool
+        |> required "show_only_blueprint" D.bool
+        |> required "grid_hue" D.float
+        |> required "outline_hue" D.float
+        |> required "tools_width_vw" D.float
+
+
 
 scrollToBottom : Cmd Msg
 scrollToBottom =
@@ -439,9 +601,9 @@ scrollToBottom =
 needs the blueprint backdrop and we haven't fetched the URL yet. The
 backend renders on-demand and echoes the asset path back as
 `requestId = "ensure_background"`. -}
-ensureBackgroundCmd : Model -> Cmd Msg
+ensureBackgroundCmd : RunningModel -> Cmd Msg
 ensureBackgroundCmd model =
-    if model.blueprintBgUrl == Nothing && model.isTauri && not (String.isEmpty model.sessionKey) then
+    if model.blueprintBgUrl == Nothing && model.boot.isTauri && not (String.isEmpty model.sessionKey) then
         tauriInvoke
             { command = "ensure_background_image"
             , args = E.object [ ( "key", E.string model.sessionKey ) ]
@@ -463,34 +625,45 @@ scrollTrayToEnd =
 -- ── Undo/Redo Helpers ────────────────────────────────────────────────────────
 
 
-takeSnapshot : Model -> UndoSnapshot
+{-| Apply a settings update inside a RunningModel. Encapsulates the
+two-step nested-record update Elm requires — every settings write
+goes through here so the pattern is uniform across the file. -}
+modSettings : (Settings -> Settings) -> RunningModel -> RunningModel
+modSettings f model =
+    { model | settings = f model.settings }
+
+
+takeSnapshot : RunningModel -> UndoSnapshot
 takeSnapshot model =
     { pieces = model.pieces
     , waves = model.waves
     , nextWaveId = model.nextWaveId
     , groups = model.groups
     , nextGroupId = model.nextGroupId
-    , gridHue = model.gridHue
-    , outlineHue = model.outlineHue
+    , gridHue = model.settings.gridHue
+    , outlineHue = model.settings.outlineHue
     }
 
 
-applySnapshot : UndoSnapshot -> Model -> Model
+applySnapshot : UndoSnapshot -> RunningModel -> RunningModel
 applySnapshot snap model =
+    let
+        s =
+            model.settings
+    in
     { model
         | pieces = snap.pieces
         , waves = snap.waves
         , nextWaveId = snap.nextWaveId
         , groups = snap.groups
         , nextGroupId = snap.nextGroupId
-        , gridHue = snap.gridHue
-        , outlineHue = snap.outlineHue
+        , settings = { s | gridHue = snap.gridHue, outlineHue = snap.outlineHue }
     }
 
 
 {-| Wrap an update result to push the old model snapshot onto undo history
 and clear the redo stack. -}
-withUndo : Model -> ( Model, Cmd Msg ) -> ( Model, Cmd Msg )
+withUndo : RunningModel -> ( RunningModel, Cmd Msg ) -> ( RunningModel, Cmd Msg )
 withUndo oldModel ( newModel, cmd ) =
     ( { newModel
         | undoHistory = List.take 50 (takeSnapshot oldModel :: oldModel.undoHistory)
@@ -503,8 +676,97 @@ withUndo oldModel ( newModel, cmd ) =
 -- ── Update ──────────────────────────────────────────────────────────────────
 
 
+{-| Top-level update — pattern matches on AppState first. Most
+messages only make sense inside `Running`; anything that arrives in
+the bootstrap states (typically just the `TauriResponse "load_settings"`)
+is funnelled into `updateBoot`. The type system guarantees no main-app
+update branch ever sees a non-Running state. -}
 update : Msg -> Model -> ( Model, Cmd Msg )
-update msg model =
+update msg appState =
+    case appState of
+        Running rm ->
+            let
+                ( rm2, cmd ) =
+                    updateRunning msg rm
+            in
+            ( Running rm2, cmd )
+
+        Loading boot ->
+            updateBoot msg boot appState
+
+        NotStarted boot ->
+            updateBoot msg boot appState
+
+        BootstrapError _ _ ->
+            -- TODO: wire a Retry msg if we add a retry button.
+            ( appState, Cmd.none )
+
+
+{-| Handle messages that arrive while the app is in `Loading` /
+`NotStarted`. The only message we actually care about here is the
+`TauriResponse` to `load_settings` — everything else is ignored. -}
+updateBoot : Msg -> Boot -> Model -> ( Model, Cmd Msg )
+updateBoot msg boot fallback =
+    case msg of
+        TauriResponse val ->
+            let
+                requestId =
+                    D.decodeValue (D.field "requestId" D.string) val
+                        |> Result.withDefault ""
+
+                ok =
+                    D.decodeValue (D.field "ok" D.bool) val
+                        |> Result.withDefault False
+
+                dataVal =
+                    D.decodeValue (D.field "data" D.value) val
+                        |> Result.withDefault E.null
+
+                errStr =
+                    D.decodeValue (D.field "error" D.string) val
+                        |> Result.withDefault "load_settings error"
+            in
+            if requestId /= "load_settings" then
+                ( fallback, Cmd.none )
+
+            else if not ok then
+                ( BootstrapError boot errStr, Cmd.none )
+
+            else
+                case D.decodeValue decodeSettings dataVal of
+                    Ok settings ->
+                        if settings.version /= settingsSchemaVersion then
+                            ( BootstrapError boot
+                                ("Settings schema version mismatch: stored "
+                                    ++ String.fromInt settings.version
+                                    ++ " but this build expects "
+                                    ++ String.fromInt settingsSchemaVersion
+                                    ++ ". Delete the settings file under app_data and restart."
+                                )
+                            , Cmd.none
+                            )
+
+                        else
+                            ( Running (initialRunning boot settings)
+                            , Cmd.batch
+                                [ fetchPdfList True
+                                ]
+                            )
+
+                    Err err ->
+                        ( BootstrapError boot
+                            ("load_settings response didn't match the expected schema:\n"
+                                ++ D.errorToString err
+                            )
+                        , Cmd.none
+                        )
+
+        _ ->
+            ( fallback, Cmd.none )
+
+
+updateRunning : Msg -> RunningModel -> ( RunningModel, Cmd Msg )
+updateRunning msg model =
     case msg of
         GotFileList (Ok files) ->
             ( { model | pdfFiles = files }, Cmd.none )
@@ -513,7 +775,7 @@ update msg model =
             ( model, Cmd.none )
 
         PickFile ->
-            if model.isTauri then
+            if model.boot.isTauri then
                 -- In Tauri mode, open a native OS file-picker dialog via Rust.
                 -- The response arrives as a TauriResponse with requestId "pick_file".
                 ( model
@@ -532,7 +794,7 @@ update msg model =
                 baseModel =
                     { model
                         | selectedFileName = File.name file
-                        , loadState = Loading
+                        , loadState = LoadingPdf
                         , generateState = NotGenerated
                         , pieces = []
                         , pieceGeneration = 0
@@ -552,7 +814,7 @@ update msg model =
                         , blueprintBgUrl = Nothing
                     }
             in
-            if model.isTauri then
+            if model.boot.isTauri then
                 -- In Tauri mode, skip the HTTP upload; construct local path directly
                 let
                     path =
@@ -562,7 +824,10 @@ update msg model =
                         String.fromInt model.nextSessionId
                 in
                 ( { baseModel | sessionKey = key, nextSessionId = model.nextSessionId + 1 }
-                , loadPdf True key path model.availableH
+                , Cmd.batch
+                    [ loadPdf True key path model.availableH
+                    , saveSettings True [ ( "last_import_path", E.string path ) ]
+                    ]
                 )
             else
                 ( baseModel, uploadFile file )
@@ -573,7 +838,7 @@ update msg model =
                     String.fromInt model.nextSessionId
             in
             ( { model | sessionKey = key, nextSessionId = model.nextSessionId + 1 }
-            , loadPdf model.isTauri key path model.availableH
+            , loadPdf model.boot.isTauri key path model.availableH
             )
 
         FileUploaded (Err _) ->
@@ -602,7 +867,7 @@ update msg model =
                 , lightsUrl = Nothing
                 , blueprintBgUrl = Nothing
               }
-            , fetchPdfList model.isTauri
+            , fetchPdfList model.boot.isTauri
             )
 
         LoadFile path ->
@@ -629,7 +894,7 @@ update msg model =
             in
             ( { model
                 | selectedFileName = path
-                , loadState = Loading
+                , loadState = LoadingPdf
                 , generateState = NotGenerated
                 , pieces = []
                 , pieceGeneration = 0
@@ -649,7 +914,10 @@ update msg model =
                 , sessionKey = key
                 , nextSessionId = model.nextSessionId + 1
               }
-            , loadPdf model.isTauri key path model.availableH
+            , Cmd.batch
+                [ loadPdf model.boot.isTauri key path model.availableH
+                , saveSettings model.boot.isTauri [ ( "last_import_path", E.string path ) ]
+                ]
             )
 
         GotLoadResponse (Ok response) ->
@@ -715,7 +983,7 @@ update msg model =
                         _ = Debug.log "[elm] RequestGenerate seed" model.seed
 
                         logGenCmd =
-                            if model.isTauri then
+                            if model.boot.isTauri then
                                 tauriInvoke
                                     { command = "log_to_stderr"
                                     , args = E.object [ ( "msg", E.string ("[elm] RequestGenerate: targetCount=" ++ String.fromInt model.targetCount) ) ]
@@ -740,7 +1008,7 @@ update msg model =
                         , recomputing = False
                       }
                     , Cmd.batch
-                        [ mergeBricks model.isTauri model.sessionKey model.targetCount model.minBorder model.seed
+                        [ mergeBricks model.boot.isTauri model.sessionKey model.targetCount model.minBorder model.seed
                         , logGenCmd
                         ]
                     )
@@ -820,21 +1088,27 @@ update msg model =
                 ( baseModel, recomputeViewport )
 
         ToggleOutlines checked ->
-            ( { model | showOutlines = checked }, Cmd.none )
+            ( modSettings (\s -> { s | showOutlines = checked }) model
+            , saveSettings model.boot.isTauri [ ( "show_outlines", E.bool checked ) ]
+            )
 
         ToggleGrid checked ->
-            ( { model | showGrid = checked }, Cmd.none )
+            ( modSettings (\s -> { s | showGrid = checked }) model
+            , saveSettings model.boot.isTauri [ ( "show_grid", E.bool checked ) ]
+            )
 
         ToggleNumbers checked ->
-            ( { model | showNumbers = checked }, Cmd.none )
+            ( modSettings (\s -> { s | showNumbers = checked }) model
+            , saveSettings model.boot.isTauri [ ( "show_numbers", E.bool checked ) ]
+            )
 
         ToggleLights checked ->
             -- Lights are rendered lazily on the backend. Fire the ensure
             -- command the first time the user wants them; subsequent
             -- toggles use the URL we cached on the model.
             let
-                cmd =
-                    if checked && model.lightsUrl == Nothing && model.isTauri then
+                ensureCmd =
+                    if checked && model.lightsUrl == Nothing && model.boot.isTauri then
                         tauriInvoke
                             { command = "ensure_lights_image"
                             , args = E.object [ ( "key", E.string model.sessionKey ) ]
@@ -844,13 +1118,22 @@ update msg model =
                     else
                         Cmd.none
             in
-            ( { model | showLights = checked }, cmd )
+            ( modSettings (\s -> { s | showLights = checked }) model
+            , Cmd.batch
+                [ ensureCmd
+                , saveSettings model.boot.isTauri [ ( "show_lights", E.bool checked ) ]
+                ]
+            )
 
         ToggleGroupOverlay checked ->
-            ( { model | showGroupOverlay = checked }, Cmd.none )
+            ( modSettings (\s -> { s | showGroupOverlay = checked }) model
+            , saveSettings model.boot.isTauri [ ( "show_group_overlay", E.bool checked ) ]
+            )
 
         ToggleWaveOverlay checked ->
-            ( { model | showWaveOverlay = checked }, Cmd.none )
+            ( modSettings (\s -> { s | showWaveOverlay = checked }) model
+            , saveSettings model.boot.isTauri [ ( "show_wave_overlay", E.bool checked ) ]
+            )
 
         AddWave ->
             let
@@ -927,14 +1210,19 @@ update msg model =
             -- canvas; fire ensure_background_image the first time it's
             -- enabled so the backdrop is ready when needed.
             let
-                cmd =
+                ensureCmd =
                     if checked then
                         ensureBackgroundCmd model
 
                     else
                         Cmd.none
             in
-            ( { model | showOnlyBlueprint = checked }, cmd )
+            ( modSettings (\s -> { s | showOnlyBlueprint = checked }) model
+            , Cmd.batch
+                [ ensureCmd
+                , saveSettings model.boot.isTauri [ ( "show_only_blueprint", E.bool checked ) ]
+                ]
+            )
 
         ToggleWaveVisibility waveId ->
             withUndo model
@@ -1303,7 +1591,7 @@ update msg model =
                     , generateState = Generated
                     , recomputing = True
                   }
-                , recomputePiecePolygons model.isTauri model.sessionKey allPieces
+                , recomputePiecePolygons model.boot.isTauri model.sessionKey allPieces
                 )
 
         CancelEdit ->
@@ -1413,7 +1701,7 @@ update msg model =
                           )
                         ]
             in
-            if model.isTauri then
+            if model.boot.isTauri then
                 ( { model | exporting = True }
                 , tauriInvoke
                     { command = "export_data"
@@ -1931,10 +2219,10 @@ update msg model =
                                 |> Maybe.withDefault ( 0, 1.0 )
 
                         GridColorTarget ->
-                            ( model.gridHue, 1.0 )
+                            ( model.settings.gridHue, 1.0 )
 
                         OutlineColorTarget ->
-                            ( model.outlineHue, 1.0 )
+                            ( model.settings.outlineHue, 1.0 )
 
                 innerH =
                     if hueOnly then 20 else 96
@@ -2003,37 +2291,66 @@ update msg model =
                             )
 
                         GridColorTarget ->
-                            ( { model | gridHue = newHue }, Cmd.none )
+                            ( modSettings (\s -> { s | gridHue = newHue }) model, Cmd.none )
 
                         OutlineColorTarget ->
-                            ( { model | outlineHue = newHue }, Cmd.none )
+                            ( modSettings (\s -> { s | outlineHue = newHue }) model, Cmd.none )
 
         SetSpecialHue target hue ->
             let
-                updated =
+                saveCmd =
                     case target of
                         GridColorTarget ->
-                            { model | gridHue = hue, colorPicking = Nothing }
+                            saveSettings model.boot.isTauri [ ( "grid_hue", E.float hue ) ]
 
                         OutlineColorTarget ->
-                            { model | outlineHue = hue, colorPicking = Nothing }
+                            saveSettings model.boot.isTauri [ ( "outline_hue", E.float hue ) ]
+
+                        _ ->
+                            Cmd.none
+
+                applyHue m =
+                    case target of
+                        GridColorTarget ->
+                            modSettings (\s -> { s | gridHue = hue }) { m | colorPicking = Nothing }
+
+                        OutlineColorTarget ->
+                            modSettings (\s -> { s | outlineHue = hue }) { m | colorPicking = Nothing }
 
                         WaveColorTarget wid ->
-                            { model
-                                | waves = List.map (\w -> if w.id == wid then { w | hue = hue } else w) model.waves
+                            { m
+                                | waves = List.map (\w -> if w.id == wid then { w | hue = hue } else w) m.waves
                                 , colorPicking = Nothing
                             }
 
                         GroupColorTarget gid ->
-                            { model
-                                | groups = List.map (\g -> if g.id == gid then { g | hue = hue } else g) model.groups
+                            { m
+                                | groups = List.map (\g -> if g.id == gid then { g | hue = hue } else g) m.groups
                                 , colorPicking = Nothing
                             }
+
+                updated =
+                    applyHue model
             in
-            withUndo model ( updated, Cmd.none )
+            withUndo model ( updated, saveCmd )
 
         EndColorPick ->
-            ( { model | colorPicking = Nothing }, Cmd.none )
+            -- Persist grid/outline hue when the user releases the picker.
+            -- Wave/group hues live on each Wave/Group object (per-house,
+            -- not per-user) so they don't go through saveSettings.
+            let
+                cmd =
+                    case Maybe.map .target model.colorPicking of
+                        Just GridColorTarget ->
+                            saveSettings model.boot.isTauri [ ( "grid_hue", E.float model.settings.gridHue ) ]
+
+                        Just OutlineColorTarget ->
+                            saveSettings model.boot.isTauri [ ( "outline_hue", E.float model.settings.outlineHue ) ]
+
+                        _ ->
+                            Cmd.none
+            in
+            ( { model | colorPicking = Nothing }, cmd )
 
         ScrollTrayBy delta ->
             ( model
@@ -2115,6 +2432,11 @@ update msg model =
                     "export" ->
                         ( { model | exporting = False }, Cmd.none )
 
+                    "load_settings" ->
+                        -- Should not arrive here; bootstrap dispatch
+                        -- in `updateBoot` handles it.
+                        ( model, Cmd.none )
+
                     _ ->
                         ( model, Cmd.none )
 
@@ -2128,10 +2450,20 @@ update msg model =
                             Err _ ->
                                 ( model, Cmd.none )
 
+                    "load_settings" ->
+                        -- Should not arrive here; bootstrap dispatch
+                        -- in `updateBoot` handles it. Ignore if it
+                        -- somehow does (e.g. duplicate response).
+                        ( model, Cmd.none )
+
+                    "save_settings" ->
+                        -- Fire-and-forget; nothing to do with the response.
+                        ( model, Cmd.none )
+
                     "load_pdf" ->
                         case D.decodeValue decodeLoadResponse dataVal of
                             Ok response ->
-                                update (GotLoadResponse (Ok response)) model
+                                updateRunning (GotLoadResponse (Ok response)) model
 
                             Err e ->
                                 ( { model | loadState = LoadError (D.errorToString e) }, Cmd.none )
@@ -2139,7 +2471,7 @@ update msg model =
                     "merge_pieces" ->
                         case D.decodeValue decodeMergeResponse dataVal of
                             Ok response ->
-                                update (GotMergeResponse (Ok response)) model
+                                updateRunning (GotMergeResponse (Ok response)) model
 
                             Err _ ->
                                 ( { model | generateState = NotGenerated, recomputing = False }, Cmd.none )
@@ -2231,7 +2563,7 @@ update msg model =
                                     baseModel =
                                         { model
                                             | selectedFileName = fileName
-                                            , loadState = Loading
+                                            , loadState = LoadingPdf
                                             , generateState = NotGenerated
                                             , pieces = []
                                             , pieceGeneration = 0
@@ -2253,7 +2585,12 @@ update msg model =
                                             , nextSessionId = model.nextSessionId + 1
                                         }
                                 in
-                                ( baseModel, loadPdf True key path model.availableH )
+                                ( baseModel
+                                , Cmd.batch
+                                    [ loadPdf True key path model.availableH
+                                    , saveSettings True [ ( "last_import_path", E.string path ) ]
+                                    ]
+                                )
 
                             _ ->
                                 -- User cancelled the dialog — stay in current state.
@@ -2267,7 +2604,7 @@ update msg model =
                 _ = Debug.log "[elm] TestSetValue" (testId ++ "=" ++ value)
 
                 logCmd =
-                    if model.isTauri then
+                    if model.boot.isTauri then
                         tauriInvoke
                             { command = "log_to_stderr"
                             , args = E.object [ ( "msg", E.string ("[elm] TestSetValue received: " ++ testId ++ "=" ++ value) ) ]
@@ -2492,7 +2829,7 @@ recalcPieceBbox sessionKey bricksById piece =
                     piece
 
 
-editHasChanges : Model -> Bool
+editHasChanges : RunningModel -> Bool
 editHasChanges model =
     List.sort model.editBrickIds /= List.sort model.editOriginalBrickIds
 
@@ -2785,8 +3122,27 @@ httpErrorToString err =
 -- ── View ─────────────────────────────────────────────────────────────────────
 
 
+{-| Top-level view dispatches on the AppState. Loaders / errors are
+rendered without ever touching `RunningModel`, so the type system
+guarantees no placeholder values can ever leak to the user. -}
 view : Model -> Html Msg
-view model =
+view appState =
+    case appState of
+        NotStarted _ ->
+            viewBootstrapLoader
+
+        Loading _ ->
+            viewBootstrapLoader
+
+        Running rm ->
+            viewRunning rm
+
+        BootstrapError _ msg ->
+            viewBootstrapError msg
+
+
+viewRunning : RunningModel -> Html Msg
+viewRunning model =
     div [ class "app" ]
         ([ div [ class "app-main" ]
              [ viewTitleBar model
@@ -2798,7 +3154,49 @@ view model =
         )
 
 
-viewBottomWaveTray : Model -> List (Html Msg)
+{-| Full-screen loader shown while we wait for `load_settings` to
+land. Reuses the existing `@keyframes spin` defined in
+dist/index.html so we don't add CSS. -}
+viewBootstrapLoader : Html msg
+viewBootstrapLoader =
+    div
+        [ class "app"
+        , style "display" "flex"
+        , style "align-items" "center"
+        , style "justify-content" "center"
+        , style "height" "100vh"
+        , style "width" "100vw"
+        , style "background" "#f7f7f7"
+        ]
+        [ div [ class "canvas-spinner" ] [] ]
+
+
+{-| Bootstrap-error screen. Shown when `load_settings` fails
+(transport error or schema mismatch). Currently informational; a
+"Retry" button can be wired through a fresh `Cmd` that returns to
+`Loading`. -}
+viewBootstrapError : String -> Html msg
+viewBootstrapError errMsg =
+    div
+        [ class "app"
+        , style "display" "flex"
+        , style "align-items" "center"
+        , style "justify-content" "center"
+        , style "flex-direction" "column"
+        , style "height" "100vh"
+        , style "width" "100vw"
+        , style "background" "#f7f7f7"
+        , style "color" "#c03020"
+        , style "font-family" "sans-serif"
+        ]
+        [ div [ style "font-size" "18px", style "margin-bottom" "12px" ]
+            [ text "House Puzzle couldn't start" ]
+        , div [ style "max-width" "640px", style "text-align" "center", style "color" "#555" ]
+            [ text errMsg ]
+        ]
+
+
+viewBottomWaveTray : RunningModel -> List (Html Msg)
 viewBottomWaveTray model =
     if model.appMode /= ModeWaves then
         []
@@ -2810,7 +3208,7 @@ viewBottomWaveTray model =
                 []
 
 
-viewColorPickerPanel : Model -> Html Msg
+viewColorPickerPanel : RunningModel -> Html Msg
 viewColorPickerPanel model =
     case model.colorPicking of
         Nothing ->
@@ -2833,7 +3231,7 @@ viewColorPickerPanel model =
                 ]
 
 
-viewBody : Model -> Html Msg
+viewBody : RunningModel -> Html Msg
 viewBody model =
     if model.appMode == ModeInit then
         div [ class "app-body-empty" ]
@@ -2862,11 +3260,11 @@ viewBody model =
                     ]
 
 
-viewFileList : Model -> Html Msg
+viewFileList : RunningModel -> Html Msg
 viewFileList model =
     let
         isBusy =
-            model.loadState == Loading
+            model.loadState == LoadingPdf
     in
     div [ class "file-list" ]
         ([ button [ class "file-entry file-entry-browse", onClick PickFile, disabled isBusy, tid "browse" ]
@@ -2890,11 +3288,11 @@ viewFileList model =
         )
 
 
-viewBodyOverlay : Model -> Html Msg
+viewBodyOverlay : RunningModel -> Html Msg
 viewBodyOverlay model =
     let
         msg =
-            if model.loadState == Loading then
+            if model.loadState == LoadingPdf then
                 Just "Parsing PDF\u{2026}"
 
             else if model.generateState == Compositing then
@@ -2920,7 +3318,7 @@ viewBodyOverlay model =
                 ]
 
 
-viewTitleBar : Model -> Html Msg
+viewTitleBar : RunningModel -> Html Msg
 viewTitleBar model =
     let
         isLoaded =
@@ -2932,7 +3330,7 @@ viewTitleBar model =
                     False
 
         isLoadingPdf =
-            model.loadState == Loading
+            model.loadState == LoadingPdf
 
         isBusy =
             isLoadingPdf || model.recomputing || model.exporting
@@ -3072,11 +3470,11 @@ viewTitleBar model =
                 ]
                 [ text "↪" ]
             ]
-        , span [ class "version-tag" ] [ text model.appVersion ]
+        , span [ class "version-tag" ] [ text model.boot.version ]
         ]
 
 
-viewZoomSlider : Model -> Html Msg
+viewZoomSlider : RunningModel -> Html Msg
 viewZoomSlider model =
     let
         pct =
@@ -3115,7 +3513,7 @@ viewZoomSlider model =
         ]
 
 
-viewCanvasCol : Model -> LoadResponse -> Html Msg
+viewCanvasCol : RunningModel -> LoadResponse -> Html Msg
 viewCanvasCol model response =
     div [ class "canvas-col" ]
         [ div [ class "canvas-house-wrap" ]
@@ -3133,7 +3531,7 @@ viewCanvasCol model response =
         ]
 
 
-viewWaveTray : Model -> LoadResponse -> Html Msg
+viewWaveTray : RunningModel -> LoadResponse -> Html Msg
 viewWaveTray model _ =
     let
         activeWaveId =
@@ -3212,7 +3610,7 @@ viewWaveTray model _ =
                                                             SinglePiece _ -> Nothing
                                                             GroupedPiece _ allIds -> Just (List.length allIds)
                                                 in
-                                                [ viewWaveTrayThumb piece isLocked model.svgScale model.hoveredPieceId model.selectedPieceId model.pieceGeneration model.showNumbers pos groupCount ]
+                                                [ viewWaveTrayThumb piece isLocked model.svgScale model.hoveredPieceId model.selectedPieceId model.pieceGeneration model.settings.showNumbers pos groupCount ]
 
                                             Nothing ->
                                                 []
@@ -3299,7 +3697,7 @@ viewWaveTrayThumb piece isLocked scale hoveredId selectedId generation showNum p
         [ thumbBody ]
 
 
-viewToolsCol : Model -> LoadResponse -> Html Msg
+viewToolsCol : RunningModel -> LoadResponse -> Html Msg
 viewToolsCol model response =
     div [ class "tools-col" ]
         [ case model.appMode of
@@ -3323,7 +3721,7 @@ viewToolsCol model response =
         ]
 
 
-viewGenerateTools : Model -> LoadResponse -> Html Msg
+viewGenerateTools : RunningModel -> LoadResponse -> Html Msg
 viewGenerateTools model response =
     let
         isLoaded =
@@ -3332,7 +3730,7 @@ viewGenerateTools model response =
                 _ -> False
 
         isBusy =
-            model.loadState == Loading || model.recomputing || model.exporting
+            model.loadState == LoadingPdf || model.recomputing || model.exporting
 
         isGenerating =
             model.generateState == Compositing
@@ -3380,7 +3778,7 @@ viewGenerateTools model response =
         ]
 
 
-viewPiecesTools : Model -> Html Msg
+viewPiecesTools : RunningModel -> Html Msg
 viewPiecesTools model =
     div [ class "tools-pane" ]
         (if model.editMode then
@@ -3415,7 +3813,7 @@ viewPiecesTools model =
         )
 
 
-viewWavePieceInfoBox : Model -> Html Msg
+viewWavePieceInfoBox : RunningModel -> Html Msg
 viewWavePieceInfoBox model =
     let
         focusId =
@@ -3507,32 +3905,32 @@ viewSectionTitle title =
     h3 [ class "section-title" ] [ text title ]
 
 
-viewCheckboxLights : Model -> Html Msg
+viewCheckboxLights : RunningModel -> Html Msg
 viewCheckboxLights model =
     div [ class "checkbox-group" ]
-        [ input [ type_ "checkbox", id "cbLights", checked model.showLights, onCheck ToggleLights ] []
+        [ input [ type_ "checkbox", id "cbLights", checked model.settings.showLights, onCheck ToggleLights ] []
         , label [ for "cbLights" ] [ text "Show lights" ]
         ]
 
 
-viewCheckboxGrid : Model -> Html Msg
+viewCheckboxGrid : RunningModel -> Html Msg
 viewCheckboxGrid model =
     div [ class "checkbox-group" ]
-        [ input [ type_ "checkbox", id "cbGrid", checked model.showGrid, onCheck ToggleGrid ] []
+        [ input [ type_ "checkbox", id "cbGrid", checked model.settings.showGrid, onCheck ToggleGrid ] []
         , label [ for "cbGrid" ] [ text "Show grid" ]
         , viewGridColorSwatch model
         ]
 
 
-viewCheckboxOutlines : Model -> Html Msg
+viewCheckboxOutlines : RunningModel -> Html Msg
 viewCheckboxOutlines model =
     div
         [ classList
             [ ( "checkbox-group", True )
-            , ( "disabled", model.showOnlyBlueprint )
+            , ( "disabled", model.settings.showOnlyBlueprint )
             ]
         , title
-            (if model.showOnlyBlueprint then
+            (if model.settings.showOnlyBlueprint then
                 "Disabled while \"Only blueprint\" is on"
 
              else
@@ -3542,15 +3940,15 @@ viewCheckboxOutlines model =
         [ input
             [ type_ "checkbox"
             , id "cbOutlines"
-            , checked model.showOutlines
-            , disabled model.showOnlyBlueprint
+            , checked model.settings.showOutlines
+            , disabled model.settings.showOnlyBlueprint
             , onCheck ToggleOutlines
             ]
             []
         , label [ for "cbOutlines" ] [ text "Show piece outlines" ]
         , span
             [ class "wave-swatch wave-swatch-sm"
-            , style "background-color" (waveColor model.outlineHue 1.0)
+            , style "background-color" (waveColor model.settings.outlineHue 1.0)
             , stopPropagationOn "mousedown"
                 (D.map2 (\mx my -> ( StartColorPick OutlineColorTarget mx my, True ))
                     (D.field "clientX" D.float)
@@ -3562,43 +3960,43 @@ viewCheckboxOutlines model =
         ]
 
 
-viewCheckboxNumbers : Model -> Html Msg
+viewCheckboxNumbers : RunningModel -> Html Msg
 viewCheckboxNumbers model =
     div [ class "checkbox-group" ]
-        [ input [ type_ "checkbox", id "cbNumbers", checked model.showNumbers, onCheck ToggleNumbers ] []
+        [ input [ type_ "checkbox", id "cbNumbers", checked model.settings.showNumbers, onCheck ToggleNumbers ] []
         , label [ for "cbNumbers" ] [ text "Show position numbers" ]
         ]
 
 
-viewCheckboxGroupOverlay : Model -> Html Msg
+viewCheckboxGroupOverlay : RunningModel -> Html Msg
 viewCheckboxGroupOverlay model =
     div [ class "checkbox-group" ]
-        [ input [ type_ "checkbox", id "cbGroupOverlay", checked model.showGroupOverlay, onCheck ToggleGroupOverlay ] []
+        [ input [ type_ "checkbox", id "cbGroupOverlay", checked model.settings.showGroupOverlay, onCheck ToggleGroupOverlay ] []
         , label [ for "cbGroupOverlay" ] [ text "Show overlay" ]
         ]
 
 
-viewCheckboxWaveOverlay : Model -> Html Msg
+viewCheckboxWaveOverlay : RunningModel -> Html Msg
 viewCheckboxWaveOverlay model =
     div [ class "checkbox-group" ]
-        [ input [ type_ "checkbox", id "cbWaveOverlay", checked model.showWaveOverlay, onCheck ToggleWaveOverlay ] []
+        [ input [ type_ "checkbox", id "cbWaveOverlay", checked model.settings.showWaveOverlay, onCheck ToggleWaveOverlay ] []
         , label [ for "cbWaveOverlay" ] [ text "Show wave overlays" ]
         ]
 
 
-viewCheckboxOnlyBlueprint : Model -> Html Msg
+viewCheckboxOnlyBlueprint : RunningModel -> Html Msg
 viewCheckboxOnlyBlueprint model =
     div [ class "checkbox-group" ]
-        [ input [ type_ "checkbox", id "cbOnlyBlueprint", checked model.showOnlyBlueprint, onCheck ToggleOnlyBlueprint ] []
+        [ input [ type_ "checkbox", id "cbOnlyBlueprint", checked model.settings.showOnlyBlueprint, onCheck ToggleOnlyBlueprint ] []
         , label [ for "cbOnlyBlueprint" ] [ text "Only blueprint" ]
         ]
 
 
-viewGridColorSwatch : Model -> Html Msg
+viewGridColorSwatch : RunningModel -> Html Msg
 viewGridColorSwatch model =
     span
         [ class "wave-swatch wave-swatch-sm"
-        , style "background-color" (waveColor model.gridHue 1.0)
+        , style "background-color" (waveColor model.settings.gridHue 1.0)
         , stopPropagationOn "mousedown"
             (D.map2 (\mx my -> ( StartColorPick GridColorTarget mx my, True ))
                 (D.field "clientX" D.float)
@@ -3638,7 +4036,7 @@ toPieceDisplays groups pieceIds =
 -- ── Groups tools pane ────────────────────────────────────────────────────────
 
 
-viewGroupsTools : Model -> Html Msg
+viewGroupsTools : RunningModel -> Html Msg
 viewGroupsTools model =
     let
         assignedIds =
@@ -3676,7 +4074,7 @@ viewGroupsTools model =
         ]
 
 
-viewGroupRow : Model -> List Group -> Group -> Html Msg
+viewGroupRow : RunningModel -> List Group -> Group -> Html Msg
 viewGroupRow model allGroups group =
     let
         isSelected =
@@ -3758,7 +4156,7 @@ viewGroupRow model allGroups group =
         ]
 
 
-viewGroupUnassignedRow : Model -> List Piece -> Html Msg
+viewGroupUnassignedRow : RunningModel -> List Piece -> Html Msg
 viewGroupUnassignedRow model unassignedPieces =
     if List.isEmpty model.pieces then
         text ""
@@ -3802,7 +4200,7 @@ viewGroupUnassignedRow model unassignedPieces =
 -- ── Waves tools pane ─────────────────────────────────────────────────────────
 
 
-viewWavesTools : Model -> Html Msg
+viewWavesTools : RunningModel -> Html Msg
 viewWavesTools model =
     let
         assignedIds =
@@ -3861,7 +4259,7 @@ locations =
     [ "Tutorial", "Rome", "Athens", "Amsterdam", "Paris", "Palermo", "Venice", "Frankfurt", "New York", "Prague" ]
 
 
-viewExportTools : Model -> Html Msg
+viewExportTools : RunningModel -> Html Msg
 viewExportTools model =
     let
         assignedIds =
@@ -3942,7 +4340,7 @@ viewExportTools model =
         ]
 
 
-viewMainSvg : LoadResponse -> Model -> Html Msg
+viewMainSvg : LoadResponse -> RunningModel -> Html Msg
 viewMainSvg response model =
     let
         cw =
@@ -4006,7 +4404,7 @@ viewMainSvg response model =
         -- the raster composite — there's no blueprint to fall back on
         -- in the import stage.
         blueprintMode =
-            isGenerated && model.showOnlyBlueprint
+            isGenerated && model.settings.showOnlyBlueprint
 
         baseLayer =
             if blueprintMode then
@@ -4072,7 +4470,7 @@ viewMainSvg response model =
 
         -- Lights overlay (toggleable, shown when showLights is True and lightsUrl is available)
         lightsLayer =
-            case ( model.showLights, model.lightsUrl ) of
+            case ( model.settings.showLights, model.lightsUrl ) of
                 ( True, Just url ) ->
                     [ Svg.image
                         [ SA.x "0"
@@ -4199,8 +4597,8 @@ viewMainSvg response model =
 
         -- Grid lines
         gridLayer =
-            if (not model.editMode) && (model.showGrid || model.zoomGridActive) then
-                viewGrid cw ch (waveColor model.gridHue 1.0) model.houseUnitsHigh
+            if (not model.editMode) && (model.settings.showGrid || model.zoomGridActive) then
+                viewGrid cw ch (waveColor model.settings.gridHue 1.0) model.houseUnitsHigh
 
             else
                 []
@@ -4213,8 +4611,8 @@ viewMainSvg response model =
                 -- outlines on top would dirty the look, so suppress them.
                 []
 
-            else if isGenerated && (model.editMode || (model.showOutlines && (model.appMode == ModePieces || model.appMode == ModeGroups || model.appMode == ModeWaves || model.appMode == ModeExport))) then
-                List.map (viewPieceOutline (waveColor model.outlineHue 1.0)) visiblePieces
+            else if isGenerated && (model.editMode || (model.settings.showOutlines && (model.appMode == ModePieces || model.appMode == ModeGroups || model.appMode == ModeWaves || model.appMode == ModeExport))) then
+                List.map (viewPieceOutline (waveColor model.settings.outlineHue 1.0)) visiblePieces
 
             else
                 []
@@ -4305,9 +4703,9 @@ viewMainSvg response model =
             model.lasso /= Nothing
 
         showOverlayFill =
-            (model.appMode == ModeGroups && model.showGroupOverlay)
-                || (model.appMode == ModeWaves && model.showWaveOverlay)
-                || (model.appMode == ModeExport && model.showWaveOverlay)
+            (model.appMode == ModeGroups && model.settings.showGroupOverlay)
+                || (model.appMode == ModeWaves && model.settings.showWaveOverlay)
+                || (model.appMode == ModeExport && model.settings.showWaveOverlay)
 
         pieceOverlays =
             if (not model.editMode) && isGenerated then
@@ -4337,7 +4735,7 @@ viewMainSvg response model =
                 |> Dict.fromList
 
         numberLabels =
-            if (not model.editMode) && isGenerated && model.showNumbers && (model.appMode == ModePieces || model.appMode == ModeWaves || model.appMode == ModeExport) then
+            if (not model.editMode) && isGenerated && model.settings.showNumbers && (model.appMode == ModePieces || model.appMode == ModeWaves || model.appMode == ModeExport) then
                 List.filterMap
                     (\piece ->
                         Dict.get piece.id piecePositions
@@ -5160,7 +5558,7 @@ iconLockOpen =
         ]
 
 
-viewWaveRow : Model -> List Wave -> Int -> Wave -> Html Msg
+viewWaveRow : RunningModel -> List Wave -> Int -> Wave -> Html Msg
 viewWaveRow model allWaves waveNumber wave =
     let
         isSelected =
@@ -5197,7 +5595,7 @@ viewWaveRow model allWaves waveNumber wave =
               -- "Only blueprint" mode the composite is hidden anyway, so
               -- the toggle has nothing to act on — disable it visibly.
               span
-                (if model.showOnlyBlueprint then
+                (if model.settings.showOnlyBlueprint then
                     [ classList
                         [ ( "wave-eye", True )
                         , ( "hidden", not wave.visible )
@@ -5271,7 +5669,7 @@ viewWaveRow model allWaves waveNumber wave =
         ]
 
 
-viewUnassignedRow : Model -> List Piece -> Html Msg
+viewUnassignedRow : RunningModel -> List Piece -> Html Msg
 viewUnassignedRow model unassignedPieces =
     if List.isEmpty model.pieces then
         text ""
@@ -5437,7 +5835,7 @@ viewGroupThumb maybeWaveId hoveredId selectedId maybeGroup piece allIds generati
         ]
 
 
-viewEditControls : Model -> List (Html Msg)
+viewEditControls : RunningModel -> List (Html Msg)
 viewEditControls model =
     let
         changed =
@@ -5481,13 +5879,13 @@ viewEditControls model =
     ]
 
 
-viewStatusBadge : Model -> Html Msg
+viewStatusBadge : RunningModel -> Html Msg
 viewStatusBadge model =
     case model.loadState of
         Idle ->
             text ""
 
-        Loading ->
+        LoadingPdf ->
             span [ class "status loading" ] [ text "Parsing PDF\u{2026}" ]
 
         Loaded _ ->
@@ -5537,7 +5935,7 @@ viewImportStats response =
         )
 
 
-viewStats : Model -> Html Msg
+viewStats : RunningModel -> Html Msg
 viewStats model =
     let
         canvasInfo =
@@ -5602,26 +6000,34 @@ keyDecoder =
 
 
 subscriptions : Model -> Sub Msg
-subscriptions model =
-    Sub.batch
-        ([ Browser.Events.onKeyDown keyDecoder
-         , tauriResponse TauriResponse
-         , testSetValue TestSetValue
-         ]
-            ++ (case model.colorPicking of
-                    Just _ ->
-                        [ Browser.Events.onMouseMove
-                            (D.map2 ColorPickMove
-                                (D.field "clientX" D.float)
-                                (D.field "clientY" D.float)
-                            )
-                        , Browser.Events.onMouseUp (D.succeed EndColorPick)
-                        ]
+subscriptions appState =
+    let
+        always =
+            [ Browser.Events.onKeyDown keyDecoder
+            , tauriResponse TauriResponse
+            , testSetValue TestSetValue
+            ]
 
-                    Nothing ->
-                        []
-               )
-        )
+        running =
+            case appState of
+                Running rm ->
+                    case rm.colorPicking of
+                        Just _ ->
+                            [ Browser.Events.onMouseMove
+                                (D.map2 ColorPickMove
+                                    (D.field "clientX" D.float)
+                                    (D.field "clientY" D.float)
+                                )
+                            , Browser.Events.onMouseUp (D.succeed EndColorPick)
+                            ]
+
+                        Nothing ->
+                            []
+
+                _ ->
+                    []
+    in
+    Sub.batch (always ++ running)
 
 
 

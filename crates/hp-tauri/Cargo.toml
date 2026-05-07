@@ -10,6 +10,8 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = ["protocol-asset"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-updater = "2"
+tauri-plugin-window-state = "2"
+tauri-plugin-store = "2"
 hp-core = { path = "../hp-core" }
 parking_lot = "0.12"
 serde = { version = "1", features = ["derive"] }

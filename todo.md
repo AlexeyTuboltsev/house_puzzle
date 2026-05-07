@@ -1,59 +1,16 @@
 ## Open
 
-### AI unscaled vector data as source of truth
-Current pipeline runs vector operations (adjacency, unions, spike removal,
-piece outlines) partly in canvas-pixel coords after scaling. Scaling is lossy
-— shared endpoints that were bit-identical in the AI file stop matching, so
-we pile on workarounds: epsilon expand/erode, vertex snapping, spike removal.
+### ~~AI unscaled vector data as source of truth~~
+~~Refactor to keep AI native coords (pymu units) and bezier curves as the
+single source of truth for every vector op.~~ Done — vector pipeline
+operates on AI-native bezier paths via `bezier_merge`/`build_adjacency_bezier`;
+canvas scaling happens only at raster-output time.
 
-Refactor: keep AI native coords (pymu units) and bezier curves as the single
-source of truth for every vector op. Tessellate and scale to canvas only at
-the last possible moment — ideally only for raster masks. Blue/white outlines
-should go to SVG as bezier path commands and be tessellated by the browser
-after the CSS transform, not by us before.
-
-Raster pipeline review (same direction): we may not need per-brick raster
-layers at all. Alternative shape:
-
-1. Render ONE high-res raster of the full artwork via MuPDF (bricks layer,
-   plus lights/background/etc. as separate hi-res layers).
-2. Clip that hi-res raster by vector outlines — at full AI resolution, so
-   edges land exactly on vector boundaries.
-3. Downsample per piece/brick to the target canvas size only at the end.
-
-That removes the per-brick OCG render roundtrips, keeps edges sharp, and
-avoids all the polygon-mask artefacts we chase today.
-
-### Piece 1px gaps/bleeding — rasterization pipeline redesign
-**Root cause**: We rasterize the full page at ~30 DPI via MuPDF, then split
-the low-res raster into bricks/pieces using vector polygon masks. At 30 DPI,
-1 pixel = ~2.4 PDF points — polygon edges don't align with pixel boundaries,
-causing gaps between adjacent pieces and bleeding from neighbors.
-
-**Current pipeline**:
-1. MuPDF renders full page (mediabox) at DPI → single large raster
-2. Overlay onto canvas-sized image (implicit clip to brick bounding box)
-3. Per-brick: mask raster with point-in-polygon → canvas-sized brick PNG
-4. Per-piece: scanline-rasterize brick polygons → mask → piece PNG
-
-**The problem**: step 1 is lossy. We have perfect vector data in the AI file
-but discard it by rasterizing the entire page into one image.
-
-**Possible fixes (increasing effort)**:
-1. **Higher DPI** — render at 4x DPI (~120), clip per brick. Gaps become
-   sub-pixel. Memory: 16x, time: ~4x. Quick win.
-2. **MuPDF clip-rect** — pass clip rect to MuPDF render call so it only
-   rasterizes the visible area, not the full mediabox. Prerequisite for #1.
-3. **Per-brick OCG render** — toggle individual brick sub-layers in MuPDF,
-   render each independently. Correct pixels, no cross-brick bleeding.
-   ~200 MuPDF calls per house, possibly parallelizable.
-4. **Hybrid vector+raster** — raster bricks: extract embedded pixel data
-   directly (already parsed via `extract_raster_image`). Vector/gradient
-   bricks: render via tiny-skia from parsed PostScript paths. No MuPDF
-   for brick images at all, only for page geometry.
-5. **Full vector pipeline** — parse all PostScript fills, gradients, compound
-   paths. Render everything via tiny-skia. MuPDF only for decompression
-   and page geometry. Most work but highest fidelity.
+### ~~Piece 1px gaps/bleeding — rasterization pipeline redesign~~
+~~Polygon edges didn't align with pixel boundaries because we rasterized
+the full page at low DPI then masked.~~ Obsolete — current pipeline renders
+per-brick OCG layers via MuPDF at the right DPI/clip rect; no more cross-brick
+bleeding or 1px gaps.
 
 ### ~~macOS double-click binary (PR #44)~~
 ~~Binary name with dots breaks Finder double-click.~~
@@ -194,24 +151,13 @@ Done — per-group and per-wave "BP" checkbox swaps thumbnails to
 ### ~~Numeric input next to "Pieces" and "Min border" sliders~~
 Done — paired number inputs share the slider's handler/value.
 
-### Parse cache — cache busting, cleanup, versioning
-The load-speedup PR added a parse cache under `<temp_dir>/house_puzzle_parse_cache/`
-keyed by (PARSE_CACHE_VERSION, file size, file mtime, file path,
-canvas_height). It writes two artifacts per cache key — a `.bin`
-(bincoded `CachedParse`) and a `_bricks.png` (full MuPDF pixmap of the
-bricks layer). Together they save ~6 s on re-opens of the same AI file.
-But the cache grows monotonically and never reclaims space.
-
-Need:
-1. **Startup sweep** that deletes files whose name doesn't match the
-   current `PARSE_CACHE_VERSION` schema, so old-version blobs go away
-   automatically after a version bump.
-2. **LRU / max-age policy** — e.g. delete files not accessed in 30
-   days, or cap total cache size at N MB. Power users will accumulate
-   one entry per (AI file × canvas height) combination over time.
-3. **"Clear cache" action** in the UI for manual nuke.
-4. **Move out of `temp_dir`** into the OS cache dir (`app_cache_dir()`
-   — survives reboots but really needs cleanup or it'll snowball).
+### ~~Parse cache — cache busting, cleanup, versioning~~
+~~Cache under `<temp_dir>/house_puzzle_parse_cache/` saved ~6s on
+re-opens but needed cleanup, versioning, and a clear-button.~~ Decided
+2026-05-07 to remove the cache entirely — re-opening unchanged files
+isn't a hot workflow path, and the hygiene cost + risk of stale
+matches (mtime edge cases, `cp -p`) outweighed the savings. Removal
+also closes the "versioning is fragile" todo below.
 
 ### Test coverage — unit + regression suite
 The parser, merge, and render pipelines have ~3 ad-hoc smoke tests and a
@@ -256,57 +202,32 @@ CI:
 - Make the regression suite part of `ultrareview` so PR reviewers
   see the diffs against goldens before merge.
 
-### Parse cache — versioning is fragile
-Right now any shape change to `CachedParse` requires bumping
-`PARSE_CACHE_VERSION` by hand. Bincode silently accepts mismatched
-schemas in some cases. Consider:
-- A versioned header byte at the start of each `.bin` so reads can
-  reject mismatches loudly even within the same cache key.
-- A more forward-compatible format (e.g. CBOR with serde flatten
-  defaults) so adding optional fields doesn't require invalidation.
-- Document the bump rule in code: "any new field in any cached type
-  → bump PARSE_CACHE_VERSION".
+### ~~Parse cache — versioning is fragile~~
+Closed by the removal above (2026-05-07). No cache, no versioning
+problem.
 
-### Adobe Illustrator validation script
-Create a standalone validation script that runs inside Adobe Illustrator
-(ExtendScript / JSX) to check `.ai` files before export. Should detect:
-- Missing required layers (bricks, background, screen)
-- Empty required layers
-- Unclosed paths in brick sub-layers
-- Overlapping brick polygons (bricks must be adjacent, not overlapping)
-- Brick containment (one brick fully inside another)
-- Multi-object layers with independent sub-paths
-- Degenerate paths (< 3 points, zero area)
+### ~~Adobe Illustrator validation script~~
+~~Create a standalone validation script that runs inside Adobe Illustrator
+(ExtendScript / JSX) to check `.ai` files before export.~~ Done — lives
+under `tools/ai-validate/`, ships as a bundled `.jsx` via per-platform
+installer (Inno on Windows, .pkg on macOS). Detects missing/empty layers,
+unclosed paths, overlaps, containment, multi-object layers, degenerate
+paths, snap drift, corner jitter, etc.
 
-The Rust backend already validates these on load (see `ai_parser.rs`),
-but catching errors in Illustrator is faster feedback for the artist.
+### ~~Illustrator script — release / distribution pipeline~~
+~~Need a real distribution path.~~ Done — `release-ai-validate.yml`
+GitHub Actions workflow builds the bundle on every `sv*` tag push,
+produces signed Inno `.exe` + macOS `.pkg`, attaches to a GitHub
+release, and the script self-checks `script-version.json` on launch
+to nag the artist about updates. Versioning is independent (`svX.Y.Z`
+prefix) from the editor's `vX.Y.Z`. Lessons learned around tag-rebuild
+gotchas captured in `feedback_tag_rebuild.md`.
 
-### Illustrator script — release / distribution pipeline
-The validator above only helps if the artist actually has it installed.
-Today the script (when written) lives in the repo and the artist would
-have to clone the repo, copy the `.jsx`, and update by hand on every
-change. Need a real distribution path. Options to evaluate:
-
-- **Bundle it into the Tauri app**: ship the `.jsx` next to the binary
-  and add an "Install Illustrator script" action that copies it into
-  the user's `~/Library/Application Support/Adobe/Adobe Illustrator
-  <ver>/<lang>/Scripts/` (macOS) / `%APPDATA%\Adobe\Adobe Illustrator
-  <ver>\<lang>\Scripts\` (Windows) directory. Could also bundle a
-  small "Update script" button that re-copies the latest version.
-- **GitHub-Actions release artefact**: the existing `build-tauri.yml`
-  release job already publishes `.AppImage` / `.dmg` / `.msi` to a
-  tagged release. Add the `.jsx` to that release with a stable URL
-  (`releases/latest/download/hp-validator.jsx`) so the artist (and
-  the in-app installer) can fetch the current version.
-- **Versioning**: tag the script with the same `vX.Y.Z` as the
-  editor, so the validator and parser stay in lock-step (whenever
-  the parser tightens, both move). Update the tauri-action step to
-  pick up `crates/illustrator-validator/dist/hp-validator.jsx`.
-- **Editor compatibility check**: have the script print its own
-  version into a layer-comment that the Rust parser reads at load.
-  Mismatch → editor warns "your AI was validated by an older script
-  — re-run validation". Catches the "did the artist run the new
-  validator" question without asking.
+Still open as a *next-step nice-to-have* (not blocking): the Tauri
+app could host a one-click "Install Illustrator script" action that
+copies the bundled `.jsx` into the user's Illustrator scripts folder
+without going through the per-platform installer. See "auto-update
+shell for ai-validate" discussion (2026-05-05).
 
 ### Persist user settings + window state between sessions
 Several UI knobs live in the DOM/Elm only and reset on every launch:
