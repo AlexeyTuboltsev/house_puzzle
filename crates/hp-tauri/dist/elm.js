@@ -6372,6 +6372,15 @@ var $author$project$Main$fetchPdfList = function (isTauri) {
 		});
 };
 var $elm$browser$Browser$Dom$getViewport = _Browser_withWindow(_Browser_getViewport);
+var $elm$core$Platform$Cmd$none = $elm$core$Platform$Cmd$batch(_List_Nil);
+var $author$project$Main$loadSettings = function (isTauri) {
+	return isTauri ? $author$project$Main$tauriInvoke(
+		{
+			args: $elm$json$Json$Encode$object(_List_Nil),
+			command: 'load_settings',
+			requestId: 'load_settings'
+		}) : $elm$core$Platform$Cmd$none;
+};
 var $author$project$Main$init = function (flags) {
 	return _Utils_Tuple2(
 		{appMode: $author$project$Main$ModeInit, appVersion: flags.version, availableH: 900.0, blueprintBgUrl: $elm$core$Maybe$Nothing, bricksById: $elm$core$Dict$empty, colorPicking: $elm$core$Maybe$Nothing, dragInsertBeforeId: $elm$core$Maybe$Nothing, dragOverGroupId: $elm$core$Maybe$Nothing, dragOverWaveId: $elm$core$Maybe$Nothing, draggingPieceId: $elm$core$Maybe$Nothing, editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, editOriginalGroups: _List_Nil, editOriginalPieces: _List_Nil, editOriginalWaves: _List_Nil, exportCanvasHeight: '900', exportHouseName: 'NewHouse', exportLocation: 'Rome', exportPosition: '0', exportSpacing: '12.0', exporting: false, generateState: $author$project$Main$NotGenerated, gridHue: 35.0, groups: _List_Nil, houseUnitsHigh: 15.5, hoveredBrickId: $elm$core$Maybe$Nothing, hoveredPieceId: $elm$core$Maybe$Nothing, isTauri: flags.isTauri, lasso: $elm$core$Maybe$Nothing, lightsUrl: $elm$core$Maybe$Nothing, loadState: $author$project$Main$Idle, minBorder: 10, nextGroupId: 1, nextSessionId: 1, nextWaveId: 1, outlineHue: 210.0, pdfFiles: _List_Nil, pieceGeneration: 0, pieces: _List_Nil, recomputing: false, redoHistory: _List_Nil, seed: 42, selectedFileName: '', selectedGroupId: $elm$core$Maybe$Nothing, selectedPieceId: $elm$core$Maybe$Nothing, selectedWaveId: $elm$core$Maybe$Nothing, sessionKey: '', showGrid: false, showGroupOverlay: true, showLights: false, showNumbers: true, showOnlyBlueprint: false, showOutlines: true, showWaveOverlay: true, svgScale: 1.0, targetCount: 60, undoHistory: _List_Nil, waves: _List_Nil, zoomGridActive: false, zoomLevel: 1.0},
@@ -6379,7 +6388,8 @@ var $author$project$Main$init = function (flags) {
 			_List_fromArray(
 				[
 					$author$project$Main$fetchPdfList(flags.isTauri),
-					A2($elm$core$Task$perform, $author$project$Main$GotViewport, $elm$browser$Browser$Dom$getViewport)
+					A2($elm$core$Task$perform, $author$project$Main$GotViewport, $elm$browser$Browser$Dom$getViewport),
+					$author$project$Main$loadSettings(flags.isTauri)
 				])));
 };
 var $author$project$Main$ColorPickMove = F2(
@@ -6795,6 +6805,88 @@ var $elm$core$List$all = F2(
 			A2($elm$core$Basics$composeL, $elm$core$Basics$not, isOkay),
 			list);
 	});
+var $elm$json$Json$Decode$decodeValue = _Json_run;
+var $elm$core$Result$toMaybe = function (result) {
+	if (result.$ === 'Ok') {
+		var v = result.a;
+		return $elm$core$Maybe$Just(v);
+	} else {
+		return $elm$core$Maybe$Nothing;
+	}
+};
+var $elm$core$Maybe$withDefault = F2(
+	function (_default, maybe) {
+		if (maybe.$ === 'Just') {
+			var value = maybe.a;
+			return value;
+		} else {
+			return _default;
+		}
+	});
+var $author$project$Main$applyLoadedSettings = F2(
+	function (val, model) {
+		var decodeField = F2(
+			function (name, decoder) {
+				return $elm$core$Result$toMaybe(
+					A2(
+						$elm$json$Json$Decode$decodeValue,
+						A2($elm$json$Json$Decode$field, name, decoder),
+						val));
+			});
+		var _float = function (n) {
+			return A2(decodeField, n, $elm$json$Json$Decode$float);
+		};
+		var str = function (n) {
+			return A2(decodeField, n, $elm$json$Json$Decode$string);
+		};
+		var bool = function (n) {
+			return A2(decodeField, n, $elm$json$Json$Decode$bool);
+		};
+		return _Utils_update(
+			model,
+			{
+				gridHue: A2(
+					$elm$core$Maybe$withDefault,
+					model.gridHue,
+					_float('grid_hue')),
+				outlineHue: A2(
+					$elm$core$Maybe$withDefault,
+					model.outlineHue,
+					_float('outline_hue')),
+				selectedFileName: A2(
+					$elm$core$Maybe$withDefault,
+					model.selectedFileName,
+					str('last_import_path')),
+				showGrid: A2(
+					$elm$core$Maybe$withDefault,
+					model.showGrid,
+					bool('show_grid')),
+				showGroupOverlay: A2(
+					$elm$core$Maybe$withDefault,
+					model.showGroupOverlay,
+					bool('show_group_overlay')),
+				showLights: A2(
+					$elm$core$Maybe$withDefault,
+					model.showLights,
+					bool('show_lights')),
+				showNumbers: A2(
+					$elm$core$Maybe$withDefault,
+					model.showNumbers,
+					bool('show_numbers')),
+				showOnlyBlueprint: A2(
+					$elm$core$Maybe$withDefault,
+					model.showOnlyBlueprint,
+					bool('show_only_blueprint')),
+				showOutlines: A2(
+					$elm$core$Maybe$withDefault,
+					model.showOutlines,
+					bool('show_outlines')),
+				showWaveOverlay: A2(
+					$elm$core$Maybe$withDefault,
+					model.showWaveOverlay,
+					bool('show_wave_overlay'))
+			});
+	});
 var $author$project$Main$applySnapshot = F2(
 	function (snap, model) {
 		return _Utils_update(
@@ -6820,6 +6912,7 @@ var $elm$core$Task$attempt = F2(
 							$elm$core$Result$Ok),
 						task))));
 	});
+var $elm$json$Json$Encode$bool = _Json_wrap;
 var $elm$core$Basics$clamp = F3(
 	function (low, high, number) {
 		return (_Utils_cmp(number, low) < 0) ? low : ((_Utils_cmp(number, high) > 0) ? high : number);
@@ -6938,15 +7031,6 @@ var $elm$json$Json$Decode$maybe = function (decoder) {
 				$elm$json$Json$Decode$succeed($elm$core$Maybe$Nothing)
 			]));
 };
-var $elm$core$Maybe$withDefault = F2(
-	function (_default, maybe) {
-		if (maybe.$ === 'Just') {
-			var value = maybe.a;
-			return value;
-		} else {
-			return _default;
-		}
-	});
 var $author$project$Main$decodeLoadResponse = A2(
 	$elm$json$Json$Decode$andThen,
 	function (f) {
@@ -7080,7 +7164,6 @@ var $author$project$Main$decodeMergeResponse = A2(
 		$elm$json$Json$Decode$field,
 		'pieces',
 		$elm$json$Json$Decode$list($author$project$Main$decodePiece)));
-var $elm$json$Json$Decode$decodeValue = _Json_run;
 var $elm$core$Basics$modBy = _Basics_modBy;
 var $author$project$Main$defaultHue = function (idx) {
 	var _v0 = A2($elm$core$Basics$modBy, 7, idx);
@@ -7122,7 +7205,6 @@ var $elm$core$List$drop = F2(
 			}
 		}
 	});
-var $elm$core$Platform$Cmd$none = $elm$core$Platform$Cmd$batch(_List_Nil);
 var $author$project$Main$ensureBackgroundCmd = function (model) {
 	return (_Utils_eq(model.blueprintBgUrl, $elm$core$Maybe$Nothing) && (model.isTauri && (!$elm$core$String$isEmpty(model.sessionKey)))) ? $author$project$Main$tauriInvoke(
 		{
@@ -7502,6 +7584,21 @@ var $elm$core$String$replace = F3(
 			after,
 			A2($elm$core$String$split, before, string));
 	});
+var $author$project$Main$saveSettings = F2(
+	function (isTauri, fields) {
+		return (isTauri && (!$elm$core$List$isEmpty(fields))) ? $author$project$Main$tauriInvoke(
+			{
+				args: $elm$json$Json$Encode$object(
+					_List_fromArray(
+						[
+							_Utils_Tuple2(
+							'partial',
+							$elm$json$Json$Encode$object(fields))
+						])),
+				command: 'save_settings',
+				requestId: 'save_settings'
+			}) : $elm$core$Platform$Cmd$none;
+	});
 var $author$project$Main$scrollPieceIntoView = _Platform_outgoingPort('scrollPieceIntoView', $elm$json$Json$Encode$string);
 var $elm$browser$Browser$Dom$setViewportOf = _Browser_setViewportOf;
 var $elm$core$Process$sleep = _Process_sleep;
@@ -7783,7 +7880,20 @@ var $author$project$Main$update = F2(
 							_Utils_update(
 								baseModel,
 								{nextSessionId: model.nextSessionId + 1, sessionKey: key}),
-							A4($author$project$Main$loadPdf, true, key, path, model.availableH));
+							$elm$core$Platform$Cmd$batch(
+								_List_fromArray(
+									[
+										A4($author$project$Main$loadPdf, true, key, path, model.availableH),
+										A2(
+										$author$project$Main$saveSettings,
+										true,
+										_List_fromArray(
+											[
+												_Utils_Tuple2(
+												'last_import_path',
+												$elm$json$Json$Encode$string(path))
+											]))
+									])));
 					} else {
 						return _Utils_Tuple2(
 							baseModel,
@@ -7833,7 +7943,20 @@ var $author$project$Main$update = F2(
 						_Utils_update(
 							model,
 							{appMode: $author$project$Main$ModeInit, editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, editOriginalGroups: _List_Nil, editOriginalPieces: _List_Nil, editOriginalWaves: _List_Nil, exportHouseName: houseName, generateState: $author$project$Main$NotGenerated, loadState: $author$project$Main$Loading, nextSessionId: model.nextSessionId + 1, nextWaveId: 1, pieceGeneration: 0, pieces: _List_Nil, recomputing: false, selectedFileName: path, selectedPieceId: $elm$core$Maybe$Nothing, selectedWaveId: $elm$core$Maybe$Nothing, sessionKey: key, waves: _List_Nil}),
-						A4($author$project$Main$loadPdf, model.isTauri, key, path, model.availableH));
+						$elm$core$Platform$Cmd$batch(
+							_List_fromArray(
+								[
+									A4($author$project$Main$loadPdf, model.isTauri, key, path, model.availableH),
+									A2(
+									$author$project$Main$saveSettings,
+									model.isTauri,
+									_List_fromArray(
+										[
+											_Utils_Tuple2(
+											'last_import_path',
+											$elm$json$Json$Encode$string(path))
+										]))
+								])));
 				case 'GotLoadResponse':
 					if (msg.a.$ === 'Ok') {
 						var response = msg.a.a;
@@ -8064,24 +8187,48 @@ var $author$project$Main$update = F2(
 						_Utils_update(
 							model,
 							{showOutlines: checked}),
-						$elm$core$Platform$Cmd$none);
+						A2(
+							$author$project$Main$saveSettings,
+							model.isTauri,
+							_List_fromArray(
+								[
+									_Utils_Tuple2(
+									'show_outlines',
+									$elm$json$Json$Encode$bool(checked))
+								])));
 				case 'ToggleGrid':
 					var checked = msg.a;
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
 							{showGrid: checked}),
-						$elm$core$Platform$Cmd$none);
+						A2(
+							$author$project$Main$saveSettings,
+							model.isTauri,
+							_List_fromArray(
+								[
+									_Utils_Tuple2(
+									'show_grid',
+									$elm$json$Json$Encode$bool(checked))
+								])));
 				case 'ToggleNumbers':
 					var checked = msg.a;
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
 							{showNumbers: checked}),
-						$elm$core$Platform$Cmd$none);
+						A2(
+							$author$project$Main$saveSettings,
+							model.isTauri,
+							_List_fromArray(
+								[
+									_Utils_Tuple2(
+									'show_numbers',
+									$elm$json$Json$Encode$bool(checked))
+								])));
 				case 'ToggleLights':
 					var checked = msg.a;
-					var cmd = (checked && (_Utils_eq(model.lightsUrl, $elm$core$Maybe$Nothing) && model.isTauri)) ? $author$project$Main$tauriInvoke(
+					var ensureCmd = (checked && (_Utils_eq(model.lightsUrl, $elm$core$Maybe$Nothing) && model.isTauri)) ? $author$project$Main$tauriInvoke(
 						{
 							args: $elm$json$Json$Encode$object(
 								_List_fromArray(
@@ -8097,21 +8244,50 @@ var $author$project$Main$update = F2(
 						_Utils_update(
 							model,
 							{showLights: checked}),
-						cmd);
+						$elm$core$Platform$Cmd$batch(
+							_List_fromArray(
+								[
+									ensureCmd,
+									A2(
+									$author$project$Main$saveSettings,
+									model.isTauri,
+									_List_fromArray(
+										[
+											_Utils_Tuple2(
+											'show_lights',
+											$elm$json$Json$Encode$bool(checked))
+										]))
+								])));
 				case 'ToggleGroupOverlay':
 					var checked = msg.a;
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
 							{showGroupOverlay: checked}),
-						$elm$core$Platform$Cmd$none);
+						A2(
+							$author$project$Main$saveSettings,
+							model.isTauri,
+							_List_fromArray(
+								[
+									_Utils_Tuple2(
+									'show_group_overlay',
+									$elm$json$Json$Encode$bool(checked))
+								])));
 				case 'ToggleWaveOverlay':
 					var checked = msg.a;
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
 							{showWaveOverlay: checked}),
-						$elm$core$Platform$Cmd$none);
+						A2(
+							$author$project$Main$saveSettings,
+							model.isTauri,
+							_List_fromArray(
+								[
+									_Utils_Tuple2(
+									'show_wave_overlay',
+									$elm$json$Json$Encode$bool(checked))
+								])));
 				case 'AddWave':
 					var newWave = {
 						hue: $author$project$Main$defaultHue(model.nextWaveId - 1),
@@ -8201,12 +8377,25 @@ var $author$project$Main$update = F2(
 							$elm$core$Platform$Cmd$none));
 				case 'ToggleOnlyBlueprint':
 					var checked = msg.a;
-					var cmd = checked ? $author$project$Main$ensureBackgroundCmd(model) : $elm$core$Platform$Cmd$none;
+					var ensureCmd = checked ? $author$project$Main$ensureBackgroundCmd(model) : $elm$core$Platform$Cmd$none;
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
 							{showOnlyBlueprint: checked}),
-						cmd);
+						$elm$core$Platform$Cmd$batch(
+							_List_fromArray(
+								[
+									ensureCmd,
+									A2(
+									$author$project$Main$saveSettings,
+									model.isTauri,
+									_List_fromArray(
+										[
+											_Utils_Tuple2(
+											'show_only_blueprint',
+											$elm$json$Json$Encode$bool(checked))
+										]))
+								])));
 				case 'ToggleWaveVisibility':
 					var waveId = msg.a;
 					return A2(
@@ -9878,23 +10067,91 @@ var $author$project$Main$update = F2(
 									});
 						}
 					}();
+					var saveCmd = function () {
+						switch (target.$) {
+							case 'GridColorTarget':
+								return A2(
+									$author$project$Main$saveSettings,
+									model.isTauri,
+									_List_fromArray(
+										[
+											_Utils_Tuple2(
+											'grid_hue',
+											$elm$json$Json$Encode$float(hue))
+										]));
+							case 'OutlineColorTarget':
+								return A2(
+									$author$project$Main$saveSettings,
+									model.isTauri,
+									_List_fromArray(
+										[
+											_Utils_Tuple2(
+											'outline_hue',
+											$elm$json$Json$Encode$float(hue))
+										]));
+							default:
+								return $elm$core$Platform$Cmd$none;
+						}
+					}();
 					return A2(
 						$author$project$Main$withUndo,
 						model,
-						_Utils_Tuple2(updated, $elm$core$Platform$Cmd$none));
+						_Utils_Tuple2(updated, saveCmd));
 				case 'EndColorPick':
+					var cmd = function () {
+						var _v49 = A2(
+							$elm$core$Maybe$map,
+							function ($) {
+								return $.target;
+							},
+							model.colorPicking);
+						_v49$2:
+						while (true) {
+							if (_v49.$ === 'Just') {
+								switch (_v49.a.$) {
+									case 'GridColorTarget':
+										var _v50 = _v49.a;
+										return A2(
+											$author$project$Main$saveSettings,
+											model.isTauri,
+											_List_fromArray(
+												[
+													_Utils_Tuple2(
+													'grid_hue',
+													$elm$json$Json$Encode$float(model.gridHue))
+												]));
+									case 'OutlineColorTarget':
+										var _v51 = _v49.a;
+										return A2(
+											$author$project$Main$saveSettings,
+											model.isTauri,
+											_List_fromArray(
+												[
+													_Utils_Tuple2(
+													'outline_hue',
+													$elm$json$Json$Encode$float(model.outlineHue))
+												]));
+									default:
+										break _v49$2;
+								}
+							} else {
+								break _v49$2;
+							}
+						}
+						return $elm$core$Platform$Cmd$none;
+					}();
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
 							{colorPicking: $elm$core$Maybe$Nothing}),
-						$elm$core$Platform$Cmd$none);
+						cmd);
 				case 'ScrollTrayBy':
 					var delta = msg.a;
 					return _Utils_Tuple2(
 						model,
 						A2(
 							$elm$core$Task$attempt,
-							function (_v48) {
+							function (_v52) {
 								return $author$project$Main$NoOp;
 							},
 							A2(
@@ -9904,12 +10161,12 @@ var $author$project$Main$update = F2(
 								},
 								$elm$browser$Browser$Dom$getViewportOf('wave-tray-scroll'))));
 				case 'Undo':
-					var _v49 = model.undoHistory;
-					if (!_v49.b) {
+					var _v53 = model.undoHistory;
+					if (!_v53.b) {
 						return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 					} else {
-						var top = _v49.a;
-						var rest = _v49.b;
+						var top = _v53.a;
+						var rest = _v53.b;
 						var restored = A2($author$project$Main$applySnapshot, top, model);
 						var currentSnap = $author$project$Main$takeSnapshot(model);
 						return _Utils_Tuple2(
@@ -9925,12 +10182,12 @@ var $author$project$Main$update = F2(
 							$elm$core$Platform$Cmd$none);
 					}
 				case 'Redo':
-					var _v50 = model.redoHistory;
-					if (!_v50.b) {
+					var _v54 = model.redoHistory;
+					if (!_v54.b) {
 						return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 					} else {
-						var top = _v50.a;
-						var rest = _v50.b;
+						var top = _v54.a;
+						var rest = _v54.b;
 						var restored = A2($author$project$Main$applySnapshot, top, model);
 						var currentSnap = $author$project$Main$takeSnapshot(model);
 						return _Utils_Tuple2(
@@ -10009,15 +10266,15 @@ var $author$project$Main$update = F2(
 					} else {
 						switch (requestId) {
 							case 'list_pdfs':
-								var _v53 = A2(
+								var _v57 = A2(
 									$elm$json$Json$Decode$decodeValue,
 									A2(
 										$elm$json$Json$Decode$field,
 										'files',
 										$elm$json$Json$Decode$list($author$project$Main$decodePdfFile)),
 									dataVal);
-								if (_v53.$ === 'Ok') {
-									var files = _v53.a;
+								if (_v57.$ === 'Ok') {
+									var files = _v57.a;
 									return _Utils_Tuple2(
 										_Utils_update(
 											model,
@@ -10026,10 +10283,16 @@ var $author$project$Main$update = F2(
 								} else {
 									return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 								}
+							case 'load_settings':
+								return _Utils_Tuple2(
+									A2($author$project$Main$applyLoadedSettings, dataVal, model),
+									$elm$core$Platform$Cmd$none);
+							case 'save_settings':
+								return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 							case 'load_pdf':
-								var _v54 = A2($elm$json$Json$Decode$decodeValue, $author$project$Main$decodeLoadResponse, dataVal);
-								if (_v54.$ === 'Ok') {
-									var response = _v54.a;
+								var _v58 = A2($elm$json$Json$Decode$decodeValue, $author$project$Main$decodeLoadResponse, dataVal);
+								if (_v58.$ === 'Ok') {
+									var response = _v58.a;
 									var $temp$msg = $author$project$Main$GotLoadResponse(
 										$elm$core$Result$Ok(response)),
 										$temp$model = model;
@@ -10037,7 +10300,7 @@ var $author$project$Main$update = F2(
 									model = $temp$model;
 									continue update;
 								} else {
-									var e = _v54.a;
+									var e = _v58.a;
 									return _Utils_Tuple2(
 										_Utils_update(
 											model,
@@ -10048,9 +10311,9 @@ var $author$project$Main$update = F2(
 										$elm$core$Platform$Cmd$none);
 								}
 							case 'merge_pieces':
-								var _v55 = A2($elm$json$Json$Decode$decodeValue, $author$project$Main$decodeMergeResponse, dataVal);
-								if (_v55.$ === 'Ok') {
-									var response = _v55.a;
+								var _v59 = A2($elm$json$Json$Decode$decodeValue, $author$project$Main$decodeMergeResponse, dataVal);
+								if (_v59.$ === 'Ok') {
+									var response = _v59.a;
 									var $temp$msg = $author$project$Main$GotMergeResponse(
 										$elm$core$Result$Ok(response)),
 										$temp$model = model;
@@ -10065,9 +10328,9 @@ var $author$project$Main$update = F2(
 										$elm$core$Platform$Cmd$none);
 								}
 							case 'merge_pieces_recompute':
-								var _v56 = A2($elm$json$Json$Decode$decodeValue, $author$project$Main$decodeMergeResponse, dataVal);
-								if (_v56.$ === 'Ok') {
-									var response = _v56.a;
+								var _v60 = A2($elm$json$Json$Decode$decodeValue, $author$project$Main$decodeMergeResponse, dataVal);
+								if (_v60.$ === 'Ok') {
+									var response = _v60.a;
 									var pieceMap = $elm$core$Dict$fromList(
 										A2(
 											$elm$core$List$map,
@@ -10078,9 +10341,9 @@ var $author$project$Main$update = F2(
 									var updatedPieces = A2(
 										$elm$core$List$map,
 										function (p) {
-											var _v57 = A2($elm$core$Dict$get, p.id, pieceMap);
-											if (_v57.$ === 'Just') {
-												var rp = _v57.a;
+											var _v61 = A2($elm$core$Dict$get, p.id, pieceMap);
+											if (_v61.$ === 'Just') {
+												var rp = _v61.a;
 												return _Utils_update(
 													p,
 													{
@@ -10112,12 +10375,12 @@ var $author$project$Main$update = F2(
 										{exporting: false}),
 									$elm$core$Platform$Cmd$none);
 							case 'ensure_lights':
-								var _v58 = A2(
+								var _v62 = A2(
 									$elm$json$Json$Decode$decodeValue,
 									$elm$json$Json$Decode$nullable($elm$json$Json$Decode$string),
 									dataVal);
-								if (_v58.$ === 'Ok') {
-									var url = _v58.a;
+								if (_v62.$ === 'Ok') {
+									var url = _v62.a;
 									return _Utils_Tuple2(
 										_Utils_update(
 											model,
@@ -10127,12 +10390,12 @@ var $author$project$Main$update = F2(
 									return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 								}
 							case 'ensure_background':
-								var _v59 = A2(
+								var _v63 = A2(
 									$elm$json$Json$Decode$decodeValue,
 									$elm$json$Json$Decode$nullable($elm$json$Json$Decode$string),
 									dataVal);
-								if (_v59.$ === 'Ok') {
-									var url = _v59.a;
+								if (_v63.$ === 'Ok') {
+									var url = _v63.a;
 									return _Utils_Tuple2(
 										_Utils_update(
 											model,
@@ -10142,12 +10405,12 @@ var $author$project$Main$update = F2(
 									return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 								}
 							case 'pick_file':
-								var _v60 = A2(
+								var _v64 = A2(
 									$elm$json$Json$Decode$decodeValue,
 									$elm$json$Json$Decode$nullable($elm$json$Json$Decode$string),
 									dataVal);
-								if ((_v60.$ === 'Ok') && (_v60.a.$ === 'Just')) {
-									var path = _v60.a.a;
+								if ((_v64.$ === 'Ok') && (_v64.a.$ === 'Just')) {
+									var path = _v64.a.a;
 									var key = $elm$core$String$fromInt(model.nextSessionId);
 									var fileName = function (n) {
 										return A2(
@@ -10168,7 +10431,20 @@ var $author$project$Main$update = F2(
 										{appMode: $author$project$Main$ModeInit, blueprintBgUrl: $elm$core$Maybe$Nothing, editBrickIds: _List_Nil, editMode: false, editOriginalBrickIds: _List_Nil, editOriginalGroups: _List_Nil, editOriginalPieces: _List_Nil, editOriginalWaves: _List_Nil, generateState: $author$project$Main$NotGenerated, lightsUrl: $elm$core$Maybe$Nothing, loadState: $author$project$Main$Loading, nextSessionId: model.nextSessionId + 1, nextWaveId: 1, pieceGeneration: 0, pieces: _List_Nil, recomputing: false, selectedFileName: fileName, selectedPieceId: $elm$core$Maybe$Nothing, selectedWaveId: $elm$core$Maybe$Nothing, sessionKey: key, waves: _List_Nil});
 									return _Utils_Tuple2(
 										baseModel,
-										A4($author$project$Main$loadPdf, true, key, path, model.availableH));
+										$elm$core$Platform$Cmd$batch(
+											_List_fromArray(
+												[
+													A4($author$project$Main$loadPdf, true, key, path, model.availableH),
+													A2(
+													$author$project$Main$saveSettings,
+													true,
+													_List_fromArray(
+														[
+															_Utils_Tuple2(
+															'last_import_path',
+															$elm$json$Json$Encode$string(path))
+														]))
+												])));
 								} else {
 									return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 								}
@@ -10191,12 +10467,12 @@ var $author$project$Main$update = F2(
 							command: 'log_to_stderr',
 							requestId: 'log'
 						}) : $elm$core$Platform$Cmd$none;
-					var _v61 = A2($elm$core$Debug$log, '[elm] TestSetValue', testId + ('=' + value));
+					var _v65 = A2($elm$core$Debug$log, '[elm] TestSetValue', testId + ('=' + value));
 					switch (testId) {
 						case 'target-pieces':
-							var _v63 = $elm$core$String$toInt(value);
-							if (_v63.$ === 'Just') {
-								var n = _v63.a;
+							var _v67 = $elm$core$String$toInt(value);
+							if (_v67.$ === 'Just') {
+								var n = _v67.a;
 								return _Utils_Tuple2(
 									_Utils_update(
 										model,
@@ -10208,9 +10484,9 @@ var $author$project$Main$update = F2(
 								return _Utils_Tuple2(model, logCmd);
 							}
 						case 'min-border':
-							var _v64 = $elm$core$String$toInt(value);
-							if (_v64.$ === 'Just') {
-								var n = _v64.a;
+							var _v68 = $elm$core$String$toInt(value);
+							if (_v68.$ === 'Just') {
+								var n = _v68.a;
 								return _Utils_Tuple2(
 									_Utils_update(
 										model,
@@ -10222,9 +10498,9 @@ var $author$project$Main$update = F2(
 								return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 							}
 						case 'zoom':
-							var _v65 = $elm$core$String$toFloat(value);
-							if (_v65.$ === 'Just') {
-								var z = _v65.a;
+							var _v69 = $elm$core$String$toFloat(value);
+							if (_v69.$ === 'Just') {
+								var z = _v69.a;
 								return _Utils_Tuple2(
 									_Utils_update(
 										model,
@@ -12080,7 +12356,6 @@ var $author$project$Main$LoadFile = function (a) {
 	return {$: 'LoadFile', a: a};
 };
 var $author$project$Main$PickFile = {$: 'PickFile'};
-var $elm$json$Json$Encode$bool = _Json_wrap;
 var $elm$html$Html$Attributes$boolProperty = F2(
 	function (key, bool) {
 		return A2(

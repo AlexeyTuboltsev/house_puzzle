@@ -310,6 +310,7 @@ init flags =
     , Cmd.batch
         [ fetchPdfList flags.isTauri
         , Task.perform GotViewport Browser.Dom.getViewport
+        , loadSettings flags.isTauri
         ]
     )
 
@@ -424,6 +425,73 @@ matches a given piece id into view. Implemented in JS via
 simultaneously (wave row, big-wave tray) and Browser.Dom only scrolls
 one viewport at a time. -}
 port scrollPieceIntoView : String -> Cmd msg
+
+
+{-| Persisted user settings — fire-and-forget save through the Tauri
+store (settings.json under app_data). No-op outside Tauri. The Rust
+side merges the partial object into the existing stored JSON, so we
+only need to send the fields that actually changed. -}
+saveSettings : Bool -> List ( String, E.Value ) -> Cmd msg
+saveSettings isTauri fields =
+    if isTauri && not (List.isEmpty fields) then
+        tauriInvoke
+            { command = "save_settings"
+            , args = E.object [ ( "partial", E.object fields ) ]
+            , requestId = "save_settings"
+            }
+
+    else
+        Cmd.none
+
+
+{-| Ask the Rust side for the current settings. Response arrives via
+`tauriResponse` with `requestId = "load_settings"` and is decoded by
+`applyLoadedSettings` in the TauriResponse handler. -}
+loadSettings : Bool -> Cmd msg
+loadSettings isTauri =
+    if isTauri then
+        tauriInvoke
+            { command = "load_settings"
+            , args = E.object []
+            , requestId = "load_settings"
+            }
+
+    else
+        Cmd.none
+
+
+{-| Decode a settings JSON object (as returned by load_settings) and
+overlay it on the model. Missing fields keep the model's current
+value, so the call is safe to apply even when the stored JSON is from
+an older schema (the Rust side fills defaults via serde, but extra
+defensive here too). -}
+applyLoadedSettings : D.Value -> Model -> Model
+applyLoadedSettings val model =
+    let
+        decodeField name decoder =
+            D.decodeValue (D.field name decoder) val |> Result.toMaybe
+
+        bool n =
+            decodeField n D.bool
+
+        float n =
+            decodeField n D.float
+
+        str n =
+            decodeField n D.string
+    in
+    { model
+        | showOutlines = bool "show_outlines" |> Maybe.withDefault model.showOutlines
+        , showGrid = bool "show_grid" |> Maybe.withDefault model.showGrid
+        , showNumbers = bool "show_numbers" |> Maybe.withDefault model.showNumbers
+        , showLights = bool "show_lights" |> Maybe.withDefault model.showLights
+        , showGroupOverlay = bool "show_group_overlay" |> Maybe.withDefault model.showGroupOverlay
+        , showWaveOverlay = bool "show_wave_overlay" |> Maybe.withDefault model.showWaveOverlay
+        , showOnlyBlueprint = bool "show_only_blueprint" |> Maybe.withDefault model.showOnlyBlueprint
+        , gridHue = float "grid_hue" |> Maybe.withDefault model.gridHue
+        , outlineHue = float "outline_hue" |> Maybe.withDefault model.outlineHue
+        , selectedFileName = str "last_import_path" |> Maybe.withDefault model.selectedFileName
+    }
 
 
 
@@ -562,7 +630,10 @@ update msg model =
                         String.fromInt model.nextSessionId
                 in
                 ( { baseModel | sessionKey = key, nextSessionId = model.nextSessionId + 1 }
-                , loadPdf True key path model.availableH
+                , Cmd.batch
+                    [ loadPdf True key path model.availableH
+                    , saveSettings True [ ( "last_import_path", E.string path ) ]
+                    ]
                 )
             else
                 ( baseModel, uploadFile file )
@@ -649,7 +720,10 @@ update msg model =
                 , sessionKey = key
                 , nextSessionId = model.nextSessionId + 1
               }
-            , loadPdf model.isTauri key path model.availableH
+            , Cmd.batch
+                [ loadPdf model.isTauri key path model.availableH
+                , saveSettings model.isTauri [ ( "last_import_path", E.string path ) ]
+                ]
             )
 
         GotLoadResponse (Ok response) ->
@@ -820,20 +894,26 @@ update msg model =
                 ( baseModel, recomputeViewport )
 
         ToggleOutlines checked ->
-            ( { model | showOutlines = checked }, Cmd.none )
+            ( { model | showOutlines = checked }
+            , saveSettings model.isTauri [ ( "show_outlines", E.bool checked ) ]
+            )
 
         ToggleGrid checked ->
-            ( { model | showGrid = checked }, Cmd.none )
+            ( { model | showGrid = checked }
+            , saveSettings model.isTauri [ ( "show_grid", E.bool checked ) ]
+            )
 
         ToggleNumbers checked ->
-            ( { model | showNumbers = checked }, Cmd.none )
+            ( { model | showNumbers = checked }
+            , saveSettings model.isTauri [ ( "show_numbers", E.bool checked ) ]
+            )
 
         ToggleLights checked ->
             -- Lights are rendered lazily on the backend. Fire the ensure
             -- command the first time the user wants them; subsequent
             -- toggles use the URL we cached on the model.
             let
-                cmd =
+                ensureCmd =
                     if checked && model.lightsUrl == Nothing && model.isTauri then
                         tauriInvoke
                             { command = "ensure_lights_image"
@@ -844,13 +924,22 @@ update msg model =
                     else
                         Cmd.none
             in
-            ( { model | showLights = checked }, cmd )
+            ( { model | showLights = checked }
+            , Cmd.batch
+                [ ensureCmd
+                , saveSettings model.isTauri [ ( "show_lights", E.bool checked ) ]
+                ]
+            )
 
         ToggleGroupOverlay checked ->
-            ( { model | showGroupOverlay = checked }, Cmd.none )
+            ( { model | showGroupOverlay = checked }
+            , saveSettings model.isTauri [ ( "show_group_overlay", E.bool checked ) ]
+            )
 
         ToggleWaveOverlay checked ->
-            ( { model | showWaveOverlay = checked }, Cmd.none )
+            ( { model | showWaveOverlay = checked }
+            , saveSettings model.isTauri [ ( "show_wave_overlay", E.bool checked ) ]
+            )
 
         AddWave ->
             let
@@ -927,14 +1016,19 @@ update msg model =
             -- canvas; fire ensure_background_image the first time it's
             -- enabled so the backdrop is ready when needed.
             let
-                cmd =
+                ensureCmd =
                     if checked then
                         ensureBackgroundCmd model
 
                     else
                         Cmd.none
             in
-            ( { model | showOnlyBlueprint = checked }, cmd )
+            ( { model | showOnlyBlueprint = checked }
+            , Cmd.batch
+                [ ensureCmd
+                , saveSettings model.isTauri [ ( "show_only_blueprint", E.bool checked ) ]
+                ]
+            )
 
         ToggleWaveVisibility waveId ->
             withUndo model
@@ -2010,6 +2104,17 @@ update msg model =
 
         SetSpecialHue target hue ->
             let
+                saveCmd =
+                    case target of
+                        GridColorTarget ->
+                            saveSettings model.isTauri [ ( "grid_hue", E.float hue ) ]
+
+                        OutlineColorTarget ->
+                            saveSettings model.isTauri [ ( "outline_hue", E.float hue ) ]
+
+                        _ ->
+                            Cmd.none
+
                 updated =
                     case target of
                         GridColorTarget ->
@@ -2030,10 +2135,25 @@ update msg model =
                                 , colorPicking = Nothing
                             }
             in
-            withUndo model ( updated, Cmd.none )
+            withUndo model ( updated, saveCmd )
 
         EndColorPick ->
-            ( { model | colorPicking = Nothing }, Cmd.none )
+            -- Persist grid/outline hue when the user releases the picker.
+            -- Wave/group hues live on each Wave/Group object (per-house,
+            -- not per-user) so they don't go through saveSettings.
+            let
+                cmd =
+                    case Maybe.map .target model.colorPicking of
+                        Just GridColorTarget ->
+                            saveSettings model.isTauri [ ( "grid_hue", E.float model.gridHue ) ]
+
+                        Just OutlineColorTarget ->
+                            saveSettings model.isTauri [ ( "outline_hue", E.float model.outlineHue ) ]
+
+                        _ ->
+                            Cmd.none
+            in
+            ( { model | colorPicking = Nothing }, cmd )
 
         ScrollTrayBy delta ->
             ( model
@@ -2127,6 +2247,13 @@ update msg model =
 
                             Err _ ->
                                 ( model, Cmd.none )
+
+                    "load_settings" ->
+                        ( applyLoadedSettings dataVal model, Cmd.none )
+
+                    "save_settings" ->
+                        -- Fire-and-forget; nothing to do with the response.
+                        ( model, Cmd.none )
 
                     "load_pdf" ->
                         case D.decodeValue decodeLoadResponse dataVal of
@@ -2253,7 +2380,12 @@ update msg model =
                                             , nextSessionId = model.nextSessionId + 1
                                         }
                                 in
-                                ( baseModel, loadPdf True key path model.availableH )
+                                ( baseModel
+                                , Cmd.batch
+                                    [ loadPdf True key path model.availableH
+                                    , saveSettings True [ ( "last_import_path", E.string path ) ]
+                                    ]
+                                )
 
                             _ ->
                                 -- User cancelled the dialog — stay in current state.

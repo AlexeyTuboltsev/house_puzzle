@@ -1157,6 +1157,19 @@ if (window.Elm && window.Elm.Main) { (async function() {
   if (window.__TAURI__) {
     try { initVersion = await window.__TAURI__.core.invoke('get_version'); } catch(e) {}
   }
+
+  // Apply persisted sidebar width BEFORE Elm renders, so we don't get a
+  // 40vw → user-width snap on every launch. Elm separately reads its
+  // own subset of the same settings via its tauriInvoke port.
+  if (window.__TAURI__) {
+    try {
+      var settings = await window.__TAURI__.core.invoke('load_settings');
+      if (settings && typeof settings.tools_width_vw === 'number') {
+        document.documentElement.style.setProperty('--tools-width', settings.tools_width_vw + 'vw');
+      }
+    } catch(e) {}
+  }
+
   const app = window.Elm.Main.init({ node: document.getElementById('elm-root'), flags: { version: initVersion, isTauri: !!window.__TAURI__, loadFile: null } });
 
   app.ports.setTitle.subscribe(function(title) { document.title = title; });
@@ -1251,6 +1264,7 @@ document.addEventListener('mousedown', function(e) {
   e.preventDefault();
   handle.classList.add('dragging');
   const appBody = document.querySelector('.app-body');
+  let lastPct = null;
 
   function onMove(e) {
     if (!appBody) return;
@@ -1258,6 +1272,7 @@ document.addEventListener('mousedown', function(e) {
     const toolsWidth = rect.right - e.clientX;
     const vw = window.innerWidth / 100;
     const pct = Math.min(70, Math.max(10, toolsWidth / vw));
+    lastPct = pct;
     document.documentElement.style.setProperty('--tools-width', pct + 'vw');
   }
 
@@ -1265,6 +1280,12 @@ document.addEventListener('mousedown', function(e) {
     handle.classList.remove('dragging');
     document.removeEventListener('mousemove', onMove);
     document.removeEventListener('mouseup', onUp);
+    // Persist the final width on drag end (single write, no spam).
+    if (lastPct !== null && window.__TAURI__) {
+      window.__TAURI__.core.invoke('save_settings', {
+        partial: { tools_width_vw: lastPct }
+      }).catch(function () {});
+    }
   }
 
   document.addEventListener('mousemove', onMove);

@@ -6,6 +6,7 @@
   "permissions": [
     "core:default",
     "dialog:allow-open",
-    "updater:allow-check"
+    "updater:allow-check",
+    "store:default"
   ]
 }
