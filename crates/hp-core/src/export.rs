@@ -130,12 +130,15 @@ pub fn build_house_data(
 
 /// Generate export ZIP with piece sprites + house_data.json.
 ///
-/// `loaded_dpi` is the DPI the live preview was rendered at (cached
-/// piece PNGs live at this resolution under `extract_dir`).
-/// `export_dpi` is what the user picked in the UI. Output sprite
-/// dimensions = source × (export_dpi / loaded_dpi); `target_ppu` in
-/// the produced house_data.json is derived from `export_dpi` so
-/// Unity import settings can match.
+/// The caller is expected to have ALREADY rendered piece PNGs at
+/// `export_dpi` under `extract_dir`. We don't rescale here — bytes
+/// from disk go straight into the ZIP. `loaded_dpi` + `export_dpi`
+/// are still needed for two things:
+///   - deriving `target_ppu` so house_data.json's coordinates match
+///     the sprite resolution Unity will import;
+///   - the `scale` factor build_house_data uses to convert
+///     loaded-canvas piece coordinates to output-canvas Unity coords
+///     (it's a pure number, no images involved).
 pub fn generate_export_zip(
     pieces: &[PuzzlePiece],
     bricks_by_id: &HashMap<String, Brick>,
@@ -152,7 +155,7 @@ pub fn generate_export_zip(
     house_name: &str,
     spacing: f64,
 ) -> Result<Vec<u8>> {
-    // Output target_ppu = export_dpi × screen_frame_h_pts / (72 × HOUSE_UNITS_HIGH).
+    // target_ppu = export_dpi × screen_frame_h_pts / (72 × HOUSE_UNITS_HIGH).
     // We have screen_frame_height_px (loaded pixels), convert to PDF
     // points via loaded_dpi: h_pts = h_px × 72 / loaded_dpi.
     let (target_ppu, scale) = if screen_frame_height_px > 0.0 && loaded_dpi > 0.0 {

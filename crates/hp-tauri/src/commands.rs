@@ -974,7 +974,7 @@ pub async fn export_data(
     placement: Option<Value>,
     export_dpi: Option<f64>,
 ) -> Result<String, String> {
-    let (pieces, bricks, metadata, extract_dir) = {
+    let (pieces, bricks, brick_polygons, metadata, extract_dir, ai_path) = {
         let store = sessions.lock();
         let session = store
             .get(&key)
@@ -982,8 +982,10 @@ pub async fn export_data(
         (
             session.pieces.clone(),
             session.bricks.clone(),
+            session.brick_polygons.clone(),
             session.metadata.clone(),
             session.extract_dir.clone(),
+            session.ai_path.clone(),
         )
     };
 
@@ -1017,18 +1019,57 @@ pub async fn export_data(
     let waves_val = waves.unwrap_or_default();
     let groups_val = groups.unwrap_or_default();
 
-    // Default to 300 if frontend didn't send one. The live-preview DPI
-    // (metadata.render_dpi) is intentionally NOT used as the default —
-    // export DPI is a user-set output target, independent of how big
-    // the editor window happens to be.
+    // Default 300 DPI when the frontend doesn't pick one. The live-
+    // preview DPI (metadata.render_dpi) is intentionally NOT the
+    // default — export is a user choice, independent of editor window
+    // size.
     let export_dpi = export_dpi.unwrap_or(300.0);
     let loaded_dpi = metadata.render_dpi;
+
+    // Pick where the piece PNGs that go into the ZIP live. When the
+    // export DPI matches the loaded one, the live-preview cache is
+    // already at the right resolution, so reuse it. Otherwise call
+    // MuPDF to re-rasterise the bricks layer at `export_dpi` into a
+    // dedicated sub-dir under `extract_dir`, leaving the live-preview
+    // cache alone.
+    let dpi_matches = (export_dpi - loaded_dpi).abs() < 0.01;
+    let export_pieces_dir = if dpi_matches {
+        extract_dir.clone()
+    } else {
+        extract_dir.join(format!("export_dpi_{}", export_dpi.round() as i64))
+    };
+
+    if !dpi_matches {
+        let pieces_for_render = pieces.clone();
+        let bricks_for_render = bricks_by_id.clone();
+        let brick_polys_for_render = brick_polygons.clone();
+        let meta_for_render = metadata.clone();
+        let ai_path_for_render = ai_path.clone();
+        let out_dir_for_render = export_pieces_dir.clone();
+        tokio::task::spawn_blocking(move || {
+            hp_core::render::render_export_pieces(
+                &ai_path_for_render,
+                &pieces_for_render,
+                &bricks_for_render,
+                &brick_polys_for_render,
+                meta_for_render.canvas_width,
+                meta_for_render.canvas_height,
+                meta_for_render.clip_rect,
+                meta_for_render.render_dpi,
+                export_dpi,
+                &out_dir_for_render,
+            )
+        })
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())?;
+    }
 
     let zip_data = tokio::task::spawn_blocking(move || {
         hp_core::export::generate_export_zip(
             &pieces,
             &bricks_by_id,
-            &extract_dir,
+            &export_pieces_dir,
             metadata.canvas_width,
             metadata.canvas_height,
             metadata.screen_frame_height_px,

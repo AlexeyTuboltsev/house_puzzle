@@ -359,6 +359,97 @@ pub fn render_piece_pngs_from_composite(
     });
 }
 
+/// Re-render piece PNGs at a different DPI than the live preview.
+///
+/// Called from the export pipeline when the user picks an export DPI
+/// that differs from what the AI was loaded at. MuPDF re-rasterises
+/// the bricks layer at `export_dpi` (a fresh, full-quality render —
+/// no upscaling of the preview pixmap), pieces and brick polygons are
+/// linearly scaled by `export_dpi / loaded_dpi`, and per-piece PNGs
+/// are written into `out_dir` at the new resolution.
+///
+/// Live-preview state under `session.extract_dir` is untouched —
+/// `out_dir` is expected to be a sub-directory the caller created.
+pub fn render_export_pieces(
+    ai_path: &Path,
+    pieces: &[crate::types::PuzzlePiece],
+    bricks: &HashMap<String, crate::types::Brick>,
+    brick_polygons: &HashMap<String, Vec<[f64; 2]>>,
+    loaded_canvas_width: i32,
+    loaded_canvas_height: i32,
+    clip_rect_pts: (f64, f64, f64, f64),
+    loaded_dpi: f64,
+    export_dpi: f64,
+    out_dir: &Path,
+) -> anyhow::Result<()> {
+    if loaded_dpi <= 0.0 {
+        anyhow::bail!("loaded_dpi must be > 0");
+    }
+    if export_dpi <= 0.0 {
+        anyhow::bail!("export_dpi must be > 0");
+    }
+
+    let scale = export_dpi / loaded_dpi;
+    let new_canvas_w = ((loaded_canvas_width as f64) * scale).round().max(1.0) as u32;
+    let new_canvas_h = ((loaded_canvas_height as f64) * scale).round().max(1.0) as u32;
+
+    // 1. Re-render the OCG bricks layer at the export DPI. This is the
+    //    actual quality-bearing step — vector bricks come back crisp,
+    //    raster bricks come back at MuPDF's best resolution for the
+    //    requested DPI.
+    let (bricks_pixmap, _, _) = render_ocg_layer_pixmap_clipped(
+        ai_path, "bricks", export_dpi, clip_rect_pts,
+    )
+    .ok_or_else(|| anyhow::anyhow!("Failed to render bricks layer at export DPI"))?;
+    let composite = compose_clipped_canvas(
+        &bricks_pixmap, "bricks", new_canvas_w, new_canvas_h, (0, 0),
+    );
+
+    // 2. Scale every piece + brick + brick polygon by the same factor
+    //    so they line up with the new composite.
+    let scaled_pieces: Vec<crate::types::PuzzlePiece> = pieces
+        .iter()
+        .map(|p| crate::types::PuzzlePiece {
+            id: p.id.clone(),
+            brick_ids: p.brick_ids.clone(),
+            x: ((p.x as f64) * scale).round() as i32,
+            y: ((p.y as f64) * scale).round() as i32,
+            width: ((p.width as f64) * scale).round().max(1.0) as i32,
+            height: ((p.height as f64) * scale).round().max(1.0) as i32,
+        })
+        .collect();
+
+    let scaled_bricks: HashMap<String, crate::types::Brick> = bricks
+        .iter()
+        .map(|(id, b)| {
+            let mut nb = b.clone();
+            nb.x = ((b.x as f64) * scale).round() as i32;
+            nb.y = ((b.y as f64) * scale).round() as i32;
+            nb.width = ((b.width as f64) * scale).round().max(1.0) as i32;
+            nb.height = ((b.height as f64) * scale).round().max(1.0) as i32;
+            (id.clone(), nb)
+        })
+        .collect();
+
+    let scaled_brick_polys: HashMap<String, Vec<[f64; 2]>> = brick_polygons
+        .iter()
+        .map(|(id, pts)| {
+            let scaled: Vec<[f64; 2]> = pts.iter().map(|p| [p[0] * scale, p[1] * scale]).collect();
+            (id.clone(), scaled)
+        })
+        .collect();
+
+    // 3. Compute piece polygons at the new scale and mask the composite.
+    let piece_polys =
+        crate::puzzle::compute_piece_polygons(&scaled_pieces, &scaled_bricks, &scaled_brick_polys);
+
+    std::fs::create_dir_all(out_dir)
+        .map_err(|e| anyhow::anyhow!("create_dir_all({}): {e}", out_dir.display()))?;
+    render_piece_pngs_from_composite(&scaled_pieces, &composite, &piece_polys, out_dir);
+
+    Ok(())
+}
+
 /// Render piece outline PNG.
 fn render_piece_outline(piece_img: &RgbaImage, out_path: &Path) {
     let w = piece_img.width();
