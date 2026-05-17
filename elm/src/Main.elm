@@ -1708,6 +1708,19 @@ updateRunning msg model =
                         ]
             in
             if model.boot.isTauri then
+                let
+                    -- Default filename: <City>_<position>.zip, spaces
+                    -- in city stripped so "New York" becomes "NewYork".
+                    cityToken =
+                        model.exportLocation |> String.filter (\c -> c /= ' ')
+
+                    posToken =
+                        Maybe.withDefault 0 (String.toInt model.exportPosition)
+                            |> String.fromInt
+
+                    suggestedFilename =
+                        cityToken ++ "_" ++ posToken ++ ".zip"
+                in
                 ( { model | exporting = True }
                 , tauriInvoke
                     { command = "export_data"
@@ -1717,6 +1730,7 @@ updateRunning msg model =
                             , ( "waves", wavesJson )
                             , ( "groups", groupsJson )
                             , ( "exportDpi", E.float exportDpiValue )
+                            , ( "suggestedFilename", E.string suggestedFilename )
                             , ( "placement"
                               , E.object
                                     [ ( "location", E.string model.exportLocation )

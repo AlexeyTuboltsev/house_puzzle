@@ -5,7 +5,7 @@ use hp_core::{ai_parser, bezier::BezierPath, bezier_merge, puzzle, render, types
 use rayon::prelude::*;
 use serde_json::{json, Value};
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::session::{Session, SessionStore};
@@ -136,6 +136,29 @@ pub async fn pick_file(app: tauri::AppHandle) -> Result<Option<String>, String> 
 fn last_dir_path(app: &tauri::AppHandle) -> Option<PathBuf> {
     use tauri::Manager;
     app.path().app_data_dir().ok().map(|d| d.join("last_open_dir.txt"))
+}
+
+/// Path to the file we use to remember the last directory the user
+/// saved an export ZIP to. Same sidecar pattern as `last_dir_path`.
+fn last_export_dir_path(app: &tauri::AppHandle) -> Option<PathBuf> {
+    use tauri::Manager;
+    app.path().app_data_dir().ok().map(|d| d.join("last_export_dir.txt"))
+}
+
+fn read_last_dir(p: &Path) -> Option<PathBuf> {
+    std::fs::read_to_string(p)
+        .ok()
+        .map(|s| PathBuf::from(s.trim().to_string()))
+        .filter(|p| p.is_dir())
+}
+
+fn write_last_dir(stored: &Path, picked_file: &Path) {
+    if let Some(parent) = picked_file.parent() {
+        if let Some(stored_parent) = stored.parent() {
+            let _ = std::fs::create_dir_all(stored_parent);
+        }
+        let _ = std::fs::write(stored, parent.to_string_lossy().as_bytes());
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -965,15 +988,27 @@ pub fn get_piece_outline_image(
 // Export — mirrors do_export in routes.rs; returns base64-encoded ZIP
 // ---------------------------------------------------------------------------
 
+/// Build the export ZIP at `export_dpi` and write it straight to a
+/// user-picked path via the native save dialog. Returns:
+/// - `Some(path)` on a successful save,
+/// - `None` if the user cancelled the dialog,
+/// - `Err(msg)` for I/O / render failures.
+///
+/// The dialog opens at the last directory the user saved to (sidecar
+/// `last_export_dir.txt` under `app_data_dir`) and pre-fills the
+/// filename with `suggested_filename` (frontend constructs this as
+/// `<Location>_<position>.zip` with spaces stripped).
 #[tauri::command]
 pub async fn export_data(
+    app: tauri::AppHandle,
     sessions: tauri::State<'_, SessionStore>,
     key: String,
     waves: Option<Vec<Value>>,
     groups: Option<Vec<Value>>,
     placement: Option<Value>,
     export_dpi: Option<f64>,
-) -> Result<String, String> {
+    suggested_filename: Option<String>,
+) -> Result<Option<String>, String> {
     let (pieces, bricks, brick_polygons, metadata, extract_dir, ai_path) = {
         let store = sessions.lock();
         let session = store
@@ -1083,7 +1118,45 @@ pub async fn export_data(
     .map_err(|e| e.to_string())?
     .map_err(|e| e.to_string())?;
 
-    Ok(BASE64.encode(&zip_data))
+    // Show the native save dialog. Default directory comes from the
+    // last-export sidecar; filename comes from the frontend. User
+    // cancellation returns `Ok(None)` so the frontend can flip the
+    // export button back without showing an error.
+    let stored_path = last_export_dir_path(&app);
+    let default_dir = stored_path.as_deref().and_then(read_last_dir);
+    let default_name = suggested_filename
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "export.zip".to_string());
+
+    let app_for_dialog = app.clone();
+    let dialog_path = tokio::task::spawn_blocking(move || {
+        use tauri_plugin_dialog::DialogExt;
+        let mut builder = app_for_dialog
+            .dialog()
+            .file()
+            .add_filter("ZIP archive", &["zip"])
+            .set_file_name(&default_name);
+        if let Some(dir) = default_dir {
+            builder = builder.set_directory(dir);
+        }
+        builder.blocking_save_file()
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let save_path = match dialog_path {
+        None => return Ok(None),
+        Some(fp) => fp.into_path().map_err(|e| e.to_string())?,
+    };
+
+    std::fs::write(&save_path, &zip_data)
+        .map_err(|e| format!("writing {}: {e}", save_path.display()))?;
+
+    if let Some(stored) = stored_path.as_deref() {
+        write_last_dir(stored, &save_path);
+    }
+
+    Ok(Some(save_path.to_string_lossy().into_owned()))
 }
 
 // ---------------------------------------------------------------------------
