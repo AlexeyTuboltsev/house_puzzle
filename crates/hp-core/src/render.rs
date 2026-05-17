@@ -384,6 +384,7 @@ pub fn render_export_pieces(
     clip_rect_pts: (f64, f64, f64, f64),
     loaded_dpi: f64,
     export_dpi: f64,
+    pdf_offset_loaded: (i32, i32),
     out_dir: &Path,
 ) -> anyhow::Result<()> {
     if loaded_dpi <= 0.0 {
@@ -397,15 +398,29 @@ pub fn render_export_pieces(
     let new_canvas_w = ((loaded_canvas_width as f64) * scale).round().max(1.0) as u32;
     let new_canvas_h = ((loaded_canvas_height as f64) * scale).round().max(1.0) as u32;
 
+    // The PDF coordinate offset detected at load time is in loaded
+    // pixels. Convert to points (DPI-independent) so the same shift
+    // can be applied at any export DPI by sliding the clip rect on
+    // the MuPDF side — same trick `load_pdf` uses (commands.rs:332-369).
+    let dx_pts = (pdf_offset_loaded.0 as f64) * 72.0 / loaded_dpi;
+    let dy_pts = (pdf_offset_loaded.1 as f64) * 72.0 / loaded_dpi;
+    let shifted_clip = (
+        clip_rect_pts.0 - dx_pts,
+        clip_rect_pts.1 - dy_pts,
+        clip_rect_pts.2 - dx_pts,
+        clip_rect_pts.3 - dy_pts,
+    );
+
     std::fs::create_dir_all(out_dir)
         .map_err(|e| anyhow::anyhow!("create_dir_all({}): {e}", out_dir.display()))?;
 
-    // 1. Re-render the OCG bricks layer at the export DPI. This is the
-    //    actual quality-bearing step — vector bricks come back crisp,
+    // 1. Re-render the OCG bricks layer at the export DPI through the
+    //    offset-shifted clip rect. Vector bricks come back crisp,
     //    raster bricks come back at MuPDF's best resolution for the
-    //    requested DPI.
+    //    requested DPI, and the alignment matches what the live
+    //    preview saw at load time.
     let (bricks_pixmap, _, _) = render_ocg_layer_pixmap_clipped(
-        ai_path, "bricks", export_dpi, clip_rect_pts,
+        ai_path, "bricks", export_dpi, shifted_clip,
     )
     .ok_or_else(|| anyhow::anyhow!("Failed to render bricks layer at export DPI"))?;
     let composite = compose_clipped_canvas(
@@ -415,11 +430,11 @@ pub fn render_export_pieces(
         .save(out_dir.join("composite.png"))
         .map_err(|e| anyhow::anyhow!("saving composite.png: {e}"))?;
 
-    // 2. Re-render the OCG background layer if it exists (the blue
-    //    blueprint backdrop). Missing layer is non-fatal — not every
-    //    AI defines one.
+    // 2. Re-render the OCG background layer (blueprint backdrop) at
+    //    the same shifted clip so it aligns with the composite.
+    //    Missing layer is non-fatal — not every AI defines one.
     if let Some((bg_pixmap, _, _)) =
-        render_ocg_layer_pixmap_clipped(ai_path, "background", export_dpi, clip_rect_pts)
+        render_ocg_layer_pixmap_clipped(ai_path, "background", export_dpi, shifted_clip)
     {
         let bg_canvas =
             compose_clipped_canvas(&bg_pixmap, "background", new_canvas_w, new_canvas_h, (0, 0));

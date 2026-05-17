@@ -1009,7 +1009,7 @@ pub async fn export_data(
     export_dpi: Option<f64>,
     suggested_filename: Option<String>,
 ) -> Result<Option<String>, String> {
-    let (pieces, bricks, brick_polygons, metadata, extract_dir, ai_path) = {
+    let (pieces, bricks, brick_polygons, metadata, extract_dir, ai_path, pdf_offset) = {
         let store = sessions.lock();
         let session = store
             .get(&key)
@@ -1021,6 +1021,7 @@ pub async fn export_data(
             session.metadata.clone(),
             session.extract_dir.clone(),
             session.ai_path.clone(),
+            session.pdf_offset,
         )
     };
 
@@ -1088,6 +1089,7 @@ pub async fn export_data(
                 meta_for_render.clip_rect,
                 meta_for_render.render_dpi,
                 export_dpi,
+                pdf_offset,
                 &out_dir_for_render,
             )
         })

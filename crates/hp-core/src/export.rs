@@ -210,18 +210,17 @@ pub fn generate_export_zip(
 
     // Per-piece sprite + vector-traced outline, both at `export_dpi`.
     for piece in pieces {
-        let piece_path = extract_dir.join(format!("piece_{}.png", piece.id));
-        if !piece_path.exists() {
-            continue;
-        }
-        let png_buf = std::fs::read(&piece_path)
-            .with_context(|| format!("reading {}", piece_path.display()))?;
-
-        let fname = format!("pieces/piece_{}.png", piece.id);
-        zip.start_file(&fname, options).context("starting piece PNG in ZIP")?;
-        zip.write_all(&png_buf).context("writing piece PNG bytes")?;
+        put_file(
+            &format!("pieces/piece_{}.png", piece.id),
+            &extract_dir.join(format!("piece_{}.png", piece.id)),
+        )?;
+        put_file(
+            &format!("pieces/piece_outline_{}.png", piece.id),
+            &extract_dir.join(format!("piece_outline_{}.png", piece.id)),
+        )?;
     }
 
+    drop(put_file);
     let cursor = zip.finish().context("finalising ZIP archive")?;
     Ok(cursor.into_inner())
 }
