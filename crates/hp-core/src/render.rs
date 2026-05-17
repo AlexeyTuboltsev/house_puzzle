@@ -360,13 +360,13 @@ pub fn render_piece_pngs_from_composite(
 }
 
 /// Render all export-time assets at the requested DPI:
-///   - `piece_<id>.png`         — per-piece sprite, polygon-masked
-///   - `piece_outline_<id>.png` — per-piece outline traced from the
-///     vector polygon (NOT from the rasterised piece) so curves stay
-///     smooth at high DPI
-///   - `composite.png`          — the full house bricks composite
-///   - `background.png`         — the blueprint backdrop (when the
-///     AI declares a `background` OCG layer)
+///   - `piece_<id>.png` — per-piece sprite, polygon-masked
+///   - `composite.png`  — the full house bricks composite
+///   - `background.png` — the blueprint backdrop (when the AI
+///     declares a `background` OCG layer)
+///   - `outlines.png`   — single canvas-sized transparent image
+///     with every piece's outline stroked from its vector polygon
+///     so curves stay smooth at any DPI
 ///
 /// MuPDF re-rasterises the source layers at `export_dpi` — vector
 /// bricks come back crisp, raster bricks come back at MuPDF's best
@@ -484,32 +484,31 @@ pub fn render_export_pieces(
     // 5. Mask the composite to get per-piece sprite PNGs.
     render_piece_pngs_from_composite(&scaled_pieces, &composite, &piece_polys, out_dir);
 
-    // 6. Trace each piece outline directly from its vector polygon —
-    //    keeps curves smooth at high DPI (the pixel-edge tracer would
-    //    only ever produce a stairstepped 1-pixel outline of whatever
-    //    the raster mask happened to land on). Stroke width scales
-    //    with DPI so the line stays visually consistent.
+    // 6. Trace every piece outline onto a single canvas-sized
+    //    transparent image — one `outlines.png` overlay that the
+    //    Unity importer (or any consumer) can layer over the
+    //    composite or background. Strokes come straight from the
+    //    vector polygons, so curves stay smooth at high DPI; width
+    //    scales with DPI so the line is visually consistent.
     let stroke_thickness = ((export_dpi / 96.0).round() as i32).max(1);
-    scaled_pieces.par_iter().for_each(|piece| {
-        let poly = match piece_polys.get(&piece.id) {
-            Some(p) if p.len() >= 3 => p,
-            _ => return,
-        };
-        let pw = piece.width.max(1) as u32;
-        let ph = piece.height.max(1) as u32;
-        let mut outline = RgbaImage::new(pw, ph);
-        stroke_polygon_on_canvas(
-            &mut outline,
-            poly,
-            piece.x as f64,
-            piece.y as f64,
-            Rgba([255, 255, 255, 230]),
-            stroke_thickness,
-        );
-        outline
-            .save(out_dir.join(format!("piece_outline_{}.png", piece.id)))
-            .ok();
-    });
+    let mut outlines = RgbaImage::new(new_canvas_w, new_canvas_h);
+    for piece in &scaled_pieces {
+        if let Some(poly) = piece_polys.get(&piece.id) {
+            if poly.len() >= 3 {
+                stroke_polygon_on_canvas(
+                    &mut outlines,
+                    poly,
+                    0.0,
+                    0.0,
+                    Rgba([255, 255, 255, 230]),
+                    stroke_thickness,
+                );
+            }
+        }
+    }
+    outlines
+        .save(out_dir.join("outlines.png"))
+        .map_err(|e| anyhow::anyhow!("saving outlines.png: {e}"))?;
 
     Ok(())
 }

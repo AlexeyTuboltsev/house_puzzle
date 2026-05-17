@@ -203,20 +203,19 @@ pub fn generate_export_zip(
         Ok(())
     };
 
-    // Full-house composite + blueprint background sit at the archive
-    // root next to house_data.json. Both come from `render_export_pieces`.
+    // Full-house composite + blueprint background + composite vector
+    // outlines sit at the archive root next to house_data.json. All
+    // three come from `render_export_pieces`.
     put_file("composite.png", &extract_dir.join("composite.png"))?;
     put_file("background.png", &extract_dir.join("background.png"))?;
+    put_file("outlines.png", &extract_dir.join("outlines.png"))?;
 
-    // Per-piece sprite + vector-traced outline, both at `export_dpi`.
+    // Per-piece sprite only — outlines are bundled into a single
+    // `outlines.png` overlay above instead of per-piece files.
     for piece in pieces {
         put_file(
             &format!("pieces/piece_{}.png", piece.id),
             &extract_dir.join(format!("piece_{}.png", piece.id)),
-        )?;
-        put_file(
-            &format!("pieces/piece_outline_{}.png", piece.id),
-            &extract_dir.join(format!("piece_outline_{}.png", piece.id)),
         )?;
     }
 
