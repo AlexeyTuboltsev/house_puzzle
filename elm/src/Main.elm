@@ -262,7 +262,13 @@ type alias RunningModel =
     , editOriginalGroups : List Group
     , recomputing : Bool
     , exporting : Bool
-    , exportCanvasHeight : String
+    , {- Export DPI. Independent of the live-preview DPI (which is
+         derived from the editor window's render-div height). Default
+         300; user-editable in the export panel. Sent to Rust as
+         `exportDpi` and used to scale piece PNGs + target_ppu in
+         build_house_data — output sprite dimensions = source × (export_dpi /
+         loaded_dpi). -}
+      exportDpi : String
     , exportLocation : String
     , exportHouseName : String
     , exportPosition : String
@@ -395,7 +401,7 @@ initialRunning boot settings =
     , editOriginalGroups = []
     , recomputing = False
     , exporting = False
-    , exportCanvasHeight = "900"
+    , exportDpi = "300"
     , exportLocation = "Rome"
     , exportHouseName = "NewHouse"
     , exportPosition = "0"
@@ -462,7 +468,7 @@ type Msg
     | SaveEdit
     | CancelEdit
     | GotPiecePolygons (Result Http.Error (List ( String, List Point )))
-    | SetExportCanvasHeight String
+    | SetExportDpi String
     | SetExportLocation String
     | SetExportHouseName String
     | SetExportPosition String
@@ -1631,8 +1637,8 @@ updateRunning msg model =
         GotPiecePolygons (Err _) ->
             ( { model | recomputing = False }, Cmd.none )
 
-        SetExportCanvasHeight s ->
-            ( { model | exportCanvasHeight = s }, Cmd.none )
+        SetExportDpi s ->
+            ( { model | exportDpi = s }, Cmd.none )
 
         SetExportLocation s ->
             ( { model | exportLocation = s }, Cmd.none )
@@ -1673,8 +1679,8 @@ updateRunning msg model =
                         )
                         model.pieces
 
-                exportHeight =
-                    Maybe.withDefault 900 (String.toInt model.exportCanvasHeight)
+                exportDpiValue =
+                    Maybe.withDefault 300.0 (String.toFloat model.exportDpi)
 
                 groupsJson =
                     E.list
@@ -1690,7 +1696,7 @@ updateRunning msg model =
                         [ ( "waves", wavesJson )
                         , ( "outlines", outlinesJson )
                         , ( "groups", groupsJson )
-                        , ( "exportCanvasHeight", E.int exportHeight )
+                        , ( "exportDpi", E.float exportDpiValue )
                         , ( "placement"
                           , E.object
                                 [ ( "location", E.string model.exportLocation )
@@ -1710,7 +1716,7 @@ updateRunning msg model =
                             [ ( "key", E.string model.sessionKey )
                             , ( "waves", wavesJson )
                             , ( "groups", groupsJson )
-                            , ( "exportCanvasHeight", E.int exportHeight )
+                            , ( "exportDpi", E.float exportDpiValue )
                             , ( "placement"
                               , E.object
                                     [ ( "location", E.string model.exportLocation )
@@ -4271,6 +4277,17 @@ viewExportTools model =
     div [ class "tools-pane" ]
         [ viewTogglesBox [ viewCheckboxLights model, viewCheckboxGrid model, viewCheckboxOutlines model, viewCheckboxWaveOverlay model, viewCheckboxNumbers model, viewCheckboxOnlyBlueprint model ]
         , viewSectionTitle "Export"
+        , div [ class "field-row" ]
+            [ label [] [ text "DPI" ]
+            , input
+                [ type_ "number"
+                , value model.exportDpi
+                , onInput SetExportDpi
+                , Html.Attributes.min "72"
+                , Html.Attributes.step "1"
+                ]
+                []
+            ]
         , div [ class "field-row" ]
             [ label [] [ text "Location" ]
             , Html.select

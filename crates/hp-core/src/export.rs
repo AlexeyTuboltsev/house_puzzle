@@ -129,6 +129,13 @@ pub fn build_house_data(
 }
 
 /// Generate export ZIP with piece sprites + house_data.json.
+///
+/// `loaded_dpi` is the DPI the live preview was rendered at (cached
+/// piece PNGs live at this resolution under `extract_dir`).
+/// `export_dpi` is what the user picked in the UI. Output sprite
+/// dimensions = source × (export_dpi / loaded_dpi); `target_ppu` in
+/// the produced house_data.json is derived from `export_dpi` so
+/// Unity import settings can match.
 pub fn generate_export_zip(
     pieces: &[PuzzlePiece],
     bricks_by_id: &HashMap<String, Brick>,
@@ -136,6 +143,8 @@ pub fn generate_export_zip(
     canvas_width: i32,
     canvas_height: i32,
     screen_frame_height_px: f64,
+    loaded_dpi: f64,
+    export_dpi: f64,
     waves: &[serde_json::Value],
     groups: &[serde_json::Value],
     location: &str,
@@ -143,12 +152,20 @@ pub fn generate_export_zip(
     house_name: &str,
     spacing: f64,
 ) -> Result<Vec<u8>> {
-    let target_ppu = 50.0;
-    let scale = if screen_frame_height_px > 0.0 {
-        target_ppu * 15.5 / screen_frame_height_px
+    // Output target_ppu = export_dpi × screen_frame_h_pts / (72 × HOUSE_UNITS_HIGH).
+    // We have screen_frame_height_px (loaded pixels), convert to PDF
+    // points via loaded_dpi: h_pts = h_px × 72 / loaded_dpi.
+    let (target_ppu, scale) = if screen_frame_height_px > 0.0 && loaded_dpi > 0.0 {
+        let screen_frame_h_pts = screen_frame_height_px * 72.0 / loaded_dpi;
+        let target_ppu = export_dpi * screen_frame_h_pts / (72.0 * 15.5);
+        let scale = export_dpi / loaded_dpi;
+        (target_ppu, scale)
     } else {
-        let target_canvas_h = target_ppu * 15.5;
-        target_canvas_h / canvas_height as f64
+        // Degenerate AI (no `screen` layer) — fall back to the legacy
+        // 50 PPU default. Better than divide-by-zero.
+        let target_ppu = 50.0;
+        let scale = target_ppu * 15.5 / canvas_height as f64;
+        (target_ppu, scale)
     };
 
     let house_data = build_house_data(

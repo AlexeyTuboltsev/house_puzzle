@@ -972,7 +972,7 @@ pub async fn export_data(
     waves: Option<Vec<Value>>,
     groups: Option<Vec<Value>>,
     placement: Option<Value>,
-    export_canvas_height: Option<i32>,
+    export_dpi: Option<f64>,
 ) -> Result<String, String> {
     let (pieces, bricks, metadata, extract_dir) = {
         let store = sessions.lock();
@@ -1017,6 +1017,13 @@ pub async fn export_data(
     let waves_val = waves.unwrap_or_default();
     let groups_val = groups.unwrap_or_default();
 
+    // Default to 300 if frontend didn't send one. The live-preview DPI
+    // (metadata.render_dpi) is intentionally NOT used as the default —
+    // export DPI is a user-set output target, independent of how big
+    // the editor window happens to be.
+    let export_dpi = export_dpi.unwrap_or(300.0);
+    let loaded_dpi = metadata.render_dpi;
+
     let zip_data = tokio::task::spawn_blocking(move || {
         hp_core::export::generate_export_zip(
             &pieces,
@@ -1025,6 +1032,8 @@ pub async fn export_data(
             metadata.canvas_width,
             metadata.canvas_height,
             metadata.screen_frame_height_px,
+            loaded_dpi,
+            export_dpi,
             &waves_val,
             &groups_val,
             &location,
