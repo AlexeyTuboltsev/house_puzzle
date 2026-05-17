@@ -187,28 +187,35 @@ pub fn generate_export_zip(
     let json_bytes = serde_json::to_string_pretty(&house_data).context("serialising house_data to JSON")?;
     zip.write_all(json_bytes.as_bytes()).context("writing house_data.json bytes")?;
 
-    // Write piece PNGs (read from extract_dir, scale for Unity PPU)
+    // Helper — copy a file from `extract_dir` straight into the ZIP
+    // at the given archive path. By contract the caller has already
+    // produced everything at `export_dpi` (via
+    // `render_export_pieces`), so we don't rescale here.
+    let mut put_file = |zip_path: &str, src: &Path| -> Result<()> {
+        if !src.exists() {
+            return Ok(());
+        }
+        let bytes = std::fs::read(src).with_context(|| format!("reading {}", src.display()))?;
+        zip.start_file(zip_path, options)
+            .with_context(|| format!("starting {zip_path} in ZIP"))?;
+        zip.write_all(&bytes)
+            .with_context(|| format!("writing {zip_path} bytes"))?;
+        Ok(())
+    };
+
+    // Full-house composite + blueprint background sit at the archive
+    // root next to house_data.json. Both come from `render_export_pieces`.
+    put_file("composite.png", &extract_dir.join("composite.png"))?;
+    put_file("background.png", &extract_dir.join("background.png"))?;
+
+    // Per-piece sprite + vector-traced outline, both at `export_dpi`.
     for piece in pieces {
         let piece_path = extract_dir.join(format!("piece_{}.png", piece.id));
         if !piece_path.exists() {
             continue;
         }
-        let img = match image::open(&piece_path) {
-            Ok(img) => img.to_rgba8(),
-            Err(_) => continue,
-        };
-
-        // Scale piece for Unity PPU
-        let new_w = ((img.width() as f64 * scale).round() as u32).max(1);
-        let new_h = ((img.height() as f64 * scale).round() as u32).max(1);
-        let scaled = image::imageops::resize(&img, new_w, new_h, image::imageops::Lanczos3);
-
-        let mut png_buf = Vec::new();
-        {
-            let mut cursor = std::io::Cursor::new(&mut png_buf);
-            scaled.write_to(&mut cursor, image::ImageOutputFormat::Png)
-                .context("encoding piece PNG")?;
-        }
+        let png_buf = std::fs::read(&piece_path)
+            .with_context(|| format!("reading {}", piece_path.display()))?;
 
         let fname = format!("pieces/piece_{}.png", piece.id);
         zip.start_file(&fname, options).context("starting piece PNG in ZIP")?;

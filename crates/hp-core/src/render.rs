@@ -359,17 +359,21 @@ pub fn render_piece_pngs_from_composite(
     });
 }
 
-/// Re-render piece PNGs at a different DPI than the live preview.
+/// Render all export-time assets at the requested DPI:
+///   - `piece_<id>.png`         — per-piece sprite, polygon-masked
+///   - `piece_outline_<id>.png` — per-piece outline traced from the
+///     vector polygon (NOT from the rasterised piece) so curves stay
+///     smooth at high DPI
+///   - `composite.png`          — the full house bricks composite
+///   - `background.png`         — the blueprint backdrop (when the
+///     AI declares a `background` OCG layer)
 ///
-/// Called from the export pipeline when the user picks an export DPI
-/// that differs from what the AI was loaded at. MuPDF re-rasterises
-/// the bricks layer at `export_dpi` (a fresh, full-quality render —
-/// no upscaling of the preview pixmap), pieces and brick polygons are
-/// linearly scaled by `export_dpi / loaded_dpi`, and per-piece PNGs
-/// are written into `out_dir` at the new resolution.
-///
-/// Live-preview state under `session.extract_dir` is untouched —
-/// `out_dir` is expected to be a sub-directory the caller created.
+/// MuPDF re-rasterises the source layers at `export_dpi` — vector
+/// bricks come back crisp, raster bricks come back at MuPDF's best
+/// resolution. Pieces and polygons are scaled by `export_dpi /
+/// loaded_dpi` to line up with the new pixmaps. Live-preview state
+/// under `session.extract_dir` is untouched — `out_dir` is expected
+/// to be a sub-directory the caller created.
 pub fn render_export_pieces(
     ai_path: &Path,
     pieces: &[crate::types::PuzzlePiece],
@@ -393,6 +397,9 @@ pub fn render_export_pieces(
     let new_canvas_w = ((loaded_canvas_width as f64) * scale).round().max(1.0) as u32;
     let new_canvas_h = ((loaded_canvas_height as f64) * scale).round().max(1.0) as u32;
 
+    std::fs::create_dir_all(out_dir)
+        .map_err(|e| anyhow::anyhow!("create_dir_all({}): {e}", out_dir.display()))?;
+
     // 1. Re-render the OCG bricks layer at the export DPI. This is the
     //    actual quality-bearing step — vector bricks come back crisp,
     //    raster bricks come back at MuPDF's best resolution for the
@@ -404,8 +411,24 @@ pub fn render_export_pieces(
     let composite = compose_clipped_canvas(
         &bricks_pixmap, "bricks", new_canvas_w, new_canvas_h, (0, 0),
     );
+    composite
+        .save(out_dir.join("composite.png"))
+        .map_err(|e| anyhow::anyhow!("saving composite.png: {e}"))?;
 
-    // 2. Scale every piece + brick + brick polygon by the same factor
+    // 2. Re-render the OCG background layer if it exists (the blue
+    //    blueprint backdrop). Missing layer is non-fatal — not every
+    //    AI defines one.
+    if let Some((bg_pixmap, _, _)) =
+        render_ocg_layer_pixmap_clipped(ai_path, "background", export_dpi, clip_rect_pts)
+    {
+        let bg_canvas =
+            compose_clipped_canvas(&bg_pixmap, "background", new_canvas_w, new_canvas_h, (0, 0));
+        bg_canvas
+            .save(out_dir.join("background.png"))
+            .map_err(|e| anyhow::anyhow!("saving background.png: {e}"))?;
+    }
+
+    // 3. Scale every piece + brick + brick polygon by the same factor
     //    so they line up with the new composite.
     let scaled_pieces: Vec<crate::types::PuzzlePiece> = pieces
         .iter()
@@ -439,15 +462,105 @@ pub fn render_export_pieces(
         })
         .collect();
 
-    // 3. Compute piece polygons at the new scale and mask the composite.
+    // 4. Compute piece polygons at the new scale.
     let piece_polys =
         crate::puzzle::compute_piece_polygons(&scaled_pieces, &scaled_bricks, &scaled_brick_polys);
 
-    std::fs::create_dir_all(out_dir)
-        .map_err(|e| anyhow::anyhow!("create_dir_all({}): {e}", out_dir.display()))?;
+    // 5. Mask the composite to get per-piece sprite PNGs.
     render_piece_pngs_from_composite(&scaled_pieces, &composite, &piece_polys, out_dir);
 
+    // 6. Trace each piece outline directly from its vector polygon —
+    //    keeps curves smooth at high DPI (the pixel-edge tracer would
+    //    only ever produce a stairstepped 1-pixel outline of whatever
+    //    the raster mask happened to land on). Stroke width scales
+    //    with DPI so the line stays visually consistent.
+    let stroke_thickness = ((export_dpi / 96.0).round() as i32).max(1);
+    scaled_pieces.par_iter().for_each(|piece| {
+        let poly = match piece_polys.get(&piece.id) {
+            Some(p) if p.len() >= 3 => p,
+            _ => return,
+        };
+        let pw = piece.width.max(1) as u32;
+        let ph = piece.height.max(1) as u32;
+        let mut outline = RgbaImage::new(pw, ph);
+        stroke_polygon_on_canvas(
+            &mut outline,
+            poly,
+            piece.x as f64,
+            piece.y as f64,
+            Rgba([255, 255, 255, 230]),
+            stroke_thickness,
+        );
+        outline
+            .save(out_dir.join(format!("piece_outline_{}.png", piece.id)))
+            .ok();
+    });
+
     Ok(())
+}
+
+/// Draw a closed polygon as a stroked outline onto `canvas`. Each
+/// vertex is translated by `(-offset_x, -offset_y)` so a piece-local
+/// canvas can be filled directly from a canvas-coords polygon.
+/// `thickness` is in pixels (clamped to ≥1).
+fn stroke_polygon_on_canvas(
+    canvas: &mut RgbaImage,
+    polygon: &[[f64; 2]],
+    offset_x: f64,
+    offset_y: f64,
+    color: Rgba<u8>,
+    thickness: i32,
+) {
+    if polygon.len() < 2 {
+        return;
+    }
+    let half = (thickness.max(1) - 1) / 2;
+    let w = canvas.width() as i32;
+    let h = canvas.height() as i32;
+    let put = |canvas: &mut RgbaImage, x: i32, y: i32| {
+        for dy in -half..=half {
+            for dx in -half..=half {
+                let nx = x + dx;
+                let ny = y + dy;
+                if nx >= 0 && ny >= 0 && nx < w && ny < h {
+                    canvas.put_pixel(nx as u32, ny as u32, color);
+                }
+            }
+        }
+    };
+
+    for i in 0..polygon.len() {
+        let a = polygon[i];
+        let b = polygon[(i + 1) % polygon.len()];
+        let x0 = (a[0] - offset_x).round() as i32;
+        let y0 = (a[1] - offset_y).round() as i32;
+        let x1 = (b[0] - offset_x).round() as i32;
+        let y1 = (b[1] - offset_y).round() as i32;
+
+        // Bresenham
+        let dx_abs = (x1 - x0).abs();
+        let dy_abs = -(y1 - y0).abs();
+        let sx = if x0 < x1 { 1 } else { -1 };
+        let sy = if y0 < y1 { 1 } else { -1 };
+        let mut err = dx_abs + dy_abs;
+        let mut x = x0;
+        let mut y = y0;
+        loop {
+            put(canvas, x, y);
+            if x == x1 && y == y1 {
+                break;
+            }
+            let e2 = 2 * err;
+            if e2 >= dy_abs {
+                err += dy_abs;
+                x += sx;
+            }
+            if e2 <= dx_abs {
+                err += dx_abs;
+                y += sy;
+            }
+        }
+    }
 }
 
 /// Render piece outline PNG.

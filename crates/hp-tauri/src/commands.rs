@@ -1026,20 +1026,16 @@ pub async fn export_data(
     let export_dpi = export_dpi.unwrap_or(300.0);
     let loaded_dpi = metadata.render_dpi;
 
-    // Pick where the piece PNGs that go into the ZIP live. When the
-    // export DPI matches the loaded one, the live-preview cache is
-    // already at the right resolution, so reuse it. Otherwise call
-    // MuPDF to re-rasterise the bricks layer at `export_dpi` into a
-    // dedicated sub-dir under `extract_dir`, leaving the live-preview
-    // cache alone.
-    let dpi_matches = (export_dpi - loaded_dpi).abs() < 0.01;
-    let export_pieces_dir = if dpi_matches {
-        extract_dir.clone()
-    } else {
-        extract_dir.join(format!("export_dpi_{}", export_dpi.round() as i64))
-    };
+    // ALWAYS re-render export assets at `export_dpi` into a dedicated
+    // sub-dir under `extract_dir`. We can't reuse the live-preview
+    // cache even when DPIs happen to match because the export bundle
+    // includes assets the preview doesn't produce (composite +
+    // background) and uses vector-traced piece outlines (preview
+    // outlines are pixel-edge traced from the rasterised mask, which
+    // stair-steps at high DPI).
+    let export_pieces_dir = extract_dir.join(format!("export_dpi_{}", export_dpi.round() as i64));
 
-    if !dpi_matches {
+    {
         let pieces_for_render = pieces.clone();
         let bricks_for_render = bricks_by_id.clone();
         let brick_polys_for_render = brick_polygons.clone();
