@@ -223,3 +223,102 @@ pub fn generate_export_zip(
     let cursor = zip.finish().context("finalising ZIP archive")?;
     Ok(cursor.into_inner())
 }
+
+/// Generate an Adobe Photoshop file from the export-DPI assets that
+/// `render_export_pieces` has already written to `extract_dir`.
+///
+/// Layer order (bottom-up — PSD convention):
+///   1. background.png  — blueprint backdrop (when present)
+///   2. composite.png   — full house bricks
+///   3. piece_<id>.png  — one layer per piece, at piece bounds
+///   4. outlines.png    — vector-traced outline overlay on top
+///
+/// The merged preview baked into the file is `composite.png` — that's
+/// what tools without layer support (and OS file pickers) render.
+pub fn generate_export_psd(
+    pieces: &[PuzzlePiece],
+    extract_dir: &Path,
+    canvas_width: i32,
+    canvas_height: i32,
+) -> Result<Vec<u8>> {
+    use crate::psd::{write_psd, PsdLayer};
+
+    let cw = canvas_width.max(1) as u32;
+    let ch = canvas_height.max(1) as u32;
+
+    // Load a canvas-sized RGBA layer from `extract_dir/<name>` if it
+    // exists. Returns `None` so missing optional assets (e.g. no
+    // background layer in the AI) are silently skipped.
+    let load_canvas_layer = |file: &str, layer_name: &str| -> Result<Option<PsdLayer>> {
+        let path = extract_dir.join(file);
+        if !path.exists() {
+            return Ok(None);
+        }
+        let img = image::open(&path)
+            .with_context(|| format!("opening {}", path.display()))?
+            .to_rgba8();
+        if img.width() != cw || img.height() != ch {
+            // Better to fail loud than ship a misaligned PSD.
+            anyhow::bail!(
+                "{} is {}×{} but canvas is {}×{} — render_export_pieces should have produced canvas-sized assets",
+                file, img.width(), img.height(), cw, ch
+            );
+        }
+        Ok(Some(PsdLayer {
+            name: layer_name.to_string(),
+            rect: (0, 0, ch, cw),
+            image: img,
+        }))
+    };
+
+    let mut layers: Vec<PsdLayer> = Vec::new();
+
+    if let Some(l) = load_canvas_layer("background.png", "background")? {
+        layers.push(l);
+    }
+    let composite = load_canvas_layer("composite.png", "composite")?
+        .ok_or_else(|| anyhow::anyhow!("composite.png missing under {}", extract_dir.display()))?;
+    let merged_preview = composite.image.clone();
+    layers.push(composite);
+
+    // One layer per piece, named "piece_<id>", placed at the piece's
+    // canvas-coord rect (already at export DPI thanks to
+    // render_export_pieces scaling).
+    for piece in pieces {
+        let path = extract_dir.join(format!("piece_{}.png", piece.id));
+        if !path.exists() {
+            continue;
+        }
+        let img = image::open(&path)
+            .with_context(|| format!("opening {}", path.display()))?
+            .to_rgba8();
+        let top = piece.y.max(0) as u32;
+        let left = piece.x.max(0) as u32;
+        // Clamp the rect to the canvas so an off-by-one in piece
+        // dimensions doesn't trip the bounds check in `write_psd`.
+        let bottom = (top + img.height()).min(ch);
+        let right = (left + img.width()).min(cw);
+        if bottom <= top || right <= left {
+            continue;
+        }
+        // If the rect was clamped, crop the image to match.
+        let final_img = if right - left == img.width() && bottom - top == img.height() {
+            img
+        } else {
+            image::imageops::crop_imm(&img, 0, 0, right - left, bottom - top).to_image()
+        };
+        layers.push(PsdLayer {
+            name: format!("piece_{}", piece.id),
+            rect: (top, left, bottom, right),
+            image: final_img,
+        });
+    }
+
+    if let Some(l) = load_canvas_layer("outlines.png", "outlines")? {
+        layers.push(l);
+    }
+
+    let mut buf = Vec::new();
+    write_psd(&mut buf, cw, ch, &layers, &merged_preview)?;
+    Ok(buf)
+}

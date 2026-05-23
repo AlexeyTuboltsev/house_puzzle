@@ -1008,6 +1008,7 @@ pub async fn export_data(
     placement: Option<Value>,
     export_dpi: Option<f64>,
     suggested_filename: Option<String>,
+    format: Option<String>,
 ) -> Result<Option<String>, String> {
     let (pieces, bricks, brick_polygons, metadata, extract_dir, ai_path, pdf_offset) = {
         let store = sessions.lock();
@@ -1098,27 +1099,51 @@ pub async fn export_data(
         .map_err(|e| e.to_string())?;
     }
 
-    let zip_data = tokio::task::spawn_blocking(move || {
-        hp_core::export::generate_export_zip(
-            &pieces,
-            &bricks_by_id,
-            &export_pieces_dir,
-            metadata.canvas_width,
-            metadata.canvas_height,
-            metadata.screen_frame_height_px,
-            loaded_dpi,
-            export_dpi,
-            &waves_val,
-            &groups_val,
-            &location,
-            position,
-            &house_name,
-            spacing,
-        )
+    // "psd" or "zip" — drives both the encoder and the save-dialog
+    // filter. PSD is default if the frontend doesn't pass one.
+    let format = format.unwrap_or_else(|| "psd".to_string()).to_lowercase();
+    if format != "psd" && format != "zip" {
+        return Err(format!("unknown export format: {format}"));
+    }
+
+    let pieces_for_encode = pieces.clone();
+    let bricks_for_encode = bricks_by_id.clone();
+    let metadata_for_encode = metadata.clone();
+    let extract_dir_for_encode = export_pieces_dir.clone();
+    let waves_for_encode = waves_val.clone();
+    let groups_for_encode = groups_val.clone();
+    let format_for_encode = format.clone();
+    let file_bytes = tokio::task::spawn_blocking(move || -> Result<Vec<u8>, String> {
+        if format_for_encode == "psd" {
+            hp_core::export::generate_export_psd(
+                &pieces_for_encode,
+                &extract_dir_for_encode,
+                metadata_for_encode.canvas_width,
+                metadata_for_encode.canvas_height,
+            )
+            .map_err(|e| e.to_string())
+        } else {
+            hp_core::export::generate_export_zip(
+                &pieces_for_encode,
+                &bricks_for_encode,
+                &extract_dir_for_encode,
+                metadata_for_encode.canvas_width,
+                metadata_for_encode.canvas_height,
+                metadata_for_encode.screen_frame_height_px,
+                loaded_dpi,
+                export_dpi,
+                &waves_for_encode,
+                &groups_for_encode,
+                &location,
+                position,
+                &house_name,
+                spacing,
+            )
+            .map_err(|e| e.to_string())
+        }
     })
     .await
-    .map_err(|e| e.to_string())?
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| e.to_string())??;
 
     // Show the native save dialog. Default directory comes from the
     // last-export sidecar; filename comes from the frontend. User
@@ -1128,15 +1153,27 @@ pub async fn export_data(
     let default_dir = stored_path.as_deref().and_then(read_last_dir);
     let default_name = suggested_filename
         .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "export.zip".to_string());
+        .unwrap_or_else(|| {
+            if format == "psd" {
+                "export.psd".to_string()
+            } else {
+                "export.zip".to_string()
+            }
+        });
 
     let app_for_dialog = app.clone();
+    let filter_name = if format == "psd" {
+        "Photoshop (PSD)"
+    } else {
+        "ZIP archive"
+    };
+    let filter_ext = if format == "psd" { "psd" } else { "zip" };
     let dialog_path = tokio::task::spawn_blocking(move || {
         use tauri_plugin_dialog::DialogExt;
         let mut builder = app_for_dialog
             .dialog()
             .file()
-            .add_filter("ZIP archive", &["zip"])
+            .add_filter(filter_name, &[filter_ext])
             .set_file_name(&default_name);
         if let Some(dir) = default_dir {
             builder = builder.set_directory(dir);
@@ -1151,7 +1188,7 @@ pub async fn export_data(
         Some(fp) => fp.into_path().map_err(|e| e.to_string())?,
     };
 
-    std::fs::write(&save_path, &zip_data)
+    std::fs::write(&save_path, &file_bytes)
         .map_err(|e| format!("writing {}: {e}", save_path.display()))?;
 
     if let Some(stored) = stored_path.as_deref() {

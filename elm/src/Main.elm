@@ -269,6 +269,11 @@ type alias RunningModel =
          build_house_data — output sprite dimensions = source × (export_dpi /
          loaded_dpi). -}
       exportDpi : String
+    , {- "psd" or "zip" — controls both the encoder selected on the
+         Rust side and the save-dialog filter / suggested extension.
+         PSD is the default; Unity-side ZIP export is opt-in via the
+         toggle in the export panel. -}
+      exportFormat : String
     , exportLocation : String
     , exportHouseName : String
     , exportPosition : String
@@ -402,6 +407,7 @@ initialRunning boot settings =
     , recomputing = False
     , exporting = False
     , exportDpi = "300"
+    , exportFormat = "psd"
     , exportLocation = "Rome"
     , exportHouseName = "NewHouse"
     , exportPosition = "0"
@@ -469,6 +475,7 @@ type Msg
     | CancelEdit
     | GotPiecePolygons (Result Http.Error (List ( String, List Point )))
     | SetExportDpi String
+    | SetExportFormat String
     | SetExportLocation String
     | SetExportHouseName String
     | SetExportPosition String
@@ -1640,6 +1647,9 @@ updateRunning msg model =
         SetExportDpi s ->
             ( { model | exportDpi = s }, Cmd.none )
 
+        SetExportFormat s ->
+            ( { model | exportFormat = s }, Cmd.none )
+
         SetExportLocation s ->
             ( { model | exportLocation = s }, Cmd.none )
 
@@ -1709,7 +1719,7 @@ updateRunning msg model =
             in
             if model.boot.isTauri then
                 let
-                    -- Default filename: <City>_<position>.zip, spaces
+                    -- Default filename: <City>_<position>.<ext>, spaces
                     -- in city stripped so "New York" becomes "NewYork".
                     cityToken =
                         model.exportLocation |> String.filter (\c -> c /= ' ')
@@ -1718,8 +1728,15 @@ updateRunning msg model =
                         Maybe.withDefault 0 (String.toInt model.exportPosition)
                             |> String.fromInt
 
+                    extToken =
+                        if model.exportFormat == "zip" then
+                            "zip"
+
+                        else
+                            "psd"
+
                     suggestedFilename =
-                        cityToken ++ "_" ++ posToken ++ ".zip"
+                        cityToken ++ "_" ++ posToken ++ "." ++ extToken
                 in
                 ( { model | exporting = True }
                 , tauriInvoke
@@ -1730,6 +1747,7 @@ updateRunning msg model =
                             , ( "waves", wavesJson )
                             , ( "groups", groupsJson )
                             , ( "exportDpi", E.float exportDpiValue )
+                            , ( "format", E.string model.exportFormat )
                             , ( "suggestedFilename", E.string suggestedFilename )
                             , ( "placement"
                               , E.object
@@ -4291,6 +4309,29 @@ viewExportTools model =
     div [ class "tools-pane" ]
         [ viewTogglesBox [ viewCheckboxLights model, viewCheckboxGrid model, viewCheckboxOutlines model, viewCheckboxWaveOverlay model, viewCheckboxNumbers model, viewCheckboxOnlyBlueprint model ]
         , viewSectionTitle "Export"
+        , div [ class "field-row" ]
+            [ label [] [ text "Format" ]
+            , div [ class "format-toggle" ]
+                [ button
+                    [ classList
+                        [ ( "format-btn", True )
+                        , ( "active", model.exportFormat == "psd" )
+                        ]
+                    , onClick (SetExportFormat "psd")
+                    , type_ "button"
+                    ]
+                    [ text "PSD" ]
+                , button
+                    [ classList
+                        [ ( "format-btn", True )
+                        , ( "active", model.exportFormat == "zip" )
+                        ]
+                    , onClick (SetExportFormat "zip")
+                    , type_ "button"
+                    ]
+                    [ text "ZIP" ]
+                ]
+            ]
         , div [ class "field-row" ]
             [ label [] [ text "DPI" ]
             , input
