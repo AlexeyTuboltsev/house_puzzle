@@ -84,6 +84,42 @@ body {
     font-weight: 600;
 }
 .mode-btn.active:hover:not(:disabled) { background: #3070c0; }
+
+/* ── Stability check result panel ─────────────────────────────────────────── */
+.stability-result {
+    margin-top: 8px;
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+}
+.stability-ok {
+    background: #e0f3e0;
+    border: 1px solid #80b080;
+    color: #205020;
+}
+.stability-bad {
+    background: #fbe5e5;
+    border: 1px solid #c06060;
+    color: #802020;
+}
+.stability-summary {
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+.stability-list {
+    max-height: 180px;
+    overflow-y: auto;
+}
+.stability-row {
+    display: flex;
+    gap: 8px;
+    padding: 2px 0;
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    font-size: 11px;
+}
+.stability-piece-id { font-weight: 600; min-width: 80px; }
+.stability-wave { color: #555; min-width: 80px; }
+.stability-drift { color: #888; }
 .mode-btn.loading {
     position: relative;
     overflow: hidden;

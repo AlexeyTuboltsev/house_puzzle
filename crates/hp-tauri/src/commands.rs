@@ -962,6 +962,103 @@ pub fn get_piece_outline_image(
 }
 
 // ---------------------------------------------------------------------------
+// Stability check — runs the Rapier sim to flag pieces that would
+// fall under gravity at gameplay time
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub async fn validate_stability(
+    sessions: tauri::State<'_, SessionStore>,
+    key: String,
+    waves: Option<Vec<Value>>,
+) -> Result<Value, String> {
+    let (pieces, bricks_vec, canvas_w, canvas_h) = {
+        let store = sessions.lock();
+        let session = store
+            .get(&key)
+            .ok_or_else(|| format!("Session not found: {key}"))?;
+        (
+            session.pieces.clone(),
+            session.bricks.clone(),
+            session.metadata.canvas_width,
+            session.metadata.canvas_height,
+        )
+    };
+
+    if pieces.is_empty() {
+        return Ok(json!({ "unstable": [], "sim_time_ms": 0 }));
+    }
+
+    let bricks: HashMap<String, Brick> = bricks_vec
+        .iter()
+        .map(|b| (b.id.clone(), b.clone()))
+        .collect();
+
+    // Convert waves JSON into Vec<Vec<piece_id>>. Same shape the
+    // Elm side sends to merge / export: each element has a
+    // `pieceIds` array.
+    let waves_val = waves.unwrap_or_default();
+    let waves_pids: Vec<Vec<String>> = waves_val
+        .iter()
+        .map(|w| {
+            w.get("pieceIds")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect()
+                })
+                .unwrap_or_default()
+        })
+        .collect();
+
+    // Anything not in a wave goes into the synthetic "final wave"
+    // inside the sim. Better than dropping them — the artist still
+    // wants to know if unassigned pieces are unstable.
+    let assigned: std::collections::HashSet<String> = waves_pids
+        .iter()
+        .flat_map(|w| w.iter().cloned())
+        .collect();
+    let unassigned: Vec<String> = pieces
+        .iter()
+        .filter(|p| !assigned.contains(&p.id))
+        .map(|p| p.id.clone())
+        .collect();
+
+    let pieces_for_sim = pieces.clone();
+    let report = tokio::task::spawn_blocking(move || {
+        let req = hp_core::stability::StabilityRequest {
+            pieces: &pieces_for_sim,
+            bricks: &bricks,
+            waves: &waves_pids,
+            canvas_width: canvas_w,
+            canvas_height: canvas_h,
+            unassigned_piece_ids: &unassigned,
+        };
+        hp_core::stability::validate_stability(&req)
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let unstable_json: Vec<Value> = report
+        .unstable
+        .iter()
+        .map(|u| {
+            json!({
+                "pieceId": u.piece_id,
+                "wave": u.wave,
+                "displacement": u.displacement,
+            })
+        })
+        .collect();
+
+    Ok(json!({
+        "unstable": unstable_json,
+        "simTimeMs": report.sim_time_ms,
+    }))
+}
+
+// ---------------------------------------------------------------------------
 // Export — mirrors do_export in routes.rs; returns base64-encoded ZIP
 // ---------------------------------------------------------------------------
 
