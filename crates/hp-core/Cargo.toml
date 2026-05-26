@@ -21,3 +21,7 @@ geo-clipper = "0.8"
 rand = "0.9"
 rand_chacha = "0.9"
 zip = "0.6"
+# Stability validation — simulates piece placement under gravity. Pure
+# Rust, no system deps. Different solver than Unity's PhysX but
+# qualitatively the same physics; close enough for "will it fall?".
+rapier2d = "0.22"

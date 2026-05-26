@@ -167,6 +167,7 @@ fn main() {
             commands::ensure_lights_image,
             commands::ensure_background_image,
             commands::export_data,
+            commands::validate_stability,
             commands::check_for_updates,
             commands::save_screenshot,
             commands::log_to_stderr,

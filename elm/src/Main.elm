@@ -281,6 +281,21 @@ type alias RunningModel =
     , nextSessionId : Int
     , undoHistory : List UndoSnapshot
     , redoHistory : List UndoSnapshot
+    , {- Stability check state. `Nothing` = haven't run the
+         validator since the last merge / wave change. `Just []` =
+         ran and the house is stable. Non-empty list = these
+         pieces would fall under gravity at gameplay time. -}
+      stabilityIssues : Maybe (List UnstablePiece)
+    , checkingStability : Bool
+    }
+
+
+{-| One piece flagged by the Rapier gravity sim. Returned by the
+backend's `validate_stability` command. -}
+type alias UnstablePiece =
+    { pieceId : String
+    , wave : Int
+    , displacement : Float
     }
 
 
@@ -414,6 +429,8 @@ initialRunning boot settings =
     , nextSessionId = 1
     , undoHistory = []
     , redoHistory = []
+    , stabilityIssues = Nothing
+    , checkingStability = False
     }
 
 
@@ -497,6 +514,7 @@ type Msg
     | ScrollTrayBy Float
     | Undo
     | Redo
+    | CheckStability
     | TauriResponse D.Value
     | TestSetValue { testId : String, value : String }
     | NoOp
@@ -587,6 +605,16 @@ decodeSettings =
         |> required "outline_hue" D.float
         |> required "tools_width_vw" D.float
 
+
+{-| Decoder for one element of the `unstable` array returned by the
+`validate_stability` Tauri command. Field names match the JSON the
+Rust side emits (camelCase, hand-built in `commands::validate_stability`). -}
+decodeUnstablePiece : D.Decoder UnstablePiece
+decodeUnstablePiece =
+    D.map3 UnstablePiece
+        (D.field "pieceId" D.string)
+        (D.field "wave" D.int)
+        (D.field "displacement" D.float)
 
 
 scrollToBottom : Cmd Msg
@@ -2400,6 +2428,32 @@ updateRunning msg model =
                     , Cmd.none
                     )
 
+        CheckStability ->
+            if not model.boot.isTauri then
+                ( model, Cmd.none )
+
+            else
+                let
+                    wavesJson =
+                        E.list
+                            (\w ->
+                                E.object
+                                    [ ( "pieceIds", E.list E.string w.pieceIds ) ]
+                            )
+                            model.waves
+                in
+                ( { model | checkingStability = True, stabilityIssues = Nothing }
+                , tauriInvoke
+                    { command = "validate_stability"
+                    , args =
+                        E.object
+                            [ ( "key", E.string model.sessionKey )
+                            , ( "waves", wavesJson )
+                            ]
+                    , requestId = "validate_stability"
+                    }
+                )
+
         TauriResponse val ->
             let
                 requestId =
@@ -2459,6 +2513,19 @@ updateRunning msg model =
                     "save_settings" ->
                         -- Fire-and-forget; nothing to do with the response.
                         ( model, Cmd.none )
+
+                    "validate_stability" ->
+                        case D.decodeValue (D.field "unstable" (D.list decodeUnstablePiece)) dataVal of
+                            Ok unstable ->
+                                ( { model
+                                    | stabilityIssues = Just unstable
+                                    , checkingStability = False
+                                  }
+                                , Cmd.none
+                                )
+
+                            Err _ ->
+                                ( { model | checkingStability = False }, Cmd.none )
 
                     "load_pdf" ->
                         case D.decodeValue decodeLoadResponse dataVal of
@@ -4237,7 +4304,21 @@ viewWavesTools model =
                 , title "Create a new wave and assign every unassigned piece to it"
                 ]
                 [ text "Last wave" ]
+            , button
+                [ onClick CheckStability
+                , disabled (model.checkingStability || List.isEmpty model.pieces)
+                , title "Run a gravity simulation and flag pieces that would fall"
+                ]
+                [ text
+                    (if model.checkingStability then
+                        "Checking…"
+
+                     else
+                        "Check stability"
+                    )
+                ]
             ]
+        , viewStabilityResult model
         , div [ class "waves-body" ]
             (let
                 waveTotal =
@@ -4251,6 +4332,46 @@ viewWavesTools model =
             )
         , div [ class "tools-divider" ] []
         , viewWavePieceInfoBox model
+        ]
+
+
+{-| Render the most recent stability-check result. Green badge when
+clean, red list of offenders otherwise. Empty when the validator
+hasn't been run since the last edit. -}
+viewStabilityResult : RunningModel -> Html Msg
+viewStabilityResult model =
+    case model.stabilityIssues of
+        Nothing ->
+            text ""
+
+        Just [] ->
+            div [ class "stability-result stability-ok" ]
+                [ text "✓  All pieces stable" ]
+
+        Just issues ->
+            div [ class "stability-result stability-bad" ]
+                [ div [ class "stability-summary" ]
+                    [ text (String.fromInt (List.length issues) ++ " unstable piece(s):") ]
+                , div [ class "stability-list" ]
+                    (List.map viewUnstablePieceRow issues)
+                ]
+
+
+viewUnstablePieceRow : UnstablePiece -> Html Msg
+viewUnstablePieceRow u =
+    div [ class "stability-row" ]
+        [ span [ class "stability-piece-id" ] [ text u.pieceId ]
+        , span [ class "stability-wave" ]
+            [ text
+                (if u.wave > 0 then
+                    "wave " ++ String.fromInt u.wave
+
+                 else
+                    "unassigned"
+                )
+            ]
+        , span [ class "stability-drift" ]
+            [ text ("drift " ++ String.fromInt (round u.displacement) ++ "px") ]
         ]
 
 

@@ -21,3 +21,4 @@ pub mod ai_parser;
 pub mod render;
 pub mod puzzle;
 pub mod export;
+pub mod stability;
