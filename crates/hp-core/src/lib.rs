@@ -22,3 +22,4 @@ pub mod render;
 pub mod puzzle;
 pub mod export;
 pub mod psd;
+pub mod ocg_inject;
