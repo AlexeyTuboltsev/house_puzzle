@@ -21,3 +21,9 @@ geo-clipper = "0.8"
 rand = "0.9"
 rand_chacha = "0.9"
 zip = "0.6"
+# PDF content-stream parsing + rewriting for the per-piece OCG-injection
+# render pipeline. lopdf is pure Rust and gives us both the high-level
+# object model (for editing /OCProperties and /Resources) and the
+# tokenised content-stream API (for walking and re-emitting q/Q blocks
+# with injected BDC/EMC markers).
+lopdf = "0.32"
