@@ -359,6 +359,177 @@ pub fn render_piece_pngs_from_composite(
     });
 }
 
+/// Render each piece by selectively enabling only its bricks' OCGs in
+/// a one-time-injected copy of the source PDF. Output is byte-identical
+/// in format to `render_piece_pngs_from_composite` — same piece_<id>.png
+/// file at the same path, same canvas-relative cropping — but the
+/// pixels come from a clean re-render rather than a polygon-masked
+/// slice of the composite, so adjacent bricks' soft-mask alpha cannot
+/// bleed into a piece's PNG.
+///
+/// Steps:
+///   1. Re-parse the AI to recover the document-order list of parser
+///      bricks (their order is what the matcher uses to bind PDF
+///      blocks to bricks; the in-session `bricks_by_id` is a HashMap
+///      and has lost that order). The parse is cheap relative to the
+///      render that follows.
+///   2. Walk + match + inject — produces a sibling PDF on disk with
+///      one `hp_brick_NNNN` OCG per parser brick + a shared
+///      `hp_decoration` OCG, all defaulting ON so the modified PDF
+///      visually matches the original until we toggle.
+///   3. For each piece, look up the OCG name for every brick id in
+///      its `brick_ids`, then call the MuPDF clipped renderer with
+///      that set of OCGs + `bricks` enabled, every other injected
+///      OCG off. Crop the resulting clip pixmap to the piece's
+///      canvas-relative bbox.
+///
+/// `ai_path` is the original AI; the modified copy is written next to
+/// `extract_dir` and removed before return (live preview keeps using
+/// the original).
+fn render_piece_pngs_via_ocg_isolation(
+    ai_path: &Path,
+    pieces: &[crate::types::PuzzlePiece],
+    piece_polygons: &HashMap<String, Vec<[f64; 2]>>,
+    export_dpi: f64,
+    shifted_clip_pts: (f64, f64, f64, f64),
+    new_canvas_w: u32,
+    new_canvas_h: u32,
+    out_dir: &Path,
+) -> anyhow::Result<()> {
+    // 1. Re-parse the AI for document-order placements + metadata.
+    let (placements, meta, _ai_data) =
+        crate::ai_parser::parse_ai(ai_path, crate::CANVAS_HEIGHT_PX as i32)
+            .map_err(|e| anyhow::anyhow!("re-parsing AI for OCG injection: {e}"))?;
+
+    // 2. Inject per-brick OCGs. Modified PDF lives next to the output
+    //    dir so we can delete it after the render loop. (Keeping it
+    //    around would only help if we wanted to render *more* pieces
+    //    later from the same load — not the export flow's pattern.)
+    std::fs::create_dir_all(out_dir).ok();
+    let modified_pdf_path = out_dir.join("_hp_ocg_modified.pdf");
+    let artifact = crate::ocg_inject::build_modified_pdf(
+        ai_path,
+        &placements,
+        &meta,
+        &modified_pdf_path,
+    )
+    .map_err(|e| anyhow::anyhow!("building modified PDF: {e}"))?;
+
+    let brick_name_to_idx: HashMap<String, usize> = placements
+        .iter()
+        .enumerate()
+        .map(|(i, p)| (p.name.clone(), i))
+        .collect();
+
+    let modified_pdf_str = modified_pdf_path
+        .to_str()
+        .ok_or_else(|| anyhow::anyhow!("non-utf8 modified PDF path"))?
+        .to_string();
+
+    // 3. Per-piece render. Parallel by piece — MuPDF FFI serializes
+    //    internally via its mutex, so the parallelism mostly buys us
+    //    pipelined I/O (write piece PNG while next render starts).
+    pieces.par_iter().for_each(|piece| {
+        // Collect the OCG names for this piece's bricks. Skip any
+        // brick id that doesn't resolve to a parser brick — typically
+        // bricks the parser dropped at the degeneracy filter, which
+        // already weren't represented in the composite either.
+        let brick_ocgs: Vec<String> = piece
+            .brick_ids
+            .iter()
+            .filter_map(|bid| brick_name_to_idx.get(bid))
+            .filter_map(|&idx| artifact.brick_ocg_names.get(idx).cloned())
+            .collect();
+        if brick_ocgs.is_empty() {
+            return;
+        }
+        let mut enabled: Vec<&str> = Vec::with_capacity(brick_ocgs.len() + 1);
+        enabled.push("bricks");
+        for n in &brick_ocgs {
+            enabled.push(n.as_str());
+        }
+
+        // Render the shifted clip with this piece's OCGs on. The
+        // pixmap covers the same canvas rectangle as `composite`, so
+        // we can compose it onto a canvas-sized image at offset (0,0)
+        // and crop with the same piece-relative geometry as the
+        // composite-slice path.
+        let Some((rgba, pw, ph)) = crate::mupdf_ffi::render_page_with_ocg_set_clipped(
+            &modified_pdf_str,
+            &enabled,
+            export_dpi,
+            Some(shifted_clip_pts),
+        ) else {
+            return;
+        };
+        let Some(rendered) = RgbaImage::from_raw(pw, ph, rgba) else {
+            return;
+        };
+        let canvas = compose_clipped_canvas(
+            &rendered,
+            "piece-ocg",
+            new_canvas_w,
+            new_canvas_h,
+            (0, 0),
+        );
+
+        // Crop to piece bbox, polygon-mask to drop any stray alpha
+        // outside the piece's geometric outline (defensive — overlay
+        // blocks pulled into this brick's OCG can extend past the
+        // brick's bbox; the polygon mask trims them).
+        let pw_i = piece.width.max(1) as u32;
+        let ph_i = piece.height.max(1) as u32;
+        let mut piece_img = RgbaImage::new(pw_i, ph_i);
+        let poly = piece_polygons.get(&piece.id);
+        let expanded = poly.and_then(|pts| {
+            if pts.len() >= 3 {
+                Some(expand_polygon(pts, 0.5))
+            } else {
+                None
+            }
+        });
+        for dy in 0..ph_i {
+            for dx in 0..pw_i {
+                let cx = piece.x + dx as i32;
+                let cy = piece.y + dy as i32;
+                if cx < 0 || cy < 0 {
+                    continue;
+                }
+                let sx = cx as u32;
+                let sy = cy as u32;
+                if sx >= canvas.width() || sy >= canvas.height() {
+                    continue;
+                }
+                let in_poly = match &expanded {
+                    Some(pts) => point_in_polygon(cx as f64 + 0.5, cy as f64 + 0.5, pts),
+                    None => true,
+                };
+                if !in_poly {
+                    continue;
+                }
+                let px = canvas.get_pixel(sx, sy);
+                if px[3] > 0 {
+                    piece_img.put_pixel(dx, dy, *px);
+                }
+            }
+        }
+
+        piece_img
+            .save(out_dir.join(format!("piece_{}.png", piece.id)))
+            .ok();
+        render_piece_outline(
+            &piece_img,
+            &out_dir.join(format!("piece_outline_{}.png", piece.id)),
+        );
+    });
+
+    // Clean up the sidecar PDF. Failure to delete is non-fatal — it
+    // just leaves a file in the export dir, harmless next to the
+    // intentional outputs.
+    let _ = std::fs::remove_file(&modified_pdf_path);
+    Ok(())
+}
+
 /// Render all export-time assets at the requested DPI:
 ///   - `piece_<id>.png` — per-piece sprite, polygon-masked
 ///   - `composite.png`  — the full house bricks composite
@@ -481,8 +652,38 @@ pub fn render_export_pieces(
     let piece_polys =
         crate::puzzle::compute_piece_polygons(&scaled_pieces, &scaled_bricks, &scaled_brick_polys);
 
-    // 5. Mask the composite to get per-piece sprite PNGs.
-    render_piece_pngs_from_composite(&scaled_pieces, &composite, &piece_polys, out_dir);
+    // 5. Per-piece sprite PNGs via OCG-isolated re-render.
+    //
+    // Old path: mask the composite by each piece's polygon. That bleeds
+    // — the composite contains every brick's alpha (drop shadow / glow
+    // baked into the source raster), so a neighbour's shadow leaks
+    // into a piece whenever the soft-mask alpha extends past the
+    // brick's geometric outline. Visible as e.g. a thin red stripe on
+    // the left edge of a blue window frame next to a red brick.
+    //
+    // New path: build a copy of the AI/PDF where every brick block
+    // sits in its own OCG, then re-render the same shifted clip with
+    // only this piece's brick OCGs enabled. Neighbour bricks are never
+    // even invoked by MuPDF, so their alpha can't reach a piece's
+    // pixels. Falls back to the composite-slice path if any step of
+    // the OCG pipeline fails (parse, inject, save, render) — we'd
+    // rather ship slightly bleedy PNGs than crash the export.
+    if let Err(e) = render_piece_pngs_via_ocg_isolation(
+        ai_path,
+        &scaled_pieces,
+        &piece_polys,
+        export_dpi,
+        shifted_clip,
+        new_canvas_w,
+        new_canvas_h,
+        out_dir,
+    ) {
+        eprintln!(
+            "[render_export_pieces] OCG-isolation path failed ({e}); \
+             falling back to composite-slice path for piece PNGs"
+        );
+        render_piece_pngs_from_composite(&scaled_pieces, &composite, &piece_polys, out_dir);
+    }
 
     // 6. Trace every piece outline onto a single canvas-sized
     //    transparent image — one `outlines.png` overlay that the
