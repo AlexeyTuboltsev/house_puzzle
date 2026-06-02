@@ -1072,7 +1072,16 @@ pub async fn export_data(
     // stair-steps at high DPI).
     let export_pieces_dir = extract_dir.join(format!("export_dpi_{}", export_dpi.round() as i64));
 
-    {
+    // render_export_pieces returns the per-piece rects re-trimmed to
+    // the alpha bbox of each piece's actual rendered content (the
+    // input bbox is the union of brick bboxes and can overshoot the
+    // visible pixels by 2–3×, leaving large transparent overhangs in
+    // the sprite). These trimmed rects live in EXPORT-DPI canvas
+    // coords — same coord system as composite.png and the per-piece
+    // PNGs we just wrote — so PSD layer placement uses them directly,
+    // while the ZIP/Unity path divides them back to loaded-DPI (the
+    // contract `generate_export_zip` was built around).
+    let trimmed_pieces_export_dpi: Vec<hp_core::types::PuzzlePiece> = {
         let pieces_for_render = pieces.clone();
         let bricks_for_render = bricks_by_id.clone();
         let brick_polys_for_render = brick_polygons.clone();
@@ -1096,8 +1105,32 @@ pub async fn export_data(
         })
         .await
         .map_err(|e| e.to_string())?
-        .map_err(|e| e.to_string())?;
-    }
+        .map_err(|e| e.to_string())?
+    };
+
+    // Down-scale the trimmed pieces to loaded-DPI for the ZIP/Unity
+    // path. `generate_export_zip` re-applies `scale = export_dpi /
+    // loaded_dpi` internally when building house_data.json (so the
+    // sprite centre lands at the right Unity world position), so this
+    // path is sensitive to the input being loaded-DPI.
+    let trimmed_pieces_loaded_dpi: Vec<hp_core::types::PuzzlePiece> = {
+        let inv_scale = if export_dpi > 0.0 {
+            loaded_dpi / export_dpi
+        } else {
+            1.0
+        };
+        trimmed_pieces_export_dpi
+            .iter()
+            .map(|p| hp_core::types::PuzzlePiece {
+                id: p.id.clone(),
+                brick_ids: p.brick_ids.clone(),
+                x: ((p.x as f64) * inv_scale).round() as i32,
+                y: ((p.y as f64) * inv_scale).round() as i32,
+                width: ((p.width as f64) * inv_scale).round().max(1.0) as i32,
+                height: ((p.height as f64) * inv_scale).round().max(1.0) as i32,
+            })
+            .collect()
+    };
 
     // "psd" or "zip" — drives both the encoder and the save-dialog
     // filter. PSD is default if the frontend doesn't pass one.
@@ -1106,25 +1139,38 @@ pub async fn export_data(
         return Err(format!("unknown export format: {format}"));
     }
 
-    let pieces_for_encode = pieces.clone();
     let bricks_for_encode = bricks_by_id.clone();
     let metadata_for_encode = metadata.clone();
     let extract_dir_for_encode = export_pieces_dir.clone();
     let waves_for_encode = waves_val.clone();
     let groups_for_encode = groups_val.clone();
     let format_for_encode = format.clone();
+    // PSD takes EXPORT-DPI pieces and EXPORT-DPI canvas dims (PNGs on
+    // disk are at the export DPI; the PSD canvas must match). The
+    // existing `load_canvas_layer` size-check inside the PSD encoder
+    // bails when canvas_width / canvas_height don't match the assets,
+    // so we have to scale the loaded-DPI metadata up by the same
+    // factor render_export_pieces applied.
+    let pieces_for_psd = trimmed_pieces_export_dpi;
+    let pieces_for_zip = trimmed_pieces_loaded_dpi;
+    let psd_canvas_w = ((metadata.canvas_width as f64) * export_dpi / loaded_dpi)
+        .round()
+        .max(1.0) as i32;
+    let psd_canvas_h = ((metadata.canvas_height as f64) * export_dpi / loaded_dpi)
+        .round()
+        .max(1.0) as i32;
     let file_bytes = tokio::task::spawn_blocking(move || -> Result<Vec<u8>, String> {
         if format_for_encode == "psd" {
             hp_core::export::generate_export_psd(
-                &pieces_for_encode,
+                &pieces_for_psd,
                 &extract_dir_for_encode,
-                metadata_for_encode.canvas_width,
-                metadata_for_encode.canvas_height,
+                psd_canvas_w,
+                psd_canvas_h,
             )
             .map_err(|e| e.to_string())
         } else {
             hp_core::export::generate_export_zip(
-                &pieces_for_encode,
+                &pieces_for_zip,
                 &bricks_for_encode,
                 &extract_dir_for_encode,
                 metadata_for_encode.canvas_width,

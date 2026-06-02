@@ -317,46 +317,147 @@ pub fn render_piece_pngs_from_composite(
     composite: &RgbaImage,
     piece_polygons: &HashMap<String, Vec<[f64; 2]>>,
     extract_dir: &Path,
-) {
+) -> Vec<crate::types::PuzzlePiece> {
     std::fs::create_dir_all(extract_dir).ok();
-    pieces.par_iter().for_each(|piece| {
-        let pw = piece.width.max(1) as u32;
-        let ph = piece.height.max(1) as u32;
-        let mut piece_img = RgbaImage::new(pw, ph);
+    pieces
+        .par_iter()
+        .map(|piece| {
+            let pw = piece.width.max(1) as u32;
+            let ph = piece.height.max(1) as u32;
+            let mut piece_img = RgbaImage::new(pw, ph);
 
-        // Get piece polygon (union of brick polygons) and expand by 0.5px
-        // so boundary pixels are included by both adjacent pieces.
-        let poly = piece_polygons.get(&piece.id);
-        let expanded = poly.and_then(|pts| {
-            if pts.len() >= 3 { Some(expand_polygon(pts, 0.5)) } else { None }
-        });
+            // Get piece polygon (union of brick polygons) and expand by 0.5px
+            // so boundary pixels are included by both adjacent pieces.
+            let poly = piece_polygons.get(&piece.id);
+            let expanded = poly.and_then(|pts| {
+                if pts.len() >= 3 {
+                    Some(expand_polygon(pts, 0.5))
+                } else {
+                    None
+                }
+            });
 
-        // Crop composite through the piece polygon mask
-        for dy in 0..ph {
-            for dx in 0..pw {
-                let cx = piece.x + dx as i32;
-                let cy = piece.y + dy as i32;
-                if cx < 0 || cy < 0 { continue; }
-                let sx = cx as u32;
-                let sy = cy as u32;
-                if sx >= composite.width() || sy >= composite.height() { continue; }
+            // Crop composite through the piece polygon mask
+            for dy in 0..ph {
+                for dx in 0..pw {
+                    let cx = piece.x + dx as i32;
+                    let cy = piece.y + dy as i32;
+                    if cx < 0 || cy < 0 {
+                        continue;
+                    }
+                    let sx = cx as u32;
+                    let sy = cy as u32;
+                    if sx >= composite.width() || sy >= composite.height() {
+                        continue;
+                    }
 
-                let in_poly = match &expanded {
-                    Some(pts) => point_in_polygon(cx as f64 + 0.5, cy as f64 + 0.5, pts),
-                    None => true,
-                };
-                if !in_poly { continue; }
+                    let in_poly = match &expanded {
+                        Some(pts) => point_in_polygon(cx as f64 + 0.5, cy as f64 + 0.5, pts),
+                        None => true,
+                    };
+                    if !in_poly {
+                        continue;
+                    }
 
-                let px = composite.get_pixel(sx, sy);
-                if px[3] > 0 {
-                    piece_img.put_pixel(dx, dy, *px);
+                    let px = composite.get_pixel(sx, sy);
+                    if px[3] > 0 {
+                        piece_img.put_pixel(dx, dy, *px);
+                    }
+                }
+            }
+
+            // Trim the canvas to the alpha bbox of what we just painted.
+            //
+            // The input `piece.width × piece.height` is the union of the
+            // piece's brick bboxes. AI layer polygons routinely overshoot
+            // the visible pixels (anchor points outside the rendered shape,
+            // bricks at the edges of the cluster that don't fully tile),
+            // so the union bbox can be 2-3× the size of the actual
+            // content. Untrimmed sprites end up with a large transparent
+            // overhang — visible in PSD, in the per-piece preview, and
+            // worst of all in Unity (the sprite anchor lands on dead
+            // pixels). Cropping to the alpha bbox here makes the PNG
+            // tight to the content, and returning a `PuzzlePiece` with
+            // the same tight bbox lets downstream consumers
+            // (build_house_data, PSD layer placement) recompute the
+            // sprite's centre/anchor from the trimmed rect — so the
+            // sprite stays visually in the same place.
+            let trimmed_bbox = alpha_bbox(&piece_img);
+
+            let (out_img, new_x, new_y, new_w, new_h) = match trimmed_bbox {
+                Some((tx, ty, tw, th)) if tw > 0 && th > 0 => {
+                    let cropped =
+                        image::imageops::crop_imm(&piece_img, tx, ty, tw, th).to_image();
+                    (
+                        cropped,
+                        piece.x + tx as i32,
+                        piece.y + ty as i32,
+                        tw as i32,
+                        th as i32,
+                    )
+                }
+                // Empty piece — keep the original bbox so downstream
+                // logic still has something coherent to place. The
+                // saved PNG is fully transparent in that case.
+                _ => (piece_img, piece.x, piece.y, pw as i32, ph as i32),
+            };
+
+            out_img
+                .save(extract_dir.join(format!("piece_{}.png", piece.id)))
+                .ok();
+            render_piece_outline(
+                &out_img,
+                &extract_dir.join(format!("piece_outline_{}.png", piece.id)),
+            );
+
+            crate::types::PuzzlePiece {
+                id: piece.id.clone(),
+                brick_ids: piece.brick_ids.clone(),
+                x: new_x,
+                y: new_y,
+                width: new_w,
+                height: new_h,
+            }
+        })
+        .collect()
+}
+
+/// Tight bounding box of all pixels with non-zero alpha. Returns
+/// `(x, y, width, height)` in image-local coords, or `None` when the
+/// image is fully transparent.
+fn alpha_bbox(img: &RgbaImage) -> Option<(u32, u32, u32, u32)> {
+    let w = img.width();
+    let h = img.height();
+    if w == 0 || h == 0 {
+        return None;
+    }
+    let mut min_x = w;
+    let mut min_y = h;
+    let mut max_x = 0_u32;
+    let mut max_y = 0_u32;
+    for y in 0..h {
+        for x in 0..w {
+            if img.get_pixel(x, y)[3] > 0 {
+                if x < min_x {
+                    min_x = x;
+                }
+                if y < min_y {
+                    min_y = y;
+                }
+                if x + 1 > max_x {
+                    max_x = x + 1;
+                }
+                if y + 1 > max_y {
+                    max_y = y + 1;
                 }
             }
         }
-
-        piece_img.save(extract_dir.join(format!("piece_{}.png", piece.id))).ok();
-        render_piece_outline(&piece_img, &extract_dir.join(format!("piece_outline_{}.png", piece.id)));
-    });
+    }
+    if max_x <= min_x || max_y <= min_y {
+        None
+    } else {
+        Some((min_x, min_y, max_x - min_x, max_y - min_y))
+    }
 }
 
 /// Render all export-time assets at the requested DPI:
@@ -374,6 +475,13 @@ pub fn render_piece_pngs_from_composite(
 /// loaded_dpi` to line up with the new pixmaps. Live-preview state
 /// under `session.extract_dir` is untouched — `out_dir` is expected
 /// to be a sub-directory the caller created.
+/// Returns the per-piece trimmed `PuzzlePiece` records in **export-DPI
+/// canvas coords** — the same coord space the rendered piece PNGs live
+/// in. Downstream encoders should use these (not the original
+/// loaded-DPI pieces) so the sprite rect they place into PSD/Unity
+/// matches the cropped PNG: tight to the visible content rather than
+/// padded out to the union of the piece's brick bboxes. See
+/// `render_piece_pngs_from_composite` for the trim rationale.
 pub fn render_export_pieces(
     ai_path: &Path,
     pieces: &[crate::types::PuzzlePiece],
@@ -386,7 +494,7 @@ pub fn render_export_pieces(
     export_dpi: f64,
     pdf_offset_loaded: (i32, i32),
     out_dir: &Path,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<Vec<crate::types::PuzzlePiece>> {
     if loaded_dpi <= 0.0 {
         anyhow::bail!("loaded_dpi must be > 0");
     }
@@ -481,8 +589,12 @@ pub fn render_export_pieces(
     let piece_polys =
         crate::puzzle::compute_piece_polygons(&scaled_pieces, &scaled_bricks, &scaled_brick_polys);
 
-    // 5. Mask the composite to get per-piece sprite PNGs.
-    render_piece_pngs_from_composite(&scaled_pieces, &composite, &piece_polys, out_dir);
+    // 5. Mask the composite to get per-piece sprite PNGs. Returns
+    //    trimmed PuzzlePiece records (canvas coords still at export
+    //    DPI, but each rect is now the tight alpha bbox of the
+    //    rendered content — no overhang).
+    let trimmed_pieces =
+        render_piece_pngs_from_composite(&scaled_pieces, &composite, &piece_polys, out_dir);
 
     // 6. Trace every piece outline onto a single canvas-sized
     //    transparent image — one `outlines.png` overlay that the
@@ -510,7 +622,7 @@ pub fn render_export_pieces(
         .save(out_dir.join("outlines.png"))
         .map_err(|e| anyhow::anyhow!("saving outlines.png: {e}"))?;
 
-    Ok(())
+    Ok(trimmed_pieces)
 }
 
 /// Draw a closed polygon as a stroked outline onto `canvas`. Each
