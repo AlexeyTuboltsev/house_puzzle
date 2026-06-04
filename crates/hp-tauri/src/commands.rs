@@ -1010,7 +1010,7 @@ pub async fn export_data(
     suggested_filename: Option<String>,
     format: Option<String>,
 ) -> Result<Option<String>, String> {
-    let (pieces, bricks, brick_polygons, metadata, extract_dir, ai_path, pdf_offset) = {
+    let (pieces, bricks, brick_polygons, brick_beziers, metadata, extract_dir, ai_path, pdf_offset) = {
         let store = sessions.lock();
         let session = store
             .get(&key)
@@ -1019,6 +1019,7 @@ pub async fn export_data(
             session.pieces.clone(),
             session.bricks.clone(),
             session.brick_polygons.clone(),
+            session.brick_beziers.clone(),
             session.metadata.clone(),
             session.extract_dir.clone(),
             session.ai_path.clone(),
@@ -1085,6 +1086,7 @@ pub async fn export_data(
         let pieces_for_render = pieces.clone();
         let bricks_for_render = bricks_by_id.clone();
         let brick_polys_for_render = brick_polygons.clone();
+        let brick_beziers_for_render = brick_beziers.clone();
         let meta_for_render = metadata.clone();
         let ai_path_for_render = ai_path.clone();
         let out_dir_for_render = export_pieces_dir.clone();
@@ -1094,6 +1096,7 @@ pub async fn export_data(
                 &pieces_for_render,
                 &bricks_for_render,
                 &brick_polys_for_render,
+                &brick_beziers_for_render,
                 meta_for_render.canvas_width,
                 meta_for_render.canvas_height,
                 meta_for_render.clip_rect,

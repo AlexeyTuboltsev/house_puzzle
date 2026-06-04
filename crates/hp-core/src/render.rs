@@ -487,6 +487,11 @@ pub fn render_export_pieces(
     pieces: &[crate::types::PuzzlePiece],
     bricks: &HashMap<String, crate::types::Brick>,
     brick_polygons: &HashMap<String, Vec<[f64; 2]>>,
+    // Per-brick bezier outlines in PyMuPDF point coords (the form the AI
+    // parser emits and the session keeps). Used at export DPI to produce
+    // `outlines.png` — same bezier-merge path the live UI uses, so the
+    // exported outline matches what the user sees in the editor.
+    brick_beziers: &HashMap<String, Vec<crate::bezier::BezierPath>>,
     loaded_canvas_width: i32,
     loaded_canvas_height: i32,
     clip_rect_pts: (f64, f64, f64, f64),
@@ -599,23 +604,55 @@ pub fn render_export_pieces(
     // 6. Trace every piece outline onto a single canvas-sized
     //    transparent image — one `outlines.png` overlay that the
     //    Unity importer (or any consumer) can layer over the
-    //    composite or background. Strokes come straight from the
-    //    vector polygons, so curves stay smooth at high DPI; width
-    //    scales with DPI so the line is visually consistent.
+    //    composite or background.
+    //
+    // Outlines come from the SAME bezier-merge code (`merge_piece_bezier`)
+    // that the live editor UI uses, so the exported outline matches
+    // the one the user sees on screen. The previous path stroked the
+    // geo_clipper polygon union, whose expand/erode + chord
+    // approximation occasionally drops the canvas-boundary edges of
+    // outermost pieces (visible as a missing outer house silhouette
+    // in exports). The bezier-merge path preserves cubic curves and
+    // every brick edge that doesn't get cancelled by an adjacent
+    // brick's edge — i.e. it draws exactly the piece-boundary set
+    // the editor draws, including outer silhouette edges.
     let stroke_thickness = ((export_dpi / 96.0).round() as i32).max(1);
+    // Samples per cubic — at higher DPI we need more samples so a
+    // brick's arch stays visibly smooth after stroking. 1 sample per
+    // ~6 pixels of bezier extent is enough; capped at 64.
+    let samples_per_curve = ((export_dpi / 8.0).round() as usize).clamp(16, 64);
+    let export_pt_to_canvas = export_dpi / 72.0;
+    let canvas_shift = [-clip_rect_pts.0, -clip_rect_pts.1];
     let mut outlines = RgbaImage::new(new_canvas_w, new_canvas_h);
-    for piece in &scaled_pieces {
-        if let Some(poly) = piece_polys.get(&piece.id) {
-            if poly.len() >= 3 {
-                stroke_polygon_on_canvas(
-                    &mut outlines,
-                    poly,
-                    0.0,
-                    0.0,
-                    Rgba([255, 255, 255, 230]),
-                    stroke_thickness,
-                );
+    for piece in pieces {
+        // Collect this piece's brick beziers in PyMuPDF point coords.
+        let mut input: Vec<crate::bezier::BezierPath> = Vec::new();
+        for bid in &piece.brick_ids {
+            if let Some(paths) = brick_beziers.get(bid) {
+                input.extend(paths.iter().cloned());
             }
+        }
+        if input.is_empty() {
+            continue;
+        }
+        // Merge into closed bezier rings (one per disjoint loop in the
+        // piece), then move into export-DPI canvas pixel space the
+        // composite was rendered in.
+        let merged = crate::bezier_merge::merge_piece_bezier(&input);
+        for bp in &merged {
+            let bp_canvas = bp.transform(canvas_shift, export_pt_to_canvas);
+            let polyline = bp_canvas.tessellate(samples_per_curve);
+            if polyline.len() < 2 {
+                continue;
+            }
+            stroke_polygon_on_canvas(
+                &mut outlines,
+                &polyline,
+                0.0,
+                0.0,
+                Rgba([255, 255, 255, 230]),
+                stroke_thickness,
+            );
         }
     }
     outlines
