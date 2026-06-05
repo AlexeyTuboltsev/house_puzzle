@@ -568,11 +568,10 @@ fn render_piece_pngs_via_ocg_isolation(
                 enabled.push(n.as_str());
             }
 
-            // Render the shifted clip with this piece's OCGs on. The
-            // pixmap covers the same canvas rectangle as `composite`,
-            // so we can compose it onto a canvas-sized image at
-            // offset (0,0) and crop with the same piece-relative
-            // geometry as the composite-slice path.
+            // Render the shifted clip with this piece's OCGs on.
+            // Only this piece's bricks paint — neighbour bricks are
+            // off in the modified PDF — so whatever pixels we get
+            // back ARE the piece and nothing else.
             let rendered_opt = crate::mupdf_ffi::render_page_with_ocg_set_clipped(
                 &modified_pdf_str,
                 &enabled,
@@ -591,64 +590,47 @@ fn render_piece_pngs_via_ocg_isolation(
                 (0, 0),
             );
 
-            // Crop to piece bbox, polygon-mask to drop any stray
-            // alpha outside the piece's geometric outline (defensive
-            // — overlay blocks pulled into this brick's OCG can
-            // extend past the brick's bbox; the polygon mask trims
-            // them).
-            let pw_i = piece.width.max(1) as u32;
-            let ph_i = piece.height.max(1) as u32;
-            let mut piece_img = RgbaImage::new(pw_i, ph_i);
-            let poly = piece_polygons.get(&piece.id);
-            let expanded = poly.and_then(|pts| {
-                if pts.len() >= 3 {
-                    Some(expand_polygon(pts, 0.5))
-                } else {
-                    None
-                }
-            });
-            for dy in 0..ph_i {
-                for dx in 0..pw_i {
-                    let cx = piece.x + dx as i32;
-                    let cy = piece.y + dy as i32;
-                    if cx < 0 || cy < 0 {
-                        continue;
-                    }
-                    let sx = cx as u32;
-                    let sy = cy as u32;
-                    if sx >= canvas.width() || sy >= canvas.height() {
-                        continue;
-                    }
-                    let in_poly = match &expanded {
-                        Some(pts) => point_in_polygon(cx as f64 + 0.5, cy as f64 + 0.5, pts),
-                        None => true,
-                    };
-                    if !in_poly {
-                        continue;
-                    }
-                    let px = canvas.get_pixel(sx, sy);
-                    if px[3] > 0 {
-                        piece_img.put_pixel(dx, dy, *px);
-                    }
-                }
-            }
-
-            // Trim to the tight alpha bbox of the painted content
-            // (same trim contract as `render_piece_pngs_from_composite`).
-            // Empty pieces keep the original bbox.
-            let (out_img, new_x, new_y, new_w, new_h) = match alpha_bbox(&piece_img) {
+            // The bricks in our AI files are raster images with
+            // soft-mask alpha that bakes 3-D effects (drop shadows,
+            // gradient glows, highlights) into the source pixels.
+            // The alpha extends past the geometric brick outline
+            // intentionally — that's the visual style.
+            //
+            // In the live house composite those overhangs get
+            // covered by neighbour bricks' opaque pixels and are
+            // invisible. But when we isolate one piece via OCG
+            // toggling, neighbours never paint, so the overhangs
+            // are exposed at the OUTER edges of the piece. We
+            // **keep** them: the piece PNG is the alpha bbox of
+            // everything painted by this piece's OCGs — no polygon
+            // mask, no crop to the piece's geometric bbox.
+            //
+            // Internal edges (between two bricks inside the same
+            // piece) are unaffected because both bricks paint and
+            // their overhangs overlap with the neighbour brick's
+            // body, same as in the composite. Only the piece's
+            // OUTER boundary keeps its bleed.
+            let (out_img, new_x, new_y, new_w, new_h) = match alpha_bbox(&canvas) {
                 Some((tx, ty, tw, th)) if tw > 0 && th > 0 => {
                     let cropped =
-                        image::imageops::crop_imm(&piece_img, tx, ty, tw, th).to_image();
+                        image::imageops::crop_imm(&canvas, tx, ty, tw, th).to_image();
+                    (cropped, tx as i32, ty as i32, tw as i32, th as i32)
+                }
+                _ => {
+                    // No painted pixels at all — emit an empty PNG
+                    // sized to the piece's geometric bbox and keep
+                    // the rect unchanged so downstream coords stay
+                    // coherent.
+                    let pw_i = piece.width.max(1) as u32;
+                    let ph_i = piece.height.max(1) as u32;
                     (
-                        cropped,
-                        piece.x + tx as i32,
-                        piece.y + ty as i32,
-                        tw as i32,
-                        th as i32,
+                        RgbaImage::new(pw_i, ph_i),
+                        piece.x,
+                        piece.y,
+                        pw_i as i32,
+                        ph_i as i32,
                     )
                 }
-                _ => (piece_img, piece.x, piece.y, pw_i as i32, ph_i as i32),
             };
 
             let _ = out_img.save(out_dir.join(format!("piece_{}.png", piece.id)));
