@@ -225,22 +225,24 @@ pub fn render_page_with_ocg_clipped(
                 }
             }
 
-            // Clipped render: build a draw device on a pixmap whose
-            // bbox is the clip region in *device pixel coordinates*
-            // (i.e. the same pixel grid the full-page render would
-            // use), then run the page with the same scale-only CTM as
-            // the full path. The pixmap data buffer is just clip_w x
-            // clip_h bytes, but its bbox tells the rasteriser to write
-            // only the pixels inside [(cx_px, cy_px), (cx1_px, cy1_px))
-            // of the conceptual full-page grid — so output pixels
-            // align byte-for-byte with the unclipped render.
+            // Clipped render: render only the requested PDF rect to a
+            // tightly-sized pixmap. We put the pixmap's bbox at (0, 0,
+            // clip_w, clip_h) and embed the clip's pixel offset into
+            // the CTM as a translation. PDF coord (cx0, cy0) lands at
+            // pixmap (0, 0); PDF coord (cx1, cy1) lands at pixmap
+            // (clip_w, clip_h). Round the translation to integer
+            // pixels so the per-render pixel grid stays consistent
+            // across bricks (the brick's compose offset is also
+            // rounded with the same scale, so they cancel out).
             //
-            // An earlier version put bbox at (0, 0) and used a
-            // translated CTM `scale * translate(-cx0, -cy0)`. That
-            // works geometrically, but rasterises onto a shifted
-            // pixel grid (the fractional part of `cx0*scale` ends up
-            // as a sub-pixel offset), which produced ~5% pixel diff
-            // against the legacy render at every antialiased edge.
+            // An earlier version used non-zero pixmap.x/y in the hope
+            // MuPDF would auto-offset content writes, but empirically
+            // content ended up at pixmap (0, 0) regardless — content
+            // writes use device-space coords directly. The earlier
+            // sub-pixel-grid concern came from re-mapping to a
+            // hypothetical full-page grid for byte-equality, which we
+            // don't need: each per-brick render only has to align
+            // with its own polygon outline.
             //
             // Clear with `fz_clear_pixmap` (not `_with_value(0xff)`)
             // so the alpha=1 pixmap starts fully transparent — see
@@ -251,7 +253,7 @@ pub fn render_page_with_ocg_clipped(
                 let cy_px = (cy0 * scale as f64).round() as i32;
                 let cx1_px = (cx1 * scale as f64).round() as i32;
                 let cy1_px = (cy1 * scale as f64).round() as i32;
-                let bbox = fz_irect { x0: cx_px, y0: cy_px, x1: cx1_px, y1: cy1_px };
+                let bbox = fz_irect { x0: 0, y0: 0, x1: cx1_px - cx_px, y1: cy1_px - cy_px };
 
                 let pix = fz_new_pixmap_with_bbox(ctx(), cs, bbox, std::ptr::null_mut(), 1);
                 if pix.is_null() {
@@ -273,7 +275,7 @@ pub fn render_page_with_ocg_clipped(
                         let ctm = fz_matrix {
                             a: scale, b: 0.0,
                             c: 0.0, d: scale,
-                            e: 0.0, f: 0.0,
+                            e: -(cx_px as f32), f: -(cy_px as f32),
                         };
                         fz_run_page(ctx(), page, dev, ctm, std::ptr::null_mut());
                         fz_close_device(ctx(), dev);
@@ -400,11 +402,14 @@ pub fn render_page_with_ocg_set_clipped(
                 }
             }
             Some((cx0, cy0, cx1, cy1)) => {
+                // Same approach as render_page_with_ocg_set_clipped: zero-
+                // origin pixmap + integer-pixel translated CTM. See the
+                // comment there for why.
                 let cx_px = (cx0 * scale as f64).round() as i32;
                 let cy_px = (cy0 * scale as f64).round() as i32;
                 let cx1_px = (cx1 * scale as f64).round() as i32;
                 let cy1_px = (cy1 * scale as f64).round() as i32;
-                let bbox = fz_irect { x0: cx_px, y0: cy_px, x1: cx1_px, y1: cy1_px };
+                let bbox = fz_irect { x0: 0, y0: 0, x1: cx1_px - cx_px, y1: cy1_px - cy_px };
                 let pix = fz_new_pixmap_with_bbox(ctx(), cs, bbox, std::ptr::null_mut(), 1);
                 if pix.is_null() {
                     None
@@ -419,7 +424,11 @@ pub fn render_page_with_ocg_set_clipped(
                         fz_drop_pixmap(ctx(), pix);
                         None
                     } else {
-                        let ctm = fz_matrix { a: scale, b: 0.0, c: 0.0, d: scale, e: 0.0, f: 0.0 };
+                        let ctm = fz_matrix {
+                            a: scale, b: 0.0,
+                            c: 0.0, d: scale,
+                            e: -(cx_px as f32), f: -(cy_px as f32),
+                        };
                         fz_run_page(ctx(), page, dev, ctm, std::ptr::null_mut());
                         fz_close_device(ctx(), dev);
                         fz_drop_device(ctx(), dev);

@@ -117,6 +117,71 @@ pub fn build_adjacency_vector(
     adj
 }
 
+/// Build adjacency from MuPDF clip-rect bbox positions (pymu_x/y/w/h).
+///
+/// Uses the same buffer+intersect formula as `build_adjacency_vector` but with
+/// axis-aligned rectangles instead of arbitrary polygons. This is immune to
+/// polygon-extraction errors: the pymu_bbox always reflects where the brick
+/// actually renders, regardless of whether extract_vector_path picked the right
+/// path.
+///
+/// `brick_rects` maps brick ID → `(x, y, w, h)` in canvas pixels from pymu_bbox.
+/// Bricks without an entry fall back to `brick.x/y/width/height`.
+pub fn build_adjacency_bbox(
+    bricks: &[Brick],
+    brick_rects: &HashMap<String, (i32, i32, i32, i32)>,
+    gap: i32,
+    min_border: i32,
+) -> HashMap<String, HashSet<String>> {
+    let border_gap = 2i32;
+    let mut adj: HashMap<String, HashSet<String>> = HashMap::new();
+    let n = bricks.len();
+
+    for i in 0..n {
+        let a = &bricks[i];
+        let (ax, ay, aw, ah) = brick_rects
+            .get(&a.id)
+            .copied()
+            .unwrap_or((a.x, a.y, a.width, a.height));
+
+        for j in (i + 1)..n {
+            let b = &bricks[j];
+            let (bx, by, bw, bh) = brick_rects
+                .get(&b.id)
+                .copied()
+                .unwrap_or((b.x, b.y, b.width, b.height));
+
+            // Bbox pre-filter
+            if ax + aw + gap < bx || bx + bw + gap < ax
+                || ay + ah + gap < by || by + bh + gap < ay
+            {
+                continue;
+            }
+
+            // Expand both rects by border_gap and compute intersection.
+            // Same formula as build_adjacency_vector: border_length = inter_area / (2 * bg).
+            let ix0 = (ax - border_gap).max(bx - border_gap);
+            let iy0 = (ay - border_gap).max(by - border_gap);
+            let ix1 = (ax + aw + border_gap).min(bx + bw + border_gap);
+            let iy1 = (ay + ah + border_gap).min(by + bh + border_gap);
+
+            if ix1 <= ix0 || iy1 <= iy0 {
+                continue;
+            }
+
+            let inter_area = (ix1 - ix0) as f64 * (iy1 - iy0) as f64;
+            let border_length = inter_area / (2.0 * border_gap as f64);
+
+            if border_length >= min_border as f64 {
+                adj.entry(a.id.clone()).or_default().insert(b.id.clone());
+                adj.entry(b.id.clone()).or_default().insert(a.id.clone());
+            }
+        }
+    }
+
+    adj
+}
+
 /// Build adjacency graph directly from AI-native bezier paths — no
 /// polygon buffering. Two bricks are adjacent iff their combined shared
 /// edge length ≥ `min_border` (in the same AI pymu units the beziers

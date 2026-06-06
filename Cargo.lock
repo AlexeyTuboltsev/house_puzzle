@@ -1708,6 +1708,7 @@ name = "hp-core"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "flate2",
  "geo",
  "geo-clipper",
  "image",

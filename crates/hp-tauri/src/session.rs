@@ -37,6 +37,9 @@ pub struct Session {
     /// Lights / background OCG renders apply the same shift so they
     /// align with the bricks layer.
     pub pdf_offset: (i32, i32),
+    /// Maps hashed brick ID → AI layer name (e.g. "Layer 45").
+    /// Needed at export time to translate hashed IDs back to OCG names.
+    pub brick_layer_names: HashMap<String, String>,
 }
 
 /// Thread-safe session store.

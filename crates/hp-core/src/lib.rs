@@ -23,3 +23,4 @@ pub mod puzzle;
 pub mod export;
 pub mod psd;
 pub mod ocg_inject;
+pub mod raster_extract;

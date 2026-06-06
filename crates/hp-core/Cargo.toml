@@ -27,3 +27,4 @@ zip = "0.6"
 # tokenised content-stream API (for walking and re-emitting q/Q blocks
 # with injected BDC/EMC markers).
 lopdf = "0.32"
+flate2 = "1"

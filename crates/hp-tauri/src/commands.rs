@@ -286,6 +286,8 @@ pub async fn load_pdf(
     let mut brick_beziers: HashMap<String, Vec<BezierPath>> = HashMap::new();
     let layer_blocks: HashMap<String, ai_parser::LayerBlock> = HashMap::new();
     let mut brick_layer_names: HashMap<String, String> = HashMap::new();
+    // Correct canvas-pixel positions from MuPDF clip rect (immune to polygon extraction errors).
+    let mut brick_pymu_rects: HashMap<String, (i32, i32, i32, i32)> = HashMap::new();
 
     for (i, p) in placements.iter().enumerate() {
         let id = if deterministic {
@@ -309,7 +311,8 @@ pub async fn load_pdf(
             brick_polygons.insert(id.clone(), poly.clone());
         }
         brick_beziers.insert(id.clone(), bezier_per_brick[i].clone());
-        brick_layer_names.insert(id, p.name.clone());
+        brick_layer_names.insert(id.clone(), p.name.clone());
+        brick_pymu_rects.insert(id, (p.pymu_x, p.pymu_y, p.pymu_w, p.pymu_h));
     }
 
     let extract_dir = std::env::temp_dir()
@@ -425,13 +428,13 @@ pub async fn load_pdf(
         }
     }
 
-    // Bezier-native adjacency + areas. `min_border` is in canvas pixels
-    // for UI consistency; convert to PyMu units for `build_adjacency_bezier`.
+    // Polygon-based adjacency (brick_polygons are correctly filtered by extract_vector_path;
+    // brick_beziers may include spurious clip-mask paths that cause false adjacency).
     let scale = if metadata.render_dpi > 0.0 { metadata.render_dpi / 72.0 } else { 1.0 };
     let min_border_px = 5.0;
-    let min_border_pymu = min_border_px / scale;
-    let adj = puzzle::build_adjacency_bezier(&bricks, &brick_beziers, min_border_pymu);
-    let brick_areas = puzzle::compute_bezier_areas(&bricks, &brick_beziers);
+    let _ = &brick_pymu_rects; // kept for diagnostics / future raster adjacency
+    let adj = puzzle::build_adjacency_vector(&bricks, &brick_polygons, 15.0, min_border_px, 2.0);
+    let brick_areas = puzzle::compute_polygon_areas(&bricks, &brick_polygons);
 
     let bricks_layer_arc = Arc::new(bricks_layer_img);
 
@@ -527,6 +530,7 @@ pub async fn load_pdf(
                 brick_rgba,
                 ai_path: file_path.clone(),
                 pdf_offset,
+                brick_layer_names,
             },
         );
     }
@@ -646,7 +650,7 @@ pub async fn merge_pieces(
     // Optional: recompute mode — array of { id, brick_ids } objects.
     pieces: Option<Vec<Value>>,
 ) -> Result<Value, String> {
-    let (bricks, polygons, beziers, areas, extract_dir, bricks_layer_img, brick_rgba, scale, clip_x0, clip_y0) = {
+    let (bricks, polygons, beziers, areas, extract_dir, bricks_layer_img, brick_rgba, scale, clip_x0, clip_y0, brick_placements) = {
         let store = sessions.lock();
         let session = store
             .get(&key)
@@ -667,6 +671,7 @@ pub async fn merge_pieces(
             scale,
             session.metadata.clip_rect.0,
             session.metadata.clip_rect.1,
+            session.brick_placements.clone(),
         )
     };
 
@@ -713,19 +718,18 @@ pub async fn merge_pieces(
         // Normal merge
         let target = target_count.unwrap_or(60) as usize;
         let seed_val = seed.unwrap_or(42);
-        // Bezier adjacency takes a single tolerance (`min_border` in PyMu
-        // units). UI sends pixels for consistency with the canvas; convert.
-        // `border_gap` is no longer used by bezier adjacency — accepted as
-        // a parameter for backward compat with older Elm builds.
+        // Polygon-based adjacency (correctly filtered by extract_vector_path;
+        // beziers may include spurious clip-mask paths causing false adjacency).
+        // `border_gap` accepted for backward compat with older Elm builds.
         let _ = border_gap;
+        let _ = &brick_placements;
         let min_border_px = min_border.unwrap_or(5.0);
-        let min_border_pymu = min_border_px / scale;
         eprintln!(
             "[merge] target_count={target} seed={seed_val} min_border_px={min_border_px} \
-             (pymu={min_border_pymu:.4}) bricks={}",
+             bricks={}",
             bricks.len(),
         );
-        let adj = puzzle::build_adjacency_bezier(&bricks, &beziers, min_border_pymu);
+        let adj = puzzle::build_adjacency_vector(&bricks, &polygons, 15.0, min_border_px, 2.0);
         let pieces = puzzle::merge_bricks(&bricks, target, seed_val, &adj, &areas);
         eprintln!("[merge] result: {} pieces", pieces.len());
         pieces
@@ -1010,7 +1014,7 @@ pub async fn export_data(
     suggested_filename: Option<String>,
     format: Option<String>,
 ) -> Result<Option<String>, String> {
-    let (pieces, bricks, brick_polygons, brick_beziers, metadata, extract_dir, ai_path, pdf_offset) = {
+    let (pieces, bricks, brick_polygons, brick_beziers, metadata, extract_dir, ai_path, pdf_offset, brick_layer_names) = {
         let store = sessions.lock();
         let session = store
             .get(&key)
@@ -1024,6 +1028,7 @@ pub async fn export_data(
             session.extract_dir.clone(),
             session.ai_path.clone(),
             session.pdf_offset,
+            session.brick_layer_names.clone(),
         )
     };
 
@@ -1090,6 +1095,7 @@ pub async fn export_data(
         let meta_for_render = metadata.clone();
         let ai_path_for_render = ai_path.clone();
         let out_dir_for_render = export_pieces_dir.clone();
+        let brick_layer_names_for_render = brick_layer_names.clone();
         tokio::task::spawn_blocking(move || {
             hp_core::render::render_export_pieces(
                 &ai_path_for_render,
@@ -1097,6 +1103,7 @@ pub async fn export_data(
                 &bricks_for_render,
                 &brick_polys_for_render,
                 &brick_beziers_for_render,
+                &brick_layer_names_for_render,
                 meta_for_render.canvas_width,
                 meta_for_render.canvas_height,
                 meta_for_render.clip_rect,

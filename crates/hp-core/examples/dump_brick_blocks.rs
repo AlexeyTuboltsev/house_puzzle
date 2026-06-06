@@ -153,11 +153,74 @@ fn main() {
     );
     println!("  by kind: Image={n_image}  Form={n_form}  Inlined={n_inl}");
 
+    // ── Extract min/max x from all drawing ops in content stream ─
+    let mut cs_xmin = f64::INFINITY;
+    let mut cs_xmax = f64::NEG_INFINITY;
+    let mut in_bg_layer = false;
+    let mut bg_x_min = f64::INFINITY;
+    let mut bg_x_max = f64::NEG_INFINITY;
+    let mut in_any_oc = 0i32;
+    for op in &content_data.operations {
+        match op.operator.as_str() {
+            "BDC" => {
+                if in_any_oc == 0 { in_bg_layer = true; }
+                in_any_oc += 1;
+            }
+            "EMC" => {
+                if in_any_oc > 0 { in_any_oc -= 1; }
+                if in_any_oc == 0 { in_bg_layer = false; }
+            }
+            "m" | "l" | "re" => {
+                let x_val = op.operands.first().and_then(|o| match o {
+                    lopdf::Object::Real(r) => Some(*r as f64),
+                    lopdf::Object::Integer(i) => Some(*i as f64),
+                    _ => None,
+                });
+                if let Some(x) = x_val {
+                    cs_xmin = cs_xmin.min(x);
+                    cs_xmax = cs_xmax.max(x);
+                    if in_bg_layer {
+                        bg_x_min = bg_x_min.min(x);
+                        bg_x_max = bg_x_max.max(x);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    println!("\n== Content stream x extents ==");
+    println!("  All ops:        x=[{:.3}..{:.3}]", cs_xmin, cs_xmax);
+    println!("  Background BDC: x=[{:.3}..{:.3}]", bg_x_min, bg_x_max);
+    let cm_ops: Vec<_> = content_data.operations.iter().enumerate()
+        .filter(|(_, op)| op.operator == "cm")
+        .collect();
+    let cm_e_min = cm_ops.iter().filter_map(|(_, op)| {
+        let nums: Vec<f64> = op.operands.iter().filter_map(|o| match o {
+            lopdf::Object::Real(r) => Some(*r as f64),
+            lopdf::Object::Integer(i) => Some(*i as f64),
+            _ => None,
+        }).collect();
+        if nums.len() >= 6 { Some(nums[4]) } else { None }
+    }).fold(f64::INFINITY, f64::min);
+    let cm_e_max = cm_ops.iter().filter_map(|(_, op)| {
+        let nums: Vec<f64> = op.operands.iter().filter_map(|o| match o {
+            lopdf::Object::Real(r) => Some(*r as f64),
+            lopdf::Object::Integer(i) => Some(*i as f64),
+            _ => None,
+        }).collect();
+        if nums.len() >= 6 { Some(nums[4]) } else { None }
+    }).fold(f64::NEG_INFINITY, f64::max);
+    println!("  cm e-values:    [{:.3}..{:.3}]  ({} cm ops)", cm_e_min, cm_e_max, cm_ops.len());
+    println!("\n== First 20 cm ops ==");
+    for (i, op) in cm_ops.iter().take(20) {
+        println!("  [{}] cm {:?}", i, op.operands);
+    }
+
     // ── PDF blocks dump ─────────────────────────────────────────
     println!("\n== PDF blocks in document order ==");
     println!(
-        "{:<6} {:<8} {:<10} {:>10} {:>10}",
-        "idx", "kind", "name", "place_x", "place_y"
+        "{:<6} {:<8} {:<10} {:>10} {:>10} {:>12} {:>12}",
+        "idx", "kind", "name", "inner_e", "inner_f", "outer_e", "outer_f"
     );
     for (i, b) in blocks.iter().enumerate() {
         let (kind, name) = match &b.content {
@@ -166,8 +229,9 @@ fn main() {
             hp_core::ocg_inject::BrickContent::Inlined => ("Inlined", "-".to_string()),
         };
         println!(
-            "{:<6} {:<8} {:<10} {:>10.2} {:>10.2}",
-            i, kind, name, b.inner_ctm_at_content.e, b.inner_ctm_at_content.f
+            "{:<6} {:<8} {:<10} {:>10.2} {:>10.2} {:>12.2} {:>12.2}",
+            i, kind, name, b.inner_ctm_at_content.e, b.inner_ctm_at_content.f,
+            b.outer_ctm.e, b.outer_ctm.f
         );
     }
 

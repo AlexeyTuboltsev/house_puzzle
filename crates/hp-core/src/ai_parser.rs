@@ -229,36 +229,68 @@ fn has_gradient(block_data: &[u8]) -> bool {
     false
 }
 
+/// One AI raster placement (`Xh` operator).
+/// Coords are in AI's own coordinate system (Y-up, origin at the
+/// artwork's reference point). Use full f64 precision throughout —
+/// the rest of the pipeline converts to PDF/pymu space via a single
+/// constant translation that's also kept at f64 precision.
+#[derive(Debug, Clone, Copy)]
+pub struct AiRasterPlacement {
+    /// Matrix `a` (X scale). Sign tracks image flip; absolute value × `img_w` = image width in pts.
+    pub a: f64,
+    /// Matrix `d` (Y scale). Often negative for top-down images.
+    pub d: f64,
+    /// Matrix `tx` (image origin X in AI coords).
+    pub tx: f64,
+    /// Matrix `ty` (image origin Y in AI coords).
+    pub ty: f64,
+    /// Image pixel width.
+    pub img_w: f64,
+    /// Image pixel height.
+    pub img_h: f64,
+}
+
 /// Extract the raster placement matrix from an Xh operator.
 /// Returns (tx, ty, w_pts, h_pts) in AI coordinate space.
+/// Convenience wrapper that returns the FIRST Xh — preserved for
+/// historical call sites that only need the layer's image bbox.
 fn extract_raster_matrix(block_data: &[u8]) -> Option<(f64, f64, f64, f64)> {
-    // Compile this regex once across all calls — we hit it on every brick
-    // (~600× per AI), and `regex::Regex::new` is multi-millisecond.
+    let first = extract_all_raster_matrices(block_data).into_iter().next()?;
+    Some((first.tx, first.ty, first.a.abs() * first.img_w, first.d.abs() * first.img_h))
+}
+
+/// Extract ALL Xh raster placements in `block_data`, in document order.
+/// One layer block may contain several rasters (e.g. a porthole has
+/// 1 glass + 4 frame quarters → 5 Xh ops). We need every one so the
+/// matcher can later assign each PDF Image block back to the right
+/// AI layer.
+pub fn extract_all_raster_matrices(block_data: &[u8]) -> Vec<AiRasterPlacement> {
     static RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
     let re = RE.get_or_init(|| {
+        // [a b c d tx ty] w h MASK Xh
+        // Capture a, b, c, d, tx, ty individually so we keep precision
+        // and handle non-axis-aligned placements too.
         let num = r"-?\d+(?:\.\d+)?";
         let pattern = format!(
-            r"\[\s*({n})\s+{n}\s+{n}\s+({n})\s+({n})\s+({n})\s*\]\s+(\d+)\s+(\d+)\s+\d+\s+Xh",
+            r"\[\s*({n})\s+({n})\s+({n})\s+({n})\s+({n})\s+({n})\s*\]\s+(\d+)\s+(\d+)\s+\d+\s+Xh",
             n = num
         );
         Regex::new(&pattern).expect("static regex pattern is valid")
     });
-    let m = re.captures(block_data)?;
-
-    let a: f64 = bstr(&m[1]).parse().ok()?;
-    let d: f64 = bstr(&m[2]).parse().ok()?;
-    let tx: f64 = bstr(&m[3]).parse().ok()?;
-    let ty: f64 = bstr(&m[4]).parse().ok()?;
-    let img_w: f64 = bstr(&m[5]).parse().ok()?;
-    let img_h: f64 = bstr(&m[6]).parse().ok()?;
-
-    if img_w <= 0.0 || img_h <= 0.0 {
-        return None;
+    let mut out = Vec::new();
+    for m in re.captures_iter(block_data) {
+        let Some(a) = bstr(&m[1]).parse::<f64>().ok() else { continue };
+        let Some(_b) = bstr(&m[2]).parse::<f64>().ok() else { continue };
+        let Some(_c) = bstr(&m[3]).parse::<f64>().ok() else { continue };
+        let Some(d) = bstr(&m[4]).parse::<f64>().ok() else { continue };
+        let Some(tx) = bstr(&m[5]).parse::<f64>().ok() else { continue };
+        let Some(ty) = bstr(&m[6]).parse::<f64>().ok() else { continue };
+        let Some(img_w) = bstr(&m[7]).parse::<f64>().ok() else { continue };
+        let Some(img_h) = bstr(&m[8]).parse::<f64>().ok() else { continue };
+        if img_w <= 0.0 || img_h <= 0.0 { continue; }
+        out.push(AiRasterPlacement { a, d, tx, ty, img_w, img_h });
     }
-
-    let w_pts = a.abs() * img_w;
-    let h_pts = d.abs() * img_h;
-    Some((tx, ty, w_pts, h_pts))
+    out
 }
 
 /// Extract bounding box from plain (non-%_) path operators.
@@ -894,16 +926,32 @@ fn extract_vector_path(
 pub struct BrickPlacement {
     pub name: String,
     pub layer_type: String,
-    /// Bounding box in PyMuPDF y-down pixel coords.
+    /// Bounding box in canvas pixels derived from polygon.
+    /// May be incorrect for bricks where extract_vector_path picks a wrong path.
     pub x: i32,
     pub y: i32,
     pub width: i32,
     pub height: i32,
+    /// Bounding box in canvas pixels derived directly from the MuPDF layer clip rect.
+    /// Always reflects the true render position regardless of polygon quality.
+    /// Use these for adjacency and raster operations.
+    pub pymu_x: i32,
+    pub pymu_y: i32,
+    pub pymu_w: i32,
+    pub pymu_h: i32,
     /// Vector polygon in brick-local pixel coords.
     pub polygon: Option<Vec<[f64; 2]>>,
     /// Byte range in raw AI data for this brick's layer block.
     pub block_begin: usize,
     pub block_end: usize,
+    /// EVERY Xh raster placement under this layer (and its sub-layers
+    /// captured in the same block). Each entry is the image's AI-space
+    /// placement matrix in full f64 precision. Used by the matcher to
+    /// associate PDF Image XObjects with this AI layer by direct
+    /// position lookup — bypasses polygon-overlap heuristics for the
+    /// raster case (polygons can be approximate or off-centre, but the
+    /// Xh tx/ty is the canonical Illustrator placement).
+    pub ai_rasters: Vec<AiRasterPlacement>,
 }
 
 /// Parse an AI file: extract brick placements with positions and vector polygons.
@@ -1156,6 +1204,13 @@ pub fn parse_ai(
             polygon
         };
 
+        // Extract every Xh in this layer's byte range — those are the
+        // raster placements this layer owns. Captured at full f64
+        // precision so the matcher can later identify the corresponding
+        // PDF Image XObjects by their CTM tx/ty.
+        let block_data = &data[p.child.begin..p.child.end];
+        let ai_rasters = extract_all_raster_matrices(block_data);
+
         results.push(BrickPlacement {
             name: p.child.name.clone(),
             layer_type: p.layer_type.clone(),
@@ -1163,9 +1218,14 @@ pub fn parse_ai(
             y: fy,
             width: fw,
             height: fh,
+            pymu_x: px,
+            pymu_y: py,
+            pymu_w: pw,
+            pymu_h: ph,
             polygon,
             block_begin: p.child.begin,
             block_end: p.child.end,
+            ai_rasters,
         });
     }
 
