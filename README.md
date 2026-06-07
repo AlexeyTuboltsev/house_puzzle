@@ -9,6 +9,9 @@ An automation pipeline for converting Adobe Illustrator `.ai` sketches into Unit
 - **Frontend**: Elm
 - **Output**: Unity-compatible ZIP (piece sprite PNGs + house_data.json)
 
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the rendering pipeline and
+[EXPORT_BUNDLE.md](EXPORT_BUNDLE.md) for the ZIP contents + placement metadata.
+
 ## Quick Start
 
 ```bash
