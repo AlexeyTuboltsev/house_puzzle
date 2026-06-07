@@ -579,3 +579,103 @@ pub fn extract_image_block(
         ctm_d: block_ctm.d,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ─── blend_src_over ────────────────────────────────────────────
+    #[test]
+    fn blend_src_over_opaque_white_over_black_yields_white() {
+        let mut dst = [0u8, 0, 0, 255];
+        blend_src_over(&mut dst, [255, 255, 255, 255]);
+        assert_eq!(dst, [255, 255, 255, 255]);
+    }
+
+    #[test]
+    fn blend_src_over_transparent_source_keeps_dst() {
+        let mut dst = [10u8, 20, 30, 200];
+        blend_src_over(&mut dst, [255, 255, 255, 0]);
+        assert_eq!(dst, [10, 20, 30, 200]);
+    }
+
+    #[test]
+    fn blend_src_over_half_alpha_white_over_black_yields_mid_grey() {
+        let mut dst = [0u8, 0, 0, 0];
+        blend_src_over(&mut dst, [255, 255, 255, 128]);
+        // Source-over: 255 · (128/255) + 0 · (1 − 128/255) = 128.
+        assert!((dst[0] as i32 - 128).abs() <= 1);
+        assert!((dst[1] as i32 - 128).abs() <= 1);
+        assert!((dst[2] as i32 - 128).abs() <= 1);
+        // Alpha: 128 + 0·(1 − 128/255) = 128.
+        assert!((dst[3] as i32 - 128).abs() <= 1);
+    }
+
+    // ─── sample_nearest / sample_bilinear ──────────────────────────
+    //
+    // A 2 × 2 RGBA image: top-left red, top-right green,
+    // bottom-left blue, bottom-right white. Layout is row-major.
+    fn small_rgba_2x2() -> Vec<u8> {
+        vec![
+            255, 0, 0, 255,   0, 255, 0, 255,   // row 0
+            0, 0, 255, 255,   255, 255, 255, 255 // row 1
+        ]
+    }
+
+    #[test]
+    fn sample_nearest_picks_correct_quadrant() {
+        let buf = small_rgba_2x2();
+        assert_eq!(sample_nearest(&buf, 2, 2, 0.2, 0.2), [255, 0, 0, 255]);
+        assert_eq!(sample_nearest(&buf, 2, 2, 1.7, 0.2), [0, 255, 0, 255]);
+        assert_eq!(sample_nearest(&buf, 2, 2, 0.2, 1.7), [0, 0, 255, 255]);
+        assert_eq!(sample_nearest(&buf, 2, 2, 1.7, 1.7), [255, 255, 255, 255]);
+    }
+
+    #[test]
+    fn sample_bilinear_at_centre_averages_four_corners() {
+        let buf = small_rgba_2x2();
+        // Pixel centres sit at (0.5, 0.5) and (1.5, 1.5); sampling at
+        // (1.0, 1.0) is the midpoint of all four → average of
+        // (255,0,0), (0,255,0), (0,0,255), (255,255,255) = (128,128,128).
+        let mid = sample_bilinear(&buf, 2, 2, 1.0, 1.0);
+        assert!((mid[0] as i32 - 128).abs() <= 1);
+        assert!((mid[1] as i32 - 128).abs() <= 1);
+        assert!((mid[2] as i32 - 128).abs() <= 1);
+        assert_eq!(mid[3], 255);
+    }
+
+    // ─── unfilter_png ──────────────────────────────────────────────
+    //
+    // Two rows × four bytes, filter tag = 0 (None) on each row.
+    // The expected output is the input minus the tag bytes.
+    #[test]
+    fn unfilter_png_filter_none_passes_through() {
+        let raw = vec![
+            0, 10, 20, 30, 40,   // row 0, tag=0
+            0, 50, 60, 70, 80,   // row 1, tag=0
+        ];
+        let out = unfilter_png(&raw, 4).expect("unfilter");
+        assert_eq!(out, vec![10, 20, 30, 40, 50, 60, 70, 80]);
+    }
+
+    // Filter 2 (Up): output[i] = input[i] + prev_row[i]. Tag is 0 on
+    // the first row, 2 on the second.
+    #[test]
+    fn unfilter_png_filter_up_reconstructs_second_row() {
+        let raw = vec![
+            0,  1,  2,  3,  4,  // row 0, tag=0 (literal)
+            2, 10, 10, 10, 10,  // row 1, tag=2 (Up) → 1+10, 2+10, …
+        ];
+        let out = unfilter_png(&raw, 4).expect("unfilter");
+        assert_eq!(out, vec![1, 2, 3, 4, 11, 12, 13, 14]);
+    }
+
+    // Filter 1 (Sub): output[i] = input[i] + output[i - bpp] (bpp=1).
+    // Single row with tag=1 and inputs (5, 5, 5, 5) → cumulative sum.
+    #[test]
+    fn unfilter_png_filter_sub_cumulates_along_row() {
+        let raw = vec![1, 5, 5, 5, 5];
+        let out = unfilter_png(&raw, 4).expect("unfilter");
+        assert_eq!(out, vec![5, 10, 15, 20]);
+    }
+}

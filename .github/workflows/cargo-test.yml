@@ -1,0 +1,41 @@
+name: Rust tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      # mupdf-sys needs a C toolchain + a couple of dev libs; the Tauri
+      # build workflow installs the same set for the desktop app.
+      - name: Install Linux deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libclang-dev libfontconfig1-dev libfreetype6-dev pkg-config
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ./
+
+      # Canary composite tests under `crates/hp-core/tests/` require
+      # the proprietary `in/_NY*.ai` source files. They auto-skip when
+      # `in/` is empty, so this workflow stays green on a fresh
+      # checkout. To exercise the canaries on CI, populate `in/` —
+      # e.g. by checking it out via git-LFS, downloading from a
+      # private bucket, or fetching from an artifact store — before
+      # this step runs.
+      - name: cargo test (hp-core)
+        run: cargo test --release -p hp-core --lib --tests

@@ -2051,3 +2051,119 @@ fn page_mediabox_y1(doc: &Document, page_id: ObjectId) -> Result<f64> {
 // crate-level consumers haven't wired in yet.
 #[allow(dead_code)]
 const _USES_STRING_FORMAT: Option<StringFormat> = None;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    /// Locate an NY AI file if present (the `in/` directory is
+    /// gitignored — tests skip when the file isn't there).
+    fn ai_path(stem: &str) -> Option<PathBuf> {
+        let candidates = [
+            format!("in/{}.ai", stem),
+            format!("../../in/{}.ai", stem),
+        ];
+        candidates.iter().map(PathBuf::from).find(|p| p.exists())
+    }
+
+    #[test]
+    fn build_modified_pdf_ny5_smoke() {
+        let Some(ai) = ai_path("_NY5") else {
+            eprintln!("in/_NY5.ai not present — skipping");
+            return;
+        };
+        let (placements, meta, _) =
+            crate::ai_parser::parse_ai(&ai, crate::CANVAS_HEIGHT_PX as i32).unwrap();
+        let tmp = std::env::temp_dir().join("ocg_inject_test_ny5");
+        std::fs::create_dir_all(&tmp).unwrap();
+        let out_pdf = tmp.join("_modified.pdf");
+        let artifact = build_modified_pdf(&ai, &placements, &meta, &out_pdf).unwrap();
+
+        // One OCG name per parser brick.
+        assert_eq!(artifact.brick_ocg_names.len(), placements.len(),
+            "brick_ocg_names length mismatch");
+        // Names follow the documented hp_brick_NNNN convention.
+        for (i, n) in artifact.brick_ocg_names.iter().enumerate() {
+            assert_eq!(n, &format!("hp_brick_{:04}", i),
+                "OCG name doesn't follow convention");
+        }
+        // Globals are populated.
+        assert_eq!(artifact.image_ocg_name, "hp_image");
+        assert_eq!(artifact.inline_ocg_name, "hp_bricks_inline");
+        assert_eq!(artifact.decoration_ocg_name, "hp_decoration");
+
+        // Bleed for NY5 is roughly +267 pt on X (the artwork's
+        // baked-in coord shift). Anywhere in [200, 350] is sane;
+        // outside that range means our matching or coord math has
+        // drifted.
+        assert!(
+            (200.0..=350.0).contains(&artifact.bleed_pts.0),
+            "bleed_x out of expected range: {}", artifact.bleed_pts.0,
+        );
+        assert!(
+            artifact.bleed_pts.1.abs() < 10.0,
+            "bleed_y unexpectedly large: {}", artifact.bleed_pts.1,
+        );
+
+        // The rewritten PDF file exists, is non-empty, and parses.
+        assert!(out_pdf.exists());
+        let md = std::fs::metadata(&out_pdf).unwrap();
+        assert!(md.len() > 10_000, "modified PDF suspiciously small: {} bytes", md.len());
+        let _ = lopdf::Document::load(&out_pdf)
+            .expect("modified PDF must round-trip through lopdf");
+
+        // Block-level matching produced sensible coverage.
+        assert!(
+            artifact.stats.pdf_blocks_matched + artifact.stats.pdf_blocks_decoration
+                == artifact.stats.pdf_blocks_total,
+            "matched+decoration must sum to total: {:?}", artifact.stats,
+        );
+        assert!(
+            artifact.stats.bricks_with_at_least_one_block as f64
+                / placements.len() as f64
+                > 0.95,
+            ">5% of bricks ended up with no matched block — matcher regression. \
+             stats={:?}", artifact.stats,
+        );
+    }
+
+    /// `walk_page_bricks` followed by `match_blocks_to_bricks` should
+    /// place every Image block on top of exactly one polygon (or, in
+    /// rare overlay cases, attach via the second pass). Run on NY1
+    /// because the test_parse_ai assertion already pins it as a
+    /// stable input.
+    #[test]
+    fn match_blocks_to_bricks_ny1_covers_most_images() {
+        let Some(ai) = ai_path("_NY1") else {
+            eprintln!("in/_NY1.ai not present — skipping");
+            return;
+        };
+        let (placements, meta, _) =
+            crate::ai_parser::parse_ai(&ai, crate::CANVAS_HEIGHT_PX as i32).unwrap();
+        let doc = lopdf::Document::load(&ai).unwrap();
+        let page_id = doc.page_iter().next().unwrap();
+        let blocks = walk_page_bricks(&doc, page_id).unwrap();
+        let page_h = page_mediabox_y1(&doc, page_id).unwrap();
+
+        // Use a probe bleed of (0, 0); the matcher's polygon-
+        // containment test is what we exercise. The numerical bleed
+        // value affects whether centroids land inside polygons, but
+        // for NY1 the polygon centroids are far enough from any
+        // boundary that the matcher succeeds even with a coarse
+        // bleed estimate.
+        let geo = PageGeometry {
+            clip_x0: meta.clip_rect.0, clip_y0: meta.clip_rect.1,
+            render_dpi: meta.render_dpi, page_height_pt: page_h,
+            bleed_x: 0.0, bleed_y: 0.0,
+        };
+        let map = match_blocks_to_bricks(&blocks, &placements, geo, DEFAULT_OVERLAY_RADIUS_PT);
+        let matched_bricks = map.brick_to_blocks.iter().filter(|v| !v.is_empty()).count();
+        let total_bricks = placements.len();
+        assert!(
+            matched_bricks as f64 / total_bricks as f64 > 0.85,
+            "matcher coverage regressed: {}/{} bricks matched",
+            matched_bricks, total_bricks,
+        );
+    }
+}
