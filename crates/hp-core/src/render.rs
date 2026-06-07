@@ -808,10 +808,10 @@ pub fn render_export_pieces(
     }
 
     let t_total = std::time::Instant::now();
-    let mut t_step = std::time::Instant::now();
-    let mut log_step = |label: &str| {
-        eprintln!("[export]   {} +{:.2}s", label, t_step.elapsed().as_secs_f64());
-        t_step = std::time::Instant::now();
+    let t_step = std::cell::Cell::new(std::time::Instant::now());
+    let log_step = |label: &str| {
+        eprintln!("[export]   {} +{:.2}s", label, t_step.get().elapsed().as_secs_f64());
+        t_step.set(std::time::Instant::now());
     };
 
     let scale = export_dpi / loaded_dpi;
@@ -883,141 +883,162 @@ pub fn render_export_pieces(
         meta.clip_rect.3 + artifact.bleed_pts.1,
     );
 
-    // 1. Render the bricks layer composite via MuPDF as the BASE (covers
-    //    vector overlays, decorations, inline content). Then overlay
-    //    direct-extracted Image XObjects on top — they replace MuPDF's
-    //    re-rasterised pixels with the AI file's original raster data.
-    //    Where direct doesn't paint (vector content, gaps), MuPDF's
-    //    pixels survive.
-    let (bricks_pixmap, _, _) = render_ocg_layer_pixmap_clipped(
-        ai_path, "bricks", export_dpi, shifted_clip,
-    )
-    .ok_or_else(|| anyhow::anyhow!("Failed to render bricks layer at export DPI"))?;
-    let mut composite = compose_clipped_canvas(
-        &bricks_pixmap, "bricks", new_canvas_w, new_canvas_h, (0, 0),
-    );
-    crate::raster_extract::compose_image_blocks_onto_canvas(
-        &doc, &blocks, 0..blocks.len(),
-        &mut composite, meta.clip_rect, page_h_pt, artifact.bleed_pts,
-        export_dpi, true,
-    );
-    composite
-        .save(out_dir.join("composite.png"))
-        .map_err(|e| anyhow::anyhow!("saving composite.png: {e}"))?;
-    log_step("composite.png");
+    // Three independent render+save tasks: composite (bricks layer +
+    // raster overlay), background (+ highlight halo), and lights.
+    // MuPDF's global FFI lock serializes the actual renders, but the
+    // post-processing — composite raster overlay, distance transform +
+    // Gaussian halo for the highlight — runs concurrently with other
+    // tasks' renders. On NY8 (300 DPI) the highlight halo alone is
+    // ~22 s of pure-CPU work that used to block the lights render;
+    // overlapping them with the next renders saves ~15–25 s.
+    let t_parallel = std::time::Instant::now();
+    let doc_ref = &doc;
+    let blocks_ref = &blocks;
+    let artifact_ref = &artifact;
+    let meta_ref = &meta;
+    std::thread::scope(|scope| -> anyhow::Result<()> {
+        // Composite — bricks MuPDF + direct raster overlay + save.
+        let composite_h = scope.spawn(move || -> anyhow::Result<()> {
+            let t0 = std::time::Instant::now();
+            let (bricks_pixmap, _, _) = render_ocg_layer_pixmap_clipped(
+                ai_path, "bricks", export_dpi, shifted_clip,
+            )
+            .ok_or_else(|| anyhow::anyhow!("Failed to render bricks layer at export DPI"))?;
+            let mut composite = compose_clipped_canvas(
+                &bricks_pixmap, "bricks", new_canvas_w, new_canvas_h, (0, 0),
+            );
+            crate::raster_extract::compose_image_blocks_onto_canvas(
+                doc_ref, blocks_ref, 0..blocks_ref.len(),
+                &mut composite, meta_ref.clip_rect, page_h_pt, artifact_ref.bleed_pts,
+                export_dpi, true,
+            );
+            composite
+                .save(out_dir.join("composite.png"))
+                .map_err(|e| anyhow::anyhow!("saving composite.png: {e}"))?;
+            eprintln!(
+                "[export]   composite.png (parallel) +{:.2}s",
+                t0.elapsed().as_secs_f64(),
+            );
+            Ok(())
+        });
+        // Background — MuPDF + save + run highlight halo on the same
+        // pixmap. Missing background OCG is non-fatal — not every AI
+        // defines one.
+        let bg_h = scope.spawn(move || -> anyhow::Result<()> {
+            let t0 = std::time::Instant::now();
+            let Some((bg_pixmap, _, _)) =
+                render_ocg_layer_pixmap_clipped(ai_path, "background", export_dpi, shifted_clip)
+            else {
+                eprintln!(
+                    "[export]   background (parallel) +{:.2}s (no background OCG)",
+                    t0.elapsed().as_secs_f64(),
+                );
+                return Ok(());
+            };
+            let bg_canvas =
+                compose_clipped_canvas(&bg_pixmap, "background", new_canvas_w, new_canvas_h, (0, 0));
+            bg_canvas
+                .save(out_dir.join("background.png"))
+                .map_err(|e| anyhow::anyhow!("saving background.png: {e}"))?;
 
-    // 2. Re-render the OCG background layer (blueprint backdrop) at
-    //    the same shifted clip so it aligns with the composite.
-    //    Missing layer is non-fatal — not every AI defines one.
-    if let Some((bg_pixmap, _, _)) =
-        render_ocg_layer_pixmap_clipped(ai_path, "background", export_dpi, shifted_clip)
-    {
-        let bg_canvas =
-            compose_clipped_canvas(&bg_pixmap, "background", new_canvas_w, new_canvas_h, (0, 0));
-        bg_canvas
-            .save(out_dir.join("background.png"))
-            .map_err(|e| anyhow::anyhow!("saving background.png: {e}"))?;
+            // ── background_highlight.png ──────────────────────────
+            // White Gaussian-falloff halo centred on the alpha
+            // boundary of the house silhouette (incl. each
+            // window/door opening). `α(d) = 255 · exp(−d²/(2σ²))`
+            // via a real Euclidean distance transform — rotationally
+            // symmetric, no corner artifacts. Padded canvas lets the
+            // halo bleed past the bricks' external edges; the sidecar
+            // `background_highlight.json` records the (−PAD, −PAD)
+            // placement offset for consumers.
+            const PAD_PX: i32 = 80;
+            let pad_w = new_canvas_w as i32 + 2 * PAD_PX;
+            let pad_h = new_canvas_h as i32 + 2 * PAD_PX;
 
-        // ── background_highlight.png ──────────────────────────────
-        // White Gaussian-falloff halo centred on the alpha boundary of
-        // the house silhouette (incl. each window/door opening). The
-        // alpha is derived analytically from the SIGNED distance to
-        // the boundary — `α(d) = 255 · exp(−d²/(2σ²))` — using a real
-        // Euclidean distance transform. Because the formula only
-        // depends on |d|, sharp concave corners get the same band
-        // width as straight edges (the box-blur approximation we
-        // used before pooled darker into 90° inner corners and read
-        // like overlapping drop shadows; this is rotationally
-        // symmetric by construction).
-        //
-        // The result is saved at a padded canvas size so the halo
-        // can bleed past the bricks' external edges; the sidecar
-        // `background_highlight.json` records the (−PAD_PX, −PAD_PX)
-        // placement offset for consumers.
-        const PAD_PX: i32 = 80;
-        let pad_w = new_canvas_w as i32 + 2 * PAD_PX;
-        let pad_h = new_canvas_h as i32 + 2 * PAD_PX;
-
-        // Binary mask: 255 inside silhouette, 0 outside.
-        // Crucially, EVERY non-silhouette pixel must be tagged as
-        // "outside" — including pixels in the padded margin around the
-        // bg_canvas. If we only tagged transparent pixels INSIDE
-        // bg_canvas, the boundary along a canvas edge (where the
-        // silhouette touches the edge directly) was invisible to the
-        // distance transform: padding pixels found no "outside"
-        // neighbour nearby, the falloff died, and the halo had a flat
-        // missing edge there.
-        let mut mask_in = image::GrayImage::new(pad_w as u32, pad_h as u32);
-        let mut mask_out = image::ImageBuffer::from_pixel(
-            pad_w as u32, pad_h as u32, image::Luma([255u8]),
-        );
-        for (x, y, p) in bg_canvas.enumerate_pixels() {
-            let nx = x as i32 + PAD_PX;
-            let ny = y as i32 + PAD_PX;
-            if nx < 0 || ny < 0 || nx >= pad_w || ny >= pad_h { continue; }
-            if p[3] > 8 {
-                mask_in.put_pixel(nx as u32, ny as u32, image::Luma([255]));
-                mask_out.put_pixel(nx as u32, ny as u32, image::Luma([0]));
-            }
-        }
-        // Squared Euclidean distance from each pixel to the nearest
-        // zero pixel. `d_in[x,y]² = distance² from inside-pixel to
-        // nearest outside-pixel = distance² to boundary on the inside`.
-        // For pixels outside the silhouette, we transform `mask_out`
-        // instead — same idea, reversed.
-        let d2_in = imageproc::distance_transform::euclidean_squared_distance_transform(&mask_in);
-        let d2_out = imageproc::distance_transform::euclidean_squared_distance_transform(&mask_out);
-
-        // σ in pixels — ~7 pt FWHM-ish at any export DPI.
-        let sigma_px = export_dpi * (3.5 / 72.0);
-        let two_sigma_sq = 2.0 * sigma_px * sigma_px;
-
-        let mut highlight = RgbaImage::new(pad_w as u32, pad_h as u32);
-        for y in 0..pad_h {
-            for x in 0..pad_w {
-                // Distance squared from (x,y) to the nearest boundary
-                // pixel: pixels OUTSIDE the silhouette get `d2_out`
-                // (= squared distance from outside-pixel to nearest
-                // inside-pixel), pixels INSIDE get `d2_in`. The two
-                // images cover complementary domains so adding them
-                // works regardless of which side `(x,y)` sits on.
-                let d2 = d2_in.get_pixel(x as u32, y as u32)[0]
-                       + d2_out.get_pixel(x as u32, y as u32)[0];
-                let intensity = (-d2 / two_sigma_sq).exp();
-                let a = (255.0 * intensity).round().clamp(0.0, 255.0) as u8;
-                if a > 0 {
-                    highlight.put_pixel(x as u32, y as u32, Rgba([255, 255, 255, a]));
+            // Binary mask: 255 inside silhouette, 0 outside. Every
+            // non-silhouette pixel (incl. padded margin) is tagged as
+            // "outside" so the distance transform has a meaningful
+            // boundary along canvas edges that the silhouette touches.
+            let mut mask_in = image::GrayImage::new(pad_w as u32, pad_h as u32);
+            let mut mask_out = image::ImageBuffer::from_pixel(
+                pad_w as u32, pad_h as u32, image::Luma([255u8]),
+            );
+            for (x, y, p) in bg_canvas.enumerate_pixels() {
+                let nx = x as i32 + PAD_PX;
+                let ny = y as i32 + PAD_PX;
+                if nx < 0 || ny < 0 || nx >= pad_w || ny >= pad_h { continue; }
+                if p[3] > 8 {
+                    mask_in.put_pixel(nx as u32, ny as u32, image::Luma([255]));
+                    mask_out.put_pixel(nx as u32, ny as u32, image::Luma([0]));
                 }
             }
-        }
-        highlight
-            .save(out_dir.join("background_highlight.png"))
-            .map_err(|e| anyhow::anyhow!("saving background_highlight.png: {e}"))?;
-        log_step("background + highlight");
-        // Sidecar: PAD offset so consumers can place the asset.
-        let _ = std::fs::write(
-            out_dir.join("background_highlight.json"),
-            format!(
-                "{{\"padding\": {}, \"width\": {}, \"height\": {}, \"x\": {}, \"y\": {}}}\n",
-                PAD_PX, pad_w, pad_h, -PAD_PX, -PAD_PX
-            ),
-        );
-    }
+            let d2_in = imageproc::distance_transform::euclidean_squared_distance_transform(&mask_in);
+            let d2_out = imageproc::distance_transform::euclidean_squared_distance_transform(&mask_out);
 
-    // ── lights.png ─────────────────────────────────────────────────
-    // Optional `lights` OCG layer — the warm window-pane overlay that
-    // sits on top of everything (window glow). Same render path as
-    // background, same canvas size, same (0, 0) placement.
-    if let Some((lt_pixmap, _, _)) =
-        render_ocg_layer_pixmap_clipped(ai_path, "lights", export_dpi, shifted_clip)
-    {
-        let lt_canvas =
-            compose_clipped_canvas(&lt_pixmap, "lights", new_canvas_w, new_canvas_h, (0, 0));
-        lt_canvas
-            .save(out_dir.join("lights.png"))
-            .map_err(|e| anyhow::anyhow!("saving lights.png: {e}"))?;
-        log_step("lights.png");
-    }
+            // σ in pixels — ~7 pt FWHM-ish at any export DPI.
+            let sigma_px = export_dpi * (3.5 / 72.0);
+            let two_sigma_sq = 2.0 * sigma_px * sigma_px;
+
+            let mut highlight = RgbaImage::new(pad_w as u32, pad_h as u32);
+            for y in 0..pad_h {
+                for x in 0..pad_w {
+                    let d2 = d2_in.get_pixel(x as u32, y as u32)[0]
+                           + d2_out.get_pixel(x as u32, y as u32)[0];
+                    let intensity = (-d2 / two_sigma_sq).exp();
+                    let a = (255.0 * intensity).round().clamp(0.0, 255.0) as u8;
+                    if a > 0 {
+                        highlight.put_pixel(x as u32, y as u32, Rgba([255, 255, 255, a]));
+                    }
+                }
+            }
+            highlight
+                .save(out_dir.join("background_highlight.png"))
+                .map_err(|e| anyhow::anyhow!("saving background_highlight.png: {e}"))?;
+            let _ = std::fs::write(
+                out_dir.join("background_highlight.json"),
+                format!(
+                    "{{\"padding\": {}, \"width\": {}, \"height\": {}, \"x\": {}, \"y\": {}}}\n",
+                    PAD_PX, pad_w, pad_h, -PAD_PX, -PAD_PX
+                ),
+            );
+            eprintln!(
+                "[export]   background + highlight (parallel) +{:.2}s",
+                t0.elapsed().as_secs_f64(),
+            );
+            Ok(())
+        });
+        // Lights — warm window-pane overlay (window glow).
+        let lights_h = scope.spawn(move || -> anyhow::Result<()> {
+            let t0 = std::time::Instant::now();
+            let Some((lt_pixmap, _, _)) =
+                render_ocg_layer_pixmap_clipped(ai_path, "lights", export_dpi, shifted_clip)
+            else {
+                eprintln!(
+                    "[export]   lights (parallel) +{:.2}s (no lights OCG)",
+                    t0.elapsed().as_secs_f64(),
+                );
+                return Ok(());
+            };
+            let lt_canvas =
+                compose_clipped_canvas(&lt_pixmap, "lights", new_canvas_w, new_canvas_h, (0, 0));
+            lt_canvas
+                .save(out_dir.join("lights.png"))
+                .map_err(|e| anyhow::anyhow!("saving lights.png: {e}"))?;
+            eprintln!(
+                "[export]   lights.png (parallel) +{:.2}s",
+                t0.elapsed().as_secs_f64(),
+            );
+            Ok(())
+        });
+        composite_h.join().expect("composite thread panicked")?;
+        bg_h.join().expect("background thread panicked")?;
+        lights_h.join().expect("lights thread panicked")?;
+        Ok(())
+    })?;
+    eprintln!(
+        "[export]   composite/background/lights (parallel total) +{:.2}s",
+        t_parallel.elapsed().as_secs_f64(),
+    );
+    t_step.set(std::time::Instant::now()); // reset for the next log_step call
 
     // assets.json is written near the end of this function (after
     // outlines.png) so it can record every asset present.
@@ -1104,6 +1125,13 @@ pub fn render_export_pieces(
                 "[render_export_pieces] OCG-isolation path failed ({e}); \
                  falling back to composite-slice path for piece PNGs"
             );
+            // `composite` is no longer a live variable — it was moved
+            // into the parallel scope above. Re-load from disk for the
+            // fallback path. Slightly wasteful but only on the (rare)
+            // OCG-failure branch.
+            let composite = image::open(out_dir.join("composite.png"))
+                .map_err(|e2| anyhow::anyhow!("re-opening composite.png for fallback: {e2}"))?
+                .to_rgba8();
             render_piece_pngs_from_composite(&scaled_pieces, &composite, &piece_polys, out_dir)
         }
     };
