@@ -129,6 +129,26 @@ fn main() -> anyhow::Result<()> {
     )?;
     eprintln!("[export_house] {} piece PNGs written", trimmed_pieces.len());
 
+    // Sidecar JSON for the visual inspector — maps each piece id to
+    // its canvas rect (export DPI) and the AI layer names of its
+    // bricks. Consumed by /tmp/compare_view/export_diff.html.
+    {
+        let dump: Vec<_> = trimmed_pieces.iter().map(|p| {
+            let layer_names: Vec<&String> = p.brick_ids.iter()
+                .filter_map(|bid| brick_layer_names.get(bid)).collect();
+            serde_json::json!({
+                "id": p.id,
+                "x": p.x, "y": p.y, "w": p.width, "h": p.height,
+                "layers": layer_names,
+                "brick_count": p.brick_ids.len(),
+            })
+        }).collect();
+        let _ = std::fs::write(
+            Path::new(&out_dir).join("_debug_pieces.json"),
+            serde_json::to_string_pretty(&dump).unwrap(),
+        );
+    }
+
     // Down-scale trimmed pieces to loaded-DPI for generate_export_zip
     // (its contract — it re-applies export/loaded scale internally).
     let inv_scale = meta.render_dpi / export_dpi;

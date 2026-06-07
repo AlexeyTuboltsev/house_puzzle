@@ -315,7 +315,7 @@ fn expand_polygon(pts: &[[f64; 2]], amount: f64) -> Vec<[f64; 2]> {
 pub fn render_piece_pngs_from_composite(
     pieces: &[crate::types::PuzzlePiece],
     composite: &RgbaImage,
-    piece_polygons: &HashMap<String, Vec<[f64; 2]>>,
+    piece_polygons: &HashMap<String, Vec<Vec<[f64; 2]>>>,
     extract_dir: &Path,
 ) -> Vec<crate::types::PuzzlePiece> {
     std::fs::create_dir_all(extract_dir).ok();
@@ -326,16 +326,15 @@ pub fn render_piece_pngs_from_composite(
             let ph = piece.height.max(1) as u32;
             let mut piece_img = RgbaImage::new(pw, ph);
 
-            // Get piece polygon (union of brick polygons) and expand by 0.5px
-            // so boundary pixels are included by both adjacent pieces.
-            let poly = piece_polygons.get(&piece.id);
-            let expanded = poly.and_then(|pts| {
-                if pts.len() >= 3 {
-                    Some(expand_polygon(pts, 0.5))
-                } else {
-                    None
-                }
-            });
+            // Multi-ring piece polygon (one ring per disconnected
+            // component of the brick union). Expand each ring by 0.5px
+            // so boundary pixels are included on both sides of the
+            // shared edge between adjacent pieces.
+            let rings: Option<Vec<Vec<[f64; 2]>>> = piece_polygons.get(&piece.id)
+                .map(|ring_list| ring_list.iter()
+                    .filter(|r| r.len() >= 3)
+                    .map(|r| expand_polygon(r, 0.5))
+                    .collect());
 
             // Crop composite through the piece polygon mask
             for dy in 0..ph {
@@ -351,9 +350,13 @@ pub fn render_piece_pngs_from_composite(
                         continue;
                     }
 
-                    let in_poly = match &expanded {
-                        Some(pts) => point_in_polygon(cx as f64 + 0.5, cy as f64 + 0.5, pts),
-                        None => true,
+                    let in_poly = match &rings {
+                        Some(rs) if !rs.is_empty() => {
+                            let px = cx as f64 + 0.5;
+                            let py = cy as f64 + 0.5;
+                            rs.iter().any(|r| point_in_polygon(px, py, r))
+                        }
+                        _ => true,
                     };
                     if !in_poly {
                         continue;
@@ -489,7 +492,7 @@ fn alpha_bbox(img: &RgbaImage) -> Option<(u32, u32, u32, u32)> {
 /// the original).
 fn render_piece_pngs_via_ocg_isolation(
     pieces: &[crate::types::PuzzlePiece],
-    piece_polygons: &HashMap<String, Vec<[f64; 2]>>,
+    piece_polygons: &HashMap<String, Vec<Vec<[f64; 2]>>>,
     brick_layer_names: &HashMap<String, String>,
     export_dpi: f64,
     shifted_clip_pts: (f64, f64, f64, f64),
@@ -605,16 +608,27 @@ fn render_piece_pngs_via_ocg_isolation(
             //     visible (no neighbour to cover them)
             // Both effects only show at the piece boundary, on the
             // order of a couple pixels.
-            if let Some(poly) = piece_polygons.get(&piece.id) {
-                if poly.len() >= 3 {
-                    // Same 0.5px expansion as the composite-crop path
-                    // so boundary pixels get included on both sides.
-                    let expanded = expand_polygon(poly, 0.5);
+            // Multi-ring mask: keep pixels inside ANY component of the
+            // piece's polygon union. Each ring is expanded by 0.5px so
+            // boundary pixels are included on both sides of a shared
+            // edge between adjacent pieces. Source of truth: the union
+            // of all bricks the merge assigned to this piece — so a
+            // brick whose component doesn't quite touch the rest still
+            // paints (was previously dropped by the "largest component
+            // only" filter).
+            if let Some(ring_list) = piece_polygons.get(&piece.id) {
+                let expanded: Vec<Vec<[f64; 2]>> = ring_list.iter()
+                    .filter(|r| r.len() >= 3)
+                    .map(|r| expand_polygon(r, 0.5))
+                    .collect();
+                if !expanded.is_empty() {
                     for (x, y, pixel) in canvas.enumerate_pixels_mut() {
                         if pixel[3] == 0 { continue; }
-                        if !point_in_polygon(x as f64 + 0.5, y as f64 + 0.5, &expanded) {
-                            pixel[3] = 0;
-                        }
+                        let px = x as f64 + 0.5;
+                        let py = y as f64 + 0.5;
+                        let inside = expanded.iter()
+                            .any(|r| point_in_polygon(px, py, r));
+                        if !inside { pixel[3] = 0; }
                     }
                 }
             }
@@ -833,7 +847,120 @@ pub fn render_export_pieces(
         bg_canvas
             .save(out_dir.join("background.png"))
             .map_err(|e| anyhow::anyhow!("saving background.png: {e}"))?;
+
+        // ── background_highlight.png ──────────────────────────────
+        // Soft white outline of the house silhouette + window/door
+        // cut-outs. The background layer's alpha mask drives this:
+        // opaque = house body, transparent = cut-outs and outside.
+        // We:
+        //   1. Pad the canvas so the blur halo can extend past the
+        //      house's external edges (otherwise touching pixels at
+        //      the canvas border have nowhere for their glow to go).
+        //   2. Detect the alpha boundary as a ~5 px stroke band by
+        //      marking every pixel that has at least one neighbour
+        //      within `STROKE_RADIUS` whose opaque-ness differs.
+        //   3. Set those pixels to opaque white, leave the rest fully
+        //      transparent — so fills are transparent and only the
+        //      strokes carry colour.
+        //   4. Gaussian-blur the stroke band for the soft-glow look.
+        //
+        // The result is saved at the padded dimensions; the asset's
+        // top-left corresponds to canvas (−PAD_PX, −PAD_PX). Callers
+        // composite it at that offset on a regular-sized backdrop.
+        const PAD_PX: i32 = 80;
+        const STROKE_RADIUS: i32 = 3;          // ⇒ ~7 px wide band
+        let pad_w = new_canvas_w as i32 + 2 * PAD_PX;
+        let pad_h = new_canvas_h as i32 + 2 * PAD_PX;
+        let mut padded = RgbaImage::new(pad_w as u32, pad_h as u32);
+        for (x, y, src) in bg_canvas.enumerate_pixels() {
+            let nx = x as i32 + PAD_PX;
+            let ny = y as i32 + PAD_PX;
+            if nx >= 0 && ny >= 0 && nx < pad_w && ny < pad_h {
+                padded.put_pixel(nx as u32, ny as u32, *src);
+            }
+        }
+        // Build a boolean opaque-mask in a flat row-major buffer so
+        // the inner neighbour loop reads cache-friendly bytes
+        // (faster than `RgbaImage::get_pixel` per probe).
+        let mut mask = vec![false; (pad_w * pad_h) as usize];
+        for y in 0..pad_h {
+            for x in 0..pad_w {
+                mask[(y * pad_w + x) as usize] =
+                    padded.get_pixel(x as u32, y as u32)[3] > 8;
+            }
+        }
+        let mut stroke = RgbaImage::new(pad_w as u32, pad_h as u32);
+        for y in 0..pad_h {
+            for x in 0..pad_w {
+                let centre = mask[(y * pad_w + x) as usize];
+                let mut is_edge = false;
+                'scan: for dy in -STROKE_RADIUS..=STROKE_RADIUS {
+                    let ny = y + dy;
+                    if ny < 0 || ny >= pad_h { continue; }
+                    for dx in -STROKE_RADIUS..=STROKE_RADIUS {
+                        let nx = x + dx;
+                        if nx < 0 || nx >= pad_w { continue; }
+                        if mask[(ny * pad_w + nx) as usize] != centre {
+                            is_edge = true;
+                            break 'scan;
+                        }
+                    }
+                }
+                if is_edge {
+                    stroke.put_pixel(x as u32, y as u32, Rgba([255, 255, 255, 255]));
+                }
+            }
+        }
+        let blur_sigma = (export_dpi * (7.0 / 72.0)) as f32;
+        let mut highlight = image::imageops::blur(&stroke, blur_sigma);
+        // Gaussian blur dilutes both alpha and RGB channels together
+        // because each channel is independently averaged with the
+        // transparent zeros around the stroke. The asset is supposed
+        // to be SOLID white with a soft alpha falloff, so:
+        //   1. Boost alpha back into a useful range (the stroke was
+        //      narrow, σ is big — raw blur alpha tops out at ~32/255).
+        //   2. Force RGB to white wherever alpha > 0 so the halo
+        //      actually reads as white at the boosted alpha.
+        const ALPHA_BOOST: f32 = 12.0;
+        for px in highlight.pixels_mut() {
+            let a = (px[3] as f32 * ALPHA_BOOST).round();
+            let a8 = a.clamp(0.0, 255.0) as u8;
+            px[3] = a8;
+            if a8 > 0 {
+                px[0] = 255;
+                px[1] = 255;
+                px[2] = 255;
+            }
+        }
+        highlight
+            .save(out_dir.join("background_highlight.png"))
+            .map_err(|e| anyhow::anyhow!("saving background_highlight.png: {e}"))?;
+        // Sidecar: PAD offset so consumers can place the asset.
+        let _ = std::fs::write(
+            out_dir.join("background_highlight.json"),
+            format!(
+                "{{\"padding\": {}, \"width\": {}, \"height\": {}, \"x\": {}, \"y\": {}}}\n",
+                PAD_PX, pad_w, pad_h, -PAD_PX, -PAD_PX
+            ),
+        );
     }
+
+    // ── lights.png ─────────────────────────────────────────────────
+    // Optional `lights` OCG layer — the warm window-pane overlay that
+    // sits on top of everything (window glow). Same render path as
+    // background, same canvas size, same (0, 0) placement.
+    if let Some((lt_pixmap, _, _)) =
+        render_ocg_layer_pixmap_clipped(ai_path, "lights", export_dpi, shifted_clip)
+    {
+        let lt_canvas =
+            compose_clipped_canvas(&lt_pixmap, "lights", new_canvas_w, new_canvas_h, (0, 0));
+        lt_canvas
+            .save(out_dir.join("lights.png"))
+            .map_err(|e| anyhow::anyhow!("saving lights.png: {e}"))?;
+    }
+
+    // assets.json is written near the end of this function (after
+    // outlines.png) so it can record every asset present.
 
     // 3. Scale every piece + brick + brick polygon by the same factor
     //    so they line up with the new composite.
@@ -975,6 +1102,42 @@ pub fn render_export_pieces(
     outlines
         .save(out_dir.join("outlines.png"))
         .map_err(|e| anyhow::anyhow!("saving outlines.png: {e}"))?;
+
+    // ── assets.json ────────────────────────────────────────────────
+    // Compact placement metadata for every canvas-aligned asset so
+    // consumers (the test viewer, Unity importer) can position layers
+    // without hardcoded knowledge. Highlight has padded dimensions
+    // and a negative offset because its blur halo extends past the
+    // canvas; the others sit at (0, 0).
+    let canvas_assets: Vec<&str> = vec![
+        "composite.png",
+        "background.png",
+        "background_highlight.png",
+        "outlines.png",
+        "lights.png",
+    ];
+    let mut assets_json = String::from("{\n");
+    assets_json.push_str(&format!("  \"canvas_w\": {},\n  \"canvas_h\": {},\n",
+        new_canvas_w, new_canvas_h));
+    assets_json.push_str("  \"assets\": {\n");
+    let mut first_asset = true;
+    for fname in &canvas_assets {
+        if !out_dir.join(fname).exists() { continue; }
+        let (x, y, w, h) = if *fname == "background_highlight.png" {
+            let pad = 80i32;
+            (-pad, -pad, new_canvas_w as i32 + 2 * pad, new_canvas_h as i32 + 2 * pad)
+        } else {
+            (0, 0, new_canvas_w as i32, new_canvas_h as i32)
+        };
+        if !first_asset { assets_json.push_str(",\n"); }
+        first_asset = false;
+        assets_json.push_str(&format!(
+            "    \"{}\": {{\"file\": \"{}\", \"x\": {}, \"y\": {}, \"w\": {}, \"h\": {}}}",
+            fname, fname, x, y, w, h
+        ));
+    }
+    assets_json.push_str("\n  }\n}\n");
+    let _ = std::fs::write(out_dir.join("assets.json"), assets_json);
 
     // Clean up the sidecar modified PDF the OCG-isolation pass wrote
     // next to the export outputs. Failure to delete is non-fatal — the

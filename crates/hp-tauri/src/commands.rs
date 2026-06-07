@@ -798,9 +798,16 @@ pub async fn merge_pieces(
                     })
                 })
                 .collect();
+            // piece_polys is now a list of rings per piece (multi-
+            // component). Frontend `polygon` field stays single-ring
+            // for back-compat — emit the largest ring. `outline_paths`
+            // (already multi-component beziers below) is the source of
+            // truth for any consumer that needs the full shape.
             let poly = piece_polys
                 .get(&p.id)
-                .map(|pts| pts.iter().map(|pt| json!([pt[0], pt[1]])).collect::<Vec<_>>())
+                .and_then(|rings| rings.iter()
+                    .max_by_key(|r| r.len())
+                    .map(|pts| pts.iter().map(|pt| json!([pt[0], pt[1]])).collect::<Vec<_>>()))
                 .unwrap_or_default();
             let outline_paths: Vec<&String> = piece_outline_paths
                 .get(&p.id)

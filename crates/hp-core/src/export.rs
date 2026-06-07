@@ -209,6 +209,28 @@ pub fn generate_export_zip(
     put_file("composite.png", &extract_dir.join("composite.png"))?;
     put_file("background.png", &extract_dir.join("background.png"))?;
     put_file("outlines.png", &extract_dir.join("outlines.png"))?;
+    // Soft white house-silhouette glow. Optional — only present when
+    // the AI declared a `background` OCG layer (same as
+    // `background.png`). The sidecar JSON carries its placement
+    // offset (padded to let the blur halo bleed past the canvas).
+    let bg_highlight = extract_dir.join("background_highlight.png");
+    if bg_highlight.exists() {
+        put_file("background_highlight.png", &bg_highlight)?;
+        let bg_highlight_meta = extract_dir.join("background_highlight.json");
+        if bg_highlight_meta.exists() {
+            put_file("background_highlight.json", &bg_highlight_meta)?;
+        }
+    }
+    // Lights overlay (warm window-pane glow). Optional.
+    let lights = extract_dir.join("lights.png");
+    if lights.exists() {
+        put_file("lights.png", &lights)?;
+    }
+    // Compact placement metadata for every canvas-aligned asset.
+    let assets_json = extract_dir.join("assets.json");
+    if assets_json.exists() {
+        put_file("assets.json", &assets_json)?;
+    }
 
     // Per-piece sprite only — outlines are bundled into a single
     // `outlines.png` overlay above instead of per-piece files.

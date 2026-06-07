@@ -765,14 +765,23 @@ pub fn make_bridge_rect(a: Coord<f64>, b: Coord<f64>, width: f64) -> Polygon<f64
 /// Unions the original brick polygons (unbuffered) to preserve exact vector shapes.
 /// Bridges gaps between disconnected components with thin rectangles.
 /// Fills small interior holes.
+/// Per-piece polygon outline used as a mask for piece PNG rendering.
+///
+/// Returns one ENTRY per piece keyed by `piece.id`. The value is a list
+/// of rings (exterior loops, no holes); the union of all rings is the
+/// piece's masked area. The vast majority of pieces produce a single
+/// ring, but bricks within the same piece that don't quite touch
+/// (sub-pixel gaps between adjacent rows, etc.) leave the union with
+/// multiple components — we preserve all of them so every brick the
+/// merge assigned to the piece actually paints in the rendered PNG.
 pub fn compute_piece_polygons(
     pieces: &[PuzzlePiece],
     bricks_by_id: &HashMap<String, Brick>,
     brick_polygons: &HashMap<String, Vec<[f64; 2]>>,
-) -> HashMap<String, Vec<[f64; 2]>> {
+) -> HashMap<String, Vec<Vec<[f64; 2]>>> {
     use geo::algorithm::bool_ops::BooleanOps;
 
-    let mut result: HashMap<String, Vec<[f64; 2]>> = HashMap::new();
+    let mut result: HashMap<String, Vec<Vec<[f64; 2]>>> = HashMap::new();
 
     for piece in pieces {
         let mut polys: Vec<Polygon<f64>> = Vec::new();
@@ -831,7 +840,7 @@ pub fn compute_piece_polygons(
         }
 
         if polys.is_empty() {
-            result.insert(piece.id.clone(), vec![]);
+            result.insert(piece.id.clone(), Vec::new());
             continue;
         }
 
@@ -895,32 +904,21 @@ pub fn compute_piece_polygons(
             continue;
         }
 
-        // Log if still disconnected after epsilon union (shouldn't happen normally)
-        if union.0.len() > 1 {
-            eprintln!("[piece-gap] {} still has {} components after epsilon union ({} bricks)",
-                piece.id, union.0.len(), piece.brick_ids.len());
-        }
-
-        // Take the largest polygon
-        let mut final_poly = union.0.into_iter()
-            .max_by(|a, b| a.unsigned_area().partial_cmp(&b.unsigned_area())
-                .unwrap_or(std::cmp::Ordering::Equal))
-            .expect("union is non-empty");
-
-        // Fill small interior holes
-        let (exterior, interiors) = final_poly.into_inner();
-        let kept_holes: Vec<LineString<f64>> = interiors.into_iter()
-            .filter(|hole| {
-                let hole_poly = Polygon::new(hole.clone(), vec![]);
-                hole_poly.unsigned_area() >= HOLE_AREA_THRESHOLD
-            })
+        // Keep ALL components. Previously this dropped everything but
+        // the largest, which silently lost bricks the merge had assigned
+        // to the piece whenever neighbour bricks didn't quite touch (the
+        // common case: rows of bricks separated by visible mortar gaps
+        // larger than the EPSILON we use to fuse vertex contacts).
+        // Outline rendering is the source of truth for piece shape —
+        // it preserves every brick — so masking has to keep them too.
+        let _ = HOLE_AREA_THRESHOLD; // holes-vs-area filtering removed
+                                      // for multi-component case; the
+                                      // ring list is a flat list of
+                                      // exteriors only (no inner holes).
+        let rings: Vec<Vec<[f64; 2]>> = union.0.iter()
+            .map(|p| p.exterior().0.iter().map(|c| [c.x, c.y]).collect())
             .collect();
-        final_poly = Polygon::new(exterior, kept_holes);
-
-        let coords: Vec<[f64; 2]> = final_poly.exterior().0.iter()
-            .map(|c| [c.x, c.y])
-            .collect();
-        result.insert(piece.id.clone(), coords);
+        result.insert(piece.id.clone(), rings);
     }
 
     result
