@@ -197,6 +197,12 @@ type alias Settings =
     , gridHue : Float
     , outlineHue : Float
     , toolsWidthVw : Float
+    , exportDpi : String
+    , exportFormat : String
+    , exportLocation : String
+    , exportHouseName : String
+    , exportPosition : String
+    , exportSpacing : String
     }
 
 
@@ -204,7 +210,7 @@ type alias Settings =
 `crates/hp-tauri/src/settings.rs`. -}
 settingsSchemaVersion : Int
 settingsSchemaVersion =
-    1
+    2
 
 
 {-| Constants known at startup (passed in via flags). Carried in every
@@ -372,6 +378,12 @@ webDefaultSettings =
     , gridHue = 35.0
     , outlineHue = 210.0
     , toolsWidthVw = 40.0
+    , exportDpi = "300"
+    , exportFormat = "zip"
+    , exportLocation = "Rome"
+    , exportHouseName = "NewHouse"
+    , exportPosition = "0"
+    , exportSpacing = "12.0"
     }
 
 
@@ -413,12 +425,12 @@ initialRunning boot settings =
     , editOriginalGroups = []
     , recomputing = False
     , exporting = False
-    , exportDpi = "300"
-    , exportFormat = "zip"
-    , exportLocation = "Rome"
-    , exportHouseName = "NewHouse"
-    , exportPosition = "0"
-    , exportSpacing = "12.0"
+    , exportDpi = settings.exportDpi
+    , exportFormat = settings.exportFormat
+    , exportLocation = settings.exportLocation
+    , exportHouseName = settings.exportHouseName
+    , exportPosition = settings.exportPosition
+    , exportSpacing = settings.exportSpacing
     , draggingPieceId = Nothing
     , dragOverWaveId = Nothing
     , dragInsertBeforeId = Nothing
@@ -606,6 +618,12 @@ decodeSettings =
         |> required "grid_hue" D.float
         |> required "outline_hue" D.float
         |> required "tools_width_vw" D.float
+        |> required "export_dpi" D.string
+        |> required "export_format" D.string
+        |> required "export_location" D.string
+        |> required "export_house_name" D.string
+        |> required "export_position" D.string
+        |> required "export_spacing" D.string
 
 
 
@@ -1652,22 +1670,34 @@ updateRunning msg model =
             ( { model | recomputing = False }, Cmd.none )
 
         SetExportDpi s ->
-            ( { model | exportDpi = s }, Cmd.none )
+            ( { model | exportDpi = s }
+            , saveSettings model.boot.isTauri [ ( "export_dpi", E.string s ) ]
+            )
 
         SetExportFormat s ->
-            ( { model | exportFormat = s }, Cmd.none )
+            ( { model | exportFormat = s }
+            , saveSettings model.boot.isTauri [ ( "export_format", E.string s ) ]
+            )
 
         SetExportLocation s ->
-            ( { model | exportLocation = s }, Cmd.none )
+            ( { model | exportLocation = s }
+            , saveSettings model.boot.isTauri [ ( "export_location", E.string s ) ]
+            )
 
         SetExportHouseName s ->
-            ( { model | exportHouseName = s }, Cmd.none )
+            ( { model | exportHouseName = s }
+            , saveSettings model.boot.isTauri [ ( "export_house_name", E.string s ) ]
+            )
 
         SetExportPosition s ->
-            ( { model | exportPosition = s }, Cmd.none )
+            ( { model | exportPosition = s }
+            , saveSettings model.boot.isTauri [ ( "export_position", E.string s ) ]
+            )
 
         SetExportSpacing s ->
-            ( { model | exportSpacing = s }, Cmd.none )
+            ( { model | exportSpacing = s }
+            , saveSettings model.boot.isTauri [ ( "export_spacing", E.string s ) ]
+            )
 
         RequestExport ->
             let

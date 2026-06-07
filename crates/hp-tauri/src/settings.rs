@@ -34,7 +34,7 @@ const STORE_FILE: &str = "settings.json";
 const SETTINGS_KEY: &str = "settings";
 
 /// Bump in lock-step with `settingsSchemaVersion` in `elm/src/Main.elm`.
-const SCHEMA_VERSION: u32 = 1;
+const SCHEMA_VERSION: u32 = 2;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -60,6 +60,15 @@ pub struct Settings {
 
     // ---- right sidebar width (--tools-width CSS var, in vw)
     pub tools_width_vw: f64,
+
+    // ---- export panel inputs (stored as strings so partially-typed
+    //      intermediate values like "12." round-trip cleanly)
+    pub export_dpi: String,
+    pub export_format: String,
+    pub export_location: String,
+    pub export_house_name: String,
+    pub export_position: String,
+    pub export_spacing: String,
 }
 
 impl Default for Settings {
@@ -77,6 +86,12 @@ impl Default for Settings {
             grid_hue: 35.0,
             outline_hue: 210.0,
             tools_width_vw: 40.0,
+            export_dpi: "300".into(),
+            export_format: "zip".into(),
+            export_location: "Rome".into(),
+            export_house_name: "NewHouse".into(),
+            export_position: "0".into(),
+            export_spacing: "12.0".into(),
         }
     }
 }
