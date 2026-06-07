@@ -3304,26 +3304,14 @@ viewFileList model =
         isBusy =
             model.loadState == LoadingPdf
     in
+    -- Empty state shows only the Browse button. The in/ directory
+    -- listing used to render under it but added a per-machine
+    -- file list that made the initial-state screenshot
+    -- non-deterministic across baselines.
     div [ class "file-list" ]
-        ([ button [ class "file-entry file-entry-browse", onClick PickFile, disabled isBusy, tid "browse" ]
+        [ button [ class "file-entry file-entry-browse", onClick PickFile, disabled isBusy, tid "browse" ]
             [ text "Browse…" ]
-         ]
-            ++ (if List.isEmpty model.pdfFiles then
-                    [ span [ class "file-list-empty" ] [ text "No files in in/" ] ]
-
-                else
-                    List.map
-                        (\f ->
-                            button
-                                [ class "file-entry"
-                                , onClick (LoadFile f.path)
-                                , disabled isBusy
-                                ]
-                                [ text f.name ]
-                        )
-                        model.pdfFiles
-               )
-        )
+        ]
 
 
 viewBodyOverlay : RunningModel -> Html Msg
