@@ -1193,7 +1193,15 @@ if (window.Elm && window.Elm.Main) { (async function() {
     } catch(e) {}
   }
 
-  const app = window.Elm.Main.init({ node: document.getElementById('elm-root'), flags: { version: initVersion, isTauri: !!window.__TAURI__, loadFile: null } });
+  // E2E driver launches the binary with `--test-mode`; production
+  // never does. The flag gates the visible in/ file list — see
+  // `viewFileList` in Main.elm.
+  var testMode = false;
+  if (window.__TAURI__) {
+    try { testMode = !!(await window.__TAURI__.core.invoke('get_test_mode')); } catch(e) {}
+  }
+
+  const app = window.Elm.Main.init({ node: document.getElementById('elm-root'), flags: { version: initVersion, isTauri: !!window.__TAURI__, testMode: testMode, loadFile: null } });
 
   app.ports.setTitle.subscribe(function(title) { document.title = title; });
 

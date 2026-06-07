@@ -209,10 +209,17 @@ settingsSchemaVersion =
 
 {-| Constants known at startup (passed in via flags). Carried in every
 AppState variant so the loader / error UI can still display the
-version string and dispatch (or not) Tauri-specific commands. -}
+version string and dispatch (or not) Tauri-specific commands.
+
+`testMode` is true only when the Tauri binary was launched with the
+`--test-mode` flag (E2E driver). Production users never see this. It
+gates affordances we only want available to the e2e harness — namely
+the visible `in/` file list on the empty/initial screen, which the
+driver clicks to load a fixture house. -}
 type alias Boot =
     { version : String
     , isTauri : Bool
+    , testMode : Bool
     }
 
 
@@ -318,11 +325,11 @@ type alias Model =
     AppState
 
 
-init : { version : String, isTauri : Bool } -> ( Model, Cmd Msg )
+init : { version : String, isTauri : Bool, testMode : Bool } -> ( Model, Cmd Msg )
 init flags =
     let
         boot =
-            { version = flags.version, isTauri = flags.isTauri }
+            { version = flags.version, isTauri = flags.isTauri, testMode = flags.testMode }
     in
     if flags.isTauri then
         -- Tauri path: hold the UI in Loading until load_settings
@@ -3304,26 +3311,31 @@ viewFileList model =
         isBusy =
             model.loadState == LoadingPdf
     in
-    -- The empty/initial screen renders only the Browse button to keep
-    -- the screenshot deterministic across baselines. The per-file
-    -- buttons for everything in `in/` stay in the DOM as
-    -- `display: none` so the E2E driver — which clicks by text match
-    -- via `.click()` and doesn't care about CSS visibility — can
-    -- still drive a fixture load (`click:_NY2`).
+    -- Production: only the Browse button. The per-file buttons for
+    -- `in/` render *only* in test mode so the E2E driver can click
+    -- a fixture (e.g. `_NY2`) by text match. End users never see
+    -- them; the screenshot baseline stays deterministic.
+    let
+        fileButtons =
+            if model.boot.testMode then
+                List.map
+                    (\f ->
+                        button
+                            [ class "file-entry"
+                            , onClick (LoadFile f.path)
+                            , disabled isBusy
+                            ]
+                            [ text f.name ]
+                    )
+                    model.pdfFiles
+
+            else
+                []
+    in
     div [ class "file-list" ]
         (button [ class "file-entry file-entry-browse", onClick PickFile, disabled isBusy, tid "browse" ]
             [ text "Browse…" ]
-            :: List.map
-                (\f ->
-                    button
-                        [ class "file-entry"
-                        , style "display" "none"
-                        , onClick (LoadFile f.path)
-                        , disabled isBusy
-                        ]
-                        [ text f.name ]
-                )
-                model.pdfFiles
+            :: fileButtons
         )
 
 
@@ -6107,7 +6119,7 @@ subscriptions appState =
 -- ── Main ─────────────────────────────────────────────────────────────────────
 
 
-main : Program { version : String, isTauri : Bool } Model Msg
+main : Program { version : String, isTauri : Bool, testMode : Bool } Model Msg
 main =
     Browser.element
         { init = init

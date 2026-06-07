@@ -24,6 +24,15 @@ pub fn log_to_stderr(msg: String) {
     eprintln!("[webview] {msg}");
 }
 
+/// Whether the binary was launched with `--test-mode`. The frontend
+/// reads this at startup and shows the test-only `in/` file list
+/// (used by the E2E driver to click a fixture button). Production
+/// builds never pass `--test-mode`, so end users never see it.
+#[tauri::command]
+pub fn get_test_mode() -> bool {
+    std::env::args().any(|a| a == "--test-mode")
+}
+
 // ---------------------------------------------------------------------------
 // List PDFs
 // ---------------------------------------------------------------------------

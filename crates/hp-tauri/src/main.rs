@@ -170,6 +170,7 @@ fn main() {
             commands::check_for_updates,
             commands::save_screenshot,
             commands::log_to_stderr,
+            commands::get_test_mode,
             settings::load_settings,
             settings::save_settings,
         ]);
