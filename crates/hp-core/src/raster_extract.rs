@@ -46,12 +46,38 @@ pub fn compose_image_blocks_onto_canvas<I>(
     bilinear: bool,
 ) where I: IntoIterator<Item = usize>,
 {
+    compose_image_blocks_onto_canvas_at(
+        doc, blocks, block_indices, canvas,
+        clip_rect_pymu_pts, page_height_pt, bleed_pts, dpi, bilinear, (0, 0),
+    );
+}
+
+/// Same as `compose_image_blocks_onto_canvas` but `canvas` is treated as
+/// a sub-image of the full export canvas, positioned at
+/// `canvas_offset_px` in absolute canvas-px coords. Destination pixels
+/// computed from each image's CTM are translated by `-canvas_offset_px`
+/// before being written; pixels that fall outside the local canvas are
+/// clipped. Used by per-piece rendering to allocate only a piece-sized
+/// buffer instead of cloning the full export canvas.
+pub fn compose_image_blocks_onto_canvas_at<I>(
+    doc: &Document,
+    blocks: &[BrickBlock],
+    block_indices: I,
+    canvas: &mut RgbaImage,
+    clip_rect_pymu_pts: (f64, f64, f64, f64),
+    page_height_pt: f64,
+    bleed_pts: (f64, f64),
+    dpi: f64,
+    bilinear: bool,
+    canvas_offset_px: (i32, i32),
+) where I: IntoIterator<Item = usize>,
+{
     for idx in block_indices {
         let Some(b) = blocks.get(idx) else { continue; };
         let BrickContent::Image { object_id, .. } = &b.content else { continue; };
         match extract_image_block(doc, *object_id, &b.inner_ctm_at_content) {
-            Ok(raster) => raster.compose_onto(
-                canvas, clip_rect_pymu_pts, page_height_pt, bleed_pts, dpi, bilinear),
+            Ok(raster) => raster.compose_onto_at(
+                canvas, clip_rect_pymu_pts, page_height_pt, bleed_pts, dpi, bilinear, canvas_offset_px),
             Err(e) => eprintln!("[raster_extract] block #{} extract failed: {}", idx, e),
         }
     }
@@ -97,6 +123,23 @@ impl ExtractedRaster {
         dpi: f64,
         bilinear: bool,
     ) {
+        self.compose_onto_at(canvas, clip_rect_pymu_pts, page_height_pt, bleed, dpi, bilinear, (0, 0));
+    }
+
+    /// Same as `compose_onto` but treats `canvas` as a sub-image of the
+    /// full export canvas, positioned at `canvas_offset_px` (absolute
+    /// canvas-px coords of the local canvas's (0, 0)). Used to render
+    /// into a piece-sized buffer instead of the full canvas.
+    pub fn compose_onto_at(
+        &self,
+        canvas: &mut RgbaImage,
+        clip_rect_pymu_pts: (f64, f64, f64, f64),
+        page_height_pt: f64,
+        bleed: (f64, f64),
+        dpi: f64,
+        bilinear: bool,
+        canvas_offset_px: (i32, i32),
+    ) {
         let s = dpi / 72.0;
         // Image rect in PDF page coords (y-up).
         let pdf_left = self.ctm_e;
@@ -119,7 +162,8 @@ impl ExtractedRaster {
         let pymu_right = pdf_right - bleed_x;
         let pymu_top = (page_height_pt - pdf_top_up) - bleed_y;
         let pymu_bottom = (page_height_pt - pdf_bottom_up) - bleed_y;
-        // Canvas-px float coords of the image's destination rect.
+        // Canvas-px float coords of the image's destination rect, in
+        // ABSOLUTE canvas-px (origin = full-canvas top-left).
         let (cx0_pt, cy0_pt, _, _) = clip_rect_pymu_pts;
         let dest_left_f = (pymu_left - cx0_pt) * s;
         let dest_right_f = (pymu_right - cx0_pt) * s;
@@ -129,25 +173,36 @@ impl ExtractedRaster {
         let dest_h_f = dest_bottom_f - dest_top_f;
         if dest_w_f <= 0.0 || dest_h_f <= 0.0 { return; }
 
+        // Apply the local-canvas offset so absolute coords land at the
+        // right place in a sub-canvas. For the default (offset = 0, 0)
+        // path this is a no-op.
+        let (off_x, off_y) = canvas_offset_px;
+        let dest_left_local = dest_left_f - off_x as f64;
+        let dest_right_local = dest_right_f - off_x as f64;
+        let dest_top_local = dest_top_f - off_y as f64;
+        let dest_bottom_local = dest_bottom_f - off_y as f64;
+
         let canvas_w = canvas.width() as i32;
         let canvas_h = canvas.height() as i32;
         // Walk every canvas pixel covered by the dest rect; sample the
         // source image at the inverse-mapped float coord.
-        let x_start = dest_left_f.floor() as i32;
-        let x_end = dest_right_f.ceil() as i32;
-        let y_start = dest_top_f.floor() as i32;
-        let y_end = dest_bottom_f.ceil() as i32;
+        let x_start = dest_left_local.floor() as i32;
+        let x_end = dest_right_local.ceil() as i32;
+        let y_start = dest_top_local.floor() as i32;
+        let y_end = dest_bottom_local.ceil() as i32;
 
         let src_w = self.width as i32;
         let src_h = self.height as i32;
-        // Inverse map: canvas_px → image_px.
+        // Inverse map: canvas_px → image_px. (Same as before — the
+        // offset only shifts the destination rectangle, not the source
+        // sampling rate.)
         let inv_x = (src_w as f64) / dest_w_f;
         let inv_y = (src_h as f64) / dest_h_f;
 
         for cy in y_start.max(0)..y_end.min(canvas_h) {
-            let v = (cy as f64 + 0.5 - dest_top_f) * inv_y;
+            let v = (cy as f64 + 0.5 - dest_top_local) * inv_y;
             for cx in x_start.max(0)..x_end.min(canvas_w) {
-                let u = (cx as f64 + 0.5 - dest_left_f) * inv_x;
+                let u = (cx as f64 + 0.5 - dest_left_local) * inv_x;
                 let rgba = if bilinear {
                     sample_bilinear(&self.rgba, src_w, src_h, u, v)
                 } else {

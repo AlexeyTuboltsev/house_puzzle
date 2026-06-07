@@ -422,6 +422,47 @@ pub fn render_piece_pngs_from_composite(
         .collect()
 }
 
+/// Pixel bbox `(x0, y0, x1, y1)` that contains every vertex of every
+/// ring in `rings`, padded outward by `bleed_px` (for raster soft-mask
+/// alpha overhangs), clamped to `[0, canvas_w] × [0, canvas_h]`.
+///
+/// Falls back to the piece's geometric bbox if no rings are available —
+/// degenerate but safe (the polygon mask later zeros anything outside
+/// the polygon anyway, so a too-wide bbox just costs a few extra ms).
+fn piece_pixel_bbox(
+    rings: Option<&Vec<Vec<[f64; 2]>>>,
+    piece: &crate::types::PuzzlePiece,
+    canvas_w: i32,
+    canvas_h: i32,
+    bleed_px: i32,
+) -> (i32, i32, i32, i32) {
+    let (mut mn_x, mut mn_y, mut mx_x, mut mx_y) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
+    let mut have_any = false;
+    if let Some(rs) = rings {
+        for r in rs {
+            for p in r {
+                if p[0] < mn_x { mn_x = p[0]; }
+                if p[1] < mn_y { mn_y = p[1]; }
+                if p[0] > mx_x { mx_x = p[0]; }
+                if p[1] > mx_y { mx_y = p[1]; }
+                have_any = true;
+            }
+        }
+    }
+    if !have_any {
+        // Fall back to the piece's own bbox.
+        mn_x = piece.x as f64;
+        mn_y = piece.y as f64;
+        mx_x = (piece.x + piece.width) as f64;
+        mx_y = (piece.y + piece.height) as f64;
+    }
+    let x0 = ((mn_x.floor() as i32) - bleed_px).max(0);
+    let y0 = ((mn_y.floor() as i32) - bleed_px).max(0);
+    let x1 = ((mx_x.ceil() as i32) + bleed_px).min(canvas_w);
+    let y1 = ((mx_y.ceil() as i32) + bleed_px).min(canvas_h);
+    (x0, y0, x1.max(x0), y1.max(y0))
+}
+
 /// Tight bounding box of all pixels with non-zero alpha. Returns
 /// `(x, y, width, height)` in image-local coords, or `None` when the
 /// image is fully transparent.
@@ -543,10 +584,16 @@ fn render_piece_pngs_via_ocg_isolation(
     .and_then(|(rgba, pw, ph)| RgbaImage::from_raw(pw, ph, rgba))
     .map(|raw| compose_clipped_canvas(&raw, "non-image-all", new_canvas_w, new_canvas_h, (0, 0)));
 
-    // Per-piece work is now Image-only: extract this piece's Image
-    // blocks via raster_extract (no MuPDF), crop the global vector
-    // canvas to the piece polygon, composite, mask, trim. Each piece
-    // costs ~one image decode + a few hundred μs of compositing.
+    // Per-piece work is Image-only: extract this piece's Image blocks
+    // via raster_extract (no MuPDF), crop the global vector canvas to
+    // the piece's pixel bbox, compose, mask, trim.
+    //
+    // Performance: we allocate ONLY a piece-bbox-sized local canvas
+    // instead of cloning the full export canvas per piece. For a
+    // 60-piece NY5 at 300 DPI that's the difference between
+    // 60 × 100 MB = 6 GB and 60 × ~2 MB = 120 MB of allocations.
+    // The mask + alpha_bbox loops scale with bbox area too, so the
+    // per-pixel work drops by 30–50× per piece.
     let trimmed: Vec<crate::types::PuzzlePiece> = pieces
         .par_iter()
         .map(|piece| {
@@ -566,39 +613,69 @@ fn render_piece_pngs_via_ocg_isolation(
                 );
                 return piece.clone();
             }
-            // Start from a copy of the global non-Image canvas (cheap
-            // — same dimensions as the export canvas, no MuPDF call).
-            let mut canvas = non_image_canvas.clone()
-                .unwrap_or_else(|| RgbaImage::new(new_canvas_w, new_canvas_h));
 
-            // Compose this piece's Image blocks on top of that canvas.
-            // (Composing them BEFORE the polygon mask is fine — the
-            // mask clips everything outside the piece's polygon
-            // afterwards regardless of source.)
+            // Compute the piece's pixel bbox from its polygon rings,
+            // padded by `BLEED_PX` to capture raster soft-mask alpha
+            // overhangs that extend past the geometric outline. Clamp
+            // to the canvas. Empty/missing polygon falls back to the
+            // piece's own bbox (still polygon-mask-safe — the mask
+            // step zeros everything outside the polygon anyway).
+            const BLEED_PX: i32 = 64;
+            let (bx0, by0, bx1, by1) = piece_pixel_bbox(
+                piece_polygons.get(&piece.id),
+                piece,
+                new_canvas_w as i32,
+                new_canvas_h as i32,
+                BLEED_PX,
+            );
+            let local_w = (bx1 - bx0) as u32;
+            let local_h = (by1 - by0) as u32;
+            if local_w == 0 || local_h == 0 {
+                // Degenerate piece: emit an empty PNG sized to the
+                // piece's geometric bbox, keep coords coherent.
+                let pw = piece.width.max(1) as u32;
+                let ph = piece.height.max(1) as u32;
+                let blank = RgbaImage::new(pw, ph);
+                let _ = blank.save(out_dir.join(format!("piece_{}.png", piece.id)));
+                render_piece_outline(&blank, &out_dir.join(format!("piece_outline_{}.png", piece.id)));
+                return piece.clone();
+            }
+
+            // Start from the bbox-cropped slice of the global non-Image
+            // canvas. `crop_imm` returns a SubImage (no allocation);
+            // `to_image()` copies just those pixels.
+            let mut canvas = match non_image_canvas.as_ref() {
+                Some(global) => image::imageops::crop_imm(global, bx0 as u32, by0 as u32, local_w, local_h)
+                    .to_image(),
+                None => RgbaImage::new(local_w, local_h),
+            };
+
+            // Compose this piece's Image blocks on top, with the local
+            // canvas's absolute-coord offset = (bx0, by0).
             let block_idxs: Vec<usize> = piece_brick_idxs.iter()
                 .flat_map(|&bi| map.brick_to_blocks[bi].iter().copied())
                 .collect();
-            crate::raster_extract::compose_image_blocks_onto_canvas(
+            crate::raster_extract::compose_image_blocks_onto_canvas_at(
                 doc, blocks, block_idxs,
                 &mut canvas, meta.clip_rect, page_h_pt, artifact.bleed_pts,
-                export_dpi, true,
+                export_dpi, true, (bx0, by0),
             );
             let _ = &shifted_clip_pts; // accepted for API compat; the
                 // shifted-clip math is now handled inside
-                // `compose_image_blocks_onto_canvas` via bleed_pts.
+                // `compose_image_blocks_onto_canvas_at` via bleed_pts.
 
-            // Multi-ring mask: keep pixels inside ANY component of the
-            // piece's polygon union. Each ring is expanded by 0.5px so
-            // boundary pixels are included on both sides of a shared
-            // edge between adjacent pieces. Source of truth: the union
-            // of all bricks the merge assigned to this piece — so a
-            // brick whose component doesn't quite touch the rest still
-            // paints (was previously dropped by the "largest component
-            // only" filter).
+            // Multi-ring mask in LOCAL coords. Translate each ring by
+            // (-bx0, -by0). Iterating only the local canvas means we
+            // touch ~2–5 % of the previous pixel count per piece.
             if let Some(ring_list) = piece_polygons.get(&piece.id) {
                 let expanded: Vec<Vec<[f64; 2]>> = ring_list.iter()
                     .filter(|r| r.len() >= 3)
-                    .map(|r| expand_polygon(r, 0.5))
+                    .map(|r| {
+                        let exp = expand_polygon(r, 0.5);
+                        exp.into_iter()
+                            .map(|p| [p[0] - bx0 as f64, p[1] - by0 as f64])
+                            .collect()
+                    })
                     .collect();
                 if !expanded.is_empty() {
                     for (x, y, pixel) in canvas.enumerate_pixels_mut() {
@@ -632,11 +709,13 @@ fn render_piece_pngs_via_ocg_isolation(
             // their overhangs overlap with the neighbour brick's
             // body, same as in the composite. Only the piece's
             // OUTER boundary keeps its bleed.
+            // alpha_bbox is in LOCAL canvas coords; translate by
+            // (bx0, by0) to get the piece's absolute position.
             let (out_img, new_x, new_y, new_w, new_h) = match alpha_bbox(&canvas) {
                 Some((tx, ty, tw, th)) if tw > 0 && th > 0 => {
                     let cropped =
                         image::imageops::crop_imm(&canvas, tx, ty, tw, th).to_image();
-                    (cropped, tx as i32, ty as i32, tw as i32, th as i32)
+                    (cropped, bx0 + tx as i32, by0 + ty as i32, tw as i32, th as i32)
                 }
                 _ => {
                     // No painted pixels at all — emit an empty PNG
@@ -728,6 +807,13 @@ pub fn render_export_pieces(
         anyhow::bail!("export_dpi must be > 0");
     }
 
+    let t_total = std::time::Instant::now();
+    let mut t_step = std::time::Instant::now();
+    let mut log_step = |label: &str| {
+        eprintln!("[export]   {} +{:.2}s", label, t_step.elapsed().as_secs_f64());
+        t_step = std::time::Instant::now();
+    };
+
     let scale = export_dpi / loaded_dpi;
     let new_canvas_w = ((loaded_canvas_width as f64) * scale).round().max(1.0) as u32;
     let new_canvas_h = ((loaded_canvas_height as f64) * scale).round().max(1.0) as u32;
@@ -754,16 +840,19 @@ pub fn render_export_pieces(
     let (placements, meta, _) = crate::ai_parser::parse_ai(
         ai_path, crate::CANVAS_HEIGHT_PX as i32,
     ).map_err(|e| anyhow::anyhow!("parse_ai (for export): {e}"))?;
+    log_step("parse_ai");
     let modified_pdf_path = out_dir.join("_hp_ocg_modified.pdf");
     let artifact = crate::ocg_inject::build_modified_pdf(
         ai_path, &placements, &meta, &modified_pdf_path,
     ).map_err(|e| anyhow::anyhow!("building modified PDF (for export): {e}"))?;
+    log_step("build_modified_pdf");
     let doc = lopdf::Document::load(ai_path)
         .map_err(|e| anyhow::anyhow!("loading PDF for direct extract: {e}"))?;
     let page_id = doc.page_iter().next()
         .ok_or_else(|| anyhow::anyhow!("PDF has no pages"))?;
     let blocks = crate::ocg_inject::walk_page_bricks(&doc, page_id)
         .map_err(|e| anyhow::anyhow!("walk_page_bricks: {e}"))?;
+    log_step("lopdf load + walk");
     let page_h_pt = {
         let p = doc.get_object(page_id)
             .and_then(|o| o.as_dict())
@@ -784,6 +873,7 @@ pub fn render_export_pieces(
     let map = crate::ocg_inject::match_blocks_to_bricks(
         &blocks, &placements, geo, crate::ocg_inject::DEFAULT_OVERLAY_RADIUS_PT,
     );
+    log_step("match_blocks_to_bricks");
 
     // Refined bleed → sub-pixel-precise shifted clip.
     let shifted_clip = (
@@ -814,6 +904,7 @@ pub fn render_export_pieces(
     composite
         .save(out_dir.join("composite.png"))
         .map_err(|e| anyhow::anyhow!("saving composite.png: {e}"))?;
+    log_step("composite.png");
 
     // 2. Re-render the OCG background layer (blueprint backdrop) at
     //    the same shifted clip so it aligns with the composite.
@@ -902,6 +993,7 @@ pub fn render_export_pieces(
         highlight
             .save(out_dir.join("background_highlight.png"))
             .map_err(|e| anyhow::anyhow!("saving background_highlight.png: {e}"))?;
+        log_step("background + highlight");
         // Sidecar: PAD offset so consumers can place the asset.
         let _ = std::fs::write(
             out_dir.join("background_highlight.json"),
@@ -924,6 +1016,7 @@ pub fn render_export_pieces(
         lt_canvas
             .save(out_dir.join("lights.png"))
             .map_err(|e| anyhow::anyhow!("saving lights.png: {e}"))?;
+        log_step("lights.png");
     }
 
     // assets.json is written near the end of this function (after
@@ -1002,7 +1095,10 @@ pub fn render_export_pieces(
         &map,
         page_h_pt,
     ) {
-        Ok(trimmed) => trimmed,
+        Ok(trimmed) => {
+            log_step("per-piece pngs (OCG-isolated)");
+            trimmed
+        }
         Err(e) => {
             eprintln!(
                 "[render_export_pieces] OCG-isolation path failed ({e}); \
@@ -1123,6 +1219,11 @@ pub fn render_export_pieces(
     if std::env::var("HP_KEEP_MODIFIED_PDF").is_err() {
         let _ = std::fs::remove_file(&modified_pdf_path);
     }
+
+    eprintln!(
+        "[export] render_export_pieces total: {:.2}s",
+        t_total.elapsed().as_secs_f64()
+    );
 
     Ok(trimmed_pieces)
 }
