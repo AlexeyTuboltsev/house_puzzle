@@ -28,3 +28,8 @@ zip = "0.6"
 # with injected BDC/EMC markers).
 lopdf = "0.32"
 flate2 = "1"
+# imageproc 0.23 is the last release that tracks `image = "0.24"`
+# (the workspace's pinned version). Newer imageproc pulls a second
+# `image` 0.25 into the dep graph which causes type mismatches when
+# we pass our `GrayImage` to `distance_transform`.
+imageproc = { version = "0.23", default-features = false }

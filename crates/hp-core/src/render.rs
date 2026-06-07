@@ -849,87 +849,75 @@ pub fn render_export_pieces(
             .map_err(|e| anyhow::anyhow!("saving background.png: {e}"))?;
 
         // ── background_highlight.png ──────────────────────────────
-        // Soft white outline of the house silhouette + window/door
-        // cut-outs. The background layer's alpha mask drives this:
-        // opaque = house body, transparent = cut-outs and outside.
-        // We:
-        //   1. Pad the canvas so the blur halo can extend past the
-        //      house's external edges (otherwise touching pixels at
-        //      the canvas border have nowhere for their glow to go).
-        //   2. Detect the alpha boundary as a ~5 px stroke band by
-        //      marking every pixel that has at least one neighbour
-        //      within `STROKE_RADIUS` whose opaque-ness differs.
-        //   3. Set those pixels to opaque white, leave the rest fully
-        //      transparent — so fills are transparent and only the
-        //      strokes carry colour.
-        //   4. Gaussian-blur the stroke band for the soft-glow look.
+        // White Gaussian-falloff halo centred on the alpha boundary of
+        // the house silhouette (incl. each window/door opening). The
+        // alpha is derived analytically from the SIGNED distance to
+        // the boundary — `α(d) = 255 · exp(−d²/(2σ²))` — using a real
+        // Euclidean distance transform. Because the formula only
+        // depends on |d|, sharp concave corners get the same band
+        // width as straight edges (the box-blur approximation we
+        // used before pooled darker into 90° inner corners and read
+        // like overlapping drop shadows; this is rotationally
+        // symmetric by construction).
         //
-        // The result is saved at the padded dimensions; the asset's
-        // top-left corresponds to canvas (−PAD_PX, −PAD_PX). Callers
-        // composite it at that offset on a regular-sized backdrop.
+        // The result is saved at a padded canvas size so the halo
+        // can bleed past the bricks' external edges; the sidecar
+        // `background_highlight.json` records the (−PAD_PX, −PAD_PX)
+        // placement offset for consumers.
         const PAD_PX: i32 = 80;
-        const STROKE_RADIUS: i32 = 3;          // ⇒ ~7 px wide band
         let pad_w = new_canvas_w as i32 + 2 * PAD_PX;
         let pad_h = new_canvas_h as i32 + 2 * PAD_PX;
-        let mut padded = RgbaImage::new(pad_w as u32, pad_h as u32);
-        for (x, y, src) in bg_canvas.enumerate_pixels() {
+
+        // Binary mask: 255 inside silhouette, 0 outside.
+        // Crucially, EVERY non-silhouette pixel must be tagged as
+        // "outside" — including pixels in the padded margin around the
+        // bg_canvas. If we only tagged transparent pixels INSIDE
+        // bg_canvas, the boundary along a canvas edge (where the
+        // silhouette touches the edge directly) was invisible to the
+        // distance transform: padding pixels found no "outside"
+        // neighbour nearby, the falloff died, and the halo had a flat
+        // missing edge there.
+        let mut mask_in = image::GrayImage::new(pad_w as u32, pad_h as u32);
+        let mut mask_out = image::ImageBuffer::from_pixel(
+            pad_w as u32, pad_h as u32, image::Luma([255u8]),
+        );
+        for (x, y, p) in bg_canvas.enumerate_pixels() {
             let nx = x as i32 + PAD_PX;
             let ny = y as i32 + PAD_PX;
-            if nx >= 0 && ny >= 0 && nx < pad_w && ny < pad_h {
-                padded.put_pixel(nx as u32, ny as u32, *src);
+            if nx < 0 || ny < 0 || nx >= pad_w || ny >= pad_h { continue; }
+            if p[3] > 8 {
+                mask_in.put_pixel(nx as u32, ny as u32, image::Luma([255]));
+                mask_out.put_pixel(nx as u32, ny as u32, image::Luma([0]));
             }
         }
-        // Build a boolean opaque-mask in a flat row-major buffer so
-        // the inner neighbour loop reads cache-friendly bytes
-        // (faster than `RgbaImage::get_pixel` per probe).
-        let mut mask = vec![false; (pad_w * pad_h) as usize];
+        // Squared Euclidean distance from each pixel to the nearest
+        // zero pixel. `d_in[x,y]² = distance² from inside-pixel to
+        // nearest outside-pixel = distance² to boundary on the inside`.
+        // For pixels outside the silhouette, we transform `mask_out`
+        // instead — same idea, reversed.
+        let d2_in = imageproc::distance_transform::euclidean_squared_distance_transform(&mask_in);
+        let d2_out = imageproc::distance_transform::euclidean_squared_distance_transform(&mask_out);
+
+        // σ in pixels — ~7 pt FWHM-ish at any export DPI.
+        let sigma_px = export_dpi * (3.5 / 72.0);
+        let two_sigma_sq = 2.0 * sigma_px * sigma_px;
+
+        let mut highlight = RgbaImage::new(pad_w as u32, pad_h as u32);
         for y in 0..pad_h {
             for x in 0..pad_w {
-                mask[(y * pad_w + x) as usize] =
-                    padded.get_pixel(x as u32, y as u32)[3] > 8;
-            }
-        }
-        let mut stroke = RgbaImage::new(pad_w as u32, pad_h as u32);
-        for y in 0..pad_h {
-            for x in 0..pad_w {
-                let centre = mask[(y * pad_w + x) as usize];
-                let mut is_edge = false;
-                'scan: for dy in -STROKE_RADIUS..=STROKE_RADIUS {
-                    let ny = y + dy;
-                    if ny < 0 || ny >= pad_h { continue; }
-                    for dx in -STROKE_RADIUS..=STROKE_RADIUS {
-                        let nx = x + dx;
-                        if nx < 0 || nx >= pad_w { continue; }
-                        if mask[(ny * pad_w + nx) as usize] != centre {
-                            is_edge = true;
-                            break 'scan;
-                        }
-                    }
+                // Distance squared from (x,y) to the nearest boundary
+                // pixel: pixels OUTSIDE the silhouette get `d2_out`
+                // (= squared distance from outside-pixel to nearest
+                // inside-pixel), pixels INSIDE get `d2_in`. The two
+                // images cover complementary domains so adding them
+                // works regardless of which side `(x,y)` sits on.
+                let d2 = d2_in.get_pixel(x as u32, y as u32)[0]
+                       + d2_out.get_pixel(x as u32, y as u32)[0];
+                let intensity = (-d2 / two_sigma_sq).exp();
+                let a = (255.0 * intensity).round().clamp(0.0, 255.0) as u8;
+                if a > 0 {
+                    highlight.put_pixel(x as u32, y as u32, Rgba([255, 255, 255, a]));
                 }
-                if is_edge {
-                    stroke.put_pixel(x as u32, y as u32, Rgba([255, 255, 255, 255]));
-                }
-            }
-        }
-        let blur_sigma = (export_dpi * (7.0 / 72.0)) as f32;
-        let mut highlight = image::imageops::blur(&stroke, blur_sigma);
-        // Gaussian blur dilutes both alpha and RGB channels together
-        // because each channel is independently averaged with the
-        // transparent zeros around the stroke. The asset is supposed
-        // to be SOLID white with a soft alpha falloff, so:
-        //   1. Boost alpha back into a useful range (the stroke was
-        //      narrow, σ is big — raw blur alpha tops out at ~32/255).
-        //   2. Force RGB to white wherever alpha > 0 so the halo
-        //      actually reads as white at the boosted alpha.
-        const ALPHA_BOOST: f32 = 12.0;
-        for px in highlight.pixels_mut() {
-            let a = (px[3] as f32 * ALPHA_BOOST).round();
-            let a8 = a.clamp(0.0, 255.0) as u8;
-            px[3] = a8;
-            if a8 > 0 {
-                px[0] = 255;
-                px[1] = 255;
-                px[2] = 255;
             }
         }
         highlight
@@ -1066,8 +1054,20 @@ pub fn render_export_pieces(
     // ~6 pixels of bezier extent is enough; capped at 64.
     let samples_per_curve = ((export_dpi / 8.0).round() as usize).clamp(16, 64);
     let export_pt_to_canvas = export_dpi / 72.0;
-    let canvas_shift = [-clip_rect_pts.0, -clip_rect_pts.1];
-    let mut outlines = RgbaImage::new(new_canvas_w, new_canvas_h);
+    // Pad the outlines canvas so a piece whose bezier path coincides
+    // with the canvas edge isn't clipped to half stroke width. The
+    // outline's exterior-most pixels can sit at most `stroke_thickness`
+    // outside the geometric path; we leave a little extra room for
+    // safety. Result is saved at the padded size with a (-PAD,-PAD)
+    // placement offset (mirrors background_highlight.png).
+    const OUTLINES_PAD_PX: i32 = 16;
+    let out_pad_w = new_canvas_w as i32 + 2 * OUTLINES_PAD_PX;
+    let out_pad_h = new_canvas_h as i32 + 2 * OUTLINES_PAD_PX;
+    let canvas_shift = [
+        -clip_rect_pts.0 + (OUTLINES_PAD_PX as f64) / export_pt_to_canvas,
+        -clip_rect_pts.1 + (OUTLINES_PAD_PX as f64) / export_pt_to_canvas,
+    ];
+    let mut outlines = RgbaImage::new(out_pad_w as u32, out_pad_h as u32);
     for piece in pieces {
         // Collect this piece's brick beziers in PyMuPDF point coords.
         let mut input: Vec<crate::bezier::BezierPath> = Vec::new();
@@ -1125,6 +1125,9 @@ pub fn render_export_pieces(
         if !out_dir.join(fname).exists() { continue; }
         let (x, y, w, h) = if *fname == "background_highlight.png" {
             let pad = 80i32;
+            (-pad, -pad, new_canvas_w as i32 + 2 * pad, new_canvas_h as i32 + 2 * pad)
+        } else if *fname == "outlines.png" {
+            let pad = OUTLINES_PAD_PX;
             (-pad, -pad, new_canvas_w as i32 + 2 * pad, new_canvas_h as i32 + 2 * pad)
         } else {
             (0, 0, new_canvas_w as i32, new_canvas_h as i32)
