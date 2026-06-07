@@ -3304,14 +3304,27 @@ viewFileList model =
         isBusy =
             model.loadState == LoadingPdf
     in
-    -- Empty state shows only the Browse button. The in/ directory
-    -- listing used to render under it but added a per-machine
-    -- file list that made the initial-state screenshot
-    -- non-deterministic across baselines.
+    -- The empty/initial screen renders only the Browse button to keep
+    -- the screenshot deterministic across baselines. The per-file
+    -- buttons for everything in `in/` stay in the DOM as
+    -- `display: none` so the E2E driver — which clicks by text match
+    -- via `.click()` and doesn't care about CSS visibility — can
+    -- still drive a fixture load (`click:_NY2`).
     div [ class "file-list" ]
-        [ button [ class "file-entry file-entry-browse", onClick PickFile, disabled isBusy, tid "browse" ]
+        (button [ class "file-entry file-entry-browse", onClick PickFile, disabled isBusy, tid "browse" ]
             [ text "Browse…" ]
-        ]
+            :: List.map
+                (\f ->
+                    button
+                        [ class "file-entry"
+                        , style "display" "none"
+                        , onClick (LoadFile f.path)
+                        , disabled isBusy
+                        ]
+                        [ text f.name ]
+                )
+                model.pdfFiles
+        )
 
 
 viewBodyOverlay : RunningModel -> Html Msg
