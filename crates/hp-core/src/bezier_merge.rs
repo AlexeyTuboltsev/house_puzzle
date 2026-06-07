@@ -620,13 +620,6 @@ fn normalize(v: [f64; 2]) -> [f64; 2] {
     if len < 1e-12 { [1.0, 0.0] } else { [v[0] / len, v[1] / len] }
 }
 
-/// Counter-clockwise angle from `a` to `b`, in radians (−π, π].
-fn turn_ccw(a: [f64; 2], b: [f64; 2]) -> f64 {
-    let cross = a[0] * b[1] - a[1] * b[0];
-    let dot = a[0] * b[0] + a[1] * b[1];
-    cross.atan2(dot)
-}
-
 /// Find `t ∈ (0, 1)` at which the cubic is closest to `v`. Returns
 /// `Some((t, dist_sq))` if a minimum is found in the interior.
 fn closest_t_on_cubic(
@@ -1126,23 +1119,6 @@ fn rotate_loop(loop_: &BezierPath, vertex_idx: usize) -> BezierPath {
         new_segs.push(loop_.segments[(vertex_idx + k) % n]);
     }
     BezierPath { start: new_start, segments: new_segs }
-}
-
-/// Approximate signed area of a closed bezier path via the chord polygon.
-fn bezier_signed_area(bp: &BezierPath) -> f64 {
-    let mut pts: Vec<[f64; 2]> = Vec::with_capacity(bp.segments.len() + 1);
-    pts.push(bp.start);
-    for s in &bp.segments {
-        pts.push(s.end());
-    }
-    if pts.len() < 3 { return 0.0; }
-    let mut a = 0.0;
-    let n = pts.len();
-    for i in 0..n {
-        let j = (i + 1) % n;
-        a += pts[i][0] * pts[j][1] - pts[j][0] * pts[i][1];
-    }
-    a / 2.0
 }
 
 fn loop_bbox(bp: &BezierPath) -> [f64; 4] {

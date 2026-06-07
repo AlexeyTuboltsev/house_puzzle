@@ -284,7 +284,6 @@ pub async fn load_pdf(
     let mut bricks: Vec<Brick> = Vec::new();
     let mut brick_polygons: HashMap<String, Vec<[f64; 2]>> = HashMap::new();
     let mut brick_beziers: HashMap<String, Vec<BezierPath>> = HashMap::new();
-    let layer_blocks: HashMap<String, ai_parser::LayerBlock> = HashMap::new();
     let mut brick_layer_names: HashMap<String, String> = HashMap::new();
     // Correct canvas-pixel positions from MuPDF clip rect (immune to polygon extraction errors).
     let mut brick_pymu_rects: HashMap<String, (i32, i32, i32, i32)> = HashMap::new();
@@ -509,7 +508,6 @@ pub async fn load_pdf(
     };
 
     // Store session
-    let ai_data = Arc::new(ai_data);
     {
         let mut store = sessions.lock();
         store.insert(
@@ -523,8 +521,6 @@ pub async fn load_pdf(
                 pieces: Vec::new(),
                 metadata: metadata.clone(),
                 extract_dir: extract_dir.clone(),
-                ai_data,
-                layer_blocks,
                 bricks_layer_img: bricks_layer_arc,
                 brick_images: HashMap::new(),
                 brick_rgba,
@@ -650,7 +646,7 @@ pub async fn merge_pieces(
     // Optional: recompute mode — array of { id, brick_ids } objects.
     pieces: Option<Vec<Value>>,
 ) -> Result<Value, String> {
-    let (bricks, polygons, beziers, areas, extract_dir, bricks_layer_img, brick_rgba, scale, clip_x0, clip_y0, brick_placements) = {
+    let (bricks, polygons, beziers, areas, extract_dir, bricks_layer_img, _brick_rgba, scale, clip_x0, clip_y0, brick_placements) = {
         let store = sessions.lock();
         let session = store
             .get(&key)

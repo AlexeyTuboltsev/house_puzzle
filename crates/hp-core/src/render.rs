@@ -166,8 +166,6 @@ pub fn render_brick_images_hybrid(
     ocg_fallback: &RgbaImage,
 ) -> HashMap<String, RgbaImage> {
     let result = Mutex::new(HashMap::new());
-    let mut raster_count = 0u32;
-    let mut vector_count = 0u32;
 
     bricks.par_iter().for_each(|(id, bp)| {
         // Try direct raster extraction first
@@ -205,8 +203,7 @@ pub fn render_brick_images_hybrid(
     });
 
     let r = result.into_inner().unwrap();
-    let rc = r.values().filter(|_| true).count(); // just to count
-    eprintln!("[hybrid] {} bricks total ({} would be raster-direct)", r.len(), r.len());
+    eprintln!("[hybrid] {} bricks rendered", r.len());
     r
 }
 
@@ -590,24 +587,6 @@ fn render_piece_pngs_via_ocg_isolation(
                 // shifted-clip math is now handled inside
                 // `compose_image_blocks_onto_canvas` via bleed_pts.
 
-            // Mask out the "leak" — content inside /OC /bricks that
-            // wasn't matched to any per-brick OCG (yellow window-pane
-            // gradients etc.). It renders whenever "bricks" is on,
-            // contaminating areas that don't belong to this piece.
-            //
-            // We use the same piece-polygon mask as the composite-crop
-            // path (`render_piece_pngs_from_composite`) so the OCG-
-            // isolated output is visually almost identical to the old
-            // composite-cropped pieces. The legitimate differences come
-            // from the OCG isolation itself:
-            //   - overhangs from neighbour bricks that bled into this
-            //     piece in the composite are gone (neighbour bricks
-            //     are off in the modified PDF, so they never paint)
-            //   - this piece's own bricks' soft-mask overhangs that
-            //     were occluded by neighbours in the composite are now
-            //     visible (no neighbour to cover them)
-            // Both effects only show at the piece boundary, on the
-            // order of a couple pixels.
             // Multi-ring mask: keep pixels inside ANY component of the
             // piece's polygon union. Each ring is expanded by 0.5px so
             // boundary pixels are included on both sides of a shared
@@ -1040,14 +1019,9 @@ pub fn render_export_pieces(
     //
     // Outlines come from the SAME bezier-merge code (`merge_piece_bezier`)
     // that the live editor UI uses, so the exported outline matches
-    // the one the user sees on screen. The previous path stroked the
-    // geo_clipper polygon union, whose expand/erode + chord
-    // approximation occasionally drops the canvas-boundary edges of
-    // outermost pieces (visible as a missing outer house silhouette
-    // in exports). The bezier-merge path preserves cubic curves and
-    // every brick edge that doesn't get cancelled by an adjacent
-    // brick's edge — i.e. it draws exactly the piece-boundary set
-    // the editor draws, including outer silhouette edges.
+    // the one the user sees on screen — cubic curves preserved, every
+    // brick edge that isn't cancelled by an adjacent brick drawn,
+    // including outer silhouette edges.
     let stroke_thickness = ((export_dpi / 96.0).round() as i32).max(1);
     // Samples per cubic — at higher DPI we need more samples so a
     // brick's arch stays visibly smooth after stroking. 1 sample per

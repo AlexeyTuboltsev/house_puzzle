@@ -14,9 +14,6 @@ use std::collections::{HashMap, HashSet};
 
 use crate::types::{Brick, PuzzlePiece};
 
-/// Adjacency threshold: bricks within this many pixels are candidates.
-const ADJACENCY_THRESHOLD: f64 = 15.0;
-
 /// Build a Shapely-equivalent polygon from brick-local point coordinates.
 fn brick_polygon(brick: &Brick, polygon: &[[f64; 2]]) -> Option<Polygon<f64>> {
     if polygon.len() < 3 {
@@ -779,8 +776,6 @@ pub fn compute_piece_polygons(
     bricks_by_id: &HashMap<String, Brick>,
     brick_polygons: &HashMap<String, Vec<[f64; 2]>>,
 ) -> HashMap<String, Vec<Vec<[f64; 2]>>> {
-    use geo::algorithm::bool_ops::BooleanOps;
-
     let mut result: HashMap<String, Vec<Vec<[f64; 2]>>> = HashMap::new();
 
     for piece in pieces {
@@ -958,7 +953,7 @@ mod tests {
             }
         }
 
-        let adj = build_adjacency_vector(&bricks, &polygons, ADJACENCY_THRESHOLD, 10.0, 2.0);
+        let adj = build_adjacency_vector(&bricks, &polygons, 15.0, 10.0, 2.0);
         let areas = compute_polygon_areas(&bricks, &polygons);
 
         eprintln!("Adjacency: {} bricks have neighbors", adj.len());

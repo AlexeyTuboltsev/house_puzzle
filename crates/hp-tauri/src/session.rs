@@ -1,6 +1,6 @@
 //! In-memory session management.
 
-use hp_core::ai_parser::{AiPrivateData, BrickPlacement, LayerBlock, ParsedAiMetadata};
+use hp_core::ai_parser::{BrickPlacement, ParsedAiMetadata};
 use hp_core::bezier::BezierPath;
 use hp_core::types::{Brick, PuzzlePiece};
 use image::RgbaImage;
@@ -22,8 +22,6 @@ pub struct Session {
     pub pieces: Vec<PuzzlePiece>,
     pub metadata: ParsedAiMetadata,
     pub extract_dir: PathBuf,
-    pub ai_data: Arc<AiPrivateData>,
-    pub layer_blocks: HashMap<String, LayerBlock>,
     /// OCG bricks layer render — shared for brick/piece image serving.
     pub bricks_layer_img: Arc<RgbaImage>,
     /// Per-brick images (canvas-sized, polygon-masked). Lazy-populated as PNG bytes.

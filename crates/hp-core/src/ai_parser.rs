@@ -1146,7 +1146,7 @@ pub fn parse_ai(
         .collect();
 
     let mut results: Vec<BrickPlacement> = Vec::with_capacity(keep_idx.len());
-    let mut skipped_bricks: Vec<String> = Vec::new();
+    let skipped_bricks: Vec<String> = Vec::new();
     let mut warnings: Vec<String> = Vec::new();
 
     for (slot, &orig_i) in keep_idx.iter().enumerate() {
