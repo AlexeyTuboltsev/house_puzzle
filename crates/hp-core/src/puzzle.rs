@@ -1065,4 +1065,116 @@ mod tests {
         // 10 × 10 = 100 (b.area() returns w*h).
         assert_eq!(areas.get("ghost").copied(), Some(100.0));
     }
+
+    // ── compute_piece_polygons (multi-component) ────────────────────────
+
+    /// Square polygon in brick-local coords, side `side`.
+    fn square_local(side: f64) -> Vec<[f64; 2]> {
+        vec![[0.0, 0.0], [side, 0.0], [side, side], [0.0, side]]
+    }
+
+    #[test]
+    fn compute_piece_polygons_keeps_every_disconnected_component() {
+        // A piece can legitimately own two bricks whose polygons don't
+        // touch — when merge bridged them across a thin neighbour, or
+        // when the mortar gap between adjacent rows exceeds the EPSILON
+        // we use to fuse vertex contacts. The earlier "largest component
+        // only" filter silently dropped the smaller brick from the mask;
+        // the outline-as-source-of-truth fix returns every component.
+        let bricks = vec![
+            brick("a", 0, 0, 10, 10),
+            brick("b", 100, 100, 10, 10), // far away, no possible union
+        ];
+        let bricks_by_id: HashMap<String, Brick> =
+            bricks.iter().map(|b| (b.id.clone(), b.clone())).collect();
+        let mut polys: HashMap<String, Vec<[f64; 2]>> = HashMap::new();
+        polys.insert("a".into(), square_local(10.0));
+        polys.insert("b".into(), square_local(10.0));
+
+        let piece = PuzzlePiece {
+            id: "p0".into(),
+            brick_ids: vec!["a".into(), "b".into()],
+            x: 0, y: 0, width: 110, height: 110,
+        };
+
+        let result = compute_piece_polygons(&[piece], &bricks_by_id, &polys);
+        let rings = result.get("p0").expect("piece p0 missing");
+        assert_eq!(
+            rings.len(), 2,
+            "disconnected bricks must produce 2 rings, got {}: {:?}",
+            rings.len(), rings,
+        );
+
+        // Each ring should be a closed loop with ≥4 vertices (square+close).
+        for (i, r) in rings.iter().enumerate() {
+            assert!(r.len() >= 4, "ring {} too short: {} pts", i, r.len());
+        }
+    }
+
+    #[test]
+    fn compute_piece_polygons_fuses_touching_bricks_into_single_component() {
+        // Adjacent squares sharing the x=10 edge should merge into a
+        // single 20×10 component thanks to the EPSILON expansion.
+        let bricks = vec![
+            brick("a", 0, 0, 10, 10),
+            brick("b", 10, 0, 10, 10),
+        ];
+        let bricks_by_id: HashMap<String, Brick> =
+            bricks.iter().map(|b| (b.id.clone(), b.clone())).collect();
+        let mut polys: HashMap<String, Vec<[f64; 2]>> = HashMap::new();
+        polys.insert("a".into(), square_local(10.0));
+        polys.insert("b".into(), square_local(10.0));
+
+        let piece = PuzzlePiece {
+            id: "p0".into(), brick_ids: vec!["a".into(), "b".into()],
+            x: 0, y: 0, width: 20, height: 10,
+        };
+        let result = compute_piece_polygons(&[piece], &bricks_by_id, &polys);
+        let rings = result.get("p0").expect("piece p0 missing");
+        assert_eq!(
+            rings.len(), 1,
+            "edge-sharing bricks must fuse into 1 component, got {}",
+            rings.len(),
+        );
+    }
+
+    #[test]
+    fn compute_piece_polygons_skips_brick_without_polygon() {
+        // A brick missing from `brick_polygons` should just be dropped
+        // from the union — no panic, no spurious component. (Bricks
+        // without vector polygons can happen for synthetic/raster-only
+        // placements that the parser couldn't trace.)
+        let bricks = vec![
+            brick("a", 0, 0, 10, 10),
+            brick("ghost", 50, 50, 10, 10),
+        ];
+        let bricks_by_id: HashMap<String, Brick> =
+            bricks.iter().map(|b| (b.id.clone(), b.clone())).collect();
+        let mut polys: HashMap<String, Vec<[f64; 2]>> = HashMap::new();
+        polys.insert("a".into(), square_local(10.0));
+        // intentionally no entry for "ghost"
+
+        let piece = PuzzlePiece {
+            id: "p0".into(), brick_ids: vec!["a".into(), "ghost".into()],
+            x: 0, y: 0, width: 60, height: 60,
+        };
+        let result = compute_piece_polygons(&[piece], &bricks_by_id, &polys);
+        let rings = result.get("p0").expect("piece p0 missing");
+        assert_eq!(rings.len(), 1, "ghost brick must be silently skipped");
+    }
+
+    #[test]
+    fn compute_piece_polygons_empty_piece_yields_empty_rings() {
+        // No matching bricks (all missing polygons) → empty ring list,
+        // not None. Callers iterate rings unconditionally; an absent
+        // map entry would mask a real bug.
+        let bricks_by_id: HashMap<String, Brick> = HashMap::new();
+        let polys: HashMap<String, Vec<[f64; 2]>> = HashMap::new();
+        let piece = PuzzlePiece {
+            id: "p0".into(), brick_ids: vec!["nope".into()],
+            x: 0, y: 0, width: 0, height: 0,
+        };
+        let result = compute_piece_polygons(&[piece], &bricks_by_id, &polys);
+        assert_eq!(result.get("p0").map(|r| r.len()), Some(0));
+    }
 }

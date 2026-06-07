@@ -2166,4 +2166,127 @@ mod tests {
             matched_bricks, total_bricks,
         );
     }
+
+    // ── PageGeometry coord projection (pure math, no AI dep) ────────────
+
+    /// Synthetic placement with a known brick-local polygon. Other
+    /// fields are filled with values the projection helpers don't
+    /// read so the test stays focused on the coord math.
+    fn placement_with_polygon(
+        pymu_x: i32, pymu_y: i32, polygon: Vec<[f64; 2]>,
+    ) -> crate::ai_parser::BrickPlacement {
+        crate::ai_parser::BrickPlacement {
+            name: "synthetic".into(),
+            layer_type: "vector_brick".into(),
+            x: pymu_x, y: pymu_y, width: 10, height: 10,
+            pymu_x, pymu_y, pymu_w: 10, pymu_h: 10,
+            polygon: Some(polygon),
+            block_begin: 0, block_end: 0,
+            ai_rasters: Vec::new(),
+        }
+    }
+
+    /// PageGeometry as a 100-DPI render of a 600pt-tall page with no
+    /// pymu bleed. Lets us write expected coords without juggling
+    /// scales — at 100 DPI 1 canvas-px = 0.72 pt.
+    fn geom_100dpi(page_height_pt: f64, bleed_x: f64, bleed_y: f64) -> PageGeometry {
+        PageGeometry {
+            clip_x0: 0.0, clip_y0: 0.0,
+            render_dpi: 100.0, page_height_pt,
+            bleed_x, bleed_y,
+        }
+    }
+
+    #[test]
+    fn placement_polygon_pdf_rejects_polygons_with_fewer_than_3_points() {
+        let geo = geom_100dpi(600.0, 0.0, 0.0);
+        let line = placement_with_polygon(0, 0, vec![[0.0, 0.0], [10.0, 0.0]]);
+        assert!(geo.placement_polygon_pdf(&line).is_none());
+
+        let no_poly = placement_with_polygon(0, 0, Vec::new());
+        // Polygon::None branch (placement.polygon.as_ref()? short-circuits).
+        let mut nb = no_poly.clone();
+        nb.polygon = None;
+        assert!(geo.placement_polygon_pdf(&nb).is_none());
+    }
+
+    #[test]
+    fn placement_polygon_pdf_lifts_local_to_canvas_and_flips_y() {
+        // 10×10 square at pymu (100, 200) canvas-px on a 600 pt page,
+        // rendered at 100 DPI (scale = 100/72 px-per-pt).
+        // For a polygon vertex at (0, 0) brick-local:
+        //   canvas_x = 0 + 100 = 100,  canvas_y = 0 + 200 = 200
+        //   pymu_x_pt = 100 / (100/72) = 72,  pymu_y_pt = 200 / (100/72) = 144
+        //   pdf_e = 72 + 0 (bleed_x) = 72
+        //   pdf_f = 600 - (144 + 0) = 456 (page height is Y-up in PDF)
+        let geo = geom_100dpi(600.0, 0.0, 0.0);
+        let p = placement_with_polygon(100, 200, vec![
+            [0.0, 0.0], [10.0, 0.0], [10.0, 10.0], [0.0, 10.0],
+        ]);
+        let out = geo.placement_polygon_pdf(&p).expect("Some(pts)");
+        assert_eq!(out.len(), 4);
+        assert!((out[0].0 - 72.0).abs() < 1e-6, "x[0]={}", out[0].0);
+        assert!((out[0].1 - 456.0).abs() < 1e-6, "y[0]={}", out[0].1);
+        // Last vertex (0, 10) → pymu (100, 210) → 72 pt, page_h − 151.2 pt
+        assert!((out[3].0 - 72.0).abs() < 1e-6);
+        assert!((out[3].1 - (600.0 - 200.0 / (100.0 / 72.0) - 10.0 / (100.0 / 72.0))).abs() < 1e-6);
+    }
+
+    #[test]
+    fn placement_polygon_pdf_applies_pymu_to_pdf_bleed() {
+        // Same setup as above with a +267 pt X bleed (the magnitude
+        // we see on the real NY5 / NY8 inputs). Bleed should add to
+        // pdf_e but leave the y projection alone.
+        let geo = geom_100dpi(600.0, 267.0, 0.0);
+        let p = placement_with_polygon(0, 0, vec![
+            [0.0, 0.0], [10.0, 0.0], [10.0, 10.0], [0.0, 10.0],
+        ]);
+        let out = geo.placement_polygon_pdf(&p).expect("Some(pts)");
+        // vertex (0, 0) brick-local + pymu_x=0 → pymu_x_pt=0 → pdf_e=267
+        assert!((out[0].0 - 267.0).abs() < 1e-6, "expected +267 bleed on x, got {}", out[0].0);
+        // y is page-flipped; bleed_y is 0 → pdf_f = 600
+        assert!((out[0].1 - 600.0).abs() < 1e-6, "y[0]={}", out[0].1);
+    }
+
+    #[test]
+    fn placement_polygon_centroid_pdf_is_mean_of_projected_vertices() {
+        // Centroid of the 10×10 square at pymu (100, 200) is at canvas
+        // (105, 205) → in pt that's (75.6, 147.6) → pdf (75.6, 600 -
+        // 147.6) = (75.6, 452.4).
+        let geo = geom_100dpi(600.0, 0.0, 0.0);
+        let p = placement_with_polygon(100, 200, vec![
+            [0.0, 0.0], [10.0, 0.0], [10.0, 10.0], [0.0, 10.0],
+        ]);
+        let (cx, cy) = geo.placement_polygon_centroid_pdf(&p).expect("Some(c)");
+        let expected_cx = (100.0 + 5.0) / (100.0 / 72.0);
+        let expected_cy = 600.0 - (200.0 + 5.0) / (100.0 / 72.0);
+        assert!((cx - expected_cx).abs() < 1e-6, "cx={} expected={}", cx, expected_cx);
+        assert!((cy - expected_cy).abs() < 1e-6, "cy={} expected={}", cy, expected_cy);
+    }
+
+    // ── walk_page_bricks straddle-split detection (NY5, auto-skip) ──────
+
+    /// Some AI files lay out bricks such that a single block straddles
+    /// the BDC/EMC scope of two OCGs — the parser records the
+    /// straddle_split index pair so injection can split-wrap. NY5 has
+    /// many such blocks; this test pins the detection path so a
+    /// future refactor that loses straddle tracking will fail loudly.
+    #[test]
+    fn walk_page_bricks_detects_straddle_splits_on_ny5() {
+        let Some(ai) = ai_path("_NY5") else {
+            eprintln!("in/_NY5.ai not present — skipping");
+            return;
+        };
+        let doc = lopdf::Document::load(&ai).unwrap();
+        let page_id = doc.page_iter().next().unwrap();
+        let blocks = walk_page_bricks(&doc, page_id).unwrap();
+        let with_straddle = blocks.iter().filter(|b| b.straddle_split.is_some()).count();
+        assert!(
+            with_straddle > 0,
+            "expected ≥1 straddle-split block on NY5, found 0. \
+             Either the AI file lost its multi-OCG structure or the \
+             detection path silently regressed. Total blocks: {}",
+            blocks.len(),
+        );
+    }
 }
