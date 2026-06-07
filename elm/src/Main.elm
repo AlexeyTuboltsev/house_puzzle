@@ -414,7 +414,7 @@ initialRunning boot settings =
     , recomputing = False
     , exporting = False
     , exportDpi = "300"
-    , exportFormat = "psd"
+    , exportFormat = "zip"
     , exportLocation = "Rome"
     , exportHouseName = "NewHouse"
     , exportPosition = "0"
@@ -4328,21 +4328,21 @@ viewExportTools model =
                 [ button
                     [ classList
                         [ ( "format-btn", True )
-                        , ( "active", model.exportFormat == "psd" )
-                        ]
-                    , onClick (SetExportFormat "psd")
-                    , type_ "button"
-                    ]
-                    [ text "PSD" ]
-                , button
-                    [ classList
-                        [ ( "format-btn", True )
                         , ( "active", model.exportFormat == "zip" )
                         ]
                     , onClick (SetExportFormat "zip")
                     , type_ "button"
                     ]
                     [ text "ZIP" ]
+                , button
+                    [ classList
+                        [ ( "format-btn", True )
+                        , ( "active", model.exportFormat == "psd" )
+                        ]
+                    , onClick (SetExportFormat "psd")
+                    , type_ "button"
+                    ]
+                    [ text "PSD" ]
                 ]
             ]
         , div [ class "field-row" ]
