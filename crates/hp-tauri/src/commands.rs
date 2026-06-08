@@ -1026,7 +1026,7 @@ pub async fn export_data(
     suggested_filename: Option<String>,
     format: Option<String>,
 ) -> Result<Option<String>, String> {
-    let (pieces, bricks, brick_polygons, brick_beziers, metadata, extract_dir, ai_path, pdf_offset, brick_layer_names) = {
+    let (pieces, bricks, brick_polygons, brick_beziers, metadata, placements, extract_dir, ai_path, brick_layer_names) = {
         let store = sessions.lock();
         let session = store
             .get(&key)
@@ -1037,9 +1037,9 @@ pub async fn export_data(
             session.brick_polygons.clone(),
             session.brick_beziers.clone(),
             session.metadata.clone(),
+            session.brick_placements.clone(),
             session.extract_dir.clone(),
             session.ai_path.clone(),
-            session.pdf_offset,
             session.brick_layer_names.clone(),
         )
     };
@@ -1105,23 +1105,21 @@ pub async fn export_data(
         let brick_polys_for_render = brick_polygons.clone();
         let brick_beziers_for_render = brick_beziers.clone();
         let meta_for_render = metadata.clone();
+        let placements_for_render = placements.clone();
         let ai_path_for_render = ai_path.clone();
         let out_dir_for_render = export_pieces_dir.clone();
         let brick_layer_names_for_render = brick_layer_names.clone();
         tokio::task::spawn_blocking(move || {
             hp_core::render::render_export_pieces(
                 &ai_path_for_render,
+                &placements_for_render,
+                &meta_for_render,
                 &pieces_for_render,
                 &bricks_for_render,
                 &brick_polys_for_render,
                 &brick_beziers_for_render,
                 &brick_layer_names_for_render,
-                meta_for_render.canvas_width,
-                meta_for_render.canvas_height,
-                meta_for_render.clip_rect,
-                meta_for_render.render_dpi,
                 export_dpi,
-                pdf_offset,
                 &out_dir_for_render,
             )
         })

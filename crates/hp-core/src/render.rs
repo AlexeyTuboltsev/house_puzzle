@@ -780,6 +780,13 @@ fn render_piece_pngs_via_ocg_isolation(
 /// `render_piece_pngs_from_composite` for the trim rationale.
 pub fn render_export_pieces(
     ai_path: &Path,
+    // Already-parsed placements + AI metadata — the caller (Tauri
+    // command or CLI example) has these from its earlier parse_ai
+    // call for puzzle generation, so we re-use them instead of
+    // parsing the AI a second time inside the export path. Saves
+    // ~1.5–2 s on NY-sized inputs.
+    placements: &[crate::ai_parser::BrickPlacement],
+    meta: &crate::ai_parser::ParsedAiMetadata,
     pieces: &[crate::types::PuzzlePiece],
     bricks: &HashMap<String, crate::types::Brick>,
     brick_polygons: &HashMap<String, Vec<[f64; 2]>>,
@@ -792,16 +799,11 @@ pub fn render_export_pieces(
     // translate the hashed IDs stored in `piece.brick_ids` back to the
     // layer names that `brick_name_to_idx` is keyed by.
     brick_layer_names: &HashMap<String, String>,
-    loaded_canvas_width: i32,
-    loaded_canvas_height: i32,
-    clip_rect_pts: (f64, f64, f64, f64),
-    loaded_dpi: f64,
     export_dpi: f64,
-    pdf_offset_loaded: (i32, i32),
     out_dir: &Path,
 ) -> anyhow::Result<Vec<crate::types::PuzzlePiece>> {
-    if loaded_dpi <= 0.0 {
-        anyhow::bail!("loaded_dpi must be > 0");
+    if meta.render_dpi <= 0.0 {
+        anyhow::bail!("meta.render_dpi must be > 0");
     }
     if export_dpi <= 0.0 {
         anyhow::bail!("export_dpi must be > 0");
@@ -814,36 +816,23 @@ pub fn render_export_pieces(
         t_step.set(std::time::Instant::now());
     };
 
-    let scale = export_dpi / loaded_dpi;
-    let new_canvas_w = ((loaded_canvas_width as f64) * scale).round().max(1.0) as u32;
-    let new_canvas_h = ((loaded_canvas_height as f64) * scale).round().max(1.0) as u32;
-
-    // `pdf_offset_loaded` and `clip_rect_pts` are kept in the signature
-    // for backwards compatibility but no longer used directly — the
-    // export now derives a sub-pixel-precise `shifted_clip` from the
-    // modified PDF artifact below. The probe-based offset was integer-
-    // pixel quantised and produced a ~1px misalignment between MuPDF
-    // and direct-extracted raster placements.
-    let _ = pdf_offset_loaded;
-    let _ = clip_rect_pts;
+    let scale = export_dpi / meta.render_dpi;
+    let new_canvas_w = ((meta.canvas_width as f64) * scale).round().max(1.0) as u32;
+    let new_canvas_h = ((meta.canvas_height as f64) * scale).round().max(1.0) as u32;
 
     std::fs::create_dir_all(out_dir)
         .map_err(|e| anyhow::anyhow!("create_dir_all({}): {e}", out_dir.display()))?;
 
-    // ── Up-front: parse the AI, inject per-brick OCGs, walk + match
-    //     blocks. We reuse all four pieces of state — placements,
-    //     the modified PDF artifact (carries bleed_pts), the lopdf
-    //     Document (for direct image extraction), and the matched
-    //     brick→blocks map — across both the composite step and the
-    //     per-piece rendering loop. Doing this once avoids the parse
-    //     + walk + match running twice.
-    let (placements, meta, _) = crate::ai_parser::parse_ai(
-        ai_path, crate::CANVAS_HEIGHT_PX as i32,
-    ).map_err(|e| anyhow::anyhow!("parse_ai (for export): {e}"))?;
-    log_step("parse_ai");
+    // ── Up-front: inject per-brick OCGs, walk + match blocks. The
+    //     parser has already produced `placements` + `meta` for us
+    //     (the caller passed them in). We reuse them plus the modified
+    //     PDF artifact (carries bleed_pts), the lopdf Document (for
+    //     direct image extraction), and the matched brick→blocks map
+    //     across both the composite step and the per-piece rendering
+    //     loop.
     let modified_pdf_path = out_dir.join("_hp_ocg_modified.pdf");
     let artifact = crate::ocg_inject::build_modified_pdf(
-        ai_path, &placements, &meta, &modified_pdf_path,
+        ai_path, placements, meta, &modified_pdf_path,
     ).map_err(|e| anyhow::anyhow!("building modified PDF (for export): {e}"))?;
     log_step("build_modified_pdf");
     let doc = lopdf::Document::load(ai_path)
@@ -871,7 +860,7 @@ pub fn render_export_pieces(
         bleed_x: artifact.bleed_pts.0, bleed_y: artifact.bleed_pts.1,
     };
     let map = crate::ocg_inject::match_blocks_to_bricks(
-        &blocks, &placements, geo, crate::ocg_inject::DEFAULT_OVERLAY_RADIUS_PT,
+        &blocks, placements, geo, crate::ocg_inject::DEFAULT_OVERLAY_RADIUS_PT,
     );
     log_step("match_blocks_to_bricks");
 
@@ -1162,8 +1151,8 @@ pub fn render_export_pieces(
     let out_pad_w = new_canvas_w as i32 + 2 * OUTLINES_PAD_PX;
     let out_pad_h = new_canvas_h as i32 + 2 * OUTLINES_PAD_PX;
     let canvas_shift = [
-        -clip_rect_pts.0 + (OUTLINES_PAD_PX as f64) / export_pt_to_canvas,
-        -clip_rect_pts.1 + (OUTLINES_PAD_PX as f64) / export_pt_to_canvas,
+        -meta.clip_rect.0 + (OUTLINES_PAD_PX as f64) / export_pt_to_canvas,
+        -meta.clip_rect.1 + (OUTLINES_PAD_PX as f64) / export_pt_to_canvas,
     ];
     let mut outlines = RgbaImage::new(out_pad_w as u32, out_pad_h as u32);
     for piece in pieces {

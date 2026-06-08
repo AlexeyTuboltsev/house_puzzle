@@ -133,12 +133,10 @@ fn run_canary(c: &Canary) {
     // don't introduce scale rounding into the fingerprint.
     let export_dpi = 100.0_f64;
     hp_core::render::render_export_pieces(
-        &ai, &pieces, &bricks_by_id, &brick_polygons,
+        &ai, &placements, &meta,
+        &pieces, &bricks_by_id, &brick_polygons,
         &brick_beziers, &brick_layer_names,
-        meta.canvas_width, meta.canvas_height,
-        meta.clip_rect, meta.render_dpi, export_dpi,
-        (0, 0),
-        &out_dir,
+        export_dpi, &out_dir,
     ).expect("render_export_pieces");
 
     // Fingerprint composite.png.

@@ -90,41 +90,23 @@ fn main() -> anyhow::Result<()> {
     let brick_layer_names: HashMap<String, String> =
         bricks.iter().map(|b| (b.id.clone(), b.id.clone())).collect();
 
-    // Detect pdf_offset the same way load_pdf does (composite-render then compare).
-    eprintln!("[export_house] detecting pdf_offset at load DPI ...");
-    let pdf_offset_loaded: (i32, i32) = {
-        let bricks_pixmap = hp_core::render::render_ocg_layer_pixmap_clipped(
-            ai_path, "bricks", meta.render_dpi, meta.clip_rect,
-        );
-        if let Some((bricks_img, _, _)) = bricks_pixmap {
-            let canvas_w = meta.canvas_width as u32;
-            let canvas_h = meta.canvas_height as u32;
-            let canvas = hp_core::render::compose_clipped_canvas(
-                &bricks_img, "bricks", canvas_w, canvas_h, (0, 0),
-            );
-            let off = hp_core::render::compute_pdf_offset(&canvas, 0, 0);
-            eprintln!("[export_house] pdf_offset={:?}", off);
-            off
-        } else {
-            (0, 0)
-        }
-    };
-
-    // Run the export render pipeline (OCG-isolated piece PNGs + composite/background/outlines).
+    // Run the export render pipeline (OCG-isolated piece PNGs +
+    // composite/background/outlines). pdf_offset is no longer detected
+    // up-front — render_export_pieces derives a sub-pixel-precise
+    // bleed from `build_modified_pdf` internally, so the old
+    // compose-render-and-probe step (which was integer-pixel only) is
+    // dead.
     eprintln!("[export_house] running render_export_pieces at {} DPI -> {} ...", export_dpi, out_dir.display());
     let trimmed_pieces = hp_core::render::render_export_pieces(
         ai_path,
+        &placements,
+        &meta,
         &pieces,
         &bricks_by_id,
         &brick_polygons,
         &brick_beziers,
         &brick_layer_names,
-        meta.canvas_width,
-        meta.canvas_height,
-        meta.clip_rect,
-        meta.render_dpi,
         export_dpi,
-        pdf_offset_loaded,
         out_dir,
     )?;
     eprintln!("[export_house] {} piece PNGs written", trimmed_pieces.len());
