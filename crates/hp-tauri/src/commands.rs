@@ -1024,7 +1024,6 @@ pub async fn export_data(
     placement: Option<Value>,
     export_dpi: Option<f64>,
     suggested_filename: Option<String>,
-    format: Option<String>,
 ) -> Result<Option<String>, String> {
     let (pieces, bricks, brick_polygons, brick_beziers, metadata, placements, extract_dir, ai_path, brick_layer_names) = {
         let store = sessions.lock();
@@ -1096,9 +1095,8 @@ pub async fn export_data(
     // visible pixels by 2–3×, leaving large transparent overhangs in
     // the sprite). These trimmed rects live in EXPORT-DPI canvas
     // coords — same coord system as composite.png and the per-piece
-    // PNGs we just wrote — so PSD layer placement uses them directly,
-    // while the ZIP/Unity path divides them back to loaded-DPI (the
-    // contract `generate_export_zip` was built around).
+    // PNGs we just wrote. The ZIP/Unity path divides them back to
+    // loaded-DPI (the contract `generate_export_zip` was built around).
     let trimmed_pieces_export_dpi: Vec<hp_core::types::PuzzlePiece> = {
         let pieces_for_render = pieces.clone();
         let bricks_for_render = bricks_by_id.clone();
@@ -1152,61 +1150,30 @@ pub async fn export_data(
             .collect()
     };
 
-    // "psd" or "zip" — drives both the encoder and the save-dialog
-    // filter. PSD is default if the frontend doesn't pass one.
-    let format = format.unwrap_or_else(|| "psd".to_string()).to_lowercase();
-    if format != "psd" && format != "zip" {
-        return Err(format!("unknown export format: {format}"));
-    }
-
     let bricks_for_encode = bricks_by_id.clone();
     let metadata_for_encode = metadata.clone();
     let extract_dir_for_encode = export_pieces_dir.clone();
     let waves_for_encode = waves_val.clone();
     let groups_for_encode = groups_val.clone();
-    let format_for_encode = format.clone();
-    // PSD takes EXPORT-DPI pieces and EXPORT-DPI canvas dims (PNGs on
-    // disk are at the export DPI; the PSD canvas must match). The
-    // existing `load_canvas_layer` size-check inside the PSD encoder
-    // bails when canvas_width / canvas_height don't match the assets,
-    // so we have to scale the loaded-DPI metadata up by the same
-    // factor render_export_pieces applied.
-    let pieces_for_psd = trimmed_pieces_export_dpi;
     let pieces_for_zip = trimmed_pieces_loaded_dpi;
-    let psd_canvas_w = ((metadata.canvas_width as f64) * export_dpi / loaded_dpi)
-        .round()
-        .max(1.0) as i32;
-    let psd_canvas_h = ((metadata.canvas_height as f64) * export_dpi / loaded_dpi)
-        .round()
-        .max(1.0) as i32;
     let file_bytes = tokio::task::spawn_blocking(move || -> Result<Vec<u8>, String> {
-        if format_for_encode == "psd" {
-            hp_core::export::generate_export_psd(
-                &pieces_for_psd,
-                &extract_dir_for_encode,
-                psd_canvas_w,
-                psd_canvas_h,
-            )
-            .map_err(|e| e.to_string())
-        } else {
-            hp_core::export::generate_export_zip(
-                &pieces_for_zip,
-                &bricks_for_encode,
-                &extract_dir_for_encode,
-                metadata_for_encode.canvas_width,
-                metadata_for_encode.canvas_height,
-                metadata_for_encode.screen_frame_height_px,
-                loaded_dpi,
-                export_dpi,
-                &waves_for_encode,
-                &groups_for_encode,
-                &location,
-                position,
-                &house_name,
-                spacing,
-            )
-            .map_err(|e| e.to_string())
-        }
+        hp_core::export::generate_export_zip(
+            &pieces_for_zip,
+            &bricks_for_encode,
+            &extract_dir_for_encode,
+            metadata_for_encode.canvas_width,
+            metadata_for_encode.canvas_height,
+            metadata_for_encode.screen_frame_height_px,
+            loaded_dpi,
+            export_dpi,
+            &waves_for_encode,
+            &groups_for_encode,
+            &location,
+            position,
+            &house_name,
+            spacing,
+        )
+        .map_err(|e| e.to_string())
     })
     .await
     .map_err(|e| e.to_string())??;
@@ -1219,27 +1186,15 @@ pub async fn export_data(
     let default_dir = stored_path.as_deref().and_then(read_last_dir);
     let default_name = suggested_filename
         .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| {
-            if format == "psd" {
-                "export.psd".to_string()
-            } else {
-                "export.zip".to_string()
-            }
-        });
+        .unwrap_or_else(|| "export.zip".to_string());
 
     let app_for_dialog = app.clone();
-    let filter_name = if format == "psd" {
-        "Photoshop (PSD)"
-    } else {
-        "ZIP archive"
-    };
-    let filter_ext = if format == "psd" { "psd" } else { "zip" };
     let dialog_path = tokio::task::spawn_blocking(move || {
         use tauri_plugin_dialog::DialogExt;
         let mut builder = app_for_dialog
             .dialog()
             .file()
-            .add_filter(filter_name, &[filter_ext])
+            .add_filter("ZIP archive", &["zip"])
             .set_file_name(&default_name);
         if let Some(dir) = default_dir {
             builder = builder.set_directory(dir);

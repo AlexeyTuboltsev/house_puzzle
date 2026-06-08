@@ -374,14 +374,14 @@ pub fn render_piece_pngs_from_composite(
             // bricks at the edges of the cluster that don't fully tile),
             // so the union bbox can be 2-3× the size of the actual
             // content. Untrimmed sprites end up with a large transparent
-            // overhang — visible in PSD, in the per-piece preview, and
-            // worst of all in Unity (the sprite anchor lands on dead
+            // overhang — visible in the per-piece preview and worst
+            // of all in Unity (the sprite anchor lands on dead
             // pixels). Cropping to the alpha bbox here makes the PNG
             // tight to the content, and returning a `PuzzlePiece` with
             // the same tight bbox lets downstream consumers
-            // (build_house_data, PSD layer placement) recompute the
-            // sprite's centre/anchor from the trimmed rect — so the
-            // sprite stays visually in the same place.
+            // (build_house_data) recompute the sprite's centre/anchor
+            // from the trimmed rect — so the sprite stays visually in
+            // the same place.
             let trimmed_bbox = alpha_bbox(&piece_img);
 
             let (out_img, new_x, new_y, new_w, new_h) = match trimmed_bbox {
@@ -774,8 +774,8 @@ fn render_piece_pngs_via_ocg_isolation(
 /// Returns the per-piece trimmed `PuzzlePiece` records in **export-DPI
 /// canvas coords** — the same coord space the rendered piece PNGs live
 /// in. Downstream encoders should use these (not the original
-/// loaded-DPI pieces) so the sprite rect they place into PSD/Unity
-/// matches the cropped PNG: tight to the visible content rather than
+/// loaded-DPI pieces) so the sprite rect they place into the Unity
+/// ZIP matches the cropped PNG: tight to the visible content rather than
 /// padded out to the union of the piece's brick bboxes. See
 /// `render_piece_pngs_from_composite` for the trim rationale.
 pub fn render_export_pieces(

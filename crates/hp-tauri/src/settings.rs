@@ -64,7 +64,6 @@ pub struct Settings {
     // ---- export panel inputs (stored as strings so partially-typed
     //      intermediate values like "12." round-trip cleanly)
     pub export_dpi: String,
-    pub export_format: String,
     pub export_location: String,
     pub export_house_name: String,
     pub export_position: String,
@@ -87,7 +86,6 @@ impl Default for Settings {
             outline_hue: 210.0,
             tools_width_vw: 40.0,
             export_dpi: "300".into(),
-            export_format: "zip".into(),
             export_location: "Rome".into(),
             export_house_name: "NewHouse".into(),
             export_position: "0".into(),

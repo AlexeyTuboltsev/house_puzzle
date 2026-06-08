@@ -198,7 +198,6 @@ type alias Settings =
     , outlineHue : Float
     , toolsWidthVw : Float
     , exportDpi : String
-    , exportFormat : String
     , exportLocation : String
     , exportHouseName : String
     , exportPosition : String
@@ -282,11 +281,6 @@ type alias RunningModel =
          build_house_data — output sprite dimensions = source × (export_dpi /
          loaded_dpi). -}
       exportDpi : String
-    , {- "psd" or "zip" — controls both the encoder selected on the
-         Rust side and the save-dialog filter / suggested extension.
-         PSD is the default; Unity-side ZIP export is opt-in via the
-         toggle in the export panel. -}
-      exportFormat : String
     , exportLocation : String
     , exportHouseName : String
     , exportPosition : String
@@ -379,7 +373,6 @@ webDefaultSettings =
     , outlineHue = 210.0
     , toolsWidthVw = 40.0
     , exportDpi = "300"
-    , exportFormat = "zip"
     , exportLocation = "Rome"
     , exportHouseName = "NewHouse"
     , exportPosition = "0"
@@ -426,7 +419,6 @@ initialRunning boot settings =
     , recomputing = False
     , exporting = False
     , exportDpi = settings.exportDpi
-    , exportFormat = settings.exportFormat
     , exportLocation = settings.exportLocation
     , exportHouseName = settings.exportHouseName
     , exportPosition = settings.exportPosition
@@ -494,7 +486,6 @@ type Msg
     | CancelEdit
     | GotPiecePolygons (Result Http.Error (List ( String, List Point )))
     | SetExportDpi String
-    | SetExportFormat String
     | SetExportLocation String
     | SetExportHouseName String
     | SetExportPosition String
@@ -619,7 +610,6 @@ decodeSettings =
         |> required "outline_hue" D.float
         |> required "tools_width_vw" D.float
         |> required "export_dpi" D.string
-        |> required "export_format" D.string
         |> required "export_location" D.string
         |> required "export_house_name" D.string
         |> required "export_position" D.string
@@ -1674,11 +1664,6 @@ updateRunning msg model =
             , saveSettings model.boot.isTauri [ ( "export_dpi", E.string s ) ]
             )
 
-        SetExportFormat s ->
-            ( { model | exportFormat = s }
-            , saveSettings model.boot.isTauri [ ( "export_format", E.string s ) ]
-            )
-
         SetExportLocation s ->
             ( { model | exportLocation = s }
             , saveSettings model.boot.isTauri [ ( "export_location", E.string s ) ]
@@ -1765,15 +1750,8 @@ updateRunning msg model =
                         Maybe.withDefault 0 (String.toInt model.exportPosition)
                             |> String.fromInt
 
-                    extToken =
-                        if model.exportFormat == "zip" then
-                            "zip"
-
-                        else
-                            "psd"
-
                     suggestedFilename =
-                        cityToken ++ "_" ++ posToken ++ "." ++ extToken
+                        cityToken ++ "_" ++ posToken ++ ".zip"
                 in
                 ( { model | exporting = True }
                 , tauriInvoke
@@ -1784,7 +1762,6 @@ updateRunning msg model =
                             , ( "waves", wavesJson )
                             , ( "groups", groupsJson )
                             , ( "exportDpi", E.float exportDpiValue )
-                            , ( "format", E.string model.exportFormat )
                             , ( "suggestedFilename", E.string suggestedFilename )
                             , ( "placement"
                               , E.object
@@ -4352,29 +4329,6 @@ viewExportTools model =
     div [ class "tools-pane" ]
         [ viewTogglesBox [ viewCheckboxLights model, viewCheckboxGrid model, viewCheckboxOutlines model, viewCheckboxWaveOverlay model, viewCheckboxNumbers model, viewCheckboxOnlyBlueprint model ]
         , viewSectionTitle "Export"
-        , div [ class "field-row" ]
-            [ label [] [ text "Format" ]
-            , div [ class "format-toggle" ]
-                [ button
-                    [ classList
-                        [ ( "format-btn", True )
-                        , ( "active", model.exportFormat == "zip" )
-                        ]
-                    , onClick (SetExportFormat "zip")
-                    , type_ "button"
-                    ]
-                    [ text "ZIP" ]
-                , button
-                    [ classList
-                        [ ( "format-btn", True )
-                        , ( "active", model.exportFormat == "psd" )
-                        ]
-                    , onClick (SetExportFormat "psd")
-                    , type_ "button"
-                    ]
-                    [ text "PSD" ]
-                ]
-            ]
         , div [ class "field-row" ]
             [ label [] [ text "DPI" ]
             , input
