@@ -97,6 +97,14 @@ impl Default for Settings {
 /// Read the persisted settings, falling back to defaults for any
 /// missing fields and for the missing-file / unreadable-store cases.
 /// The frontend always gets a fully-populated Settings.
+///
+/// Auto-migrates older schema versions: serde's `#[serde(default)]`
+/// fills in any field the older file didn't have, then we stamp the
+/// current `SCHEMA_VERSION` so the frontend's strict version-equality
+/// check is satisfied. The on-disk file isn't rewritten here — the
+/// next user-triggered save (via `save_settings`) re-stamps it
+/// naturally, and any leftover keys from the old schema get carried
+/// along as harmless cruft until the next bump.
 #[tauri::command]
 pub fn load_settings(app: AppHandle) -> Settings {
     let store = match app.store(STORE_FILE) {
@@ -107,7 +115,9 @@ pub fn load_settings(app: AppHandle) -> Settings {
         Some(v) => v,
         None => return Settings::default(),
     };
-    serde_json::from_value::<Settings>(raw).unwrap_or_default()
+    let mut s = serde_json::from_value::<Settings>(raw).unwrap_or_default();
+    s.version = SCHEMA_VERSION;
+    s
 }
 
 /// Merge `partial` (any subset of Settings keys) into the stored
