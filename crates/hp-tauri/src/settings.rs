@@ -34,7 +34,7 @@ const STORE_FILE: &str = "settings.json";
 const SETTINGS_KEY: &str = "settings";
 
 /// Bump in lock-step with `settingsSchemaVersion` in `elm/src/Main.elm`.
-const SCHEMA_VERSION: u32 = 2;
+const SCHEMA_VERSION: u32 = 3;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -63,7 +63,8 @@ pub struct Settings {
 
     // ---- export panel inputs (stored as strings so partially-typed
     //      intermediate values like "12." round-trip cleanly)
-    pub export_dpi: String,
+    pub export_assets_dpi: String,
+    pub export_pieces_dpi: String,
     pub export_location: String,
     pub export_house_name: String,
     pub export_position: String,
@@ -85,7 +86,8 @@ impl Default for Settings {
             grid_hue: 35.0,
             outline_hue: 210.0,
             tools_width_vw: 40.0,
-            export_dpi: "300".into(),
+            export_assets_dpi: "300".into(),
+            export_pieces_dpi: "300".into(),
             export_location: "Rome".into(),
             export_house_name: "NewHouse".into(),
             export_position: "0".into(),
@@ -115,9 +117,28 @@ pub fn load_settings(app: AppHandle) -> Settings {
         Some(v) => v,
         None => return Settings::default(),
     };
+    let raw = migrate_raw(raw);
     let mut s = serde_json::from_value::<Settings>(raw).unwrap_or_default();
     s.version = SCHEMA_VERSION;
     s
+}
+
+/// Field-level migrations on the raw JSON before deserialization,
+/// for cases serde alone can't handle (renames, splits).
+///
+/// History:
+///   - v3 split `export_dpi` into `export_assets_dpi` + `export_pieces_dpi`.
+///     Carry the old value into BOTH new fields so the user's chosen
+///     DPI is preserved across the upgrade. The stale `export_dpi`
+///     key is removed so it doesn't sit in the file as cruft.
+fn migrate_raw(mut raw: Value) -> Value {
+    if let Value::Object(ref mut obj) = raw {
+        if let Some(old) = obj.remove("export_dpi") {
+            obj.entry("export_assets_dpi").or_insert(old.clone());
+            obj.entry("export_pieces_dpi").or_insert(old);
+        }
+    }
+    raw
 }
 
 /// Merge `partial` (any subset of Settings keys) into the stored

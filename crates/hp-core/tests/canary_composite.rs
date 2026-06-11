@@ -39,24 +39,30 @@ struct Canary {
     rgb_sum: u64,
 }
 
+// Dimensions are at 100 DPI (the canary's render DPI) padded by
+// `pad_px = 80·100/300 ≈ 27` on each side — the same unified canvas
+// size every non-piece asset is saved at. Alpha sums are invariant
+// vs the un-padded version (padding adds transparent pixels with
+// alpha=0); per-third sums shifted because the bucket boundaries
+// cut at different y-positions when the content is offset by pad_px.
 const NY5: Canary = Canary {
     file_stem: "_NY5",
-    width: 1042, height: 2675,
+    width: 1096, height: 2729,
     alpha_sum: 710_729_426,
-    alpha_top_third: 236_746_631,
-    alpha_mid_third: 236_746_529,
-    alpha_bot_third: 237_236_266,
-    rgb_sum: 1_070_587_173,
+    alpha_top_third: 234_355_241,
+    alpha_mid_third: 241_529_309,
+    alpha_bot_third: 234_844_876,
+    rgb_sum: 1_070_587_028,
 };
 
 const NY8: Canary = Canary {
     file_stem: "_NY8",
-    width: 1460, height: 8926,
+    width: 1514, height: 8980,
     alpha_sum: 2_735_416_329,
-    alpha_top_third: 522_034_579,
-    alpha_mid_third: 1_106_912_356,
-    alpha_bot_third: 1_106_469_394,
-    rgb_sum: 4_776_882_595,
+    alpha_top_third: 518_689_439,
+    alpha_mid_third: 1_113_608_196,
+    alpha_bot_third: 1_103_118_694,
+    rgb_sum: 4_776_880_109,
 };
 
 const TOLERANCE: f64 = 0.01;
@@ -136,7 +142,7 @@ fn run_canary(c: &Canary) {
         &ai, &placements, &meta,
         &pieces, &bricks_by_id, &brick_polygons,
         &brick_beziers, &brick_layer_names,
-        export_dpi, &out_dir,
+        export_dpi, export_dpi, &out_dir,
     ).expect("render_export_pieces");
 
     // Fingerprint composite.png.

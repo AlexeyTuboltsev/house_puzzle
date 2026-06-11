@@ -96,6 +96,8 @@ fn main() -> anyhow::Result<()> {
     // bleed from `build_modified_pdf` internally, so the old
     // compose-render-and-probe step (which was integer-pixel only) is
     // dead.
+    // The CLI takes a single DPI; non-piece assets and pieces share it.
+    // The Tauri export panel can drive them independently.
     eprintln!("[export_house] running render_export_pieces at {} DPI -> {} ...", export_dpi, out_dir.display());
     let trimmed_pieces = hp_core::render::render_export_pieces(
         ai_path,
@@ -106,6 +108,7 @@ fn main() -> anyhow::Result<()> {
         &brick_polygons,
         &brick_beziers,
         &brick_layer_names,
+        export_dpi,
         export_dpi,
         out_dir,
     )?;

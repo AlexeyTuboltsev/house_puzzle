@@ -1022,7 +1022,8 @@ pub async fn export_data(
     waves: Option<Vec<Value>>,
     groups: Option<Vec<Value>>,
     placement: Option<Value>,
-    export_dpi: Option<f64>,
+    assets_dpi: Option<f64>,
+    pieces_dpi: Option<f64>,
     suggested_filename: Option<String>,
 ) -> Result<Option<String>, String> {
     let (pieces, bricks, brick_polygons, brick_beziers, metadata, placements, extract_dir, ai_path, brick_layer_names) = {
@@ -1073,21 +1074,26 @@ pub async fn export_data(
     let waves_val = waves.unwrap_or_default();
     let groups_val = groups.unwrap_or_default();
 
-    // Default 300 DPI when the frontend doesn't pick one. The live-
-    // preview DPI (metadata.render_dpi) is intentionally NOT the
-    // default — export is a user choice, independent of editor window
-    // size.
-    let export_dpi = export_dpi.unwrap_or(300.0);
+    // Default 300 DPI on both inputs when the frontend doesn't pick
+    // one. `assets_dpi` drives the non-piece assets (composite,
+    // background, highlight, lights, outlines); `pieces_dpi` drives
+    // the per-piece sprites — both can be set independently from
+    // the export panel.
+    let assets_dpi = assets_dpi.unwrap_or(300.0);
+    let pieces_dpi = pieces_dpi.unwrap_or(300.0);
     let loaded_dpi = metadata.render_dpi;
 
-    // ALWAYS re-render export assets at `export_dpi` into a dedicated
-    // sub-dir under `extract_dir`. We can't reuse the live-preview
-    // cache even when DPIs happen to match because the export bundle
-    // includes assets the preview doesn't produce (composite +
-    // background) and uses vector-traced piece outlines (preview
-    // outlines are pixel-edge traced from the rasterised mask, which
-    // stair-steps at high DPI).
-    let export_pieces_dir = extract_dir.join(format!("export_dpi_{}", export_dpi.round() as i64));
+    // ALWAYS re-render export assets into a dedicated sub-dir under
+    // `extract_dir`. We can't reuse the live-preview cache even when
+    // DPIs happen to match because the export bundle includes assets
+    // the preview doesn't produce (composite + background) and uses
+    // vector-traced piece outlines (preview outlines are pixel-edge
+    // traced from the rasterised mask, which stair-steps at high DPI).
+    let export_pieces_dir = extract_dir.join(format!(
+        "export_a{}_p{}",
+        assets_dpi.round() as i64,
+        pieces_dpi.round() as i64,
+    ));
 
     // render_export_pieces returns the per-piece rects re-trimmed to
     // the alpha bbox of each piece's actual rendered content (the
@@ -1117,7 +1123,8 @@ pub async fn export_data(
                 &brick_polys_for_render,
                 &brick_beziers_for_render,
                 &brick_layer_names_for_render,
-                export_dpi,
+                assets_dpi,
+                pieces_dpi,
                 &out_dir_for_render,
             )
         })
@@ -1126,14 +1133,15 @@ pub async fn export_data(
         .map_err(|e| e.to_string())?
     };
 
-    // Down-scale the trimmed pieces to loaded-DPI for the ZIP/Unity
-    // path. `generate_export_zip` re-applies `scale = export_dpi /
-    // loaded_dpi` internally when building house_data.json (so the
-    // sprite centre lands at the right Unity world position), so this
-    // path is sensitive to the input being loaded-DPI.
+    // Down-scale the trimmed pieces (in pieces_dpi coords) to
+    // loaded-DPI for the ZIP/Unity path. `generate_export_zip`
+    // re-applies `scale = pieces_dpi / loaded_dpi` internally when
+    // building house_data.json (so the sprite centre lands at the
+    // right Unity world position), so this path is sensitive to the
+    // input being loaded-DPI.
     let trimmed_pieces_loaded_dpi: Vec<hp_core::types::PuzzlePiece> = {
-        let inv_scale = if export_dpi > 0.0 {
-            loaded_dpi / export_dpi
+        let inv_scale = if pieces_dpi > 0.0 {
+            loaded_dpi / pieces_dpi
         } else {
             1.0
         };
@@ -1165,7 +1173,7 @@ pub async fn export_data(
             metadata_for_encode.canvas_height,
             metadata_for_encode.screen_frame_height_px,
             loaded_dpi,
-            export_dpi,
+            pieces_dpi,
             &waves_for_encode,
             &groups_for_encode,
             &location,

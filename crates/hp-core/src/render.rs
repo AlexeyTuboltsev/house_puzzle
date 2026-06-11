@@ -422,6 +422,24 @@ pub fn render_piece_pngs_from_composite(
         .collect()
 }
 
+/// Wrap a canvas-sized image inside a larger transparent canvas of
+/// `(target_w, target_h)`, placing the source at `(offset_x, offset_y)`.
+/// Used by the export to unify the dimensions of every non-piece
+/// asset to a single padded canvas size (the highlight's bounds),
+/// so downstream consumers can layer them without per-asset
+/// placement math.
+fn place_into_padded(
+    src: &RgbaImage,
+    target_w: i32,
+    target_h: i32,
+    offset_x: i32,
+    offset_y: i32,
+) -> RgbaImage {
+    let mut out = RgbaImage::new(target_w.max(1) as u32, target_h.max(1) as u32);
+    image::imageops::overlay(&mut out, src, offset_x as i64, offset_y as i64);
+    out
+}
+
 /// Pixel bbox `(x0, y0, x1, y1)` that contains every vertex of every
 /// ring in `rings`, padded outward by `bleed_px` (for raster soft-mask
 /// alpha overhangs), clamped to `[0, canvas_w] × [0, canvas_h]`.
@@ -532,7 +550,7 @@ fn render_piece_pngs_via_ocg_isolation(
     pieces: &[crate::types::PuzzlePiece],
     piece_polygons: &HashMap<String, Vec<Vec<[f64; 2]>>>,
     brick_layer_names: &HashMap<String, String>,
-    export_dpi: f64,
+    pieces_dpi: f64,
     shifted_clip_pts: (f64, f64, f64, f64),
     new_canvas_w: u32,
     new_canvas_h: u32,
@@ -579,7 +597,7 @@ fn render_piece_pngs_via_ocg_isolation(
         enabled_non_image.push(n.as_str());
     }
     let non_image_canvas: Option<RgbaImage> = crate::mupdf_ffi::render_page_with_ocg_set_clipped(
-        &modified_pdf_str, &enabled_non_image, export_dpi, Some(shifted_clip_pts),
+        &modified_pdf_str, &enabled_non_image, pieces_dpi, Some(shifted_clip_pts),
     )
     .and_then(|(rgba, pw, ph)| RgbaImage::from_raw(pw, ph, rgba))
     .map(|raw| compose_clipped_canvas(&raw, "non-image-all", new_canvas_w, new_canvas_h, (0, 0)));
@@ -658,7 +676,7 @@ fn render_piece_pngs_via_ocg_isolation(
             crate::raster_extract::compose_image_blocks_onto_canvas_at(
                 doc, blocks, block_idxs,
                 &mut canvas, meta.clip_rect, page_h_pt, artifact.bleed_pts,
-                export_dpi, true, (bx0, by0),
+                pieces_dpi, true, (bx0, by0),
             );
             let _ = &shifted_clip_pts; // accepted for API compat; the
                 // shifted-clip math is now handled inside
@@ -765,17 +783,24 @@ fn render_piece_pngs_via_ocg_isolation(
 ///     with every piece's outline stroked from its vector polygon
 ///     so curves stay smooth at any DPI
 ///
-/// MuPDF re-rasterises the source layers at `export_dpi` — vector
-/// bricks come back crisp, raster bricks come back at MuPDF's best
-/// resolution. Pieces and polygons are scaled by `export_dpi /
-/// loaded_dpi` to line up with the new pixmaps. Live-preview state
+/// Two independent DPIs:
+///   - `assets_dpi`  drives composite/background/highlight/lights/
+///     outlines. All five are saved as a single unified pixel size
+///     (canvas + 2·pad_px), so consumers layer them at a fixed
+///     `(-pad_px, -pad_px)` offset without per-asset math.
+///   - `pieces_dpi` drives per-piece sprite PNGs (their own MuPDF
+///     non-image render and their own canvas).
+///
+/// Pieces and polygons are scaled by `pieces_dpi / meta.render_dpi`
+/// so they line up with the per-piece canvas. Live-preview state
 /// under `session.extract_dir` is untouched — `out_dir` is expected
 /// to be a sub-directory the caller created.
-/// Returns the per-piece trimmed `PuzzlePiece` records in **export-DPI
-/// canvas coords** — the same coord space the rendered piece PNGs live
-/// in. Downstream encoders should use these (not the original
-/// loaded-DPI pieces) so the sprite rect they place into the Unity
-/// ZIP matches the cropped PNG: tight to the visible content rather than
+/// Returns the per-piece trimmed `PuzzlePiece` records in
+/// **pieces-DPI canvas coords** — the same coord space the rendered
+/// piece PNGs live in. Downstream encoders should use these (not
+/// the original loaded-DPI pieces) so the sprite rect they place
+/// into the Unity ZIP matches the cropped PNG: tight to the visible
+/// content rather than
 /// padded out to the union of the piece's brick bboxes. See
 /// `render_piece_pngs_from_composite` for the trim rationale.
 pub fn render_export_pieces(
@@ -799,14 +824,26 @@ pub fn render_export_pieces(
     // translate the hashed IDs stored in `piece.brick_ids` back to the
     // layer names that `brick_name_to_idx` is keyed by.
     brick_layer_names: &HashMap<String, String>,
-    export_dpi: f64,
+    // All non-piece assets (composite, background, background_highlight,
+    // lights, outlines) render at this DPI and are padded to a unified
+    // canvas size = (canvas + 2·PAD_PX). The padding is sized to
+    // capture the background_highlight's Gaussian halo bleed at this
+    // DPI; everyone else gets transparent margin.
+    assets_dpi: f64,
+    // Per-piece sprites render at this DPI independently of the
+    // non-piece assets. Lets the user dial piece resolution
+    // separately from the overlay assets.
+    pieces_dpi: f64,
     out_dir: &Path,
 ) -> anyhow::Result<Vec<crate::types::PuzzlePiece>> {
     if meta.render_dpi <= 0.0 {
         anyhow::bail!("meta.render_dpi must be > 0");
     }
-    if export_dpi <= 0.0 {
-        anyhow::bail!("export_dpi must be > 0");
+    if assets_dpi <= 0.0 {
+        anyhow::bail!("assets_dpi must be > 0");
+    }
+    if pieces_dpi <= 0.0 {
+        anyhow::bail!("pieces_dpi must be > 0");
     }
 
     let t_total = std::time::Instant::now();
@@ -816,9 +853,19 @@ pub fn render_export_pieces(
         t_step.set(std::time::Instant::now());
     };
 
-    let scale = export_dpi / meta.render_dpi;
-    let new_canvas_w = ((meta.canvas_width as f64) * scale).round().max(1.0) as u32;
-    let new_canvas_h = ((meta.canvas_height as f64) * scale).round().max(1.0) as u32;
+    // Asset canvas dims (composite, background, lights, outlines).
+    // pieces_dpi gets its own scale further below.
+    let assets_scale = assets_dpi / meta.render_dpi;
+    let new_canvas_w = ((meta.canvas_width as f64) * assets_scale).round().max(1.0) as u32;
+    let new_canvas_h = ((meta.canvas_height as f64) * assets_scale).round().max(1.0) as u32;
+
+    // Padding around the asset canvas. Sized so the highlight's
+    // Gaussian halo (sigma_px = assets_dpi · 3.5/72) bleeds cleanly
+    // — 80 px at the reference 300 DPI, scaled linearly with DPI
+    // so the relative bleed (~5.5σ headroom) is preserved.
+    let pad_px = (80.0 * assets_dpi / 300.0).round().max(1.0) as i32;
+    let unified_w = new_canvas_w as i32 + 2 * pad_px;
+    let unified_h = new_canvas_h as i32 + 2 * pad_px;
 
     std::fs::create_dir_all(out_dir)
         .map_err(|e| anyhow::anyhow!("create_dir_all({}): {e}", out_dir.display()))?;
@@ -886,22 +933,24 @@ pub fn render_export_pieces(
     let artifact_ref = &artifact;
     let meta_ref = &meta;
     std::thread::scope(|scope| -> anyhow::Result<()> {
-        // Composite — bricks MuPDF + direct raster overlay + save.
+        // Composite — bricks MuPDF + direct raster overlay + pad to
+        // unified size + save.
         let composite_h = scope.spawn(move || -> anyhow::Result<()> {
             let t0 = std::time::Instant::now();
             let (bricks_pixmap, _, _) = render_ocg_layer_pixmap_clipped(
-                ai_path, "bricks", export_dpi, shifted_clip,
+                ai_path, "bricks", assets_dpi, shifted_clip,
             )
-            .ok_or_else(|| anyhow::anyhow!("Failed to render bricks layer at export DPI"))?;
+            .ok_or_else(|| anyhow::anyhow!("Failed to render bricks layer at assets DPI"))?;
             let mut composite = compose_clipped_canvas(
                 &bricks_pixmap, "bricks", new_canvas_w, new_canvas_h, (0, 0),
             );
             crate::raster_extract::compose_image_blocks_onto_canvas(
                 doc_ref, blocks_ref, 0..blocks_ref.len(),
                 &mut composite, meta_ref.clip_rect, page_h_pt, artifact_ref.bleed_pts,
-                export_dpi, true,
+                assets_dpi, true,
             );
-            composite
+            let padded = place_into_padded(&composite, unified_w, unified_h, pad_px, pad_px);
+            padded
                 .save(out_dir.join("composite.png"))
                 .map_err(|e| anyhow::anyhow!("saving composite.png: {e}"))?;
             eprintln!(
@@ -916,7 +965,7 @@ pub fn render_export_pieces(
         let bg_h = scope.spawn(move || -> anyhow::Result<()> {
             let t0 = std::time::Instant::now();
             let Some((bg_pixmap, _, _)) =
-                render_ocg_layer_pixmap_clipped(ai_path, "background", export_dpi, shifted_clip)
+                render_ocg_layer_pixmap_clipped(ai_path, "background", assets_dpi, shifted_clip)
             else {
                 eprintln!(
                     "[export]   background (parallel) +{:.2}s (no background OCG)",
@@ -926,7 +975,8 @@ pub fn render_export_pieces(
             };
             let bg_canvas =
                 compose_clipped_canvas(&bg_pixmap, "background", new_canvas_w, new_canvas_h, (0, 0));
-            bg_canvas
+            let bg_padded = place_into_padded(&bg_canvas, unified_w, unified_h, pad_px, pad_px);
+            bg_padded
                 .save(out_dir.join("background.png"))
                 .map_err(|e| anyhow::anyhow!("saving background.png: {e}"))?;
 
@@ -938,23 +988,23 @@ pub fn render_export_pieces(
             // symmetric, no corner artifacts. Padded canvas lets the
             // halo bleed past the bricks' external edges; the sidecar
             // `background_highlight.json` records the (−PAD, −PAD)
-            // placement offset for consumers.
-            const PAD_PX: i32 = 80;
-            let pad_w = new_canvas_w as i32 + 2 * PAD_PX;
-            let pad_h = new_canvas_h as i32 + 2 * PAD_PX;
+            // placement offset for consumers. The padding here is
+            // the same `pad_px` that all other non-piece assets use,
+            // so every saved asset is exactly `unified_w × unified_h`
+            // and lines up at (−pad_px, −pad_px) on the canvas.
 
             // Binary mask: 255 inside silhouette, 0 outside. Every
             // non-silhouette pixel (incl. padded margin) is tagged as
             // "outside" so the distance transform has a meaningful
             // boundary along canvas edges that the silhouette touches.
-            let mut mask_in = image::GrayImage::new(pad_w as u32, pad_h as u32);
+            let mut mask_in = image::GrayImage::new(unified_w as u32, unified_h as u32);
             let mut mask_out = image::ImageBuffer::from_pixel(
-                pad_w as u32, pad_h as u32, image::Luma([255u8]),
+                unified_w as u32, unified_h as u32, image::Luma([255u8]),
             );
             for (x, y, p) in bg_canvas.enumerate_pixels() {
-                let nx = x as i32 + PAD_PX;
-                let ny = y as i32 + PAD_PX;
-                if nx < 0 || ny < 0 || nx >= pad_w || ny >= pad_h { continue; }
+                let nx = x as i32 + pad_px;
+                let ny = y as i32 + pad_px;
+                if nx < 0 || ny < 0 || nx >= unified_w || ny >= unified_h { continue; }
                 if p[3] > 8 {
                     mask_in.put_pixel(nx as u32, ny as u32, image::Luma([255]));
                     mask_out.put_pixel(nx as u32, ny as u32, image::Luma([0]));
@@ -963,13 +1013,13 @@ pub fn render_export_pieces(
             let d2_in = imageproc::distance_transform::euclidean_squared_distance_transform(&mask_in);
             let d2_out = imageproc::distance_transform::euclidean_squared_distance_transform(&mask_out);
 
-            // σ in pixels — ~7 pt FWHM-ish at any export DPI.
-            let sigma_px = export_dpi * (3.5 / 72.0);
+            // σ in pixels — ~7 pt FWHM-ish at any assets DPI.
+            let sigma_px = assets_dpi * (3.5 / 72.0);
             let two_sigma_sq = 2.0 * sigma_px * sigma_px;
 
-            let mut highlight = RgbaImage::new(pad_w as u32, pad_h as u32);
-            for y in 0..pad_h {
-                for x in 0..pad_w {
+            let mut highlight = RgbaImage::new(unified_w as u32, unified_h as u32);
+            for y in 0..unified_h {
+                for x in 0..unified_w {
                     let d2 = d2_in.get_pixel(x as u32, y as u32)[0]
                            + d2_out.get_pixel(x as u32, y as u32)[0];
                     let intensity = (-d2 / two_sigma_sq).exp();
@@ -986,7 +1036,7 @@ pub fn render_export_pieces(
                 out_dir.join("background_highlight.json"),
                 format!(
                     "{{\"padding\": {}, \"width\": {}, \"height\": {}, \"x\": {}, \"y\": {}}}\n",
-                    PAD_PX, pad_w, pad_h, -PAD_PX, -PAD_PX
+                    pad_px, unified_w, unified_h, -pad_px, -pad_px
                 ),
             );
             eprintln!(
@@ -999,7 +1049,7 @@ pub fn render_export_pieces(
         let lights_h = scope.spawn(move || -> anyhow::Result<()> {
             let t0 = std::time::Instant::now();
             let Some((lt_pixmap, _, _)) =
-                render_ocg_layer_pixmap_clipped(ai_path, "lights", export_dpi, shifted_clip)
+                render_ocg_layer_pixmap_clipped(ai_path, "lights", assets_dpi, shifted_clip)
             else {
                 eprintln!(
                     "[export]   lights (parallel) +{:.2}s (no lights OCG)",
@@ -1009,7 +1059,8 @@ pub fn render_export_pieces(
             };
             let lt_canvas =
                 compose_clipped_canvas(&lt_pixmap, "lights", new_canvas_w, new_canvas_h, (0, 0));
-            lt_canvas
+            let lt_padded = place_into_padded(&lt_canvas, unified_w, unified_h, pad_px, pad_px);
+            lt_padded
                 .save(out_dir.join("lights.png"))
                 .map_err(|e| anyhow::anyhow!("saving lights.png: {e}"))?;
             eprintln!(
@@ -1032,17 +1083,20 @@ pub fn render_export_pieces(
     // assets.json is written near the end of this function (after
     // outlines.png) so it can record every asset present.
 
-    // 3. Scale every piece + brick + brick polygon by the same factor
-    //    so they line up with the new composite.
+    // 3. Pieces live in their OWN canvas space (at pieces_dpi).
+    //    Scale every piece + brick + brick polygon by pieces_scale.
+    let pieces_scale = pieces_dpi / meta.render_dpi;
+    let pieces_canvas_w = ((meta.canvas_width as f64) * pieces_scale).round().max(1.0) as u32;
+    let pieces_canvas_h = ((meta.canvas_height as f64) * pieces_scale).round().max(1.0) as u32;
     let scaled_pieces: Vec<crate::types::PuzzlePiece> = pieces
         .iter()
         .map(|p| crate::types::PuzzlePiece {
             id: p.id.clone(),
             brick_ids: p.brick_ids.clone(),
-            x: ((p.x as f64) * scale).round() as i32,
-            y: ((p.y as f64) * scale).round() as i32,
-            width: ((p.width as f64) * scale).round().max(1.0) as i32,
-            height: ((p.height as f64) * scale).round().max(1.0) as i32,
+            x: ((p.x as f64) * pieces_scale).round() as i32,
+            y: ((p.y as f64) * pieces_scale).round() as i32,
+            width: ((p.width as f64) * pieces_scale).round().max(1.0) as i32,
+            height: ((p.height as f64) * pieces_scale).round().max(1.0) as i32,
         })
         .collect();
 
@@ -1050,10 +1104,10 @@ pub fn render_export_pieces(
         .iter()
         .map(|(id, b)| {
             let mut nb = b.clone();
-            nb.x = ((b.x as f64) * scale).round() as i32;
-            nb.y = ((b.y as f64) * scale).round() as i32;
-            nb.width = ((b.width as f64) * scale).round().max(1.0) as i32;
-            nb.height = ((b.height as f64) * scale).round().max(1.0) as i32;
+            nb.x = ((b.x as f64) * pieces_scale).round() as i32;
+            nb.y = ((b.y as f64) * pieces_scale).round() as i32;
+            nb.width = ((b.width as f64) * pieces_scale).round().max(1.0) as i32;
+            nb.height = ((b.height as f64) * pieces_scale).round().max(1.0) as i32;
             (id.clone(), nb)
         })
         .collect();
@@ -1061,7 +1115,7 @@ pub fn render_export_pieces(
     let scaled_brick_polys: HashMap<String, Vec<[f64; 2]>> = brick_polygons
         .iter()
         .map(|(id, pts)| {
-            let scaled: Vec<[f64; 2]> = pts.iter().map(|p| [p[0] * scale, p[1] * scale]).collect();
+            let scaled: Vec<[f64; 2]> = pts.iter().map(|p| [p[0] * pieces_scale, p[1] * pieces_scale]).collect();
             (id.clone(), scaled)
         })
         .collect();
@@ -1092,10 +1146,10 @@ pub fn render_export_pieces(
         &scaled_pieces,
         &piece_polys,
         brick_layer_names,
-        export_dpi,
+        pieces_dpi,
         shifted_clip,
-        new_canvas_w,
-        new_canvas_h,
+        pieces_canvas_w,
+        pieces_canvas_h,
         out_dir,
         &placements,
         &meta,
@@ -1135,26 +1189,21 @@ pub fn render_export_pieces(
     // the one the user sees on screen — cubic curves preserved, every
     // brick edge that isn't cancelled by an adjacent brick drawn,
     // including outer silhouette edges.
-    let stroke_thickness = ((export_dpi / 96.0).round() as i32).max(1);
+    let stroke_thickness = ((assets_dpi / 96.0).round() as i32).max(1);
     // Samples per cubic — at higher DPI we need more samples so a
     // brick's arch stays visibly smooth after stroking. 1 sample per
     // ~6 pixels of bezier extent is enough; capped at 64.
-    let samples_per_curve = ((export_dpi / 8.0).round() as usize).clamp(16, 64);
-    let export_pt_to_canvas = export_dpi / 72.0;
-    // Pad the outlines canvas so a piece whose bezier path coincides
-    // with the canvas edge isn't clipped to half stroke width. The
-    // outline's exterior-most pixels can sit at most `stroke_thickness`
-    // outside the geometric path; we leave a little extra room for
-    // safety. Result is saved at the padded size with a (-PAD,-PAD)
-    // placement offset (mirrors background_highlight.png).
-    const OUTLINES_PAD_PX: i32 = 16;
-    let out_pad_w = new_canvas_w as i32 + 2 * OUTLINES_PAD_PX;
-    let out_pad_h = new_canvas_h as i32 + 2 * OUTLINES_PAD_PX;
+    let samples_per_curve = ((assets_dpi / 8.0).round() as usize).clamp(16, 64);
+    let export_pt_to_canvas = assets_dpi / 72.0;
+    // Outlines render straight into the unified canvas. The same
+    // `pad_px` headroom that protects the highlight halo also
+    // protects strokes coinciding with the canvas edge from being
+    // clipped to half their width.
     let canvas_shift = [
-        -meta.clip_rect.0 + (OUTLINES_PAD_PX as f64) / export_pt_to_canvas,
-        -meta.clip_rect.1 + (OUTLINES_PAD_PX as f64) / export_pt_to_canvas,
+        -meta.clip_rect.0 + (pad_px as f64) / export_pt_to_canvas,
+        -meta.clip_rect.1 + (pad_px as f64) / export_pt_to_canvas,
     ];
-    let mut outlines = RgbaImage::new(out_pad_w as u32, out_pad_h as u32);
+    let mut outlines = RgbaImage::new(unified_w as u32, unified_h as u32);
     for piece in pieces {
         // Collect this piece's brick beziers in PyMuPDF point coords.
         let mut input: Vec<crate::bezier::BezierPath> = Vec::new();
@@ -1191,11 +1240,12 @@ pub fn render_export_pieces(
         .map_err(|e| anyhow::anyhow!("saving outlines.png: {e}"))?;
 
     // ── assets.json ────────────────────────────────────────────────
-    // Compact placement metadata for every canvas-aligned asset so
-    // consumers (the test viewer, Unity importer) can position layers
-    // without hardcoded knowledge. Highlight has padded dimensions
-    // and a negative offset because its blur halo extends past the
-    // canvas; the others sit at (0, 0).
+    // Every non-piece asset is `unified_w × unified_h` pixels at
+    // `assets_dpi`, placed at the SAME (-pad_px, -pad_px) offset on
+    // the (unpadded) base canvas. The base canvas dimensions are
+    // also at `assets_dpi`. Pieces (in pieces/piece_*.png) live on
+    // their own canvas at `pieces_dpi` — their rects are reported
+    // in house_data.json, not here.
     let canvas_assets: Vec<&str> = vec![
         "composite.png",
         "background.png",
@@ -1204,26 +1254,19 @@ pub fn render_export_pieces(
         "lights.png",
     ];
     let mut assets_json = String::from("{\n");
-    assets_json.push_str(&format!("  \"canvas_w\": {},\n  \"canvas_h\": {},\n",
-        new_canvas_w, new_canvas_h));
+    assets_json.push_str(&format!(
+        "  \"canvas_w\": {},\n  \"canvas_h\": {},\n  \"assets_dpi\": {},\n  \"pieces_dpi\": {},\n",
+        new_canvas_w, new_canvas_h, assets_dpi, pieces_dpi,
+    ));
     assets_json.push_str("  \"assets\": {\n");
     let mut first_asset = true;
     for fname in &canvas_assets {
         if !out_dir.join(fname).exists() { continue; }
-        let (x, y, w, h) = if *fname == "background_highlight.png" {
-            let pad = 80i32;
-            (-pad, -pad, new_canvas_w as i32 + 2 * pad, new_canvas_h as i32 + 2 * pad)
-        } else if *fname == "outlines.png" {
-            let pad = OUTLINES_PAD_PX;
-            (-pad, -pad, new_canvas_w as i32 + 2 * pad, new_canvas_h as i32 + 2 * pad)
-        } else {
-            (0, 0, new_canvas_w as i32, new_canvas_h as i32)
-        };
         if !first_asset { assets_json.push_str(",\n"); }
         first_asset = false;
         assets_json.push_str(&format!(
             "    \"{}\": {{\"file\": \"{}\", \"x\": {}, \"y\": {}, \"w\": {}, \"h\": {}}}",
-            fname, fname, x, y, w, h
+            fname, fname, -pad_px, -pad_px, unified_w, unified_h
         ));
     }
     assets_json.push_str("\n  }\n}\n");

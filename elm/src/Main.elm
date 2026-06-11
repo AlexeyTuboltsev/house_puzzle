@@ -197,7 +197,8 @@ type alias Settings =
     , gridHue : Float
     , outlineHue : Float
     , toolsWidthVw : Float
-    , exportDpi : String
+    , exportAssetsDpi : String
+    , exportPiecesDpi : String
     , exportLocation : String
     , exportHouseName : String
     , exportPosition : String
@@ -209,7 +210,7 @@ type alias Settings =
 `crates/hp-tauri/src/settings.rs`. -}
 settingsSchemaVersion : Int
 settingsSchemaVersion =
-    2
+    3
 
 
 {-| Constants known at startup (passed in via flags). Carried in every
@@ -274,13 +275,15 @@ type alias RunningModel =
     , editOriginalGroups : List Group
     , recomputing : Bool
     , exporting : Bool
-    , {- Export DPI. Independent of the live-preview DPI (which is
-         derived from the editor window's render-div height). Default
-         300; user-editable in the export panel. Sent to Rust as
-         `exportDpi` and used to scale piece PNGs + target_ppu in
-         build_house_data — output sprite dimensions = source × (export_dpi /
-         loaded_dpi). -}
-      exportDpi : String
+    , {- Export DPIs. Independent of the live-preview DPI. Two
+         separate inputs in the export panel:
+           - `exportAssetsDpi` drives composite, background, highlight,
+             lights, outlines (all saved at one unified pixel size).
+           - `exportPiecesDpi` drives per-piece sprite PNGs (their own
+             canvas + PPU calculation).
+         Default 300 on both. -}
+      exportAssetsDpi : String
+    , exportPiecesDpi : String
     , exportLocation : String
     , exportHouseName : String
     , exportPosition : String
@@ -372,7 +375,8 @@ webDefaultSettings =
     , gridHue = 35.0
     , outlineHue = 210.0
     , toolsWidthVw = 40.0
-    , exportDpi = "300"
+    , exportAssetsDpi = "300"
+    , exportPiecesDpi = "300"
     , exportLocation = "Rome"
     , exportHouseName = "NewHouse"
     , exportPosition = "0"
@@ -418,7 +422,8 @@ initialRunning boot settings =
     , editOriginalGroups = []
     , recomputing = False
     , exporting = False
-    , exportDpi = settings.exportDpi
+    , exportAssetsDpi = settings.exportAssetsDpi
+    , exportPiecesDpi = settings.exportPiecesDpi
     , exportLocation = settings.exportLocation
     , exportHouseName = settings.exportHouseName
     , exportPosition = settings.exportPosition
@@ -485,7 +490,8 @@ type Msg
     | SaveEdit
     | CancelEdit
     | GotPiecePolygons (Result Http.Error (List ( String, List Point )))
-    | SetExportDpi String
+    | SetExportAssetsDpi String
+    | SetExportPiecesDpi String
     | SetExportLocation String
     | SetExportHouseName String
     | SetExportPosition String
@@ -609,7 +615,8 @@ decodeSettings =
         |> required "grid_hue" D.float
         |> required "outline_hue" D.float
         |> required "tools_width_vw" D.float
-        |> required "export_dpi" D.string
+        |> required "export_assets_dpi" D.string
+        |> required "export_pieces_dpi" D.string
         |> required "export_location" D.string
         |> required "export_house_name" D.string
         |> required "export_position" D.string
@@ -1659,9 +1666,14 @@ updateRunning msg model =
         GotPiecePolygons (Err _) ->
             ( { model | recomputing = False }, Cmd.none )
 
-        SetExportDpi s ->
-            ( { model | exportDpi = s }
-            , saveSettings model.boot.isTauri [ ( "export_dpi", E.string s ) ]
+        SetExportAssetsDpi s ->
+            ( { model | exportAssetsDpi = s }
+            , saveSettings model.boot.isTauri [ ( "export_assets_dpi", E.string s ) ]
+            )
+
+        SetExportPiecesDpi s ->
+            ( { model | exportPiecesDpi = s }
+            , saveSettings model.boot.isTauri [ ( "export_pieces_dpi", E.string s ) ]
             )
 
         SetExportLocation s ->
@@ -1711,8 +1723,11 @@ updateRunning msg model =
                         )
                         model.pieces
 
-                exportDpiValue =
-                    Maybe.withDefault 300.0 (String.toFloat model.exportDpi)
+                assetsDpiValue =
+                    Maybe.withDefault 300.0 (String.toFloat model.exportAssetsDpi)
+
+                piecesDpiValue =
+                    Maybe.withDefault 300.0 (String.toFloat model.exportPiecesDpi)
 
                 groupsJson =
                     E.list
@@ -1728,7 +1743,8 @@ updateRunning msg model =
                         [ ( "waves", wavesJson )
                         , ( "outlines", outlinesJson )
                         , ( "groups", groupsJson )
-                        , ( "exportDpi", E.float exportDpiValue )
+                        , ( "assetsDpi", E.float assetsDpiValue )
+                        , ( "piecesDpi", E.float piecesDpiValue )
                         , ( "placement"
                           , E.object
                                 [ ( "location", E.string model.exportLocation )
@@ -1761,7 +1777,8 @@ updateRunning msg model =
                             [ ( "key", E.string model.sessionKey )
                             , ( "waves", wavesJson )
                             , ( "groups", groupsJson )
-                            , ( "exportDpi", E.float exportDpiValue )
+                            , ( "assetsDpi", E.float assetsDpiValue )
+                            , ( "piecesDpi", E.float piecesDpiValue )
                             , ( "suggestedFilename", E.string suggestedFilename )
                             , ( "placement"
                               , E.object
@@ -4330,11 +4347,22 @@ viewExportTools model =
         [ viewTogglesBox [ viewCheckboxLights model, viewCheckboxGrid model, viewCheckboxOutlines model, viewCheckboxWaveOverlay model, viewCheckboxNumbers model, viewCheckboxOnlyBlueprint model ]
         , viewSectionTitle "Export"
         , div [ class "field-row" ]
-            [ label [] [ text "DPI" ]
+            [ label [] [ text "Assets DPI" ]
             , input
                 [ type_ "number"
-                , value model.exportDpi
-                , onInput SetExportDpi
+                , value model.exportAssetsDpi
+                , onInput SetExportAssetsDpi
+                , Html.Attributes.min "72"
+                , Html.Attributes.step "1"
+                ]
+                []
+            ]
+        , div [ class "field-row" ]
+            [ label [] [ text "Pieces DPI" ]
+            , input
+                [ type_ "number"
+                , value model.exportPiecesDpi
+                , onInput SetExportPiecesDpi
                 , Html.Attributes.min "72"
                 , Html.Attributes.step "1"
                 ]
