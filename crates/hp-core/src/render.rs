@@ -1208,9 +1208,24 @@ pub fn render_export_pieces(
         -meta.clip_rect.0 + (pad_px as f64) / export_pt_to_canvas,
         -meta.clip_rect.1 + (pad_px as f64) / export_pt_to_canvas,
     ];
-    let mut outlines = RgbaImage::new(unified_w as u32, unified_h as u32);
+    // Rasterise every polygon edge as a 1-px line into a binary
+    // mask, then dilate to the stroke thickness via a single
+    // distance transform pass. Cost is O(canvas area), independent
+    // of stroke thickness — the brute-force per-Bresenham-step
+    // square-brush stamp it replaces was O(canvas area × thickness²)
+    // and dominated outlines.png at thicker strokes. Side benefit:
+    // round caps and joins instead of square.
+    //
+    // Convention for `euclidean_squared_distance_transform`:
+    //   d2[x,y] = squared distance from (x,y) to the nearest 0 pixel.
+    // So we INVERT the mask — 0 marks the polygon line, 255 marks
+    // empty pixels — and the distance transform then gives us
+    // "distance to the nearest stroke pixel" at every cell. Pixels
+    // within `half²` of a line get the stroke colour.
+    let mut stroke_mask = image::ImageBuffer::from_pixel(
+        unified_w as u32, unified_h as u32, image::Luma([255u8]),
+    );
     for piece in pieces {
-        // Collect this piece's brick beziers in PyMuPDF point coords.
         let mut input: Vec<crate::bezier::BezierPath> = Vec::new();
         for bid in &piece.brick_ids {
             if let Some(paths) = brick_beziers.get(bid) {
@@ -1220,9 +1235,6 @@ pub fn render_export_pieces(
         if input.is_empty() {
             continue;
         }
-        // Merge into closed bezier rings (one per disjoint loop in the
-        // piece), then move into export-DPI canvas pixel space the
-        // composite was rendered in.
         let merged = crate::bezier_merge::merge_piece_bezier(&input);
         for bp in &merged {
             let bp_canvas = bp.transform(canvas_shift, export_pt_to_canvas);
@@ -1230,19 +1242,64 @@ pub fn render_export_pieces(
             if polyline.len() < 2 {
                 continue;
             }
-            stroke_polygon_on_canvas(
-                &mut outlines,
-                &polyline,
-                0.0,
-                0.0,
-                Rgba([255, 255, 255, 230]),
-                stroke_thickness,
-            );
+            rasterise_polyline_into_mask(&mut stroke_mask, &polyline);
+        }
+    }
+    let mut outlines = RgbaImage::new(unified_w as u32, unified_h as u32);
+    let half = ((stroke_thickness - 1) / 2).max(0);
+    let stroke_color = Rgba([255, 255, 255, 230]);
+    if half <= 4 {
+        // Thin stroke — fall back to a brute-force square brush
+        // stamped along the rasterised mask pixels. Cheaper than
+        // running a full canvas-area distance transform when the
+        // brush is small (~ thickness² ≪ canvas area). The threshold
+        // half ≤ 4 (= stroke ≤ 9) is a heuristic break-even on the
+        // NY-sized canvases.
+        let mask_w = unified_w as u32;
+        let mask_h = unified_h as u32;
+        for my in 0..mask_h {
+            for mx in 0..mask_w {
+                if stroke_mask.get_pixel(mx, my)[0] != 0 { continue; }
+                let mx = mx as i32;
+                let my = my as i32;
+                for dy in -half..=half {
+                    let ny = my + dy;
+                    if ny < 0 || ny >= unified_h { continue; }
+                    for dx in -half..=half {
+                        let nx = mx + dx;
+                        if nx < 0 || nx >= unified_w { continue; }
+                        outlines.put_pixel(nx as u32, ny as u32, stroke_color);
+                    }
+                }
+            }
+        }
+    } else {
+        // Thicker stroke — use the Euclidean distance transform on
+        // the inverted mask (line=0, background=255). For NY-sized
+        // canvases at stroke ≥ 10 this is faster than the per-pixel
+        // square-brush stamp; for stroke ≥ 30 it's much faster.
+        let d2 = imageproc::distance_transform::euclidean_squared_distance_transform(&stroke_mask);
+        let half_sq = (half as u32 * half as u32) as f64;
+        let d2_raw = d2.as_raw();
+        let out_raw = outlines.as_mut();
+        let stride = unified_w as usize * 4;
+        for y in 0..unified_h as usize {
+            for x in 0..unified_w as usize {
+                let idx = y * (unified_w as usize) + x;
+                if d2_raw[idx] <= half_sq {
+                    let p = y * stride + x * 4;
+                    out_raw[p] = 255;
+                    out_raw[p + 1] = 255;
+                    out_raw[p + 2] = 255;
+                    out_raw[p + 3] = 230;
+                }
+            }
         }
     }
     outlines
         .save(out_dir.join("outlines.png"))
         .map_err(|e| anyhow::anyhow!("saving outlines.png: {e}"))?;
+    log_step("outlines.png");
 
     // ── assets.json ────────────────────────────────────────────────
     // Every non-piece asset is `unified_w × unified_h` pixels at
@@ -1293,10 +1350,55 @@ pub fn render_export_pieces(
     Ok(trimmed_pieces)
 }
 
+/// Rasterise the closed polyline `polygon` into `mask` as a 1-px-wide
+/// line, setting touched pixels to 0 (the rest of the mask should
+/// start at 255). The output is then fed to a Euclidean distance
+/// transform to produce strokes of any width in O(canvas area)
+/// instead of O(canvas area × thickness²).
+///
+/// Uses the same Bresenham walk as `stroke_polygon_on_canvas` but
+/// without the square-brush stamping — the dilation step covers
+/// thickness for us.
+fn rasterise_polyline_into_mask(
+    mask: &mut image::ImageBuffer<image::Luma<u8>, Vec<u8>>,
+    polygon: &[[f64; 2]],
+) {
+    if polygon.len() < 2 {
+        return;
+    }
+    let w = mask.width() as i32;
+    let h = mask.height() as i32;
+    for i in 0..polygon.len() {
+        let a = polygon[i];
+        let b = polygon[(i + 1) % polygon.len()];
+        let x0 = a[0].round() as i32;
+        let y0 = a[1].round() as i32;
+        let x1 = b[0].round() as i32;
+        let y1 = b[1].round() as i32;
+        let dx_abs = (x1 - x0).abs();
+        let dy_abs = -(y1 - y0).abs();
+        let sx = if x0 < x1 { 1 } else { -1 };
+        let sy = if y0 < y1 { 1 } else { -1 };
+        let mut err = dx_abs + dy_abs;
+        let mut x = x0;
+        let mut y = y0;
+        loop {
+            if x >= 0 && y >= 0 && x < w && y < h {
+                mask.put_pixel(x as u32, y as u32, image::Luma([0]));
+            }
+            if x == x1 && y == y1 { break; }
+            let e2 = 2 * err;
+            if e2 >= dy_abs { err += dy_abs; x += sx; }
+            if e2 <= dx_abs { err += dx_abs; y += sy; }
+        }
+    }
+}
+
 /// Draw a closed polygon as a stroked outline onto `canvas`. Each
 /// vertex is translated by `(-offset_x, -offset_y)` so a piece-local
 /// canvas can be filled directly from a canvas-coords polygon.
 /// `thickness` is in pixels (clamped to ≥1).
+#[allow(dead_code)]
 fn stroke_polygon_on_canvas(
     canvas: &mut RgbaImage,
     polygon: &[[f64; 2]],

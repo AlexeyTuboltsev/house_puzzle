@@ -24,6 +24,9 @@ fn main() -> anyhow::Result<()> {
     let out_dir = args.next().ok_or_else(|| anyhow::anyhow!("missing out_dir"))?;
     let target_pieces: usize = args.next().map(|s| s.parse().unwrap_or(60)).unwrap_or(60);
     let export_dpi: f64 = args.next().map(|s| s.parse().unwrap_or(300.0)).unwrap_or(300.0);
+    let stroke_px: i32 = args.next()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or_else(|| ((export_dpi / 96.0).round() as i32).max(1));
 
     let ai_path = Path::new(&ai_path);
     let out_dir = Path::new(&out_dir);
@@ -107,9 +110,7 @@ fn main() -> anyhow::Result<()> {
         &brick_layer_names,
         export_dpi,
         export_dpi,
-        // CLI default outline stroke: the same `assets_dpi / 96` rule
-        // that the old auto-formula produced. At 300 DPI = 3 px.
-        ((export_dpi / 96.0).round() as i32).max(1),
+        stroke_px,
         out_dir,
     )?;
     eprintln!("[export_house] {} piece PNGs written", trimmed_pieces.len());

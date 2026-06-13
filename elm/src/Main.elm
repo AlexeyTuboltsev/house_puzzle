@@ -483,6 +483,7 @@ type Msg
     | SetExportAssetsDpi String
     | SetExportPiecesDpi String
     | SetExportOutlineStrokePx String
+    | ClampExportOutlineStrokePx
     | RequestExport
     | GotExportResponse (Result Http.Error ())
     | LogBrickClick String
@@ -1646,6 +1647,21 @@ updateRunning msg model =
             ( { model | exportOutlineStrokePx = s }
             , saveSettings model.boot.isTauri [ ( "export_outline_stroke_px", E.string s ) ]
             )
+
+        ClampExportOutlineStrokePx ->
+            let
+                clamped =
+                    Maybe.withDefault 3 (String.toInt model.exportOutlineStrokePx)
+                        |> Basics.clamp 1 50
+                        |> String.fromInt
+            in
+            if clamped == model.exportOutlineStrokePx then
+                ( model, Cmd.none )
+
+            else
+                ( { model | exportOutlineStrokePx = clamped }
+                , saveSettings model.boot.isTauri [ ( "export_outline_stroke_px", E.string clamped ) ]
+                )
 
         RequestExport ->
             let
@@ -4296,7 +4312,9 @@ viewExportTools model =
                 [ type_ "number"
                 , value model.exportOutlineStrokePx
                 , onInput SetExportOutlineStrokePx
+                , Html.Events.onBlur ClampExportOutlineStrokePx
                 , Html.Attributes.min "1"
+                , Html.Attributes.max "50"
                 , Html.Attributes.step "1"
                 ]
                 []

@@ -1062,7 +1062,12 @@ pub async fn export_data(
     // stroke width (in pixels at assets_dpi); default 3.
     let assets_dpi = assets_dpi.unwrap_or(300.0);
     let pieces_dpi = pieces_dpi.unwrap_or(300.0);
-    let outline_stroke_px = outline_stroke_px.unwrap_or(3).max(1);
+    // Outline stroke is clamped to [1, 50] px on the Rust side too —
+    // mirrors the on-blur cap the export panel enforces, so a
+    // misbehaving / out-of-date frontend (or anyone hitting the
+    // command directly) can't request a 1000-px stroke that would
+    // saturate outlines.png and take forever to render.
+    let outline_stroke_px = outline_stroke_px.unwrap_or(3).clamp(1, 50);
     let loaded_dpi = metadata.render_dpi;
 
     // A unique stamp for this export, used both as the default
