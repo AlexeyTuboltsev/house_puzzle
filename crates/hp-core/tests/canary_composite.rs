@@ -138,11 +138,14 @@ fn run_canary(c: &Canary) {
     // exercising every stage. Pin to load_dpi = render_dpi so we
     // don't introduce scale rounding into the fingerprint.
     let export_dpi = 100.0_f64;
+    // Auto-derived stroke (assets_dpi / 96 ≈ 1 px at 100 DPI) keeps
+    // the canary fingerprint stable vs the pre-input behavior.
+    let stroke_px = ((export_dpi / 96.0).round() as i32).max(1);
     hp_core::render::render_export_pieces(
         &ai, &placements, &meta,
         &pieces, &bricks_by_id, &brick_polygons,
         &brick_beziers, &brick_layer_names,
-        export_dpi, export_dpi, &out_dir,
+        export_dpi, export_dpi, stroke_px, &out_dir,
     ).expect("render_export_pieces");
 
     // Fingerprint composite.png.

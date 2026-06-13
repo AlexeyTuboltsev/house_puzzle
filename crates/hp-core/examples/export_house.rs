@@ -110,6 +110,9 @@ fn main() -> anyhow::Result<()> {
         &brick_layer_names,
         export_dpi,
         export_dpi,
+        // CLI default outline stroke: the same `assets_dpi / 96` rule
+        // that the old auto-formula produced. At 300 DPI = 3 px.
+        ((export_dpi / 96.0).round() as i32).max(1),
         out_dir,
     )?;
     eprintln!("[export_house] {} piece PNGs written", trimmed_pieces.len());

@@ -1021,9 +1021,9 @@ pub async fn export_data(
     key: String,
     waves: Option<Vec<Value>>,
     groups: Option<Vec<Value>>,
-    placement: Option<Value>,
     assets_dpi: Option<f64>,
     pieces_dpi: Option<f64>,
+    outline_stroke_px: Option<i32>,
     suggested_filename: Option<String>,
 ) -> Result<Option<String>, String> {
     let (pieces, bricks, brick_polygons, brick_beziers, metadata, placements, extract_dir, ai_path, brick_layer_names) = {
@@ -1051,25 +1051,16 @@ pub async fn export_data(
     let bricks_by_id: HashMap<String, Brick> =
         bricks.iter().map(|b| (b.id.clone(), b.clone())).collect();
 
-    let placement = placement.unwrap_or_else(|| json!({}));
-    let location = placement
-        .get("location")
-        .and_then(|v| v.as_str())
-        .unwrap_or("Rome")
-        .to_string();
-    let position = placement
-        .get("position")
-        .and_then(|v| v.as_i64())
-        .unwrap_or(0) as i32;
-    let house_name = placement
-        .get("houseName")
-        .and_then(|v| v.as_str())
-        .unwrap_or("NewHouse")
-        .to_string();
-    let spacing = placement
-        .get("spacing")
-        .and_then(|v| v.as_f64())
-        .unwrap_or(12.0);
+    // The placement metadata (location / position / house_name /
+    // spacing) used to come from the export panel. We dropped those
+    // inputs in v4 — Unity ignores them — but `generate_export_zip`
+    // and `build_house_data` still take the fields, so we feed
+    // hardcoded defaults here. If they ever need to be set
+    // per-house again, plumb them back through the export panel.
+    let location = "Rome".to_string();
+    let position: i32 = 0;
+    let house_name = "NewHouse".to_string();
+    let spacing: f64 = 12.0;
 
     let waves_val = waves.unwrap_or_default();
     let groups_val = groups.unwrap_or_default();
@@ -1078,9 +1069,11 @@ pub async fn export_data(
     // one. `assets_dpi` drives the non-piece assets (composite,
     // background, highlight, lights, outlines); `pieces_dpi` drives
     // the per-piece sprites — both can be set independently from
-    // the export panel.
+    // the export panel. `outline_stroke_px` drives outlines.png
+    // stroke width (in pixels at assets_dpi); default 3.
     let assets_dpi = assets_dpi.unwrap_or(300.0);
     let pieces_dpi = pieces_dpi.unwrap_or(300.0);
+    let outline_stroke_px = outline_stroke_px.unwrap_or(3).max(1);
     let loaded_dpi = metadata.render_dpi;
 
     // ALWAYS re-render export assets into a dedicated sub-dir under
@@ -1125,6 +1118,7 @@ pub async fn export_data(
                 &brick_layer_names_for_render,
                 assets_dpi,
                 pieces_dpi,
+                outline_stroke_px,
                 &out_dir_for_render,
             )
         })

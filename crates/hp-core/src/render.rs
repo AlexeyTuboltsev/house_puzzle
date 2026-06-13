@@ -834,6 +834,11 @@ pub fn render_export_pieces(
     // non-piece assets. Lets the user dial piece resolution
     // separately from the overlay assets.
     pieces_dpi: f64,
+    // Outlines.png stroke width in pixels (at `assets_dpi`). Clamped
+    // to ≥1. Used to be derived from `assets_dpi / 96` automatically
+    // but is now an explicit user input — the export panel exposes it
+    // so clients can tune outline thickness for their composite.
+    outline_stroke_px: i32,
     out_dir: &Path,
 ) -> anyhow::Result<Vec<crate::types::PuzzlePiece>> {
     if meta.render_dpi <= 0.0 {
@@ -1189,7 +1194,7 @@ pub fn render_export_pieces(
     // the one the user sees on screen — cubic curves preserved, every
     // brick edge that isn't cancelled by an adjacent brick drawn,
     // including outer silhouette edges.
-    let stroke_thickness = ((assets_dpi / 96.0).round() as i32).max(1);
+    let stroke_thickness = outline_stroke_px.max(1);
     // Samples per cubic — at higher DPI we need more samples so a
     // brick's arch stays visibly smooth after stroking. 1 sample per
     // ~6 pixels of bezier extent is enough; capped at 64.

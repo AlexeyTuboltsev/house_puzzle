@@ -199,10 +199,7 @@ type alias Settings =
     , toolsWidthVw : Float
     , exportAssetsDpi : String
     , exportPiecesDpi : String
-    , exportLocation : String
-    , exportHouseName : String
-    , exportPosition : String
-    , exportSpacing : String
+    , exportOutlineStrokePx : String
     }
 
 
@@ -210,7 +207,7 @@ type alias Settings =
 `crates/hp-tauri/src/settings.rs`. -}
 settingsSchemaVersion : Int
 settingsSchemaVersion =
-    3
+    4
 
 
 {-| Constants known at startup (passed in via flags). Carried in every
@@ -284,10 +281,9 @@ type alias RunningModel =
          Default 300 on both. -}
       exportAssetsDpi : String
     , exportPiecesDpi : String
-    , exportLocation : String
-    , exportHouseName : String
-    , exportPosition : String
-    , exportSpacing : String
+    , {- Outline stroke width in pixels (at the assets DPI). Used
+         only by the `outlines.png` rasteriser. -}
+      exportOutlineStrokePx : String
     , draggingPieceId : Maybe String
     , dragOverWaveId : Maybe (Maybe Int)
     , dragInsertBeforeId : Maybe String
@@ -377,10 +373,7 @@ webDefaultSettings =
     , toolsWidthVw = 40.0
     , exportAssetsDpi = "300"
     , exportPiecesDpi = "300"
-    , exportLocation = "Rome"
-    , exportHouseName = "NewHouse"
-    , exportPosition = "0"
-    , exportSpacing = "12.0"
+    , exportOutlineStrokePx = "3"
     }
 
 
@@ -424,10 +417,7 @@ initialRunning boot settings =
     , exporting = False
     , exportAssetsDpi = settings.exportAssetsDpi
     , exportPiecesDpi = settings.exportPiecesDpi
-    , exportLocation = settings.exportLocation
-    , exportHouseName = settings.exportHouseName
-    , exportPosition = settings.exportPosition
-    , exportSpacing = settings.exportSpacing
+    , exportOutlineStrokePx = settings.exportOutlineStrokePx
     , draggingPieceId = Nothing
     , dragOverWaveId = Nothing
     , dragInsertBeforeId = Nothing
@@ -492,10 +482,7 @@ type Msg
     | GotPiecePolygons (Result Http.Error (List ( String, List Point )))
     | SetExportAssetsDpi String
     | SetExportPiecesDpi String
-    | SetExportLocation String
-    | SetExportHouseName String
-    | SetExportPosition String
-    | SetExportSpacing String
+    | SetExportOutlineStrokePx String
     | RequestExport
     | GotExportResponse (Result Http.Error ())
     | LogBrickClick String
@@ -617,10 +604,7 @@ decodeSettings =
         |> required "tools_width_vw" D.float
         |> required "export_assets_dpi" D.string
         |> required "export_pieces_dpi" D.string
-        |> required "export_location" D.string
-        |> required "export_house_name" D.string
-        |> required "export_position" D.string
-        |> required "export_spacing" D.string
+        |> required "export_outline_stroke_px" D.string
 
 
 
@@ -907,23 +891,6 @@ updateRunning msg model =
 
         LoadFile path ->
             let
-                -- Extract house name from path: "in/_NY2.ai" -> "NY2"
-                baseName =
-                    path
-                        |> String.split "/"
-                        |> List.reverse
-                        |> List.head
-                        |> Maybe.withDefault path
-                        |> String.replace ".ai" ""
-                        |> String.replace ".pdf" ""
-
-                houseName =
-                    if String.startsWith "_" baseName then
-                        String.dropLeft 1 baseName
-
-                    else
-                        baseName
-
                 key =
                     String.fromInt model.nextSessionId
             in
@@ -945,7 +912,6 @@ updateRunning msg model =
                 , editOriginalGroups = []
                 , recomputing = False
                 , appMode = ModeInit
-                , exportHouseName = houseName
                 , sessionKey = key
                 , nextSessionId = model.nextSessionId + 1
               }
@@ -976,7 +942,7 @@ updateRunning msg model =
                 , selectedWaveId = Nothing
                 , selectedGroupId = Nothing
               }
-            , setTitle (model.exportHouseName ++ " — House Puzzle Editor")
+            , setTitle "House Puzzle Editor"
             )
 
         GotLoadResponse (Err err) ->
@@ -1676,24 +1642,9 @@ updateRunning msg model =
             , saveSettings model.boot.isTauri [ ( "export_pieces_dpi", E.string s ) ]
             )
 
-        SetExportLocation s ->
-            ( { model | exportLocation = s }
-            , saveSettings model.boot.isTauri [ ( "export_location", E.string s ) ]
-            )
-
-        SetExportHouseName s ->
-            ( { model | exportHouseName = s }
-            , saveSettings model.boot.isTauri [ ( "export_house_name", E.string s ) ]
-            )
-
-        SetExportPosition s ->
-            ( { model | exportPosition = s }
-            , saveSettings model.boot.isTauri [ ( "export_position", E.string s ) ]
-            )
-
-        SetExportSpacing s ->
-            ( { model | exportSpacing = s }
-            , saveSettings model.boot.isTauri [ ( "export_spacing", E.string s ) ]
+        SetExportOutlineStrokePx s ->
+            ( { model | exportOutlineStrokePx = s }
+            , saveSettings model.boot.isTauri [ ( "export_outline_stroke_px", E.string s ) ]
             )
 
         RequestExport ->
@@ -1729,6 +1680,10 @@ updateRunning msg model =
                 piecesDpiValue =
                     Maybe.withDefault 300.0 (String.toFloat model.exportPiecesDpi)
 
+                outlineStrokePxValue =
+                    Maybe.withDefault 3 (String.toInt model.exportOutlineStrokePx)
+                        |> Basics.max 1
+
                 groupsJson =
                     E.list
                         (\g ->
@@ -1745,30 +1700,10 @@ updateRunning msg model =
                         , ( "groups", groupsJson )
                         , ( "assetsDpi", E.float assetsDpiValue )
                         , ( "piecesDpi", E.float piecesDpiValue )
-                        , ( "placement"
-                          , E.object
-                                [ ( "location", E.string model.exportLocation )
-                                , ( "position", E.int (Maybe.withDefault 0 (String.toInt model.exportPosition)) )
-                                , ( "houseName", E.string model.exportHouseName )
-                                , ( "spacing", E.float (Maybe.withDefault 12.0 (String.toFloat model.exportSpacing)) )
-                                ]
-                          )
+                        , ( "outlineStrokePx", E.int outlineStrokePxValue )
                         ]
             in
             if model.boot.isTauri then
-                let
-                    -- Default filename: <City>_<position>.<ext>, spaces
-                    -- in city stripped so "New York" becomes "NewYork".
-                    cityToken =
-                        model.exportLocation |> String.filter (\c -> c /= ' ')
-
-                    posToken =
-                        Maybe.withDefault 0 (String.toInt model.exportPosition)
-                            |> String.fromInt
-
-                    suggestedFilename =
-                        cityToken ++ "_" ++ posToken ++ ".zip"
-                in
                 ( { model | exporting = True }
                 , tauriInvoke
                     { command = "export_data"
@@ -1779,15 +1714,8 @@ updateRunning msg model =
                             , ( "groups", groupsJson )
                             , ( "assetsDpi", E.float assetsDpiValue )
                             , ( "piecesDpi", E.float piecesDpiValue )
-                            , ( "suggestedFilename", E.string suggestedFilename )
-                            , ( "placement"
-                              , E.object
-                                    [ ( "location", E.string model.exportLocation )
-                                    , ( "position", E.int (Maybe.withDefault 0 (String.toInt model.exportPosition)) )
-                                    , ( "houseName", E.string model.exportHouseName )
-                                    , ( "spacing", E.float (Maybe.withDefault 12.0 (String.toFloat model.exportSpacing)) )
-                                    ]
-                              )
+                            , ( "outlineStrokePx", E.int outlineStrokePxValue )
+                            , ( "suggestedFilename", E.string "export.zip" )
                             ]
                     , requestId = "export"
                     }
@@ -4329,11 +4257,6 @@ viewWavesTools model =
         ]
 
 
-locations : List String
-locations =
-    [ "Tutorial", "Rome", "Athens", "Amsterdam", "Paris", "Palermo", "Venice", "Frankfurt", "New York", "Prague" ]
-
-
 viewExportTools : RunningModel -> Html Msg
 viewExportTools model =
     let
@@ -4369,48 +4292,13 @@ viewExportTools model =
                 []
             ]
         , div [ class "field-row" ]
-            [ label [] [ text "Location" ]
-            , Html.select
-                [ onInput SetExportLocation ]
-                (List.map
-                    (\loc ->
-                        Html.option
-                            [ value loc
-                            , Html.Attributes.selected (loc == model.exportLocation)
-                            ]
-                            [ text loc ]
-                    )
-                    locations
-                )
-            ]
-        , div [ class "field-row" ]
-            [ label [] [ text "House name" ]
-            , input
-                [ type_ "text"
-                , value model.exportHouseName
-                , onInput SetExportHouseName
-                ]
-                []
-            ]
-        , div [ class "field-row" ]
-            [ label [] [ text "Position in location" ]
+            [ label [] [ text "Outline stroke (px)" ]
             , input
                 [ type_ "number"
-                , value model.exportPosition
-                , onInput SetExportPosition
-                , Html.Attributes.min "0"
+                , value model.exportOutlineStrokePx
+                , onInput SetExportOutlineStrokePx
+                , Html.Attributes.min "1"
                 , Html.Attributes.step "1"
-                ]
-                []
-            ]
-        , div [ class "field-row" ]
-            [ label [] [ text "Spacing (units)" ]
-            , input
-                [ type_ "number"
-                , value model.exportSpacing
-                , onInput SetExportSpacing
-                , Html.Attributes.min "0"
-                , Html.Attributes.step "0.5"
                 ]
                 []
             ]

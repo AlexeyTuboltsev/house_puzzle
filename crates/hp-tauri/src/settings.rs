@@ -34,7 +34,7 @@ const STORE_FILE: &str = "settings.json";
 const SETTINGS_KEY: &str = "settings";
 
 /// Bump in lock-step with `settingsSchemaVersion` in `elm/src/Main.elm`.
-const SCHEMA_VERSION: u32 = 3;
+const SCHEMA_VERSION: u32 = 4;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -65,10 +65,7 @@ pub struct Settings {
     //      intermediate values like "12." round-trip cleanly)
     pub export_assets_dpi: String,
     pub export_pieces_dpi: String,
-    pub export_location: String,
-    pub export_house_name: String,
-    pub export_position: String,
-    pub export_spacing: String,
+    pub export_outline_stroke_px: String,
 }
 
 impl Default for Settings {
@@ -88,10 +85,7 @@ impl Default for Settings {
             tools_width_vw: 40.0,
             export_assets_dpi: "300".into(),
             export_pieces_dpi: "300".into(),
-            export_location: "Rome".into(),
-            export_house_name: "NewHouse".into(),
-            export_position: "0".into(),
-            export_spacing: "12.0".into(),
+            export_outline_stroke_px: "3".into(),
         }
     }
 }
@@ -124,19 +118,27 @@ pub fn load_settings(app: AppHandle) -> Settings {
 }
 
 /// Field-level migrations on the raw JSON before deserialization,
-/// for cases serde alone can't handle (renames, splits).
+/// for cases serde alone can't handle (renames, splits, drops).
 ///
 /// History:
 ///   - v3 split `export_dpi` into `export_assets_dpi` + `export_pieces_dpi`.
 ///     Carry the old value into BOTH new fields so the user's chosen
-///     DPI is preserved across the upgrade. The stale `export_dpi`
-///     key is removed so it doesn't sit in the file as cruft.
+///     DPI is preserved across the upgrade.
+///   - v4 dropped the placement panel (`export_location`,
+///     `export_house_name`, `export_position`, `export_spacing`) and
+///     added `export_outline_stroke_px`. The drops happen here so old
+///     v3 files don't carry dead keys forever.
 fn migrate_raw(mut raw: Value) -> Value {
     if let Value::Object(ref mut obj) = raw {
         if let Some(old) = obj.remove("export_dpi") {
             obj.entry("export_assets_dpi").or_insert(old.clone());
             obj.entry("export_pieces_dpi").or_insert(old);
         }
+        // v4: scrub the dropped placement fields.
+        obj.remove("export_location");
+        obj.remove("export_house_name");
+        obj.remove("export_position");
+        obj.remove("export_spacing");
     }
     raw
 }
