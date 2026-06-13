@@ -1715,7 +1715,6 @@ updateRunning msg model =
                             , ( "assetsDpi", E.float assetsDpiValue )
                             , ( "piecesDpi", E.float piecesDpiValue )
                             , ( "outlineStrokePx", E.int outlineStrokePxValue )
-                            , ( "suggestedFilename", E.string "export.zip" )
                             ]
                     , requestId = "export"
                     }

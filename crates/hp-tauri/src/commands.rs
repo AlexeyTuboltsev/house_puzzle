@@ -1012,8 +1012,9 @@ pub fn get_piece_outline_image(
 ///
 /// The dialog opens at the last directory the user saved to (sidecar
 /// `last_export_dir.txt` under `app_data_dir`) and pre-fills the
-/// filename with `suggested_filename` (frontend constructs this as
-/// `<Location>_<position>.zip` with spaces stripped).
+/// filename with the unique `export-<unix_secs>` id stamped onto
+/// this export's logs — so the user can match the saved file to
+/// the `[export <id>]` lines in stderr.
 #[tauri::command]
 pub async fn export_data(
     app: tauri::AppHandle,
@@ -1024,7 +1025,6 @@ pub async fn export_data(
     assets_dpi: Option<f64>,
     pieces_dpi: Option<f64>,
     outline_stroke_px: Option<i32>,
-    suggested_filename: Option<String>,
 ) -> Result<Option<String>, String> {
     let (pieces, bricks, brick_polygons, brick_beziers, metadata, placements, extract_dir, ai_path, brick_layer_names) = {
         let store = sessions.lock();
@@ -1051,17 +1051,6 @@ pub async fn export_data(
     let bricks_by_id: HashMap<String, Brick> =
         bricks.iter().map(|b| (b.id.clone(), b.clone())).collect();
 
-    // The placement metadata (location / position / house_name /
-    // spacing) used to come from the export panel. We dropped those
-    // inputs in v4 — Unity ignores them — but `generate_export_zip`
-    // and `build_house_data` still take the fields, so we feed
-    // hardcoded defaults here. If they ever need to be set
-    // per-house again, plumb them back through the export panel.
-    let location = "Rome".to_string();
-    let position: i32 = 0;
-    let house_name = "NewHouse".to_string();
-    let spacing: f64 = 12.0;
-
     let waves_val = waves.unwrap_or_default();
     let groups_val = groups.unwrap_or_default();
 
@@ -1075,6 +1064,24 @@ pub async fn export_data(
     let pieces_dpi = pieces_dpi.unwrap_or(300.0);
     let outline_stroke_px = outline_stroke_px.unwrap_or(3).max(1);
     let loaded_dpi = metadata.render_dpi;
+
+    // A unique stamp for this export, used both as the default
+    // save-dialog filename AND prefixed onto the export log lines
+    // so the user can correlate a saved file back to its [export
+    // <id>] log block. Format: `export-<unix_secs>` — sortable,
+    // grep-able, and effectively collision-free at human cadence.
+    let export_id = {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let secs = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        format!("export-{}", secs)
+    };
+    eprintln!(
+        "[{} ] starting (assets_dpi={}, pieces_dpi={}, outline_stroke={}px)",
+        export_id, assets_dpi, pieces_dpi, outline_stroke_px,
+    );
 
     // ALWAYS re-render export assets into a dedicated sub-dir under
     // `extract_dir`. We can't reuse the live-preview cache even when
@@ -1170,10 +1177,6 @@ pub async fn export_data(
             pieces_dpi,
             &waves_for_encode,
             &groups_for_encode,
-            &location,
-            position,
-            &house_name,
-            spacing,
         )
         .map_err(|e| e.to_string())
     })
@@ -1181,14 +1184,13 @@ pub async fn export_data(
     .map_err(|e| e.to_string())??;
 
     // Show the native save dialog. Default directory comes from the
-    // last-export sidecar; filename comes from the frontend. User
-    // cancellation returns `Ok(None)` so the frontend can flip the
-    // export button back without showing an error.
+    // last-export sidecar; filename is `<export_id>.zip` so the
+    // saved file is searchable against this export's log lines.
+    // User cancellation returns `Ok(None)` so the frontend can flip
+    // the export button back without showing an error.
     let stored_path = last_export_dir_path(&app);
     let default_dir = stored_path.as_deref().and_then(read_last_dir);
-    let default_name = suggested_filename
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "export.zip".to_string());
+    let default_name = format!("{}.zip", export_id);
 
     let app_for_dialog = app.clone();
     let dialog_path = tokio::task::spawn_blocking(move || {

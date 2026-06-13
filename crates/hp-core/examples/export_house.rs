@@ -2,8 +2,7 @@
 //! but driven from the CLI so we can A/B against existing exports.
 //!
 //!   cargo run --release -p hp-core --example export_house -- \
-//!       in/_NY5.ai /tmp/ny5_export [target_pieces=60] [export_dpi=300] \
-//!       [location=Rome] [house_name=NewHouse]
+//!       in/_NY5.ai /tmp/ny5_export [target_pieces=60] [export_dpi=300]
 //!
 //! Writes the unpacked export bundle (composite.png, background.png,
 //! outlines.png, pieces/piece_*.png, house_data.json) into `out_dir`
@@ -25,8 +24,6 @@ fn main() -> anyhow::Result<()> {
     let out_dir = args.next().ok_or_else(|| anyhow::anyhow!("missing out_dir"))?;
     let target_pieces: usize = args.next().map(|s| s.parse().unwrap_or(60)).unwrap_or(60);
     let export_dpi: f64 = args.next().map(|s| s.parse().unwrap_or(300.0)).unwrap_or(300.0);
-    let location = args.next().unwrap_or_else(|| "Rome".to_string());
-    let house_name = args.next().unwrap_or_else(|| "NewHouse".to_string());
 
     let ai_path = Path::new(&ai_path);
     let out_dir = Path::new(&out_dir);
@@ -172,10 +169,6 @@ fn main() -> anyhow::Result<()> {
         export_dpi,
         &waves,
         &groups,
-        &location,
-        0,
-        &house_name,
-        12.0,
     )?;
     let zip_path = out_dir.join("export.zip");
     std::fs::write(&zip_path, &zip_bytes)?;

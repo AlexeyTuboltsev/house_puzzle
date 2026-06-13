@@ -25,10 +25,6 @@ pub fn build_house_data(
     waves: &[serde_json::Value],
     ppu: f64,
     scale: f64,
-    location: &str,
-    position_in_location: i32,
-    house_name: &str,
-    spacing: f64,
     groups: &[serde_json::Value],
 ) -> serde_json::Value {
     let scaled_w = (canvas_width as f64 * scale).round();
@@ -116,10 +112,6 @@ pub fn build_house_data(
     let ground_offset = json!({"x": 0.0, "y": 0.0, "z": 0.0});
 
     json!({
-        "Name": house_name,
-        "Location": location,
-        "PositionInLocation": position_in_location,
-        "Spacing": spacing,
         "ScalingFactor": scaling_factor,
         "GroundOffset": ground_offset,
         "Blocks": blocks,
@@ -150,10 +142,6 @@ pub fn generate_export_zip(
     export_dpi: f64,
     waves: &[serde_json::Value],
     groups: &[serde_json::Value],
-    location: &str,
-    position: i32,
-    house_name: &str,
-    spacing: f64,
 ) -> Result<Vec<u8>> {
     // target_ppu = export_dpi × screen_frame_h_pts / (72 × HOUSE_UNITS_HIGH).
     // We have screen_frame_height_px (loaded pixels), convert to PDF
@@ -173,7 +161,7 @@ pub fn generate_export_zip(
 
     let house_data = build_house_data(
         pieces, bricks_by_id, canvas_width, canvas_height,
-        waves, target_ppu, scale, location, position, house_name, spacing, groups,
+        waves, target_ppu, scale, groups,
     );
 
     let buf = Vec::new();
