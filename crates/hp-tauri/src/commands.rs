@@ -1185,17 +1185,17 @@ pub async fn export_data(
 
     // Show the native save dialog. Default directory comes from the
     // last-export sidecar; filename is `<picture-basename>.zip`
-    // (the AI file's stem, with a leading underscore stripped if
-    // present — `_NY5.ai` → `NY5.zip`). Falls back to the unique
-    // `export-<id>.zip` if the basename can't be derived. User
-    // cancellation returns `Ok(None)` so the frontend can flip the
-    // export button back without showing an error.
+    // (the AI file's stem, verbatim — the picture can sit
+    // anywhere, not just in `in/`, so we don't strip any leading
+    // characters). Falls back to `export-<id>.zip` if the basename
+    // can't be derived. User cancellation returns `Ok(None)` so
+    // the frontend can flip the export button back without showing
+    // an error.
     let stored_path = last_export_dir_path(&app);
     let default_dir = stored_path.as_deref().and_then(read_last_dir);
     let default_name = ai_path
         .file_stem()
         .and_then(|s| s.to_str())
-        .map(|s| s.strip_prefix('_').unwrap_or(s))
         .filter(|s| !s.is_empty())
         .map(|stem| format!("{}.zip", stem))
         .unwrap_or_else(|| format!("{}.zip", export_id));
