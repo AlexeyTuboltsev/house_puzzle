@@ -1712,38 +1712,41 @@ pub struct ModifiedPdfStats {
 /// Default overlay attach radius — see `match_blocks_to_bricks`.
 pub const DEFAULT_OVERLAY_RADIUS_PT: f64 = 70.0;
 
-/// Walk the AI/PDF, match blocks to parser bricks, inject per-brick
-/// OCGs, and write the modified PDF to `out_path`. Returns a struct
-/// carrying the path and the OCG names a renderer needs.
-pub fn build_modified_pdf(
+/// All the AI/PDF inspection state the export composite (and the live
+/// editor preview) need: brick blocks walked from the content stream,
+/// each one's matched parser brick, the sub-pixel-precise
+/// pymu→PDF-page bleed, and the page's mediabox y1. Produced by
+/// `analyse_brick_blocks`; consumed by both `build_modified_pdf` and
+/// the editor's direct-extract overlay path.
+pub struct BrickBlockAnalysis {
+    pub blocks: Vec<BrickBlock>,
+    pub map: BrickBlockMap,
+    pub bleed_pts: (f64, f64),
+    pub page_height_pt: f64,
+}
+
+/// Walk a page's brick blocks, match them to parser placements, and
+/// derive the sub-pixel-precise pymu→PDF bleed offset. This is
+/// `build_modified_pdf` without the content-stream rewrite — the
+/// slow OCG injection + file write are skipped.
+///
+/// Editor's live preview uses this directly to render the bricks
+/// composite (MuPDF render + direct-extract overlay using
+/// `bleed_pts`) without paying for an unused modified-PDF file.
+/// Cost: ~200–400 ms (one MuPDF render at 100 DPI for the probe
+/// bleed + pure-math refinement).
+pub fn analyse_brick_blocks(
+    doc: &Document,
+    page_id: ObjectId,
     ai_path: &std::path::Path,
     placements: &[crate::ai_parser::BrickPlacement],
     meta: &crate::ai_parser::ParsedAiMetadata,
-    out_path: &std::path::Path,
-) -> Result<ModifiedPdfArtifact> {
-    let mut doc = Document::load(ai_path).context("loading PDF with lopdf")?;
-    let pages = doc.get_pages();
-    let (_, page_id) = pages
-        .iter()
-        .next()
-        .ok_or_else(|| anyhow!("PDF has no pages"))?;
-    let page_id = *page_id;
-
-    // Walk blocks.
-    let blocks = walk_page_bricks(&doc, page_id).context("walking page bricks")?;
-
-    // Pull PDF page height from the page's mediabox.
-    let page_height_pt = page_mediabox_y1(&doc, page_id)?;
+) -> Result<BrickBlockAnalysis> {
+    let blocks = walk_page_bricks(doc, page_id).context("walking page bricks")?;
+    let page_height_pt = page_mediabox_y1(doc, page_id)?;
     let (clip_x0, clip_y0, _, _) = meta.clip_rect;
 
-    // Detect the pymu → PDF-page X/Y bleed by rasterising the bricks
-    // layer through the parser's clip rect and comparing the first
-    // opaque pixel column/row against `meta.expected_brick_min`.
-    // Same trick the load pipeline uses (commands.rs:329).
-    //
-    // Without this correction, placement polygons land in a different
-    // frame from `BrickBlock::path_centroid` (PDF page coords from the
-    // content stream's CTM) and no containment test ever succeeds.
+    // Probe-based initial bleed via low-DPI bricks-OCG render.
     let probe_dpi = 100.0_f64;
     let (bleed_x, bleed_y) = match crate::mupdf_ffi::render_page_with_ocg_set_clipped(
         ai_path.to_str().unwrap_or(""),
@@ -1757,10 +1760,6 @@ pub fn build_modified_pdf(
                 let exp_x = ((meta.expected_brick_min.0 as f64) * scale).round() as i32;
                 let exp_y = ((meta.expected_brick_min.1 as f64) * scale).round() as i32;
                 let (dx_px, dy_px) = crate::render::compute_pdf_offset(&img, exp_x, exp_y);
-                // dx_px > 0 means actual first-opaque-col is to the LEFT
-                // of expected (artwork lives at smaller pymu_x than the
-                // parser thinks). We want `pdf_e = pymu_e + bleed`, with
-                // bleed = (-dx_px) in pixels → pts.
                 let pts_per_px = 72.0 / probe_dpi;
                 ((-dx_px as f64) * pts_per_px, (-dy_px as f64) * pts_per_px)
             }
@@ -1768,30 +1767,6 @@ pub fn build_modified_pdf(
         },
         None => (0.0, 0.0),
     };
-    eprintln!("[ocg_inject] detected bleed_x={:.2}pt bleed_y={:.2}pt", bleed_x, bleed_y);
-    if let Ok(target) = std::env::var("HP_DEBUG_BRICK") {
-        if let Some((i, p)) = placements.iter().enumerate().find(|(_, p)| p.name == target) {
-            let g = PageGeometry { clip_x0, clip_y0, render_dpi: meta.render_dpi, page_height_pt, bleed_x, bleed_y };
-            let cent = g.placement_polygon_centroid_pdf(p);
-            eprintln!("[ocg_inject:debug] {} (idx={}) pymu_xywh=({},{},{},{}) centroid_pdf={:?}",
-                target, i, p.pymu_x, p.pymu_y, p.pymu_w, p.pymu_h, cent);
-            if let Some(poly) = p.polygon.as_ref() {
-                eprintln!("  raw polygon ({} verts):", poly.len());
-                for (k, v) in poly.iter().enumerate() {
-                    eprintln!("    [{}] = ({:.2}, {:.2})", k, v[0], v[1]);
-                }
-            }
-            if let Some(poly_pdf) = g.placement_polygon_pdf(p) {
-                let xs: Vec<f64> = poly_pdf.iter().map(|p| p.0).collect();
-                let ys: Vec<f64> = poly_pdf.iter().map(|p| p.1).collect();
-                eprintln!("  polygon in PDF: x range [{:.1}..{:.1}], y range [{:.1}..{:.1}]",
-                    xs.iter().cloned().fold(f64::INFINITY, f64::min),
-                    xs.iter().cloned().fold(f64::NEG_INFINITY, f64::max),
-                    ys.iter().cloned().fold(f64::INFINITY, f64::min),
-                    ys.iter().cloned().fold(f64::NEG_INFINITY, f64::max));
-            }
-        }
-    }
 
     let geo = PageGeometry {
         clip_x0,
@@ -1801,29 +1776,12 @@ pub fn build_modified_pdf(
         bleed_x,
         bleed_y,
     };
-
-    // Match.
     let map = match_blocks_to_bricks(&blocks, placements, geo, DEFAULT_OVERLAY_RADIUS_PT);
 
-    // ── Refine bleed from matched (Image block, polygon) centres ──
-    //
-    // The constant coordinate-system shift between pymu pts (parser
-    // frame, used by `polygon`) and PDF page pts (content stream
-    // frame, used by `inner_ctm`) is what we call `bleed_pts`. To
-    // measure it precisely, take one sample per Image block:
-    //
-    //   image_centre_pdf = ctm(0.5, 0.5)         ← centre of image rect
-    //   polygon_centre_pymu = bbox centre        ← centre of geometric outline
-    //   sample = image_centre_pdf − polygon_centre_pymu  ← coord-system shift
-    //
-    // For each brick the AI file embeds the raster's image rect with
-    // some alpha-bleed extent on each side. If those bleeds are
-    // *symmetric* (uniform per-brick — which user-confirmed for NY5),
-    // the image rect's centre equals the geometric outline's centre,
-    // so each sample is exactly the global shift. Median across all
-    // Image bricks → the global bleed, free of per-brick bleed-extent
-    // variance and free of the dual-cluster bias the previous
-    // corner-based version produced.
+    // Refined bleed from matched (Image block, polygon) centroids —
+    // takes the median of `image_centre_pdf − polygon_centre_pymu` over
+    // every matched Image brick. Sub-pixel-precise and immune to the
+    // integer-pixel quantisation the probe step would otherwise produce.
     let refined_bleed_pts: (f64, f64) = {
         let s = meta.render_dpi / 72.0;
         let mut dxs: Vec<f64> = Vec::new();
@@ -1838,7 +1796,6 @@ pub fn build_modified_pdf(
             let Some(poly) = placements[i].polygon.as_ref() else { continue; };
             if poly.len() < 3 { continue; }
             let ctm = block.inner_ctm_at_content;
-            // Axis-aligned positive-scale check so `a`/`d` mean width/height.
             if ctm.b.abs() > 1e-3 || ctm.c.abs() > 1e-3 { continue; }
             if ctm.a <= 0.0 || ctm.d <= 0.0 { continue; }
             let img_cx_pdf = ctm.e + ctm.a / 2.0;
@@ -1857,10 +1814,6 @@ pub fn build_modified_pdf(
             dxs.push(img_cx_pdf - cx_pymu_pt);
             dys_pdf_up.push(img_cy_pdf_up - cy_pdf_up);
         }
-        // Median that averages the two middle values for even counts —
-        // matters because dx samples can cluster bimodally if bricks
-        // have any systematic left/right bleed asymmetry, and an
-        // off-by-one median would pick one cluster's edge.
         fn median(mut xs: Vec<f64>) -> Option<f64> {
             if xs.is_empty() { return None; }
             xs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
@@ -1869,29 +1822,46 @@ pub fn build_modified_pdf(
         }
         let bx = median(dxs).unwrap_or(bleed_x);
         let by_pdf_up = median(dys_pdf_up).unwrap_or(-bleed_y);
-        // pymu y-down convention: pdf_y_down = pymu_y_down + bleed_y_down.
-        // dy_sample_pdf_up = image_y_up − polygon_y_up = −(pdf_y_down −
-        // pymu_y_down) = −bleed_y_down, so flip the sign.
         (bx, -by_pdf_up)
     };
-    let sample_count = {
-        let mut c = 0;
-        for (i, blks) in map.brick_to_blocks.iter().enumerate() {
-            if blks.is_empty() { continue; }
-            if placements[i].polygon.as_ref().map(|p| p.len() >= 3).unwrap_or(false)
-                && blks.iter().any(|&bi| matches!(blocks[bi].content, BrickContent::Image { .. }))
-            { c += 1; }
-        }
-        c
-    };
-    eprintln!(
-        "[ocg_inject] refined bleed from {} Image centres: ({:.3}pt, {:.3}pt) (probe was {:.2}, {:.2})",
-        sample_count, refined_bleed_pts.0, refined_bleed_pts.1, bleed_x, bleed_y,
-    );
+
+    Ok(BrickBlockAnalysis {
+        blocks,
+        map,
+        bleed_pts: refined_bleed_pts,
+        page_height_pt,
+    })
+}
+
+/// Walk the AI/PDF, match blocks to parser bricks, inject per-brick
+/// OCGs, and write the modified PDF to `out_path`. Returns a struct
+/// carrying the path and the OCG names a renderer needs.
+pub fn build_modified_pdf(
+    ai_path: &std::path::Path,
+    placements: &[crate::ai_parser::BrickPlacement],
+    meta: &crate::ai_parser::ParsedAiMetadata,
+    out_path: &std::path::Path,
+) -> Result<ModifiedPdfArtifact> {
+    let mut doc = Document::load(ai_path).context("loading PDF with lopdf")?;
+    let pages = doc.get_pages();
+    let (_, page_id) = pages
+        .iter()
+        .next()
+        .ok_or_else(|| anyhow!("PDF has no pages"))?;
+    let page_id = *page_id;
+
+    let analysis = analyse_brick_blocks(&doc, page_id, ai_path, placements, meta)?;
+    let BrickBlockAnalysis { blocks, map, bleed_pts: refined_bleed_pts, page_height_pt } = analysis;
+    let (clip_x0, clip_y0, _, _) = meta.clip_rect;
+
     if let Ok(target) = std::env::var("HP_DEBUG_BRICK") {
         if let Some((i, p)) = placements.iter().enumerate().find(|(_, p)| p.name == target) {
             eprintln!("[ocg_inject:debug] {} brick_to_blocks[{}] = {:?}", target, i, map.brick_to_blocks[i]);
-            let g = PageGeometry { clip_x0, clip_y0, render_dpi: meta.render_dpi, page_height_pt, bleed_x, bleed_y };
+            let g = PageGeometry {
+                clip_x0, clip_y0,
+                render_dpi: meta.render_dpi, page_height_pt,
+                bleed_x: refined_bleed_pts.0, bleed_y: refined_bleed_pts.1,
+            };
             let poly = g.placement_polygon_pdf(p);
             for &bi in &map.brick_to_blocks[i] {
                 let b = &blocks[bi];

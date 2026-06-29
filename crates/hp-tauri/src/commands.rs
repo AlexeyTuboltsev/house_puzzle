@@ -263,31 +263,82 @@ pub async fn load_pdf(
         res
     });
 
-    let fp_bricks = file_path.clone();
-    let clip_for_bricks = clip;
-    let bricks_render_fut = tokio::task::spawn_blocking(move || {
+    // Analyse the AI's brick content stream — walk q...Q blocks, match
+    // them to parser placements, derive the sub-pixel-precise pymu→PDF
+    // bleed. The export pipeline already does this; the editor now uses
+    // the same `bleed_pts` for both:
+    //   - shifted MuPDF clip → bricks layer pixmap lands canvas-aligned
+    //   - direct-extract overlay → raster bricks paint exactly where
+    //     the parser polygons say they should
+    //
+    // This replaces the legacy `compute_pdf_offset` + shifted-re-render
+    // path that broke on AI files with malformed OCG metadata (Sand9
+    // returned blank; Sand10 ended up with the composite shifted vs
+    // outlines).
+    let fp_analyse = file_path.clone();
+    let placements_for_analyse = placements.clone();
+    let metadata_for_analyse = metadata.clone();
+    let analyse_fut = tokio::task::spawn_blocking(move || {
         let t0 = std::time::Instant::now();
-        let res = render::render_ocg_layer_pixmap_clipped(
-            &fp_bricks, "bricks", dpi, clip_for_bricks,
-        );
-        eprintln!("[profile] OCG bricks pixmap render (clipped): {:?}", t0.elapsed());
-        res
+        let doc = hp_core::lopdf::Document::load(&fp_analyse)
+            .map_err(|e| format!("hp_core::lopdf::Document::load: {e}"))?;
+        let page_id = doc.page_iter().next()
+            .ok_or_else(|| "PDF has no pages".to_string())?;
+        let analysis = hp_core::ocg_inject::analyse_brick_blocks(
+            &doc, page_id, &fp_analyse, &placements_for_analyse, &metadata_for_analyse,
+        ).map_err(|e| format!("analyse_brick_blocks: {e}"))?;
+        eprintln!("[profile] analyse_brick_blocks (walk + probe + bleed): {:?}", t0.elapsed());
+        Ok::<(hp_core::lopdf::Document, hp_core::ocg_inject::BrickBlockAnalysis), String>((doc, analysis))
     });
 
-    let (bezier_per_brick, bricks_res) = tokio::join!(bezier_fut, bricks_render_fut);
+    let (bezier_per_brick, analyse_res) = tokio::join!(bezier_fut, analyse_fut);
     let bezier_per_brick = bezier_per_brick.map_err(|e| e.to_string())?;
-    let (bricks_pixmap, _, _) = bricks_res
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| "Failed to render bricks layer".to_string())?;
+    let (doc, analysis) = analyse_res.map_err(|e| e.to_string())??;
     eprintln!(
-        "[profile] bezier+bricks_OCG (overlapped): {:?}",
+        "[profile] bezier + analyse (overlapped): {:?}",
         t_parallel.elapsed()
     );
+    let bleed_pts = analysis.bleed_pts;
+    let page_height_pt = analysis.page_height_pt;
+    let blocks = analysis.blocks;
 
-    let bricks_no_offset = render::compose_clipped_canvas(
+    // Shifted clip — meta.clip_rect translated by bleed_pts so MuPDF
+    // renders the bricks layer aligned with the parser's pymu frame.
+    let shifted_clip = (
+        clip.0 + bleed_pts.0, clip.1 + bleed_pts.1,
+        clip.2 + bleed_pts.0, clip.3 + bleed_pts.1,
+    );
+
+    let t_render = std::time::Instant::now();
+    let fp_bricks = file_path.clone();
+    let (bricks_pixmap, _, _) = tokio::task::spawn_blocking(move || {
+        render::render_ocg_layer_pixmap_clipped(&fp_bricks, "bricks", dpi, shifted_clip)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .ok_or_else(|| "Failed to render bricks layer".to_string())?;
+    eprintln!("[profile] OCG bricks render (shifted clip): {:?}", t_render.elapsed());
+
+    let mut bricks_layer_img = render::compose_clipped_canvas(
         &bricks_pixmap, "bricks", cw, ch, (0, 0),
     );
     let bricks_pixmap = Some(bricks_pixmap);
+
+    // Direct-extract overlay: every Image XObject in the page's content
+    // stream is decoded via lopdf and composited on top of MuPDF's
+    // pixels — gives canvas-aligned raster bricks even when MuPDF's OCG
+    // render returns an empty or shifted result (Sand9, Sand10).
+    let t_overlay = std::time::Instant::now();
+    hp_core::raster_extract::compose_image_blocks_onto_canvas(
+        &doc, &blocks, 0..blocks.len(),
+        &mut bricks_layer_img, clip, page_height_pt, bleed_pts,
+        dpi, false,
+    );
+    eprintln!(
+        "[profile] direct-extract overlay ({} blocks): {:?}",
+        blocks.len(), t_overlay.elapsed()
+    );
+    drop(doc);
 
     // Assign brick IDs
     let mut bricks: Vec<Brick> = Vec::new();
@@ -334,58 +385,19 @@ pub async fn load_pdf(
         .map(|(b, p)| (b.id.clone(), p.clone()))
         .collect();
 
-    let pdf_offset = render::compute_pdf_offset(
-        &bricks_no_offset,
-        expected_min.0,
-        expected_min.1,
-    );
+    // Legacy `pdf_offset` field — kept on the session for any other
+    // callers that still read it, but always zero now: shifted_clip
+    // above handles the pymu↔PDF alignment for the bricks render,
+    // so no further compose-time offset is needed.
+    let pdf_offset = (0i32, 0i32);
+    let _ = expected_min; // probe value, no longer consumed here
 
-    let bricks_layer_img = if pdf_offset != (0, 0) {
-        // The first render only rasterised pixels inside the artwork
-        // clip rect. With a non-zero detected offset we now want to
-        // *shift* the bricks layer right/down by `pdf_offset` pixels,
-        // which means we need pixels that lie OUTSIDE the original
-        // clip on the opposite side (left/top). The old full-page
-        // render had them; the clipped render doesn't, so re-rasterise
-        // with the clip shifted by `-pdf_offset / scale` PDF points
-        // and compose at canvas (0, 0). Costs one extra MuPDF render
-        // — but only on AI files where MuPDF's coordinate origin
-        // disagrees with the parser's, which is rare. The common
-        // offset == (0, 0) path stays single-render fast.
-        let scale_f = dpi / 72.0;
-        let dx_pts = pdf_offset.0 as f64 / scale_f;
-        let dy_pts = pdf_offset.1 as f64 / scale_f;
-        let shifted_clip = (
-            clip.0 - dx_pts, clip.1 - dy_pts,
-            clip.2 - dx_pts, clip.3 - dy_pts,
-        );
-        let t_rerender = std::time::Instant::now();
-        let fp_rerender = file_path.clone();
-        let img = match render::render_ocg_layer_pixmap_clipped(
-            &fp_rerender, "bricks", dpi, shifted_clip,
-        ) {
-            Some((shifted_pixmap, _, _)) => render::compose_clipped_canvas(
-                &shifted_pixmap, "bricks", cw, ch, (0, 0),
-            ),
-            None => bricks_no_offset,
-        };
-        eprintln!(
-            "[profile] OCG bricks re-render with shifted clip (offset={:?}): {:?}",
-            pdf_offset,
-            t_rerender.elapsed()
-        );
-        img
-    } else {
-        bricks_no_offset
-    };
-    // Drop the pixmap once we're done re-composing — it's the largest
-    // intermediate buffer and we don't need it past this point.
     drop(bricks_pixmap);
     eprintln!(
-        "[profile] bricks_layer ready: {}x{}, offset={:?}",
+        "[profile] bricks_layer ready: {}x{}, bleed_pts=({:.2}, {:.2})",
         bricks_layer_img.width(),
         bricks_layer_img.height(),
-        pdf_offset,
+        bleed_pts.0, bleed_pts.1,
     );
 
     // Hybrid brick rendering
@@ -535,6 +547,8 @@ pub async fn load_pdf(
                 brick_rgba,
                 ai_path: file_path.clone(),
                 pdf_offset,
+                bleed_pts,
+                shifted_clip,
                 brick_layer_names,
             },
         );
@@ -580,7 +594,7 @@ async fn ensure_ocg_layer_image(
     layer_name: &'static str,
     file_name: &str,
 ) -> Result<Option<String>, String> {
-    let (extract_dir, file_path, dpi, clip, cw, ch, pdf_offset) = {
+    let (extract_dir, file_path, dpi, shifted_clip, cw, ch) = {
         let store = sessions.lock();
         let session = store
             .get(key)
@@ -589,10 +603,9 @@ async fn ensure_ocg_layer_image(
             session.extract_dir.clone(),
             session.ai_path.clone(),
             session.metadata.render_dpi,
-            session.metadata.clip_rect,
+            session.shifted_clip,
             session.metadata.canvas_width as u32,
             session.metadata.canvas_height as u32,
-            session.pdf_offset,
         )
     };
 
@@ -603,9 +616,11 @@ async fn ensure_ocg_layer_image(
 
     let out = out_path.clone();
     let fp = file_path.clone();
+    // The bleed-shifted clip is built into `shifted_clip` (the bricks
+    // render uses it too) — no separate compose-time pdf_offset needed.
     let ok = tokio::task::spawn_blocking(move || {
         let t0 = std::time::Instant::now();
-        let r = render::render_ocg_layer(&fp, layer_name, &out, dpi, clip, cw, ch, pdf_offset);
+        let r = render::render_ocg_layer(&fp, layer_name, &out, dpi, shifted_clip, cw, ch, (0, 0));
         eprintln!(
             "[profile] lazy render_ocg_layer({}): {:?} -> {}",
             layer_name,

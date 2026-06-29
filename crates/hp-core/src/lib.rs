@@ -23,3 +23,9 @@ pub mod puzzle;
 pub mod export;
 pub mod ocg_inject;
 pub mod raster_extract;
+
+// Re-export lopdf::Document so callers (notably the Tauri shell)
+// can hold the document hp_core::ocg_inject::analyse_brick_blocks +
+// hp_core::raster_extract::compose_image_blocks_onto_canvas need
+// without taking a direct lopdf dep.
+pub use lopdf;

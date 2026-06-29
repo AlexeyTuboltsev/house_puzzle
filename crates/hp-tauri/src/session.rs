@@ -31,10 +31,21 @@ pub struct Session {
     /// Original AI file path — kept so the lazy lights / background
     /// renderers can re-open the document without parsing it again.
     pub ai_path: PathBuf,
-    /// PDF coordinate-system offset detected at load time (pixels).
-    /// Lights / background OCG renders apply the same shift so they
-    /// align with the bricks layer.
+    /// Legacy integer-pixel pymu→PDF offset. Always (0, 0) now —
+    /// the new pipeline uses `shifted_clip` below for both the
+    /// bricks render and the lazy lights/background renders. Field
+    /// kept for read-side backward-compatibility.
+    #[allow(dead_code)]
     pub pdf_offset: (i32, i32),
+    /// Sub-pixel-precise pymu→PDF bleed translation, in PDF points.
+    /// Computed once at load time via `ocg_inject::analyse_brick_blocks`.
+    /// `shifted_clip = metadata.clip_rect + bleed_pts`.
+    #[allow(dead_code)]
+    pub bleed_pts: (f64, f64),
+    /// `metadata.clip_rect` translated by `bleed_pts` so MuPDF
+    /// renders the page region aligned with the parser's pymu frame.
+    /// Lights / background lazy renders use this.
+    pub shifted_clip: (f64, f64, f64, f64),
     /// Maps hashed brick ID → AI layer name (e.g. "Layer 45").
     /// Needed at export time to translate hashed IDs back to OCG names.
     pub brick_layer_names: HashMap<String, String>,
