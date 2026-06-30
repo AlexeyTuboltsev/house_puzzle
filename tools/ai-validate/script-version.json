@@ -1,9 +1,9 @@
 {
-  "version": "0.1.9",
-  "released": "2026-05-06",
-  "release_notes_url": "https://github.com/AlexeyTuboltsev/house_puzzle/releases/tag/sv0.1.9",
+  "version": "0.1.10",
+  "released": "2026-06-30",
+  "release_notes_url": "https://github.com/AlexeyTuboltsev/house_puzzle/releases/tag/sv0.1.10",
   "platforms": {
-    "windows": "https://github.com/AlexeyTuboltsev/house_puzzle/releases/download/sv0.1.9/ai-validate-0.1.9-setup.exe",
-    "macos":   "https://github.com/AlexeyTuboltsev/house_puzzle/releases/download/sv0.1.9/ai-validate-0.1.9.pkg"
+    "windows": "https://github.com/AlexeyTuboltsev/house_puzzle/releases/download/sv0.1.10/ai-validate-0.1.10-setup.exe",
+    "macos":   "https://github.com/AlexeyTuboltsev/house_puzzle/releases/download/sv0.1.10/ai-validate-0.1.10.pkg"
   }
 }
