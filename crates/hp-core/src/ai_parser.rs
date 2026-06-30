@@ -333,10 +333,26 @@ fn extract_plain_path_bbox(block: &LayerBlock, data: &[u8]) -> Option<(f64, f64,
         if in_skip_range(line_start) {
             continue;
         }
-        let line = bstr(line_bytes).trim().to_string();
-        if line.starts_with('%') {
+        let line_full = bstr(line_bytes).trim().to_string();
+        // AI emits two flavours of path data inside a brick:
+        //   • plain path operators (the displayed geometry),
+        //   • `%_`-prefixed path operators (AI's "hot" vector cache,
+        //     written by Illustrator on save — used by `extract_vector_path`
+        //     as the primary polygon source).
+        // Either flavour describes the brick's outline. If we only look
+        // at plain ops, bricks whose AI source only carries the `%_`
+        // variant (e.g. Sand7 Layer 187, Sand3 Layer 199, NY1 Layer
+        // 158) get dropped at the initial filter_map for "no bbox" —
+        // even though the polygon extractor would have found their
+        // outline immediately. Mirror the polygon extractor's prefix
+        // handling so the bbox derivation sees the same data.
+        let line: &str = if let Some(rest) = line_full.strip_prefix("%_") {
+            rest
+        } else if line_full.starts_with('%') {
             continue;
-        }
+        } else {
+            line_full.as_str()
+        };
         let parts: Vec<&str> = line.split_whitespace().collect();
         if parts.is_empty() {
             continue;
@@ -1008,6 +1024,10 @@ pub fn parse_ai(
     }
 
     use rayon::prelude::*;
+    // Track every brick-layer child whose bbox we couldn't derive — those
+    // would silently disappear otherwise. We surface them as warnings
+    // after the rayon pass so the artist can see exactly what's missing.
+    let dropped_no_bbox = std::sync::Mutex::new(Vec::<String>::new());
     let placements: Vec<RawPlacement> = bricks_node
         .children
         .par_iter()
@@ -1045,9 +1065,17 @@ pub fn parse_ai(
                     layer_type: "vector_brick".to_string(),
                 });
             }
+            // Layer has no raster matrix, gradient-with-raster ignored,
+            // AND no plain-path bbox — record so we can warn later.
+            if !child.name.is_empty() {
+                if let Ok(mut v) = dropped_no_bbox.lock() {
+                    v.push(child.name.clone());
+                }
+            }
             None
         })
         .collect();
+    let dropped_no_bbox = dropped_no_bbox.into_inner().unwrap_or_default();
 
     if placements.is_empty() {
         bail!("No brick rasters found in 'bricks' layer");
@@ -1111,25 +1139,45 @@ pub fn parse_ai(
     let expected_brick_min_x = ((all_x0.iter().cloned().fold(f64::INFINITY, f64::min) - clip_x0) * scale).round() as i32;
     let expected_brick_min_y = ((all_y0.iter().cloned().fold(f64::INFINITY, f64::min) - clip_y0) * scale).round() as i32;
 
-    // Build BrickPlacements — deduplicate by bbox, extract polygons.
+    // Build BrickPlacements — keep every placement, extract polygons.
     //
-    // The expensive part is `extract_vector_path` (PostScript parsing per
-    // brick).  Run that in parallel for every placement that survives the
-    // bbox dedup, then assemble the final list sequentially so we keep
-    // deterministic ordering.
+    // We used to dedup by integer-pixel bbox here. That silently dropped
+    // legitimate bricks whose bboxes happened to round to the same key
+    // as a neighbour's (e.g. Sand7 Layer 187, Sand3 Layer 199, NY8 13
+    // layers). Every `Layer NNN` under `bricks` in the AI source is a
+    // distinct brick — trust the layer structure.
+    //
+    // Genuine artist duplicates (two layers with literally the same
+    // shape at the same spot, e.g. Sand7 Layer 128 / Layer 193) are a
+    // file-side problem caught by the AI validator script (`tools/
+    // ai-validate`). The parser surfaces them as a structured warning
+    // below so they aren't completely silent.
+    //
+    // The expensive part is `extract_vector_path` (PostScript parsing
+    // per brick).  Run that in parallel for every placement, then
+    // assemble the final list sequentially so we keep deterministic
+    // ordering.
     let t0 = std::time::Instant::now();
-    let mut seen_bbox = std::collections::HashSet::new();
-    let mut keep_idx: Vec<usize> = Vec::with_capacity(placements.len());
+    let keep_idx: Vec<usize> = (0..placements.len()).collect();
     let mut bbox_px: Vec<(i32, i32, i32, i32)> = Vec::with_capacity(placements.len());
-    for (i, p) in placements.iter().enumerate() {
+    let mut bbox_seen: std::collections::HashMap<(i32, i32, i32, i32), String> =
+        std::collections::HashMap::new();
+    let mut dup_bbox_warnings: Vec<String> = Vec::new();
+    for p in &placements {
         let px = ((p.pymu_bbox.0 - clip_x0) * scale).round() as i32;
         let py = ((p.pymu_bbox.1 - clip_y0) * scale).round() as i32;
         let pw = ((p.pymu_bbox.2 - p.pymu_bbox.0) * scale).round().max(1.0) as i32;
         let ph = ((p.pymu_bbox.3 - p.pymu_bbox.1) * scale).round().max(1.0) as i32;
         let key = (px, py, pw, ph);
-        if seen_bbox.insert(key) {
-            keep_idx.push(i);
-            bbox_px.push(key);
+        bbox_px.push(key);
+        let name = p.child.name.clone();
+        if let Some(prev) = bbox_seen.get(&key) {
+            dup_bbox_warnings.push(format!(
+                "DUPLICATE_BBOX: layer '{}' shares integer-pixel bbox ({}, {}, {}, {}) with '{}' — likely an artist duplicate; review the source file",
+                name, px, py, pw, ph, prev
+            ));
+        } else {
+            bbox_seen.insert(key, name);
         }
     }
 
@@ -1147,7 +1195,13 @@ pub fn parse_ai(
 
     let mut results: Vec<BrickPlacement> = Vec::with_capacity(keep_idx.len());
     let skipped_bricks: Vec<String> = Vec::new();
-    let mut warnings: Vec<String> = Vec::new();
+    let mut warnings: Vec<String> = dup_bbox_warnings;
+    for name in &dropped_no_bbox {
+        warnings.push(format!(
+            "NO_BBOX: layer '{}' has no raster placement and no plain-path bbox — dropped before polygon extraction. Most often this means the layer's only content is a gradient-only sub-layer or a degenerate path; the artist should add a closed vector outline or restructure the layer.",
+            name
+        ));
+    }
 
     for (slot, &orig_i) in keep_idx.iter().enumerate() {
         let p = &placements[orig_i];
@@ -1292,7 +1346,7 @@ pub fn parse_ai(
             if poly.unsigned_area() > 1.0 { Some(poly) } else { None }
         }).collect();
 
-        let mut to_remove: std::collections::HashSet<usize> = std::collections::HashSet::new();
+        let to_remove: std::collections::HashSet<usize> = std::collections::HashSet::new();
 
         for i in 0..results.len() {
             if to_remove.contains(&i) { continue; }
@@ -1324,36 +1378,36 @@ pub fn parse_ai(
                 let smaller_area = area_a.min(area_b);
                 let overlap_ratio = inter_area / smaller_area;
 
+                // Surface every significant overlap as a warning, but
+                // KEEP both bricks. The parser used to silently discard
+                // the smaller of any pair overlapping >10% (and the
+                // smaller of any pair overlapping >90%). That dropped
+                // legitimate stacked bricks — e.g. Sand7 Layer 187
+                // (the arch over the bottom-centre window) overlaps
+                // its neighbours and was being silently removed.
+                //
+                // Genuine artist duplicates (a layer drawn on top of
+                // another with the same shape, e.g. Sand7 Layer 128
+                // mirroring Layer 193) are a source-file error caught
+                // by the AI validator script (`tools/ai-validate`).
+                // The parser only flags here.
                 if overlap_ratio > 0.9 {
-                    // Case 3: near-full containment — discard the smaller brick
-                    let (discard, keep) = if area_a < area_b { (i, j) } else { (j, i) };
+                    let (smaller, larger) = if area_a < area_b { (i, j) } else { (j, i) };
                     warnings.push(format!(
-                        "Layer '{}' is fully contained within Layer '{}' ({:.0}% overlap) — discarded",
-                        results[discard].name, results[keep].name, overlap_ratio * 100.0
+                        "OVERLAP_CONTAINMENT: Layer '{}' is fully contained within Layer '{}' ({:.0}% overlap) — likely an artist duplicate; review the source file",
+                        results[smaller].name, results[larger].name, overlap_ratio * 100.0
                     ));
-                    to_remove.insert(discard);
                 } else if overlap_ratio > OVERLAP_THRESHOLD {
-                    // Case 2: significant overlap — discard the smaller, flag it
-                    let (discard, keep) = if area_a < area_b { (i, j) } else { (j, i) };
+                    let (smaller, larger) = if area_a < area_b { (i, j) } else { (j, i) };
                     warnings.push(format!(
-                        "Layer '{}' overlaps Layer '{}' ({:.0}% of smaller area) — Layer '{}' discarded",
-                        results[discard].name, results[keep].name, overlap_ratio * 100.0,
-                        results[discard].name
+                        "OVERLAP_SIGNIFICANT: Layer '{}' overlaps Layer '{}' ({:.0}% of smaller area) — review the source file if this isn't intentional",
+                        results[smaller].name, results[larger].name, overlap_ratio * 100.0
                     ));
-                    to_remove.insert(discard);
                 }
             }
         }
 
-        if !to_remove.is_empty() {
-            eprintln!("[validation] removing {} overlapping/contained bricks", to_remove.len());
-            let mut idx = 0;
-            results.retain(|_| {
-                let keep = !to_remove.contains(&idx);
-                idx += 1;
-                keep
-            });
-        }
+        let _ = to_remove;
     }
 
     let has_lights_layer = root_names.contains(&"lights");
