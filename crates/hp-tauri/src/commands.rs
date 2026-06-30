@@ -322,6 +322,10 @@ pub async fn load_pdf(
     let mut bricks_layer_img = render::compose_clipped_canvas(
         &bricks_pixmap, "bricks", cw, ch, (0, 0),
     );
+    // Count opaque pixels in the MuPDF-only layer to detect the
+    // "bricks OCG is empty" case (Sand9). Surface this as a warning
+    // below if it's far below what the parser expects.
+    let mupdf_alpha_pixels: u64 = bricks_pixmap.pixels().filter(|p| p[3] > 30).count() as u64;
     let bricks_pixmap = Some(bricks_pixmap);
 
     // Direct-extract overlay: every Image XObject in the page's content
@@ -329,6 +333,9 @@ pub async fn load_pdf(
     // pixels — gives canvas-aligned raster bricks even when MuPDF's OCG
     // render returns an empty or shifted result (Sand9, Sand10).
     let t_overlay = std::time::Instant::now();
+    let image_block_count = blocks.iter()
+        .filter(|b| matches!(b.content, hp_core::ocg_inject::BrickContent::Image { .. }))
+        .count();
     hp_core::raster_extract::compose_image_blocks_onto_canvas(
         &doc, &blocks, 0..blocks.len(),
         &mut bricks_layer_img, clip, page_height_pt, bleed_pts,
@@ -340,12 +347,78 @@ pub async fn load_pdf(
     );
     drop(doc);
 
-    // Assign brick IDs
+    // ── Phantom polygon drop (E2) ─────────────────────────────────────
+    //
+    // Identify parser placements whose polygon-bbox region has ZERO
+    // opaque pixels in the rendered bricks_layer_img. These are
+    // "phantom bricks": the AI's private layer data listed them but
+    // no actual content renders there. They create floating outlines
+    // in the live preview, then empty holes after puzzle generation.
+    // Real culprits we've seen: Sand10 had ~50 % phantoms caused by
+    // wrong-coordinate layers in the AI private data.
+    //
+    // We sample the polygon-bbox interior (clipped to the canvas) and
+    // count alpha > 30. Threshold: zero opaque pixels → drop. Anything
+    // > 0 → keep (we err on the side of preserving real bricks; even
+    // a few pixels of soft alpha bleed is enough to vote "real").
+    let t_phantom = std::time::Instant::now();
+    let canvas_w_px = bricks_layer_img.width() as i32;
+    let canvas_h_px = bricks_layer_img.height() as i32;
+    let phantom_mask: Vec<bool> = placements.iter().map(|p| {
+        let poly = match p.polygon.as_ref() {
+            Some(poly) if poly.len() >= 3 => poly,
+            _ => return false, // no polygon → not phantom by this metric
+        };
+        let bx = p.pymu_x.max(0) as f64;
+        let by = p.pymu_y.max(0) as f64;
+        let mut x0 = f64::MAX; let mut y0 = f64::MAX;
+        let mut x1 = f64::MIN; let mut y1 = f64::MIN;
+        for v in poly {
+            let cx = v[0] + bx;
+            let cy = v[1] + by;
+            if cx < x0 { x0 = cx; } if cy < y0 { y0 = cy; }
+            if cx > x1 { x1 = cx; } if cy > y1 { y1 = cy; }
+        }
+        let ix0 = (x0.floor() as i32).clamp(0, canvas_w_px);
+        let iy0 = (y0.floor() as i32).clamp(0, canvas_h_px);
+        let ix1 = (x1.ceil()  as i32).clamp(0, canvas_w_px);
+        let iy1 = (y1.ceil()  as i32).clamp(0, canvas_h_px);
+        if ix1 <= ix0 || iy1 <= iy0 { return true; } // bbox outside canvas
+        for y in iy0..iy1 {
+            for x in ix0..ix1 {
+                if bricks_layer_img.get_pixel(x as u32, y as u32)[3] > 30 {
+                    return false; // found opaque content → real brick
+                }
+            }
+        }
+        true // no opaque content anywhere in the bbox → phantom
+    }).collect();
+    let phantom_count = phantom_mask.iter().filter(|&&p| p).count();
+    let placements_before = placements.len();
+    eprintln!(
+        "[profile] phantom polygon scan ({} placements, {} phantom): {:?}",
+        placements_before, phantom_count, t_phantom.elapsed(),
+    );
+
+    // Drop phantoms from placements + bezier_per_brick (same indices)
+    // so every downstream consumer (brick IDs, render_bricks, session,
+    // export) sees a consistent set with no ghosts.
+    let placements: Vec<hp_core::ai_parser::BrickPlacement> = placements
+        .into_iter()
+        .zip(phantom_mask.iter())
+        .filter_map(|(p, ph)| if *ph { None } else { Some(p) })
+        .collect();
+    let bezier_per_brick: Vec<Vec<BezierPath>> = bezier_per_brick
+        .into_iter()
+        .zip(phantom_mask.iter())
+        .filter_map(|(b, ph)| if *ph { None } else { Some(b) })
+        .collect();
+
+    // Assign brick IDs.
     let mut bricks: Vec<Brick> = Vec::new();
     let mut brick_polygons: HashMap<String, Vec<[f64; 2]>> = HashMap::new();
     let mut brick_beziers: HashMap<String, Vec<BezierPath>> = HashMap::new();
     let mut brick_layer_names: HashMap<String, String> = HashMap::new();
-    // Correct canvas-pixel positions from MuPDF clip rect (immune to polygon extraction errors).
     let mut brick_pymu_rects: HashMap<String, (i32, i32, i32, i32)> = HashMap::new();
 
     for (i, p) in placements.iter().enumerate() {
@@ -420,6 +493,32 @@ pub async fn load_pdf(
             .iter()
             .map(|n| format!("SKIPPED: '{n}' has no vector polygon")),
     );
+
+    // E3 — surface E1 / E2 findings so the artist can see when the
+    // AI file's OCG metadata is incomplete.
+    //
+    // OCG mismatch heuristic: MuPDF's bricks-OCG render came back
+    // nearly empty (< 1000 alpha pixels — essentially blank) but the
+    // content stream contains ≥ 10 raster bricks that the direct-
+    // extract path had to paint anyway. Sand9 is the canonical case
+    // (0 alpha pixels, 163 image blocks). NY-class well-authored
+    // files end up well above this floor.
+    if mupdf_alpha_pixels < 1000 && image_block_count >= 10 {
+        all_warnings.push(format!(
+            "OCG mismatch: bricks OCG render is nearly empty ({} alpha pixels) — \
+             {} raster bricks loaded via direct extract instead. \
+             In Illustrator, verify every brick path is inside the `bricks` layer.",
+            mupdf_alpha_pixels, image_block_count,
+        ));
+    }
+    if phantom_count > 0 {
+        all_warnings.push(format!(
+            "Phantom polygons dropped: {} of {} parser bricks had no rendered content. \
+             Likely caused by stale layer entries in the AI's private data — \
+             open the file in Illustrator and check for empty bricks/Layer NNN/ sub-layers.",
+            phantom_count, placements_before,
+        ));
+    }
 
     let protected: std::collections::HashSet<String> = render_bricks
         .iter()

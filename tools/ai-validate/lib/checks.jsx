@@ -64,6 +64,7 @@ function runChecks(snapshot) {
     checkCornerJitter(bricks, findings);
     checkBboxContainment(bricks, findings);
     checkBrickOverlap(bricks, findings);
+    checkOrphanRaster(snapshot, bricks, findings);
     return findings;
 }
 
@@ -853,5 +854,61 @@ function checkBboxContainment(bricks, findings) {
                 });
             }
         }
+    }
+}
+
+// Find rasters (PlacedItem / RasterItem) that don't sit inside a
+// leaf "brick" sub-layer of `bricks/`. The Rust parser walks the AI
+// private layer data and only emits a brick when it sees a layer
+// with a PathItem (so it can extract the polygon outline). A raster
+// placed under `bricks/` directly (no Layer NNN/ wrapper), under
+// the artboard root, or under a sub-layer without a PathItem will
+// render in the composite but have no parser polygon → no editor
+// highlight, hole in the puzzle piece.
+//
+// Sand3.ai had exactly one such orphan (a 51×51 pt raster) that
+// caused one of three visible holes. This check would have caught
+// it before the artist ever exported.
+function checkOrphanRaster(snapshot, bricks, findings) {
+    var rasters = snapshot.rasters || [];
+    if (rasters.length === 0) return;
+
+    // A raster is "claimed" by a brick when its parent layer path
+    // exactly matches the brick's layer_path. ExtendScript is ES3 so
+    // no Set/Map — use a plain object as a dictionary.
+    var brickPaths = {};
+    for (var b = 0; b < bricks.length; b++) {
+        var p = bricks[b].layer_path;
+        if (p) brickPaths[p] = true;
+    }
+
+    for (var r = 0; r < rasters.length; r++) {
+        var raster = rasters[r];
+        var path = raster.parent_layer_path || "";
+        if (brickPaths[path]) continue; // raster lives in a real brick layer — fine
+
+        var insideBricks = path.indexOf("bricks/") === 0 || path === "bricks";
+        var hint;
+        if (!insideBricks) {
+            hint = "raster sits outside the bricks layer entirely ('" + path +
+                   "'); move it into a fresh bricks/Layer NNN/ sub-layer";
+        } else {
+            hint = "raster's parent layer '" + path +
+                   "' has no PathItem; the Rust parser only emits a brick when " +
+                   "the leaf layer holds both the raster AND its outline path";
+        }
+
+        findings.push({
+            severity: "warning",
+            kind: "orphan_raster",
+            brick: null,
+            layer_path: path,
+            sub_path: null,
+            raster_name: raster.name || null,
+            raster_kind: raster.kind || null,
+            bbox_pymu: raster.bbox || null,
+            message: "raster outside any brick — " + hint +
+                     " (composite will render but puzzle generation will leave a hole)"
+        });
     }
 }
