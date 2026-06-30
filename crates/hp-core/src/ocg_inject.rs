@@ -151,6 +151,34 @@ pub fn walk_page_bricks(doc: &Document, page_id: ObjectId) -> Result<Vec<BrickBl
     // the bricks region precisely (not just any /OC BDC).
     let prop_to_ocg_name = build_property_to_ocg_name_map(doc, page_id)?;
 
+    // Page MediaBox in PDF points — used to detect AI's "clip to page"
+    // idiom (a per-brick rect that covers the whole page). Those clips
+    // must not contribute to the brick's geometric centroid even when
+    // they ARE the active clipping path for a shading paint inside.
+    let page_area_pt2: f64 = {
+        let page = doc.get_object(page_id)?.as_dict()?;
+        // PDF spec: MediaBox is the page's media box; fall back to A4-ish.
+        let mb = page
+            .get(b"MediaBox").ok()
+            .and_then(|o| o.as_array().ok())
+            .cloned();
+        let (w, h) = match mb {
+            Some(arr) if arr.len() == 4 => {
+                let f = |o: &Object| match o {
+                    Object::Integer(i) => *i as f64,
+                    Object::Real(r) => *r as f64,
+                    _ => 0.0,
+                };
+                ((f(&arr[2]) - f(&arr[0])).abs(), (f(&arr[3]) - f(&arr[1])).abs())
+            }
+            _ => (595.0, 842.0),
+        };
+        (w * h).max(1.0)
+    };
+    // Treat a clip rect this fraction-or-greater of the page area as
+    // "no real clip" — typically the artist's full-page clip wrapper.
+    let page_clip_threshold = 0.5;
+
     let mut blocks = Vec::new();
 
     let mut ctm_stack: Vec<Affine> = vec![Affine::IDENTITY];
@@ -181,6 +209,21 @@ pub fn walk_page_bricks(doc: &Document, page_id: ObjectId) -> Result<Vec<BrickBl
     // points so the bbox reflects the geometric outline. Used for
     // sub-pixel bleed detection.
     let mut open_endpoints: Vec<(f64, f64)> = Vec::new();
+    // Per-subpath staging: path-construction ops push here, paint ops
+    // (`f`/`S`/`B`/`b` and starred variants) flush to the open block's
+    // accumulators, `n` (end-path no-op, used after `W` for clip-only
+    // paths) discards. This keeps page-sized clip rects out of the
+    // centroid/bbox math — without it, the artist's standard "clip to
+    // page" rect around a per-brick vector path drowns the brick's
+    // own vertices and the matcher mismatches it (see Sand7 Layer 199
+    // which sat exactly inside such a clip).
+    let mut pending_vertices: Vec<(f64, f64)> = Vec::new();
+    let mut pending_endpoints: Vec<(f64, f64)> = Vec::new();
+    // Set by `W`/`W*` while a path is staged. If `n` follows, the path
+    // was used as a clip path (its geometry IS the visible region for
+    // subsequent paints), so flush instead of discard. Cleared on any
+    // paint op / `n` / new path start.
+    let mut path_is_clip: bool = false;
 
     // Apply the current CTM to (x, y) and push onto the open block's
     // vertex accumulator. Path ops give coords in the local frame; the
@@ -222,6 +265,9 @@ pub fn walk_page_bricks(doc: &Document, page_id: ObjectId) -> Result<Vec<BrickBl
                     open_bdc_push_idx = None;
                     open_vertices.clear();
                     open_endpoints.clear();
+                    pending_vertices.clear();
+                    pending_endpoints.clear();
+                    path_is_clip = false;
                 }
             }
             "Q" => {
@@ -359,30 +405,30 @@ pub fn walk_page_bricks(doc: &Document, page_id: ObjectId) -> Result<Vec<BrickBl
                 }
             }
             // ── Path-construction ops: accumulate vertices into the
-            //    open block's centroid bucket (transformed to PDF page
-            //    coords). PDF spec §8.5.2.
+            //    PENDING staging buffer (PDF page coords). PDF spec §8.5.2.
+            //    Flushed to `open_vertices`/`open_endpoints` only by a
+            //    paint op below; discarded by `n` (clip-then-no-op).
             "m" | "l" => {
                 if open.is_some() {
                     if let Some([x, y]) = read_two_numbers(&op.operands) {
                         let ctm = *ctm_stack.last().unwrap_or(&Affine::IDENTITY);
-                        push_xy(x, y, &ctm, &mut open_vertices);
-                        push_xy(x, y, &ctm, &mut open_endpoints);
+                        push_xy(x, y, &ctm, &mut pending_vertices);
+                        push_xy(x, y, &ctm, &mut pending_endpoints);
                     }
                 }
             }
             "c" => {
                 // 6 operands: x1 y1 x2 y2 x3 y3 — three control points.
                 // x1,y1 and x2,y2 are off-curve control points; only x3,y3
-                // is on the curve. We push all three into `open_vertices`
-                // (for the centroid-matcher fallback) but ONLY x3,y3 into
-                // `open_endpoints` (for the geometric bbox).
+                // is on the curve. Push all three to vertices (centroid
+                // fallback) but only x3,y3 to endpoints (geometric bbox).
                 if open.is_some() {
                     if let Some([x1, y1, x2, y2, x3, y3]) = read_six_numbers(&op.operands) {
                         let ctm = *ctm_stack.last().unwrap_or(&Affine::IDENTITY);
-                        push_xy(x1, y1, &ctm, &mut open_vertices);
-                        push_xy(x2, y2, &ctm, &mut open_vertices);
-                        push_xy(x3, y3, &ctm, &mut open_vertices);
-                        push_xy(x3, y3, &ctm, &mut open_endpoints);
+                        push_xy(x1, y1, &ctm, &mut pending_vertices);
+                        push_xy(x2, y2, &ctm, &mut pending_vertices);
+                        push_xy(x3, y3, &ctm, &mut pending_vertices);
+                        push_xy(x3, y3, &ctm, &mut pending_endpoints);
                     }
                 }
             }
@@ -392,29 +438,85 @@ pub fn walk_page_bricks(doc: &Document, page_id: ObjectId) -> Result<Vec<BrickBl
                 if open.is_some() {
                     if let Some([a, b, c, d]) = read_four_numbers(&op.operands) {
                         let ctm = *ctm_stack.last().unwrap_or(&Affine::IDENTITY);
-                        push_xy(a, b, &ctm, &mut open_vertices);
-                        push_xy(c, d, &ctm, &mut open_vertices);
-                        push_xy(c, d, &ctm, &mut open_endpoints);
+                        push_xy(a, b, &ctm, &mut pending_vertices);
+                        push_xy(c, d, &ctm, &mut pending_vertices);
+                        push_xy(c, d, &ctm, &mut pending_endpoints);
                     }
                 }
             }
             "re" => {
                 // Rectangle: 4 operands x y w h. All four corners are
-                // on-curve (axis-aligned linear segments).
+                // on-curve (axis-aligned linear segments). Skip page-
+                // sized rects — the AI "clip to page" idiom wraps every
+                // brick's path inside such a rect and discarding it on
+                // `n` only works when the rect is NEVER promoted into the
+                // open accumulator (which `W n` ordinarily would do).
                 if open.is_some() {
                     if let Some([x, y, w, h]) = read_four_numbers(&op.operands) {
                         let ctm = *ctm_stack.last().unwrap_or(&Affine::IDENTITY);
-                        push_xy(x, y, &ctm, &mut open_vertices);
-                        push_xy(x + w, y, &ctm, &mut open_vertices);
-                        push_xy(x + w, y + h, &ctm, &mut open_vertices);
-                        push_xy(x, y + h, &ctm, &mut open_vertices);
-                        push_xy(x, y, &ctm, &mut open_endpoints);
-                        push_xy(x + w, y, &ctm, &mut open_endpoints);
-                        push_xy(x + w, y + h, &ctm, &mut open_endpoints);
-                        push_xy(x, y + h, &ctm, &mut open_endpoints);
+                        // Transform all four corners and measure the
+                        // resulting bbox in PDF-page units.
+                        let (p0x, p0y) = ctm.transform(x, y);
+                        let (p1x, p1y) = ctm.transform(x + w, y);
+                        let (p2x, p2y) = ctm.transform(x + w, y + h);
+                        let (p3x, p3y) = ctm.transform(x, y + h);
+                        let bbox_w = [p0x, p1x, p2x, p3x].iter().cloned().fold(f64::NEG_INFINITY, f64::max)
+                                   - [p0x, p1x, p2x, p3x].iter().cloned().fold(f64::INFINITY, f64::min);
+                        let bbox_h = [p0y, p1y, p2y, p3y].iter().cloned().fold(f64::NEG_INFINITY, f64::max)
+                                   - [p0y, p1y, p2y, p3y].iter().cloned().fold(f64::INFINITY, f64::min);
+                        if bbox_w * bbox_h < page_clip_threshold * page_area_pt2 {
+                            push_xy(x, y, &ctm, &mut pending_vertices);
+                            push_xy(x + w, y, &ctm, &mut pending_vertices);
+                            push_xy(x + w, y + h, &ctm, &mut pending_vertices);
+                            push_xy(x, y + h, &ctm, &mut pending_vertices);
+                            push_xy(x, y, &ctm, &mut pending_endpoints);
+                            push_xy(x + w, y, &ctm, &mut pending_endpoints);
+                            push_xy(x + w, y + h, &ctm, &mut pending_endpoints);
+                            push_xy(x, y + h, &ctm, &mut pending_endpoints);
+                        }
+                        // If the rect was page-sized we drop it: do NOT
+                        // contribute to the centroid even if `W n` later
+                        // promotes the (now empty) pending buffer.
                     }
                 }
             }
+            // Mark the staged path as a clipping path. If `n` follows
+            // (the standard `W n` idiom for clip-only paths), we still
+            // flush — the clip's geometry IS the visible region the
+            // subsequent paint op renders into.
+            "W" | "W*" => {
+                if open.is_some() {
+                    path_is_clip = true;
+                }
+            }
+            // Paint ops (PDF §8.5.3) — commit the pending subpath. Stroke
+            // variants (`S`, `s`), fill (`f`, `F`, `f*`), close+stroke (`s`),
+            // fill+stroke (`B`, `B*`, `b`, `b*`).
+            "f" | "F" | "f*" | "S" | "s" | "B" | "B*" | "b" | "b*" => {
+                if open.is_some() {
+                    open_vertices.extend(pending_vertices.drain(..));
+                    open_endpoints.extend(pending_endpoints.drain(..));
+                    path_is_clip = false;
+                }
+            }
+            // End-path no-op (PDF §8.5.3). Two cases:
+            //   • plain `n` (no preceding `W`): true end-path, drop.
+            //   • `W n` clip pattern: pending path was promoted to clip,
+            //     flush its vertices — they ARE the visible region.
+            "n" => {
+                if path_is_clip {
+                    open_vertices.extend(pending_vertices.drain(..));
+                    open_endpoints.extend(pending_endpoints.drain(..));
+                } else {
+                    pending_vertices.clear();
+                    pending_endpoints.clear();
+                }
+                path_is_clip = false;
+            }
+            // `h` closes the current subpath geometrically (line back to
+            // the subpath start) but doesn't paint. Treat as part of the
+            // pending path — no flush, no discard.
+            "h" => {}
             _ => {}
         }
     }
