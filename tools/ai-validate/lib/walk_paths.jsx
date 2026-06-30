@@ -26,7 +26,15 @@ function walkPaths(doc) {
         // compares this list to `bricks` to find rasters that aren't
         // inside a `bricks/Layer NNN/` leaf — the parser misses them
         // and Sand3 had exactly one (the orphan that caused the hole).
-        rasters: []
+        rasters: [],
+        // The "screen" top-level layer's combined path bbox (geometric).
+        // Used by checkScreenFrameHeight: the artist convention is
+        // 2200 pt high (= 1 game screen = HOUSE_UNITS_HIGH units in
+        // the Unity puzzle). SF09 has it drawn at 2850, which scales
+        // the rendered house wrong relative to the grid. `bbox` is
+        // [x0, y0, x1, y1]; `height_pt` = |y1 - y0|. Both fields are
+        // null when the layer is missing or carries no paths.
+        screen_layer: null
     };
 
     for (var i = 0; i < doc.layers.length; i++) {
@@ -46,7 +54,57 @@ function walkPaths(doc) {
         collectRasters(doc.layers[r], "", out.rasters);
     }
 
+    // Capture the `screen` layer's combined path bbox so the height
+    // check can flag screens that drift from the 2200-pt convention.
+    for (var s = 0; s < doc.layers.length; s++) {
+        if (doc.layers[s].name === "screen") {
+            out.screen_layer = layerPathBbox(doc.layers[s]);
+            break;
+        }
+    }
+
     return out;
+}
+
+// Combined bbox of every pathItem inside `layer` (recursing into
+// sub-layers). Returns { bbox: [x0,y0,x1,y1], height_pt, width_pt }
+// or null if no path is found. Uses geometricBounds — same frame as
+// the parser's `extract_plain_path_bbox` on the screen layer.
+function layerPathBbox(layer) {
+    var minX =  Infinity, minY =  Infinity;
+    var maxX = -Infinity, maxY = -Infinity;
+    var seenAny = false;
+    function accumulate(L) {
+        try {
+            for (var i = 0; i < L.pathItems.length; i++) {
+                var p = L.pathItems[i];
+                var b = null;
+                try { b = p.geometricBounds; } catch (e) { b = null; }
+                if (b == null) continue;
+                var x0 = Math.min(b[0], b[2]);
+                var x1 = Math.max(b[0], b[2]);
+                var y0 = Math.min(b[1], b[3]);
+                var y1 = Math.max(b[1], b[3]);
+                if (x0 < minX) minX = x0;
+                if (y0 < minY) minY = y0;
+                if (x1 > maxX) maxX = x1;
+                if (y1 > maxY) maxY = y1;
+                seenAny = true;
+            }
+        } catch (e) { /* layer.pathItems may not exist on every doc version */ }
+        try {
+            for (var j = 0; j < L.layers.length; j++) {
+                accumulate(L.layers[j]);
+            }
+        } catch (e) { /* no sub-layers */ }
+    }
+    accumulate(layer);
+    if (!seenAny) return null;
+    return {
+        bbox: [minX, minY, maxX, maxY],
+        height_pt: maxY - minY,
+        width_pt: maxX - minX
+    };
 }
 
 function collectRasters(layer, parentPath, rasters) {

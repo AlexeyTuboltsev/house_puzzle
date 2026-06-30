@@ -65,6 +65,7 @@ function runChecks(snapshot) {
     checkBboxContainment(bricks, findings);
     checkBrickOverlap(bricks, findings);
     checkOrphanRaster(snapshot, bricks, findings);
+    checkScreenFrameHeight(snapshot, findings);
     return findings;
 }
 
@@ -911,4 +912,59 @@ function checkOrphanRaster(snapshot, bricks, findings) {
                      " (composite will render but puzzle generation will leave a hole)"
         });
     }
+}
+
+// --- 10. Screen-frame height -------------------------------------------
+//
+// The Rust parser uses the `screen` top-level layer's vector-path bbox
+// height to derive the rendering DPI:
+//
+//     dpi = 900 / screen_frame_h_pt * 72
+//
+// — i.e. the screen rectangle becomes 900 canvas px tall, which is the
+// reference "1 game screen = HOUSE_UNITS_HIGH (15.5) Unity units"
+// frame.  Across every artist-drawn file that has a screen layer
+// (Sand3, every NY*), the screen comes out to **2200 pt** tall. SF09
+// breaks this: its screen rectangle is drawn at 2850 pt, so the
+// rendered house ends up too short relative to the grid.
+//
+// Flag anything outside a ±1 pt tolerance of the convention. Severity
+// is `warning`: the parser will still render the file, but pieces and
+// grid won't line up the way the artist expects, so the fix is to
+// redraw the screen rectangle in Illustrator.
+var SCREEN_FRAME_HEIGHT_PT = 2200;
+var SCREEN_FRAME_HEIGHT_TOLERANCE_PT = 1;
+
+function checkScreenFrameHeight(snapshot, findings) {
+    var screen = snapshot.screen_layer;
+    if (!screen) {
+        // The missing/empty `screen` top-level layer is already flagged
+        // by checkLayerStructure — no need to duplicate the noise here.
+        return;
+    }
+    var actual = screen.height_pt;
+    if (actual == null) return;
+    var delta = actual - SCREEN_FRAME_HEIGHT_PT;
+    if (Math.abs(delta) <= SCREEN_FRAME_HEIGHT_TOLERANCE_PT) return;
+
+    findings.push({
+        severity: "warning",
+        kind: "screen_frame_height",
+        brick: null,
+        layer_path: "screen",
+        sub_path: null,
+        actual_height_pt: actual,
+        expected_height_pt: SCREEN_FRAME_HEIGHT_PT,
+        delta_pt: delta,
+        bbox: screen.bbox || null,
+        message: "screen layer is " + actual.toFixed(1) +
+                 " pt tall; the convention is " + SCREEN_FRAME_HEIGHT_PT +
+                 " pt (= 1 game screen, 2 main yellow bricks). At the current " +
+                 "size the parser will scale the house at DPI = 900 / " +
+                 actual.toFixed(1) + " × 72 ≈ " +
+                 (900 / actual * 72).toFixed(2) +
+                 ", which makes the rendered house " + (delta > 0 ? "shorter" : "taller") +
+                 " than the grid. Redraw the screen rectangle to " +
+                 SCREEN_FRAME_HEIGHT_PT + " pt tall."
+    });
 }
