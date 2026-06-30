@@ -176,6 +176,7 @@ fn write_last_dir(stored: &Path, picked_file: &Path) {
 
 #[tauri::command]
 pub async fn load_pdf(
+    window: tauri::WebviewWindow,
     sessions: tauri::State<'_, SessionStore>,
     path: String,
     canvas_height: Option<i32>,
@@ -660,6 +661,13 @@ pub async fn load_pdf(
     // the frontend invokes `ensure_lights_image` / `ensure_background_image`
     // when it actually needs them and gets a path back then.
     let composite_path = extract_dir.join("composite.png").to_string_lossy().to_string();
+
+    // Reflect the opened file in the window title so the user can see at
+    // a glance which AI they're editing — important when they're flipping
+    // between several files looking for source-side bugs.
+    if let Some(stem) = file_path.file_stem().and_then(|s| s.to_str()) {
+        let _ = window.set_title(&format!("House Puzzle Editor — {stem}"));
+    }
 
     Ok(json!({
         "key": key,
