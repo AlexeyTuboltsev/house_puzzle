@@ -528,11 +528,41 @@ pub async fn load_pdf(
         ));
     }
 
-    let protected: std::collections::HashSet<String> = render_bricks
+    // Protect vector_brick outlines from being flagged as "covered" —
+    // their alpha comes from a decode-once mask, not from the composed
+    // canvas, so the pixel-overlap heuristic in `find_covered_bricks`
+    // trips on them systematically.
+    //
+    // Also protect every brick that shares its (pymu_x/y/w/h) with a
+    // sibling: those are genuine artist duplicates (Berlin-01 has 92
+    // such pairs — two `Layer NNN` children drawn on top of each other
+    // with the same shape). At the pixel level each pair covers itself
+    // 100 % and would collapse to a single brick otherwise, hiding the
+    // duplicate from the brick tray and its polygon overlay. Keeping
+    // both preserves the artist's structure — pieces still render
+    // correctly because the parallel ocg_inject duplicate-propagation
+    // gives both members the same block set.
+    let mut protected: std::collections::HashSet<String> = render_bricks
         .iter()
         .filter(|(_, bp)| bp.layer_type == "vector_brick")
         .map(|(id, _)| id.clone())
         .collect();
+    {
+        use std::collections::HashMap as StdHashMap;
+        let mut by_bbox: StdHashMap<(i32, i32, i32, i32), Vec<&String>> = StdHashMap::new();
+        for (id, bp) in &render_bricks {
+            by_bbox
+                .entry((bp.pymu_x, bp.pymu_y, bp.pymu_w, bp.pymu_h))
+                .or_default()
+                .push(id);
+        }
+        for ids in by_bbox.values() {
+            if ids.len() < 2 { continue; }
+            for id in ids {
+                protected.insert((*id).clone());
+            }
+        }
+    }
 
     let t0 = std::time::Instant::now();
     let covered_ids = render::find_covered_bricks(&bricks, &brick_images_map, &protected);
