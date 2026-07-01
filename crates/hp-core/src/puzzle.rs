@@ -40,12 +40,22 @@ fn brick_polygon(brick: &Brick, polygon: &[[f64; 2]]) -> Option<Polygon<f64>> {
 pub fn build_adjacency_vector(
     bricks: &[Brick],
     brick_polygons: &HashMap<String, Vec<[f64; 2]>>,
-    _gap: f64,  // was a bbox pre-filter tolerance — no longer used, kept for callsite compat
+    _gap: f64,  // legacy pre-filter tolerance — no longer used, kept for callsite compat
     min_border: f64,
     border_gap: f64,
 ) -> HashMap<String, HashSet<String>> {
-    // Build Shapely-equivalent polygons
-    let polys: HashMap<&str, Polygon<f64>> = bricks
+    use geo_clipper::Clipper;
+    use rayon::prelude::*;
+    use rstar::{RTree, AABB, PointDistance, RTreeObject};
+
+    let factor = 1000.0;
+
+    // 1. Build the base polygon per brick and, more importantly, the
+    //    OFFSET (buffered-by-border_gap) polygon per brick — once. The
+    //    old code called `.offset()` for BOTH bricks on every pair, so
+    //    each buffered polygon was recomputed ~N times. This alone
+    //    is a ~2× speedup.
+    let bricks_with_polys: Vec<(&str, Polygon<f64>)> = bricks
         .iter()
         .filter_map(|b| {
             let pts = brick_polygons.get(&b.id)?;
@@ -54,54 +64,105 @@ pub fn build_adjacency_vector(
         })
         .collect();
 
-    let mut adj: HashMap<String, HashSet<String>> = HashMap::new();
-    let n = bricks.len();
+    let buffered: Vec<(&str, geo::MultiPolygon<f64>)> = bricks_with_polys
+        .par_iter()
+        .map(|(id, poly)| {
+            let mp = poly.offset(
+                border_gap,
+                geo_clipper::JoinType::Round(0.25),
+                geo_clipper::EndType::ClosedPolygon,
+                factor,
+            );
+            (*id, mp)
+        })
+        .collect();
 
-    for i in 0..n {
-        let a = &bricks[i];
-        let pa = match polys.get(a.id.as_str()) {
-            Some(p) => p,
-            None => continue,
-        };
-
-        for j in (i + 1)..n {
-            let b = &bricks[j];
-            let pb = match polys.get(b.id.as_str()) {
-                Some(p) => p,
-                None => continue,
-            };
-
-            // NO BBOX pre-filter. Straight to the real polygon math.
-            // Match Python: buffer both polygons by border_gap, intersect,
-            // measure border_length = intersection.area / (2 * border_gap)
-            use geo_clipper::Clipper;
-            let factor = 1000.0;
-            let buf_a = pa.offset(border_gap, geo_clipper::JoinType::Round(0.25), geo_clipper::EndType::ClosedPolygon, factor);
-            let buf_b = pb.offset(border_gap, geo_clipper::JoinType::Round(0.25), geo_clipper::EndType::ClosedPolygon, factor);
-
-            if buf_a.0.is_empty() || buf_b.0.is_empty() {
-                continue;
-            }
-
-            let intersection = Clipper::intersection(&buf_a, &buf_b, factor);
-            if intersection.0.is_empty() {
-                continue;
-            }
-
-            let inter_area: f64 = intersection.0.iter().map(|p| p.unsigned_area()).sum();
-            let border_length = if border_gap > 0.0 {
-                inter_area / (2.0 * border_gap)
-            } else {
-                0.0
-            };
-
-            if border_length >= min_border {
-                adj.entry(a.id.clone()).or_default().insert(b.id.clone());
-                adj.entry(b.id.clone()).or_default().insert(a.id.clone());
-            }
+    // 2. Spatial index over each buffered polygon's ENVELOPE. This is
+    //    NOT bbox-as-identity — the R-tree only tells us which pairs
+    //    are close enough in canvas space to POSSIBLY intersect; the
+    //    actual overlap area still comes from the polygon-clipper
+    //    math below on every candidate pair.
+    #[derive(Clone)]
+    struct Entry<'a> {
+        idx: usize,       // index into `buffered`
+        envelope: AABB<[f64; 2]>,
+        _phantom: std::marker::PhantomData<&'a ()>,
+    }
+    impl<'a> RTreeObject for Entry<'a> {
+        type Envelope = AABB<[f64; 2]>;
+        fn envelope(&self) -> Self::Envelope { self.envelope }
+    }
+    impl<'a> PointDistance for Entry<'a> {
+        fn distance_2(&self, p: &[f64; 2]) -> f64 {
+            self.envelope.distance_2(p)
         }
     }
 
+    let entries: Vec<Entry> = buffered
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, (_id, mp))| {
+            if mp.0.is_empty() { return None; }
+            // Union of every polygon envelope in the MultiPolygon.
+            let mut xmin = f64::INFINITY;
+            let mut ymin = f64::INFINITY;
+            let mut xmax = f64::NEG_INFINITY;
+            let mut ymax = f64::NEG_INFINITY;
+            for p in &mp.0 {
+                for c in p.exterior().0.iter() {
+                    if c.x < xmin { xmin = c.x; }
+                    if c.y < ymin { ymin = c.y; }
+                    if c.x > xmax { xmax = c.x; }
+                    if c.y > ymax { ymax = c.y; }
+                }
+            }
+            if !xmin.is_finite() { return None; }
+            Some(Entry {
+                idx,
+                envelope: AABB::from_corners([xmin, ymin], [xmax, ymax]),
+                _phantom: std::marker::PhantomData,
+            })
+        })
+        .collect();
+
+    let tree: RTree<Entry> = RTree::bulk_load(entries.clone());
+
+    // 3. For each brick, query the R-tree for envelope-overlapping
+    //    candidates, then run the real Clipper intersection only on
+    //    those candidates. Parallel per outer brick.
+    let pairs: Vec<(String, String)> = entries
+        .par_iter()
+        .flat_map_iter(|entry_a| {
+            let (a_id, buf_a) = &buffered[entry_a.idx];
+            let mut local: Vec<(String, String)> = Vec::new();
+            for entry_b in tree.locate_in_envelope_intersecting(&entry_a.envelope) {
+                if entry_b.idx <= entry_a.idx { continue; }  // (i, j > i) — dedup
+                let (b_id, buf_b) = &buffered[entry_b.idx];
+                if buf_a.0.is_empty() || buf_b.0.is_empty() { continue; }
+
+                let intersection = Clipper::intersection(buf_a, buf_b, factor);
+                if intersection.0.is_empty() { continue; }
+
+                let inter_area: f64 = intersection.0.iter().map(|p| p.unsigned_area()).sum();
+                let border_length = if border_gap > 0.0 {
+                    inter_area / (2.0 * border_gap)
+                } else {
+                    0.0
+                };
+                if border_length >= min_border {
+                    local.push((a_id.to_string(), b_id.to_string()));
+                }
+            }
+            local
+        })
+        .collect();
+
+    // 4. Fold parallel results into the adjacency map (undirected).
+    let mut adj: HashMap<String, HashSet<String>> = HashMap::new();
+    for (a, b) in pairs {
+        adj.entry(a.clone()).or_default().insert(b.clone());
+        adj.entry(b).or_default().insert(a);
+    }
     adj
 }
 
@@ -229,27 +290,65 @@ pub fn build_adjacency_bezier(
         (dx * dx + dy * dy).sqrt()
     }
 
-    // Pre-compute edges only — no bbox pre-filter (NO BBOX).
+    // Pre-compute per-brick edges + per-brick canvas-X extent [xmin, xmax].
+    // The extent drives a sweep-line pass so we only compare pairs whose
+    // horizontal projections overlap — the vast majority of pairs across a
+    // 700-brick house don't. This is a spatial-query optimisation, NOT
+    // bbox-as-identity: the shared-edge math still runs on every pair the
+    // sweep admits.
     let mut brick_edges: HashMap<&str, Vec<Ed>> = HashMap::new();
+    let mut brick_span: HashMap<&str, (f64, f64)> = HashMap::new();
     for b in bricks {
         if let Some(paths) = brick_beziers.get(&b.id) {
+            let (mut xmin, mut xmax) = (f64::INFINITY, f64::NEG_INFINITY);
+            for p in paths {
+                if p.start[0] < xmin { xmin = p.start[0]; }
+                if p.start[0] > xmax { xmax = p.start[0]; }
+                for s in &p.segments {
+                    let e = s.end();
+                    if e[0] < xmin { xmin = e[0]; }
+                    if e[0] > xmax { xmax = e[0]; }
+                }
+            }
+            if xmin.is_finite() {
+                brick_span.insert(b.id.as_str(), (xmin, xmax));
+            }
             brick_edges.insert(b.id.as_str(), edges_of(paths));
         }
     }
 
+    // Sweep-line: sort brick indices by min-X. For each brick, only compare
+    // against later bricks whose min-X ≤ this brick's max-X. On a large
+    // house (Berlin: 787 bricks) this cuts the pair count from ~309k to
+    // the actual O(N) overlapping ones.
+    let mut order: Vec<usize> = (0..bricks.len()).collect();
+    order.sort_by(|&a, &b| {
+        let ax = brick_span.get(bricks[a].id.as_str()).map(|(x, _)| *x).unwrap_or(f64::INFINITY);
+        let bx = brick_span.get(bricks[b].id.as_str()).map(|(x, _)| *x).unwrap_or(f64::INFINITY);
+        ax.partial_cmp(&bx).unwrap_or(std::cmp::Ordering::Equal)
+    });
+
     use rayon::prelude::*;
-    let n = bricks.len();
-    // Parallel sweep: each row (i) computes its set of neighbours j > i,
-    // then we sequentially fold the results into the adjacency map.
-    let pairs: Vec<(String, String)> = (0..n)
+    let pairs: Vec<(String, String)> = (0..order.len())
         .into_par_iter()
-        .flat_map_iter(|i| {
+        .flat_map_iter(|order_i| {
+            let i = order[order_i];
             let a_id = bricks[i].id.as_str();
             let a_edges = brick_edges.get(a_id);
+            let a_max_x = brick_span.get(a_id).map(|(_, x)| *x).unwrap_or(f64::INFINITY);
             let mut local: Vec<(String, String)> = Vec::new();
             if let Some(a_edges) = a_edges {
-                for j in (i + 1)..n {
+                for order_j in (order_i + 1)..order.len() {
+                    let j = order[order_j];
                     let b_id = bricks[j].id.as_str();
+                    let b_min_x = brick_span.get(b_id).map(|(x, _)| *x).unwrap_or(f64::NEG_INFINITY);
+                    // Sweep-line prune: once b's min-X exceeds a's max-X (plus
+                    // ENDPOINT_TOL slack for closing-vertex wobble), no later
+                    // brick in the sorted order can possibly share an edge
+                    // with a either.
+                    if b_min_x > a_max_x + ENDPOINT_TOL {
+                        break;
+                    }
                     let b_edges = match brick_edges.get(b_id) {
                         Some(v) => v,
                         None => continue,

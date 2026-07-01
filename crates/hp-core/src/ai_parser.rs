@@ -1342,17 +1342,63 @@ pub fn parse_ai(
 
         let to_remove: std::collections::HashSet<usize> = std::collections::HashSet::new();
 
+        // Grid bucketing: chunk canvas into cells and register each brick
+        // into every cell its polygon-vertex range touches. Then we only
+        // compare pairs of bricks that share at least one cell — the real
+        // Clipper intersection still runs on every one of those pairs.
+        // On a 700-brick house this cuts pair enumeration from ~N²/2 to
+        // ~O(N) actually-nearby pairs.
+        const CELL_PX: f64 = 50.0;
+        let cell_of = |x: f64, y: f64| -> (i32, i32) {
+            ((x / CELL_PX).floor() as i32, (y / CELL_PX).floor() as i32)
+        };
+        let mut brick_cells: Vec<Vec<(i32, i32)>> = vec![Vec::new(); results.len()];
+        for (i, poly_opt) in geo_polys.iter().enumerate() {
+            let Some(poly) = poly_opt else { continue; };
+            let (mut xmin, mut ymin, mut xmax, mut ymax) =
+                (f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY);
+            for c in poly.exterior().0.iter() {
+                if c.x < xmin { xmin = c.x; }
+                if c.y < ymin { ymin = c.y; }
+                if c.x > xmax { xmax = c.x; }
+                if c.y > ymax { ymax = c.y; }
+            }
+            let (cx0, cy0) = cell_of(xmin, ymin);
+            let (cx1, cy1) = cell_of(xmax, ymax);
+            for cy in cy0..=cy1 {
+                for cx in cx0..=cx1 {
+                    brick_cells[i].push((cx, cy));
+                }
+            }
+        }
+        let mut cell_index: std::collections::HashMap<(i32, i32), Vec<usize>> =
+            std::collections::HashMap::new();
+        for (i, cells) in brick_cells.iter().enumerate() {
+            for &c in cells {
+                cell_index.entry(c).or_default().push(i);
+            }
+        }
+
         for i in 0..results.len() {
             if to_remove.contains(&i) { continue; }
             let pa = match &geo_polys[i] { Some(p) => p, None => continue };
             let area_a = pa.unsigned_area();
 
-            for j in (i + 1)..results.len() {
+            // Collect candidate js from every cell brick i sits in.
+            let mut candidates: std::collections::HashSet<usize> = std::collections::HashSet::new();
+            for c in &brick_cells[i] {
+                if let Some(list) = cell_index.get(c) {
+                    for &j in list {
+                        if j > i { candidates.insert(j); }
+                    }
+                }
+            }
+
+            for j in candidates {
                 if to_remove.contains(&j) { continue; }
                 let pb = match &geo_polys[j] { Some(p) => p, None => continue };
                 let area_b = pb.unsigned_area();
 
-                // NO BBOX. Straight to the real intersection call.
                 let inter = Clipper::intersection(&geo::MultiPolygon(vec![pa.clone()]),
                                                    pb, factor);
                 let inter_area: f64 = inter.0.iter().map(|p| p.unsigned_area()).sum();

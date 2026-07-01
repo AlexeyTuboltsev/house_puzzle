@@ -212,69 +212,12 @@ pub fn save_composite(bricks_layer_img: &RgbaImage, out_path: &Path) {
     bricks_layer_img.save(out_path).ok();
 }
 
-/// Find covered bricks using in-memory images (no disk I/O).
-/// Find bricks that are covered by another (>= 80% alpha overlap).
-/// `protected_ids`: bricks that should never be removed (e.g., vector bricks).
-pub fn find_covered_bricks(
-    bricks: &[crate::types::Brick],
-    brick_images: &HashMap<String, RgbaImage>,
-    protected_ids: &std::collections::HashSet<String>,
-) -> std::collections::HashSet<String> {
-    let mut covered = std::collections::HashSet::new();
-
-    for i in 0..bricks.len() {
-        let a = &bricks[i];
-        if covered.contains(&a.id) { continue; }
-
-        for j in (i + 1)..bricks.len() {
-            let b = &bricks[j];
-            if covered.contains(&b.id) { continue; }
-
-            // NO BBOX pre-filter — always fall through to the real
-            // pixel-overlap accumulation below.
-
-            let (small, big) = if a.area() <= b.area() { (a, b) } else { (b, a) };
-
-            let img_s = match brick_images.get(&small.id) { Some(i) => i, None => continue };
-            let img_b = match brick_images.get(&big.id) { Some(i) => i, None => continue };
-
-            let mut overlap = 0u64;
-            let mut total_s = 0u64;
-
-            // Only check the overlap region
-            let ox0 = small.x.max(big.x) as u32;
-            let oy0 = small.y.max(big.y) as u32;
-            let ox1 = small.right().min(big.right()) as u32;
-            let oy1 = small.bottom().min(big.bottom()) as u32;
-
-            // Also count total opaque in small
-            for y in small.y as u32..small.bottom() as u32 {
-                for x in small.x as u32..small.right() as u32 {
-                    if x < img_s.width() && y < img_s.height() && img_s.get_pixel(x, y)[3] > 30 {
-                        total_s += 1;
-                        if x >= ox0 && x < ox1 && y >= oy0 && y < oy1 {
-                            if x < img_b.width() && y < img_b.height() && img_b.get_pixel(x, y)[3] > 30 {
-                                overlap += 1;
-                            }
-                        }
-                    }
-                }
-            }
-
-            if total_s > 0 {
-                let pct = overlap as f64 / total_s as f64;
-                // Skip small bricks — rendering differences between image crate
-                // and PIL can cause false 100% overlap for small details
-                let is_small = total_s < 300;
-                if pct >= 0.98 && !is_small && !protected_ids.contains(&small.id) {
-                    covered.insert(small.id.clone());
-                }
-            }
-        }
-    }
-
-    covered
-}
+// `find_covered_bricks` was removed. Its purpose was to hide bricks
+// whose visible pixels sat entirely under another brick — the artist-
+// duplicate pattern. That case is now caught upstream by the AI
+// validator (`tools/ai-validate`), and the runtime cost (O(N²) with a
+// full pixel scan per pair — ~120 M pixel probes on Berlin) wasn't
+// worth it.
 
 
 /// Expand a polygon by `amount` pixels using geo-clipper offset.

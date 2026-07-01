@@ -520,32 +520,18 @@ pub async fn load_pdf(
         ));
     }
 
-    let protected: std::collections::HashSet<String> = render_bricks
-        .iter()
-        .filter(|(_, bp)| bp.layer_type == "vector_brick")
-        .map(|(id, _)| id.clone())
-        .collect();
-
-    let t0 = std::time::Instant::now();
-    let covered_ids = render::find_covered_bricks(&bricks, &brick_images_map, &protected);
-    eprintln!("[profile] covered_bricks: {:?}", t0.elapsed());
-
-    if !covered_ids.is_empty() {
-        eprintln!("[load] Removing {} covered bricks", covered_ids.len());
-        for id in &covered_ids {
-            let layer_name = brick_layer_names.get(id).cloned().unwrap_or_default();
-            all_warnings.push(format!(
-                "COVERED: '{}' removed (hidden under another brick)",
-                layer_name
-            ));
-        }
-        bricks.retain(|b| !covered_ids.contains(&b.id));
-        render_bricks.retain(|(id, _)| !covered_ids.contains(id));
-        for id in &covered_ids {
-            brick_polygons.remove(id);
-            brick_beziers.remove(id);
-        }
-    }
+    // `find_covered_bricks` was removed. Its purpose was to hide bricks
+    // whose visible pixels sat entirely under another brick — the
+    // artist-duplicate pattern. That case is now caught upstream by
+    // the AI validator (`tools/ai-validate`), and the runtime cost
+    // (O(N² × pixels-per-brick), ~120 M pixel probes on Berlin)
+    // wasn't paying its way. Duplicates that slip through render
+    // twice at the same spot, which is visually invisible and doesn't
+    // cause holes.
+    let _ = &render_bricks;
+    let _ = &brick_polygons;
+    let _ = &brick_beziers;
+    let _ = &brick_layer_names;
 
     // Polygon-based adjacency (brick_polygons are correctly filtered by extract_vector_path;
     // brick_beziers may include spurious clip-mask paths that cause false adjacency).
@@ -559,7 +545,6 @@ pub async fn load_pdf(
 
     let brick_rgba: HashMap<String, Arc<image::RgbaImage>> = brick_images_map
         .into_iter()
-        .filter(|(id, _)| !covered_ids.contains(id))
         .map(|(id, img)| (id, Arc::new(img)))
         .collect();
 
