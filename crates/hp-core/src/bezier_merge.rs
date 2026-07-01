@@ -940,13 +940,22 @@ pub fn merge_piece_bezier(brick_paths: &[BezierPath]) -> Vec<BezierPath> {
         *entry.entry(e.source).or_insert(0) += direction_sign(e);
     }
 
-    // Per bucket, decide outer or shared and emit at most ONE
-    // representative edge per non-shared bucket. For a bucket with
-    // multiple contributions but effective=1 (e.g., NY7 b027 where
-    // b027's outer-bottom and notch-interior cancel within b027,
-    // leaving b022's contribution), we emit just one edge — the next
-    // walk needs a single canonical edge per geometric line, not the
-    // raw set of contributions from every source.
+    // Per bucket, decide outer or shared. The right test is the SIGNED
+    // sum of contributions across all sources — not the sum-of-absolute-
+    // values. Two ADJACENT bricks sharing an edge traverse it in
+    // OPPOSITE directions (each brick's outline walks clockwise so the
+    // shared edge is on opposite sides), so their contributions
+    // are +1 and -1 → signed sum 0 → drop as internal. Two DUPLICATE
+    // bricks (Berlin-01's 92 mixed_brick pairs whose bezier outlines
+    // are the identical enclosing rectangle) traverse the same edge in
+    // the SAME direction, so both contribute +1 → signed sum ≥ 2 →
+    // KEEP. The old sum-of-abs test collapsed both cases, which killed
+    // whole outline regions where duplicates lived.
+    //
+    // For a bucket with multiple contributions but non-zero signed sum
+    // (e.g. NY7 b027 where b027's outer-bottom and notch-interior
+    // cancel within b027, leaving b022's contribution), we emit just
+    // one edge — the walk needs one canonical edge per geometric line.
     let mut bucket_decision: BTreeMap<EdgeKey, bool /* keep as outer */> = BTreeMap::new();
     let mut all_keys: Vec<EdgeKey> = bucket_sources.keys().cloned().collect();
     all_keys.sort();
@@ -959,8 +968,8 @@ pub fn merge_piece_bezier(brick_paths: &[BezierPath]) -> Vec<BezierPath> {
                 }
             }
         }
-        let effective: u32 = combined.values().map(|n| n.unsigned_abs()).sum();
-        bucket_decision.insert(*k, effective < 2);
+        let signed_sum: i32 = combined.values().copied().sum();
+        bucket_decision.insert(*k, signed_sum != 0);
     }
 
     let mut emitted_buckets: BTreeSet<EdgeKey> = BTreeSet::new();
