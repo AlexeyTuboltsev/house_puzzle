@@ -1141,44 +1141,29 @@ pub fn parse_ai(
 
     // Build BrickPlacements — keep every placement, extract polygons.
     //
-    // We used to dedup by integer-pixel bbox here. That silently dropped
-    // legitimate bricks whose bboxes happened to round to the same key
-    // as a neighbour's (e.g. Sand7 Layer 187, Sand3 Layer 199, NY8 13
-    // layers). Every `Layer NNN` under `bricks` in the AI source is a
-    // distinct brick — trust the layer structure.
-    //
-    // Genuine artist duplicates (two layers with literally the same
-    // shape at the same spot, e.g. Sand7 Layer 128 / Layer 193) are a
-    // file-side problem caught by the AI validator script (`tools/
-    // ai-validate`). The parser surfaces them as a structured warning
-    // below so they aren't completely silent.
-    //
     // The expensive part is `extract_vector_path` (PostScript parsing
     // per brick).  Run that in parallel for every placement, then
     // assemble the final list sequentially so we keep deterministic
     // ordering.
+    //
+    // Position of each brick on the canvas is stored as
+    // `pymu_x`/`pymu_y`/`pymu_w`/`pymu_h` — those are legitimate
+    // positional metadata that the renderer and the OCG matcher
+    // need. They are NOT an identity: two bricks with the same
+    // pixel-integer bbox may still be distinct (triangles filling
+    // opposite halves of the same square, decorative overlays,
+    // etc.). Any identity claim about "this brick equals that
+    // brick" belongs on the polygon or the AI layer name, not the
+    // bbox.
     let t0 = std::time::Instant::now();
     let keep_idx: Vec<usize> = (0..placements.len()).collect();
     let mut bbox_px: Vec<(i32, i32, i32, i32)> = Vec::with_capacity(placements.len());
-    let mut bbox_seen: std::collections::HashMap<(i32, i32, i32, i32), String> =
-        std::collections::HashMap::new();
-    let mut dup_bbox_warnings: Vec<String> = Vec::new();
     for p in &placements {
         let px = ((p.pymu_bbox.0 - clip_x0) * scale).round() as i32;
         let py = ((p.pymu_bbox.1 - clip_y0) * scale).round() as i32;
         let pw = ((p.pymu_bbox.2 - p.pymu_bbox.0) * scale).round().max(1.0) as i32;
         let ph = ((p.pymu_bbox.3 - p.pymu_bbox.1) * scale).round().max(1.0) as i32;
-        let key = (px, py, pw, ph);
-        bbox_px.push(key);
-        let name = p.child.name.clone();
-        if let Some(prev) = bbox_seen.get(&key) {
-            dup_bbox_warnings.push(format!(
-                "DUPLICATE_BBOX: layer '{}' shares integer-pixel bbox ({}, {}, {}, {}) with '{}' — likely an artist duplicate; review the source file",
-                name, px, py, pw, ph, prev
-            ));
-        } else {
-            bbox_seen.insert(key, name);
-        }
+        bbox_px.push((px, py, pw, ph));
     }
 
     // Parallel polygon extraction.
@@ -1195,7 +1180,7 @@ pub fn parse_ai(
 
     let mut results: Vec<BrickPlacement> = Vec::with_capacity(keep_idx.len());
     let skipped_bricks: Vec<String> = Vec::new();
-    let mut warnings: Vec<String> = dup_bbox_warnings;
+    let mut warnings: Vec<String> = Vec::new();
     for name in &dropped_no_bbox {
         warnings.push(format!(
             "NO_BBOX: layer '{}' has no raster placement and no plain-path bbox — dropped before polygon extraction. Most often this means the layer's only content is a gradient-only sub-layer or a degenerate path; the artist should add a closed vector outline or restructure the layer.",

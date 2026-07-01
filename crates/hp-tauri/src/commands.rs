@@ -422,22 +422,14 @@ pub async fn load_pdf(
     let mut brick_layer_names: HashMap<String, String> = HashMap::new();
     let mut brick_pymu_rects: HashMap<String, (i32, i32, i32, i32)> = HashMap::new();
 
+    // Session-local UUIDs. IDs must NOT be derived from any property
+    // of the brick (position, size, layer name, index in the
+    // placements Vec, ...). Every ID is a fresh random string. If
+    // downstream tie-breaks in the merge algorithm need determinism,
+    // they must sort by geometry, not by ID.
+    let _ = deterministic;
     for (i, p) in placements.iter().enumerate() {
-        let id = if deterministic {
-            use std::hash::{Hash, Hasher};
-            let mut hasher = std::collections::hash_map::DefaultHasher::new();
-            // Include the AI layer name in the hash input so that
-            // artist duplicates — two `Layer NNN` children drawn at
-            // the same spot with the same shape (Berlin-01 has 92) —
-            // still get distinct IDs. Bbox-only hashing collapsed
-            // them to a single key, so every HashMap keyed by ID
-            // silently lost one member of every pair and the pieces
-            // ended up with holes where the duplicate was.
-            (&p.name, p.x, p.y, p.width, p.height).hash(&mut hasher);
-            format!("{:08x}", hasher.finish() & 0xFFFFFFFF)
-        } else {
-            uuid::Uuid::new_v4().to_string()[..8].to_string()
-        };
+        let id = uuid::Uuid::new_v4().to_string()[..8].to_string();
 
         bricks.push(Brick {
             id: id.clone(),
@@ -1204,14 +1196,7 @@ pub async fn export_data(
     // so the user can correlate a saved file back to its [export
     // <id>] log block. Format: `export-<unix_secs>` — sortable,
     // grep-able, and effectively collision-free at human cadence.
-    let export_id = {
-        use std::time::{SystemTime, UNIX_EPOCH};
-        let secs = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
-        format!("export-{}", secs)
-    };
+    let export_id = format!("export-{}", uuid::Uuid::new_v4().to_string()[..8].to_string());
     eprintln!(
         "[{} ] starting (assets_dpi={}, pieces_dpi={}, outline_stroke={}px)",
         export_id, assets_dpi, pieces_dpi, outline_stroke_px,

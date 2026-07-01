@@ -528,19 +528,25 @@ pub fn merge_bricks(
     let mut merge_iter = 0usize;
     while pieces_dict.len() > target_mergeable {
         let mut candidates: Vec<String> = pieces_dict.keys().cloned().collect();
-        // Sort by area, breaking ties on the piece id so the order is
-        // deterministic. `pieces_dict.keys()` iterates the HashMap in
-        // a per-process-random order, and `sort_by` is stable, so without
-        // the id tiebreaker, two pieces with identical area would keep
-        // their (random) input order and the merge would pick different
-        // neighbours each run.
+        // Sort by area, breaking ties on the piece's top-left canvas
+        // position — pure geometry, no ID involvement. IDs are random
+        // UUIDs so sorting by them would randomise iteration order and
+        // the merge would pick different neighbours each run.
+        // `pieces_dict.keys()` iterates the HashMap in a per-process-
+        // random order, and `sort_by` is stable; without a geometric
+        // tiebreak two equal-area pieces would keep their random input
+        // order.
         candidates.sort_by(|a, b| {
-            piece_area
+            let cmp_area = piece_area
                 .get(a)
                 .unwrap_or(&0.0)
                 .partial_cmp(piece_area.get(b).unwrap_or(&0.0))
-                .unwrap_or(std::cmp::Ordering::Equal)
-                .then_with(|| a.cmp(b))
+                .unwrap_or(std::cmp::Ordering::Equal);
+            cmp_area.then_with(|| {
+                let (ax, ay, _, _) = compute_piece_bbox(&pieces_dict[a], &bricks_by_id);
+                let (bx, by, _, _) = compute_piece_bbox(&pieces_dict[b], &bricks_by_id);
+                (ay, ax).cmp(&(by, bx))
+            })
         });
 
         let mut merged = false;
@@ -552,12 +558,22 @@ pub fn merge_bricks(
 
             let cur_area = piece_area.get(smallest_pid).copied().unwrap_or(0.0);
             // `neighbors` is a HashSet — its iteration order is
-            // per-process-random. Sort before the seeded shuffle so
-            // the shuffle input is deterministic; otherwise the same
-            // (seed, brick set, adjacency) trio produces different
-            // merges across runs.
+            // per-process-random. Sort by GEOMETRY (top-left of each
+            // neighbour piece's bbox) before the seeded shuffle so the
+            // shuffle input is deterministic. IDs are random UUIDs so
+            // sorting by them would randomise things again.
             let mut nbr_list: Vec<String> = neighbors.into_iter().collect();
-            nbr_list.sort();
+            nbr_list.sort_by(|a, b| {
+                let (ax, ay, _, _) = pieces_dict
+                    .get(a)
+                    .map(|ids| compute_piece_bbox(ids, &bricks_by_id))
+                    .unwrap_or((i32::MAX, i32::MAX, 0, 0));
+                let (bx, by, _, _) = pieces_dict
+                    .get(b)
+                    .map(|ids| compute_piece_bbox(ids, &bricks_by_id))
+                    .unwrap_or((i32::MAX, i32::MAX, 0, 0));
+                (ay, ax).cmp(&(by, bx))
+            });
             nbr_list.shuffle(&mut rng);
 
             let mut best_nbr: Option<String> = None;
@@ -635,13 +651,19 @@ pub fn merge_bricks(
     // Build result
     let mut result: Vec<PuzzlePiece> = Vec::new();
 
-    // Fixed solo pieces first
+    // Fixed solo pieces first. Sort by top-left canvas position
+    // (geometric, not by ID) so iteration order is deterministic
+    // within a session AND across sessions given the same brick set.
     let mut sorted_fixed: Vec<&String> = fixed_ids.iter().collect();
-    sorted_fixed.sort();
+    sorted_fixed.sort_by(|a, b| {
+        let ba = bricks_by_id[a.as_str()];
+        let bb = bricks_by_id[b.as_str()];
+        (ba.y, ba.x).cmp(&(bb.y, bb.x))
+    });
     for bid in sorted_fixed {
         let b = bricks_by_id[bid.as_str()];
         result.push(PuzzlePiece {
-            id: format!("p{}", result.len()),
+            id: uuid::Uuid::new_v4().to_string()[..8].to_string(),
             brick_ids: vec![bid.clone()],
             x: b.x,
             y: b.y,
@@ -650,22 +672,23 @@ pub fn merge_bricks(
         });
     }
 
-    // Merged pieces
-    for (_, brick_ids) in &pieces_dict {
+    // Merged pieces. Sort by geometric top-left too.
+    let mut merged_entries: Vec<(&String, &Vec<String>)> = pieces_dict.iter().collect();
+    merged_entries.sort_by(|a, b| {
+        let (ax, ay, _, _) = compute_piece_bbox(a.1, &bricks_by_id);
+        let (bx, by, _, _) = compute_piece_bbox(b.1, &bricks_by_id);
+        (ay, ax).cmp(&(by, bx))
+    });
+    for (_, brick_ids) in merged_entries {
         let (x, y, w, h) = compute_piece_bbox(brick_ids, &bricks_by_id);
         result.push(PuzzlePiece {
-            id: format!("p{}", result.len()),
+            id: uuid::Uuid::new_v4().to_string()[..8].to_string(),
             brick_ids: brick_ids.clone(),
             x,
             y,
             width: w,
             height: h,
         });
-    }
-
-    // Re-assign IDs
-    for (i, piece) in result.iter_mut().enumerate() {
-        piece.id = format!("p{i}");
     }
 
     eprintln!("[puzzle] final result: {} pieces (target was {target_count})", result.len());
@@ -938,8 +961,8 @@ mod tests {
         // Convert to Brick + polygons
         let mut bricks: Vec<Brick> = Vec::new();
         let mut polygons: HashMap<String, Vec<[f64; 2]>> = HashMap::new();
-        for (i, p) in placements.iter().enumerate() {
-            let id = format!("b{i}");
+        for p in placements.iter() {
+            let id = uuid::Uuid::new_v4().to_string()[..8].to_string();
             bricks.push(Brick {
                 id: id.clone(),
                 x: p.x,
