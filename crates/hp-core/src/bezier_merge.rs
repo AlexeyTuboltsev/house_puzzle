@@ -1060,10 +1060,8 @@ pub fn merge_piece_bezier(brick_paths: &[BezierPath]) -> Vec<BezierPath> {
     // path rather than two disjoint loops.
     let loops = merge_loops_at_shared_vertex(loops);
 
-    // Drop interior loops (compound-path holes / cut-outs). A loop whose
-    // bbox is strictly contained in another loop's bbox is treated as an
-    // inner loop. For disconnected-but-separate components, bboxes don't
-    // nest, so both are kept.
+    // Drop interior loops (compound-path holes / cut-outs) — pure
+    // point-in-polygon containment, no bbox.
     drop_contained_loops(loops)
 }
 
@@ -1136,41 +1134,17 @@ fn rotate_loop(loop_: &BezierPath, vertex_idx: usize) -> BezierPath {
     BezierPath { start: new_start, segments: new_segs }
 }
 
-fn loop_bbox(bp: &BezierPath) -> [f64; 4] {
-    let mut mn = [f64::INFINITY; 2];
-    let mut mx = [f64::NEG_INFINITY; 2];
-    let mut upd = |p: [f64; 2]| {
-        if p[0] < mn[0] { mn[0] = p[0]; }
-        if p[1] < mn[1] { mn[1] = p[1]; }
-        if p[0] > mx[0] { mx[0] = p[0]; }
-        if p[1] > mx[1] { mx[1] = p[1]; }
-    };
-    upd(bp.start);
-    for s in &bp.segments { upd(s.end()); }
-    [mn[0], mn[1], mx[0], mx[1]]
-}
-
 /// Drop interior-hole loops via point-in-polygon containment.
 ///
 /// A loop `j` is dropped if a representative point on `j` (its average
-/// vertex) lies strictly inside some other loop `i`. This is the right
-/// check for compound bricks where an inner frame's bbox is almost equal
-/// to the outer's bbox (so a strict-bbox-inside test would miss it) yet
-/// the inner shape sits geometrically within the outer.
-///
-/// The polygon containment uses ray casting against a tessellation of the
-/// reference loop. Bezier curves are sampled densely enough (16 points per
-/// cubic) for the ray cast to be accurate to ≪ 1 pymu — way below the
-/// scale of any feature that matters.
+/// vertex) lies strictly inside some other loop `i` — a pure polygon
+/// ray-cast test, NO bbox pre-filter (bbox is verboten in this
+/// codebase; the tessellated ring is already cheap enough to test
+/// against directly).
 fn drop_contained_loops(loops: Vec<BezierPath>) -> Vec<BezierPath> {
     if loops.len() < 2 { return loops; }
 
-    // Pre-compute one tessellated polygon and one representative interior
-    // point per loop. The "representative" is the centroid of the
-    // tessellation, which lands inside any simple non-self-intersecting
-    // polygon for our purposes (brick outlines + inner frames).
     let polys: Vec<Vec<[f64; 2]>> = loops.iter().map(|l| l.tessellate(16)).collect();
-    let bboxes: Vec<[f64; 4]> = loops.iter().map(loop_bbox).collect();
     let reps: Vec<[f64; 2]> = polys
         .iter()
         .map(|pts| {
@@ -1186,17 +1160,8 @@ fn drop_contained_loops(loops: Vec<BezierPath>) -> Vec<BezierPath> {
     for j in 0..loops.len() {
         if !keep[j] { continue; }
         let pt = reps[j];
-        let bj = &bboxes[j];
         for i in 0..loops.len() {
             if i == j || !keep[i] { continue; }
-            // A loop can only contain another whose bbox is fully inside
-            // its own — cheap reject before the ray cast.
-            let bi = &bboxes[i];
-            if bj[0] < bi[0] - BEZIER_TOL || bj[1] < bi[1] - BEZIER_TOL
-                || bj[2] > bi[2] + BEZIER_TOL || bj[3] > bi[3] + BEZIER_TOL
-            {
-                continue;
-            }
             if point_in_ring(pt, &polys[i]) {
                 keep[j] = false;
                 break;
@@ -1243,7 +1208,7 @@ mod tests {
         }
     }
 
-    fn ring_bbox(pts: &[[f64; 2]]) -> (f64, f64, f64, f64) {
+    fn ring_rect(pts: &[[f64; 2]]) -> (f64, f64, f64, f64) {
         let mut x0 = f64::INFINITY;
         let mut y0 = f64::INFINITY;
         let mut x1 = f64::NEG_INFINITY;
@@ -1265,7 +1230,7 @@ mod tests {
         let r = rect(0.0, 0.0, 10.0, 10.0);
         let merged = merge_piece_bezier(&[r]);
         assert_eq!(merged.len(), 1, "single brick should produce one outline path");
-        let (x0, y0, x1, y1) = ring_bbox(&merged[0].tessellate(8));
+        let (x0, y0, x1, y1) = ring_rect(&merged[0].tessellate(8));
         assert!((x0 - 0.0).abs() < 0.5);
         assert!((y0 - 0.0).abs() < 0.5);
         assert!((x1 - 10.0).abs() < 0.5);
@@ -1285,7 +1250,7 @@ mod tests {
             merged.len(), 1,
             "two adjacent rectangles should merge into a single outline path, got {}", merged.len()
         );
-        let (x0, y0, x1, y1) = ring_bbox(&merged[0].tessellate(8));
+        let (x0, y0, x1, y1) = ring_rect(&merged[0].tessellate(8));
         assert!((x0 - 0.0).abs() < 0.5, "bbox left should be 0, got {x0}");
         assert!((x1 - 20.0).abs() < 0.5, "bbox right should be 20, got {x1}");
         assert!((y0 - 0.0).abs() < 0.5);

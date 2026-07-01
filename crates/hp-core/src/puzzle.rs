@@ -5,7 +5,6 @@
 //! a specified piece count.
 
 use geo::algorithm::area::Area;
-use geo::algorithm::bounding_rect::BoundingRect;
 use geo::{Coord, LineString, Polygon};
 use rand::seq::SliceRandom;
 use rand::SeedableRng;
@@ -41,7 +40,7 @@ fn brick_polygon(brick: &Brick, polygon: &[[f64; 2]]) -> Option<Polygon<f64>> {
 pub fn build_adjacency_vector(
     bricks: &[Brick],
     brick_polygons: &HashMap<String, Vec<[f64; 2]>>,
-    gap: f64,
+    _gap: f64,  // was a bbox pre-filter tolerance — no longer used, kept for callsite compat
     min_border: f64,
     border_gap: f64,
 ) -> HashMap<String, HashSet<String>> {
@@ -72,15 +71,7 @@ pub fn build_adjacency_vector(
                 None => continue,
             };
 
-            // Bbox pre-filter
-            if !((a.x as f64 - gap) < b.right() as f64
-                && (a.right() as f64 + gap) > b.x as f64
-                && (a.y as f64 - gap) < b.bottom() as f64
-                && (a.bottom() as f64 + gap) > b.y as f64)
-            {
-                continue;
-            }
-
+            // NO BBOX pre-filter. Straight to the real polygon math.
             // Match Python: buffer both polygons by border_gap, intersect,
             // measure border_length = intersection.area / (2 * border_gap)
             use geo_clipper::Clipper;
@@ -114,70 +105,9 @@ pub fn build_adjacency_vector(
     adj
 }
 
-/// Build adjacency from MuPDF clip-rect bbox positions (pymu_x/y/w/h).
-///
-/// Uses the same buffer+intersect formula as `build_adjacency_vector` but with
-/// axis-aligned rectangles instead of arbitrary polygons. This is immune to
-/// polygon-extraction errors: the pymu_bbox always reflects where the brick
-/// actually renders, regardless of whether extract_vector_path picked the right
-/// path.
-///
-/// `brick_rects` maps brick ID → `(x, y, w, h)` in canvas pixels from pymu_bbox.
-/// Bricks without an entry fall back to `brick.x/y/width/height`.
-pub fn build_adjacency_bbox(
-    bricks: &[Brick],
-    brick_rects: &HashMap<String, (i32, i32, i32, i32)>,
-    gap: i32,
-    min_border: i32,
-) -> HashMap<String, HashSet<String>> {
-    let border_gap = 2i32;
-    let mut adj: HashMap<String, HashSet<String>> = HashMap::new();
-    let n = bricks.len();
-
-    for i in 0..n {
-        let a = &bricks[i];
-        let (ax, ay, aw, ah) = brick_rects
-            .get(&a.id)
-            .copied()
-            .unwrap_or((a.x, a.y, a.width, a.height));
-
-        for j in (i + 1)..n {
-            let b = &bricks[j];
-            let (bx, by, bw, bh) = brick_rects
-                .get(&b.id)
-                .copied()
-                .unwrap_or((b.x, b.y, b.width, b.height));
-
-            // Bbox pre-filter
-            if ax + aw + gap < bx || bx + bw + gap < ax
-                || ay + ah + gap < by || by + bh + gap < ay
-            {
-                continue;
-            }
-
-            // Expand both rects by border_gap and compute intersection.
-            // Same formula as build_adjacency_vector: border_length = inter_area / (2 * bg).
-            let ix0 = (ax - border_gap).max(bx - border_gap);
-            let iy0 = (ay - border_gap).max(by - border_gap);
-            let ix1 = (ax + aw + border_gap).min(bx + bw + border_gap);
-            let iy1 = (ay + ah + border_gap).min(by + bh + border_gap);
-
-            if ix1 <= ix0 || iy1 <= iy0 {
-                continue;
-            }
-
-            let inter_area = (ix1 - ix0) as f64 * (iy1 - iy0) as f64;
-            let border_length = inter_area / (2.0 * border_gap as f64);
-
-            if border_length >= min_border as f64 {
-                adj.entry(a.id.clone()).or_default().insert(b.id.clone());
-                adj.entry(b.id.clone()).or_default().insert(a.id.clone());
-            }
-        }
-    }
-
-    adj
-}
+// build_adjacency_bbox() was removed — bbox is verboten in this
+// codebase. Use build_adjacency_vector (polygon buffer + intersect)
+// or build_adjacency_bezier (bezier edge sharing).
 
 /// Build adjacency graph directly from AI-native bezier paths — no
 /// polygon buffering. Two bricks are adjacent iff their combined shared
@@ -223,25 +153,6 @@ pub fn build_adjacency_bezier(
             }
         }
         out
-    }
-
-    // Bbox per brick for a cheap pre-filter.
-    fn bbox(paths: &[crate::bezier::BezierPath]) -> (f64, f64, f64, f64) {
-        let mut x0 = f64::INFINITY;
-        let mut y0 = f64::INFINITY;
-        let mut x1 = f64::NEG_INFINITY;
-        let mut y1 = f64::NEG_INFINITY;
-        let mut consume = |p: [f64; 2]| {
-            if p[0] < x0 { x0 = p[0]; }
-            if p[1] < y0 { y0 = p[1]; }
-            if p[0] > x1 { x1 = p[0]; }
-            if p[1] > y1 { y1 = p[1]; }
-        };
-        for p in paths {
-            consume(p.start);
-            for s in &p.segments { consume(s.end()); }
-        }
-        (x0, y0, x1, y1)
     }
 
     fn cubic_mid(p0: [f64; 2], c1: [f64; 2], c2: [f64; 2], p3: [f64; 2]) -> [f64; 2] {
@@ -318,13 +229,11 @@ pub fn build_adjacency_bezier(
         (dx * dx + dy * dy).sqrt()
     }
 
-    // Pre-compute edges and bboxes.
+    // Pre-compute edges only — no bbox pre-filter (NO BBOX).
     let mut brick_edges: HashMap<&str, Vec<Ed>> = HashMap::new();
-    let mut brick_bbox: HashMap<&str, (f64, f64, f64, f64)> = HashMap::new();
     for b in bricks {
         if let Some(paths) = brick_beziers.get(&b.id) {
             brick_edges.insert(b.id.as_str(), edges_of(paths));
-            brick_bbox.insert(b.id.as_str(), bbox(paths));
         }
     }
 
@@ -337,7 +246,6 @@ pub fn build_adjacency_bezier(
         .flat_map_iter(|i| {
             let a_id = bricks[i].id.as_str();
             let a_edges = brick_edges.get(a_id);
-            let abb = brick_bbox.get(a_id).copied().unwrap_or((0.0, 0.0, 0.0, 0.0));
             let mut local: Vec<(String, String)> = Vec::new();
             if let Some(a_edges) = a_edges {
                 for j in (i + 1)..n {
@@ -346,13 +254,6 @@ pub fn build_adjacency_bezier(
                         Some(v) => v,
                         None => continue,
                     };
-                    let bbb = brick_bbox.get(b_id).copied().unwrap_or((0.0, 0.0, 0.0, 0.0));
-                    let slack = ENDPOINT_TOL;
-                    if abb.2 + slack < bbb.0 || bbb.2 + slack < abb.0
-                        || abb.3 + slack < bbb.1 || bbb.3 + slack < abb.1
-                    {
-                        continue;
-                    }
                     let mut total_shared = 0.0;
                     for ea in a_edges {
                         for eb in b_edges {
@@ -436,7 +337,7 @@ pub fn compute_polygon_areas(
 }
 
 /// Compute bounding box for a set of bricks.
-fn compute_piece_bbox(brick_ids: &[String], bricks_by_id: &HashMap<&str, &Brick>) -> (i32, i32, i32, i32) {
+fn compute_piece_rect(brick_ids: &[String], bricks_by_id: &HashMap<&str, &Brick>) -> (i32, i32, i32, i32) {
     let mut x0 = i32::MAX;
     let mut y0 = i32::MAX;
     let mut x1 = i32::MIN;
@@ -543,8 +444,8 @@ pub fn merge_bricks(
                 .partial_cmp(piece_area.get(b).unwrap_or(&0.0))
                 .unwrap_or(std::cmp::Ordering::Equal);
             cmp_area.then_with(|| {
-                let (ax, ay, _, _) = compute_piece_bbox(&pieces_dict[a], &bricks_by_id);
-                let (bx, by, _, _) = compute_piece_bbox(&pieces_dict[b], &bricks_by_id);
+                let (ax, ay, _, _) = compute_piece_rect(&pieces_dict[a], &bricks_by_id);
+                let (bx, by, _, _) = compute_piece_rect(&pieces_dict[b], &bricks_by_id);
                 (ay, ax).cmp(&(by, bx))
             })
         });
@@ -566,11 +467,11 @@ pub fn merge_bricks(
             nbr_list.sort_by(|a, b| {
                 let (ax, ay, _, _) = pieces_dict
                     .get(a)
-                    .map(|ids| compute_piece_bbox(ids, &bricks_by_id))
+                    .map(|ids| compute_piece_rect(ids, &bricks_by_id))
                     .unwrap_or((i32::MAX, i32::MAX, 0, 0));
                 let (bx, by, _, _) = pieces_dict
                     .get(b)
-                    .map(|ids| compute_piece_bbox(ids, &bricks_by_id))
+                    .map(|ids| compute_piece_rect(ids, &bricks_by_id))
                     .unwrap_or((i32::MAX, i32::MAX, 0, 0));
                 (ay, ax).cmp(&(by, bx))
             });
@@ -594,7 +495,7 @@ pub fn merge_bricks(
                     .chain(pieces_dict[npid].iter())
                     .cloned()
                     .collect();
-                let (_, _, bw, bh) = compute_piece_bbox(&merged_ids, &bricks_by_id);
+                let (_, _, bw, bh) = compute_piece_rect(&merged_ids, &bricks_by_id);
                 let aspect = bw.max(bh) as f64 / bw.min(bh).max(1) as f64;
                 score += target_area * (aspect - 1.0) * 0.3;
 
@@ -675,12 +576,12 @@ pub fn merge_bricks(
     // Merged pieces. Sort by geometric top-left too.
     let mut merged_entries: Vec<(&String, &Vec<String>)> = pieces_dict.iter().collect();
     merged_entries.sort_by(|a, b| {
-        let (ax, ay, _, _) = compute_piece_bbox(a.1, &bricks_by_id);
-        let (bx, by, _, _) = compute_piece_bbox(b.1, &bricks_by_id);
+        let (ax, ay, _, _) = compute_piece_rect(a.1, &bricks_by_id);
+        let (bx, by, _, _) = compute_piece_rect(b.1, &bricks_by_id);
         (ay, ax).cmp(&(by, bx))
     });
     for (_, brick_ids) in merged_entries {
-        let (x, y, w, h) = compute_piece_bbox(brick_ids, &bricks_by_id);
+        let (x, y, w, h) = compute_piece_rect(brick_ids, &bricks_by_id);
         result.push(PuzzlePiece {
             id: uuid::Uuid::new_v4().to_string()[..8].to_string(),
             brick_ids: brick_ids.clone(),
@@ -841,10 +742,8 @@ pub fn compute_piece_polygons(
                 continue;
             }
             if debug_piece {
-                let bb = poly.bounding_rect();
-                eprintln!("[piece-debug] {} brick {} area={:.0} pts={} bbox={:?}",
-                    piece.id, bid, poly.unsigned_area(), poly.exterior().0.len(),
-                    bb.map(|r| (r.min().x as i32, r.min().y as i32, r.max().x as i32, r.max().y as i32)));
+                eprintln!("[piece-debug] {} brick {} area={:.0} pts={}",
+                    piece.id, bid, poly.unsigned_area(), poly.exterior().0.len());
                 // Dump all vertices
                 for (vi, c) in poly.exterior().0.iter().enumerate() {
                     eprintln!("[piece-debug]   v{}: ({:.1}, {:.1})", vi, c.x, c.y);
@@ -910,10 +809,8 @@ pub fn compute_piece_polygons(
         if debug_piece {
             eprintln!("[piece-debug] {} union produced {} components", piece.id, union.0.len());
             for (ci, comp) in union.0.iter().enumerate() {
-                let bb = comp.bounding_rect();
-                eprintln!("[piece-debug]   component {} area={:.0} pts={} holes={} bbox={:?}",
-                    ci, comp.unsigned_area(), comp.exterior().0.len(), comp.interiors().len(),
-                    bb.map(|r| (r.min().x as i32, r.min().y as i32, r.max().x as i32, r.max().y as i32)));
+                eprintln!("[piece-debug]   component {} area={:.0} pts={} holes={}",
+                    ci, comp.unsigned_area(), comp.exterior().0.len(), comp.interiors().len());
             }
         }
 

@@ -230,10 +230,8 @@ pub fn find_covered_bricks(
             let b = &bricks[j];
             if covered.contains(&b.id) { continue; }
 
-            // Bbox overlap check
-            if a.x >= b.right() || b.x >= a.right() || a.y >= b.bottom() || b.y >= a.bottom() {
-                continue;
-            }
+            // NO BBOX pre-filter — always fall through to the real
+            // pixel-overlap accumulation below.
 
             let (small, big) = if a.area() <= b.area() { (a, b) } else { (b, a) };
 
@@ -382,7 +380,7 @@ pub fn render_piece_pngs_from_composite(
             // (build_house_data) recompute the sprite's centre/anchor
             // from the trimmed rect — so the sprite stays visually in
             // the same place.
-            let trimmed_bbox = alpha_bbox(&piece_img);
+            let trimmed_bbox = alpha_rect(&piece_img);
 
             let (out_img, new_x, new_y, new_w, new_h) = match trimmed_bbox {
                 Some((tx, ty, tw, th)) if tw > 0 && th > 0 => {
@@ -447,7 +445,7 @@ fn place_into_padded(
 /// Falls back to the piece's geometric bbox if no rings are available —
 /// degenerate but safe (the polygon mask later zeros anything outside
 /// the polygon anyway, so a too-wide bbox just costs a few extra ms).
-fn piece_pixel_bbox(
+fn piece_pixel_rect(
     rings: Option<&Vec<Vec<[f64; 2]>>>,
     piece: &crate::types::PuzzlePiece,
     canvas_w: i32,
@@ -484,7 +482,7 @@ fn piece_pixel_bbox(
 /// Tight bounding box of all pixels with non-zero alpha. Returns
 /// `(x, y, width, height)` in image-local coords, or `None` when the
 /// image is fully transparent.
-fn alpha_bbox(img: &RgbaImage) -> Option<(u32, u32, u32, u32)> {
+fn alpha_rect(img: &RgbaImage) -> Option<(u32, u32, u32, u32)> {
     let w = img.width();
     let h = img.height();
     if w == 0 || h == 0 {
@@ -610,7 +608,7 @@ fn render_piece_pngs_via_ocg_isolation(
     // instead of cloning the full export canvas per piece. For a
     // 60-piece NY5 at 300 DPI that's the difference between
     // 60 × 100 MB = 6 GB and 60 × ~2 MB = 120 MB of allocations.
-    // The mask + alpha_bbox loops scale with bbox area too, so the
+    // The mask + alpha_rect loops scale with bbox area too, so the
     // per-pixel work drops by 30–50× per piece.
     let trimmed: Vec<crate::types::PuzzlePiece> = pieces
         .par_iter()
@@ -639,7 +637,7 @@ fn render_piece_pngs_via_ocg_isolation(
             // piece's own bbox (still polygon-mask-safe — the mask
             // step zeros everything outside the polygon anyway).
             const BLEED_PX: i32 = 64;
-            let (bx0, by0, bx1, by1) = piece_pixel_bbox(
+            let (bx0, by0, bx1, by1) = piece_pixel_rect(
                 piece_polygons.get(&piece.id),
                 piece,
                 new_canvas_w as i32,
@@ -727,9 +725,9 @@ fn render_piece_pngs_via_ocg_isolation(
             // their overhangs overlap with the neighbour brick's
             // body, same as in the composite. Only the piece's
             // OUTER boundary keeps its bleed.
-            // alpha_bbox is in LOCAL canvas coords; translate by
+            // alpha_rect is in LOCAL canvas coords; translate by
             // (bx0, by0) to get the piece's absolute position.
-            let (out_img, new_x, new_y, new_w, new_h) = match alpha_bbox(&canvas) {
+            let (out_img, new_x, new_y, new_w, new_h) = match alpha_rect(&canvas) {
                 Some((tx, ty, tw, th)) if tw > 0 && th > 0 => {
                     let cropped =
                         image::imageops::crop_imm(&canvas, tx, ty, tw, th).to_image();

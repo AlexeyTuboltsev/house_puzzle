@@ -747,6 +747,12 @@ fn extract_vector_path(
     }
 
     // --- Multiple polygons on this layer: classify each pair ---
+    // NO BBOX HERE. Every same-vs-different / contained / overlap /
+    // adjacent decision goes through real polygon geometry: signed
+    // shoelace area, Clipper::intersection for containment, and
+    // `nearest_edge_points` for adjacency distance. Bbox proxies
+    // silently collapse legitimate shapes that happen to share a
+    // rectangle (Berlin-01's triangle halves, arch reliefs, …).
     use geo::{Coord, LineString, Polygon as GeoPoly};
     use geo::algorithm::area::Area;
     use geo_clipper::Clipper;
@@ -755,31 +761,22 @@ fn extract_vector_path(
     const GAP_BRIDGE_WIDTH: f64 = 2.0;
     let factor = 1000.0;
 
-    // Compute bboxes
-    let bboxes: Vec<(f64, f64, f64, f64)> = significant.iter().map(|poly| {
-        let (mut x0, mut y0) = (f64::INFINITY, f64::INFINITY);
-        let (mut x1, mut y1) = (f64::NEG_INFINITY, f64::NEG_INFINITY);
-        for p in poly { x0 = x0.min(p[0]); y0 = y0.min(p[1]); x1 = x1.max(p[0]); y1 = y1.max(p[1]); }
-        (x0, y0, x1, y1)
-    }).collect();
-
-    let bbox_contains = |outer: (f64, f64, f64, f64), inner: (f64, f64, f64, f64)| -> bool {
-        let m = 2.0;
-        inner.0 >= outer.0 - m && inner.1 >= outer.1 - m
-            && inner.2 <= outer.2 + m && inner.3 <= outer.3 + m
-    };
-
-    let bbox_overlaps = |a: (f64, f64, f64, f64), b: (f64, f64, f64, f64)| -> bool {
-        a.0 < b.2 && a.2 > b.0 && a.1 < b.3 && a.3 > b.1
-    };
-
-    let bbox_distance = |a: (f64, f64, f64, f64), b: (f64, f64, f64, f64)| -> f64 {
-        let dx = if a.2 < b.0 { b.0 - a.2 } else if b.2 < a.0 { a.0 - b.2 } else { 0.0 };
-        let dy = if a.3 < b.1 { b.1 - a.3 } else if b.3 < a.1 { a.1 - b.3 } else { 0.0 };
-        (dx * dx + dy * dy).sqrt()
-    };
-
     let n = significant.len();
+
+    // Convert each candidate polygon to a geo::Polygon once so the
+    // intersection / distance passes below don't re-tessellate.
+    let geo_of = |pts: &[[f64; 2]]| -> Option<GeoPoly<f64>> {
+        if pts.len() < 3 { return None; }
+        let mut coords: Vec<Coord<f64>> = pts.iter()
+            .map(|p| Coord { x: p[0], y: p[1] })
+            .collect();
+        if coords.first() != coords.last() {
+            coords.push(coords[0]);
+        }
+        let poly = GeoPoly::new(LineString::new(coords), vec![]);
+        if poly.unsigned_area() > 0.0 { Some(poly) } else { None }
+    };
+    let geo_polys_pre: Vec<Option<GeoPoly<f64>>> = significant.iter().map(|p| geo_of(p)).collect();
 
     // Sort by area descending — index 0 is the largest
     let mut order: Vec<usize> = (0..n).collect();
@@ -798,33 +795,46 @@ fn extract_vector_path(
         let mut relationship = "independent";
 
         let area_i = polygon_area(&significant[i]).abs();
+        let poly_i = &geo_polys_pre[i];
 
-        // Check against all already-absorbed polygons for any connection
+        // Check against all already-absorbed polygons for any connection.
+        // Every test below is polygon-geometry — no bbox involvement.
         for &j in &to_merge {
             let area_j = polygon_area(&significant[j]).abs();
+            let poly_j = &geo_polys_pre[j];
 
-            if bbox_contains(bboxes[j], bboxes[i]) {
-                // Bbox is contained — but is it truly containment (glass inside
-                // frame) or two halves of a diagonal split?
-                // True containment: inner is small relative to outer (< 30%).
-                // Diagonal split: both halves are large relative to each other.
-                let ratio = if area_j > 0.0 { area_i / area_j } else { 1.0 };
-                if ratio < 0.3 {
-                    // Case 1: genuinely contained (e.g. glass inside frame)
+            let (Some(pi), Some(pj)) = (poly_i, poly_j) else { continue; };
+
+            // Real polygon intersection area.  Split the classification
+            // by (intersection_area / smaller_area) — mirrors the intent
+            // of the old contain / overlap ratio but on actual overlap
+            // instead of a bbox proxy.
+            let inter = Clipper::intersection(pi, pj, factor);
+            let inter_area: f64 = inter.0.iter().map(|p| p.unsigned_area()).sum();
+            let smaller_area = area_i.min(area_j).max(1e-9);
+            let overlap_ratio_smaller = inter_area / smaller_area;
+            let overlap_ratio_larger = if area_i.max(area_j) > 1e-9 {
+                inter_area / area_i.max(area_j)
+            } else { 0.0 };
+
+            if inter_area > 1.0 {
+                // Small polygon lives almost entirely inside a large one
+                // AND is small relative to the large one → decoration
+                // like glass inside a window frame; drop it.
+                // Otherwise it's a genuine overlap (diagonal split /
+                // porthole quarter / …) → union.
+                if overlap_ratio_smaller > 0.9 && overlap_ratio_larger < 0.3 {
                     relationship = "contained";
                 } else {
-                    // Case 2: overlapping halves (e.g. diagonal window split)
                     relationship = "overlap";
                 }
                 break;
             }
-            if bbox_overlaps(bboxes[j], bboxes[i]) {
-                // Case 2: overlap — include for union
-                relationship = "overlap";
-                break;
-            }
-            if bbox_distance(bboxes[j], bboxes[i]) < ADJACENCY_DIST {
-                // Case 3: adjacent within threshold — include for union+bridge
+
+            // No overlap — check adjacency by polygon-edge distance.
+            let (dist, _pa, _pb) =
+                crate::puzzle::nearest_edge_points(pi.exterior(), pj.exterior());
+            if dist < ADJACENCY_DIST {
                 relationship = "adjacent";
                 break;
             }
@@ -1019,7 +1029,7 @@ pub fn parse_ai(
     let t0 = std::time::Instant::now();
     struct RawPlacement<'a> {
         child: &'a LayerBlock,
-        pymu_bbox: (f64, f64, f64, f64), // x0, y_top, x1, y_bottom
+        pymu_rect: (f64, f64, f64, f64), // x0, y_top, x1, y_bottom
         layer_type: String,
     }
 
@@ -1046,7 +1056,7 @@ pub fn parse_ai(
                     let ltype = if has_vector { "mixed_brick" } else { "brick" };
                     return Some(RawPlacement {
                         child,
-                        pymu_bbox: (pymu_x0, pymu_y_top, pymu_x1, pymu_y_bottom),
+                        pymu_rect: (pymu_x0, pymu_y_top, pymu_x1, pymu_y_bottom),
                         layer_type: ltype.to_string(),
                     });
                 }
@@ -1061,7 +1071,7 @@ pub fn parse_ai(
                 let pymu_y_bottom = y_base - ai_ymin;
                 return Some(RawPlacement {
                     child,
-                    pymu_bbox: (pymu_x0, pymu_y_top, pymu_x1, pymu_y_bottom),
+                    pymu_rect: (pymu_x0, pymu_y_top, pymu_x1, pymu_y_bottom),
                     layer_type: "vector_brick".to_string(),
                 });
             }
@@ -1084,10 +1094,10 @@ pub fn parse_ai(
     eprintln!("[parse_ai] placements: {:?} ({} bricks)", t0.elapsed(), placements.len());
 
     // Compute clip rect and scale
-    let all_x0: Vec<f64> = placements.iter().map(|p| p.pymu_bbox.0).collect();
-    let all_y0: Vec<f64> = placements.iter().map(|p| p.pymu_bbox.1).collect();
-    let all_x1: Vec<f64> = placements.iter().map(|p| p.pymu_bbox.2).collect();
-    let all_y1: Vec<f64> = placements.iter().map(|p| p.pymu_bbox.3).collect();
+    let all_x0: Vec<f64> = placements.iter().map(|p| p.pymu_rect.0).collect();
+    let all_y0: Vec<f64> = placements.iter().map(|p| p.pymu_rect.1).collect();
+    let all_x1: Vec<f64> = placements.iter().map(|p| p.pymu_rect.2).collect();
+    let all_y1: Vec<f64> = placements.iter().map(|p| p.pymu_rect.3).collect();
 
     let page_rect = mupdf_ffi::page_mediabox(&page);
     let clip_x0 = all_x0.iter().cloned().fold(f64::INFINITY, f64::min).max(0.0);
@@ -1159,10 +1169,10 @@ pub fn parse_ai(
     let keep_idx: Vec<usize> = (0..placements.len()).collect();
     let mut bbox_px: Vec<(i32, i32, i32, i32)> = Vec::with_capacity(placements.len());
     for p in &placements {
-        let px = ((p.pymu_bbox.0 - clip_x0) * scale).round() as i32;
-        let py = ((p.pymu_bbox.1 - clip_y0) * scale).round() as i32;
-        let pw = ((p.pymu_bbox.2 - p.pymu_bbox.0) * scale).round().max(1.0) as i32;
-        let ph = ((p.pymu_bbox.3 - p.pymu_bbox.1) * scale).round().max(1.0) as i32;
+        let px = ((p.pymu_rect.0 - clip_x0) * scale).round() as i32;
+        let py = ((p.pymu_rect.1 - clip_y0) * scale).round() as i32;
+        let pw = ((p.pymu_rect.2 - p.pymu_rect.0) * scale).round().max(1.0) as i32;
+        let ph = ((p.pymu_rect.3 - p.pymu_rect.1) * scale).round().max(1.0) as i32;
         bbox_px.push((px, py, pw, ph));
     }
 
@@ -1311,7 +1321,6 @@ pub fn parse_ai(
     {
         use geo::{Coord, LineString, Polygon as GeoPoly};
         use geo::algorithm::area::Area;
-        use geo::algorithm::bounding_rect::BoundingRect;
         use geo_clipper::Clipper;
 
         let factor = 1000.0;
@@ -1343,18 +1352,7 @@ pub fn parse_ai(
                 let pb = match &geo_polys[j] { Some(p) => p, None => continue };
                 let area_b = pb.unsigned_area();
 
-                // Quick bbox check
-                let a_bb = pa.bounding_rect();
-                let b_bb = pb.bounding_rect();
-                if let (Some(a_r), Some(b_r)) = (a_bb, b_bb) {
-                    if a_r.max().x < b_r.min().x || b_r.max().x < a_r.min().x
-                        || a_r.max().y < b_r.min().y || b_r.max().y < a_r.min().y
-                    {
-                        continue; // no overlap possible
-                    }
-                }
-
-                // Compute intersection
+                // NO BBOX. Straight to the real intersection call.
                 let inter = Clipper::intersection(&geo::MultiPolygon(vec![pa.clone()]),
                                                    pb, factor);
                 let inter_area: f64 = inter.0.iter().map(|p| p.unsigned_area()).sum();

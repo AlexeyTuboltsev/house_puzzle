@@ -123,7 +123,7 @@ pub struct BrickBlock {
     /// pymu space (after the constant bleed shift). Used for sub-pixel
     /// bleed detection, free of alpha-bleed asymmetry bias.
     /// Layout: `(min_x, min_y, max_x, max_y)`.
-    pub path_endpoint_bbox: Option<(f64, f64, f64, f64)>,
+    pub path_endpoint_rect: Option<(f64, f64, f64, f64)>,
     /// If the q…Q crossed an OCG boundary (e.g. /OC /bricks EMC'd
     /// inside the block and then /OC /lights BDC pushed before Q), the
     /// indices of those BDC/EMC operators so the rewrite layer can
@@ -255,7 +255,7 @@ pub fn walk_page_bricks(doc: &Document, page_id: ObjectId) -> Result<Vec<BrickBl
                         inner_ctm_at_content: prev,
                         content: BrickContent::Inlined,
                         path_centroid: None,
-                        path_endpoint_bbox: None,
+                        path_endpoint_rect: None,
                         straddle_split: None,
                         layer_ocg_name,
                     });
@@ -308,7 +308,7 @@ pub fn walk_page_bricks(doc: &Document, page_id: ObjectId) -> Result<Vec<BrickBl
                                 if *y < min_y { min_y = *y; }
                                 if *y > max_y { max_y = *y; }
                             }
-                            block.path_endpoint_bbox = Some((min_x, min_y, max_x, max_y));
+                            block.path_endpoint_rect = Some((min_x, min_y, max_x, max_y));
                         }
                         // Straddle split if BDC nesting changed and we
                         // saw exactly one EMC + one BDC inside.
@@ -841,24 +841,38 @@ pub fn match_blocks_to_bricks(
     // them) so strict ray-cast containment misses points the brick
     // clearly owns. The bbox is a safe envelope: every part of the
     // brick is inside the bbox by definition.
-    let polygon_bboxes: Vec<Option<(f64, f64, f64, f64)>> = polygons
+    // NO BBOX. Polygon-centroid matching for the follow-up passes
+    // below — same-centroid means same drawing; a `path_endpoint_rect`-
+    // equality test would collapse Berlin-01's triangle pairs (which
+    // share bbox but not centroid).
+    let poly_centroids: Vec<Option<(f64, f64)>> = polygons
         .iter()
         .map(|opt| opt.as_ref().and_then(|poly| {
             if poly.is_empty() { return None; }
-            let (mut xmin, mut xmax) = (f64::INFINITY, f64::NEG_INFINITY);
-            let (mut ymin, mut ymax) = (f64::INFINITY, f64::NEG_INFINITY);
-            for &(x, y) in poly {
-                if x < xmin { xmin = x; }
-                if x > xmax { xmax = x; }
-                if y < ymin { ymin = y; }
-                if y > ymax { ymax = y; }
+            // Signed shoelace-weighted centroid — the geometric centre
+            // of the enclosed area, robust to how the vertex list is
+            // sampled/tessellated.
+            let n = poly.len();
+            let mut area2 = 0.0_f64;
+            let mut cx = 0.0_f64;
+            let mut cy = 0.0_f64;
+            for i in 0..n {
+                let (xa, ya) = poly[i];
+                let (xb, yb) = poly[(i + 1) % n];
+                let cross = xa * yb - xb * ya;
+                area2 += cross;
+                cx += (xa + xb) * cross;
+                cy += (ya + yb) * cross;
             }
-            Some((xmin, ymin, xmax, ymax))
+            if area2.abs() > 1e-9 {
+                Some((cx / (3.0 * area2), cy / (3.0 * area2)))
+            } else {
+                // Degenerate polygon (colinear vertices, etc.): mean of vertices.
+                let (sx, sy) = poly.iter().fold((0.0_f64, 0.0_f64), |(sx, sy), &(x, y)| (sx + x, sy + y));
+                Some((sx / n as f64, sy / n as f64))
+            }
         }))
         .collect();
-    let in_bbox = |x: f64, y: f64, bb: &(f64, f64, f64, f64)| -> bool {
-        x >= bb.0 && x <= bb.2 && y >= bb.1 && y <= bb.3
-    };
 
     // ── First pass: 1:1 by polygon containment of the block centroid ──
     // For each block, find the placement whose polygon CONTAINS the
@@ -893,61 +907,50 @@ pub fn match_blocks_to_bricks(
         }
     }
 
-    // ── Pass 1.5: AUTHORITATIVE bbox-equality match for non-raster
-    // blocks. The brick's polygon in AI = the same drawing's path in
-    // PDF (Illustrator wrote both files). So the PDF block's path-
-    // endpoint bbox should match the AI placement's polygon bbox
-    // within a few points (≈ rounding + closure-vertex differences).
-    // This is the same idea as the Xh tx/ty matching for rasters —
-    // compare authoritative path data, not heuristic centroids.
-    //
-    // We use sum-of-corner-distances as the score; threshold 4.0 pt
-    // total (≈1 pt per corner) lets honest matches through but
-    // rejects neighbour-brick polygons that happen to overlap in bbox.
-    let bbox_dist = |a: &(f64, f64, f64, f64), b: &(f64, f64, f64, f64)| -> f64 {
-        (a.0 - b.0).abs() + (a.1 - b.1).abs() + (a.2 - b.2).abs() + (a.3 - b.3).abs()
-    };
+    // ── Pass 1.5: AUTHORITATIVE polygon-centroid match. The brick's
+    // polygon in AI describes the same drawing that the PDF block's
+    // path draws (Illustrator wrote both). Two vertex sets that
+    // describe the same shape have the same centroid within a tiny
+    // rounding margin. NO BBOX involved: Berlin-01's triangle pairs
+    // share bbox / area / perimeter but have distinct centroids —
+    // a bbox test would collapse them, this doesn't.
     for (j, block) in blocks.iter().enumerate() {
         if block_matched[j] { continue; }
-        let Some(bb) = block.path_endpoint_bbox else { continue; };
+        let Some((bcx, bcy)) = block.path_centroid else { continue; };
         let mut hit: Option<usize> = None;
-        let mut best_score = f64::INFINITY;
-        for (i, poly_bb) in polygon_bboxes.iter().enumerate() {
+        let mut best_dist = f64::INFINITY;
+        for (i, poly_c) in poly_centroids.iter().enumerate() {
             if brick_used[i] { continue; }
-            let Some(poly_bb) = poly_bb else { continue; };
-            let score = bbox_dist(&bb, poly_bb);
-            if score < best_score { best_score = score; hit = Some(i); }
+            let Some((pcx, pcy)) = *poly_c else { continue; };
+            let d = ((bcx - pcx).powi(2) + (bcy - pcy).powi(2)).sqrt();
+            if d < best_dist { best_dist = d; hit = Some(i); }
         }
-        // Threshold: 4 pt sum-of-corners covers honest rounding +
-        // closing-vertex variance, but rejects neighbours offset by
-        // an image-size step (which would give ~340 pt for an 85-pt
-        // raster's bbox).
-        if let (Some(i), true) = (hit, best_score < 4.0) {
+        // Threshold: 2 pt covers honest rounding + closing-vertex
+        // variance; the next brick over is typically at least an
+        // image-side-length (tens of pt) away, so we get clean 1:1
+        // pairings without accidentally sweeping in a neighbour.
+        if let (Some(i), true) = (hit, best_dist < 2.0) {
             brick_to_blocks[i].push(j);
             brick_used[i] = true;
             block_matched[j] = true;
         }
     }
 
-    // ── Pass 2: fallback for leftover blocks. Use polygon-bbox
-    //     containment with centroid-distance tie-break — same as
-    //     1.5 but allows already-used bricks (for overlay strokes
-    //     etc. that legitimately share a brick's area).
+    // ── Pass 2: fallback for leftover blocks. Same centroid-distance
+    //     test but with a larger tolerance and no "already-used"
+    //     restriction (overlay strokes etc. legitimately share a
+    //     brick's centroid within a few points).
     for (j, block) in blocks.iter().enumerate() {
         if block_matched[j] { continue; }
-        let Some((bx, by)) = block.path_centroid else { continue; };
+        let Some((bcx, bcy)) = block.path_centroid else { continue; };
         let mut hit: Option<usize> = None;
         let mut best_dist = f64::INFINITY;
-        for (i, bb_opt) in polygon_bboxes.iter().enumerate() {
-            let Some(bb) = bb_opt else { continue; };
-            if !in_bbox(bx, by, bb) { continue; }
-            let d = if let Some((cx, cy)) = placement_centroids[i] {
-                ((bx - cx).powi(2) + (by - cy).powi(2)).sqrt()
-            } else { f64::INFINITY };
+        for (i, poly_c) in poly_centroids.iter().enumerate() {
+            let Some((pcx, pcy)) = *poly_c else { continue; };
+            let d = ((bcx - pcx).powi(2) + (bcy - pcy).powi(2)).sqrt();
             if d < best_dist { best_dist = d; hit = Some(i); }
         }
-        let _ = overlay_radius_pt; // kept for API compat; not used now
-        if let Some(i) = hit {
+        if let (Some(i), true) = (hit, best_dist < overlay_radius_pt) {
             brick_to_blocks[i].push(j);
             block_matched[j] = true;
         }
@@ -1971,8 +1974,8 @@ pub fn build_modified_pdf(
                     bi, b.inner_ctm_at_content.e, b.inner_ctm_at_content.f,
                     b.inner_ctm_at_content.a, b.inner_ctm_at_content.d,
                     b.content.kind_str(), b.straddle_split);
-                if let Some((mnx, mny, mxx, mxy)) = b.path_endpoint_bbox {
-                    eprintln!("    path_endpoint_bbox: x=[{:.3}..{:.3}] y_up=[{:.3}..{:.3}] (w={:.3} h={:.3})",
+                if let Some((mnx, mny, mxx, mxy)) = b.path_endpoint_rect {
+                    eprintln!("    path_endpoint_rect: x=[{:.3}..{:.3}] y_up=[{:.3}..{:.3}] (w={:.3} h={:.3})",
                         mnx, mxx, mny, mxy, mxx - mnx, mxy - mny);
                     let img_right = b.inner_ctm_at_content.e + b.inner_ctm_at_content.a;
                     let img_top = b.inner_ctm_at_content.f + b.inner_ctm_at_content.d;
@@ -2035,7 +2038,7 @@ pub fn build_modified_pdf(
                     continue;
                 }
                 // Prefer the path-endpoint bbox (geometric clip).
-                let block_bbox_up = match block.path_endpoint_bbox {
+                let block_bbox_up = match block.path_endpoint_rect {
                     Some(b) => b,
                     None => {
                         // Image with no clip path — use ctm.e/f and

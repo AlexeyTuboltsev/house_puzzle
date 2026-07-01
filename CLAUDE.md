@@ -1,3 +1,51 @@
+# ⚠️⚠️⚠️  NO BBOX. EVER.  ⚠️⚠️⚠️
+
+## BBOX IS VERBOTEN IN THIS CODEBASE
+
+There must be **NO** use of bounding-box (bbox, BBox, BBOX, bounding
+rect, AABB, x/y/w/h-as-a-tuple, "same integer bbox key", etc.) as an
+**identity, equivalence, dedup, containment, coverage, adjacency,
+pre-filter, or fast-path** signal — under ANY circumstance, ANYWHERE
+in the code.
+
+Every recurring class of bug on this project for the last several
+days has traced back to bbox being used where polygon geometry (or
+some other shape-aware test) should have been used:
+
+- Same-bbox ≠ same brick (triangles filling opposite halves of a
+  square share a bbox but are distinct shapes).
+- Same-bbox ≠ covered brick (same reason).
+- Same-bbox ≠ duplicate outline (`bezier_merge` dedup made this
+  exact mistake and dropped one outline per triangle pair).
+- Same-bbox integer-pixel key ≠ same identity (`ai_parser` DUPLICATE_BBOX
+  warning, `commands.rs` hash-of-(x,y,w,h) brick IDs — both wrong).
+
+**If you catch yourself writing a bbox-based comparison, STOP.** Use:
+- The full polygon (point-in-polygon, polygon intersection, polygon
+  vertex sets, polygon centroid).
+- The bezier signature (centroid, tessellated shape).
+- The AI layer name / AI raster placement matrix / any other
+  intrinsic identity.
+- A UUID (for object identity — never derive an ID from any object
+  property or its position in an array; see the ID rule below).
+
+**Positional data** (a brick's `x, y, width, height` fields, a piece's
+`x, y, width, height`) is legitimate — that's a FACT about where the
+thing sits on the canvas, not an equivalence claim. But the moment
+you see two objects being compared by any of those numbers, you are
+about to reintroduce this class of bug. Don't.
+
+## ID RULE
+
+Object IDs (bricks, pieces, exports, sessions, …) must be **random
+UUIDs**. Never derive an ID from a hash of the object's properties,
+from its layer name, from its position in an array, from a timestamp,
+or from anything but a fresh `uuid::Uuid::new_v4()`. Determinism
+across runs, if needed, comes from sorting by geometry — never from
+sorting IDs.
+
+---
+
 ## Tool Usage Rules — Always Follow
 
 ### Code Analysis
