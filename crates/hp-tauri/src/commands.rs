@@ -420,7 +420,7 @@ pub async fn load_pdf(
     let mut brick_polygons: HashMap<String, Vec<[f64; 2]>> = HashMap::new();
     let mut brick_beziers: HashMap<String, Vec<BezierPath>> = HashMap::new();
     let mut brick_layer_names: HashMap<String, String> = HashMap::new();
-    let mut brick_pymu_rects: HashMap<String, (i32, i32, i32, i32)> = HashMap::new();
+    let mut brick_pymu_bboxs: HashMap<String, (i32, i32, i32, i32)> = HashMap::new();
 
     // Session-local UUIDs. IDs must NOT be derived from any property
     // of the brick (position, size, layer name, index in the
@@ -444,7 +444,7 @@ pub async fn load_pdf(
         }
         brick_beziers.insert(id.clone(), bezier_per_brick[i].clone());
         brick_layer_names.insert(id.clone(), p.name.clone());
-        brick_pymu_rects.insert(id, (p.pymu_x, p.pymu_y, p.pymu_w, p.pymu_h));
+        brick_pymu_bboxs.insert(id, (p.pymu_x, p.pymu_y, p.pymu_w, p.pymu_h));
     }
 
     let extract_dir = std::env::temp_dir()
@@ -551,7 +551,7 @@ pub async fn load_pdf(
     // brick_beziers may include spurious clip-mask paths that cause false adjacency).
     let scale = if metadata.render_dpi > 0.0 { metadata.render_dpi / 72.0 } else { 1.0 };
     let min_border_px = 5.0;
-    let _ = &brick_pymu_rects; // kept for diagnostics / future raster adjacency
+    let _ = &brick_pymu_bboxs; // kept for diagnostics / future raster adjacency
     let adj = puzzle::build_adjacency_vector(&bricks, &brick_polygons, 15.0, min_border_px, 2.0);
     let brick_areas = puzzle::compute_polygon_areas(&bricks, &brick_polygons);
 

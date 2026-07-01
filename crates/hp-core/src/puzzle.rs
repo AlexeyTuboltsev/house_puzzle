@@ -337,7 +337,7 @@ pub fn compute_polygon_areas(
 }
 
 /// Compute bounding box for a set of bricks.
-fn compute_piece_rect(brick_ids: &[String], bricks_by_id: &HashMap<&str, &Brick>) -> (i32, i32, i32, i32) {
+fn compute_piece_bbox(brick_ids: &[String], bricks_by_id: &HashMap<&str, &Brick>) -> (i32, i32, i32, i32) {
     let mut x0 = i32::MAX;
     let mut y0 = i32::MAX;
     let mut x1 = i32::MIN;
@@ -444,8 +444,8 @@ pub fn merge_bricks(
                 .partial_cmp(piece_area.get(b).unwrap_or(&0.0))
                 .unwrap_or(std::cmp::Ordering::Equal);
             cmp_area.then_with(|| {
-                let (ax, ay, _, _) = compute_piece_rect(&pieces_dict[a], &bricks_by_id);
-                let (bx, by, _, _) = compute_piece_rect(&pieces_dict[b], &bricks_by_id);
+                let (ax, ay, _, _) = compute_piece_bbox(&pieces_dict[a], &bricks_by_id);
+                let (bx, by, _, _) = compute_piece_bbox(&pieces_dict[b], &bricks_by_id);
                 (ay, ax).cmp(&(by, bx))
             })
         });
@@ -467,11 +467,11 @@ pub fn merge_bricks(
             nbr_list.sort_by(|a, b| {
                 let (ax, ay, _, _) = pieces_dict
                     .get(a)
-                    .map(|ids| compute_piece_rect(ids, &bricks_by_id))
+                    .map(|ids| compute_piece_bbox(ids, &bricks_by_id))
                     .unwrap_or((i32::MAX, i32::MAX, 0, 0));
                 let (bx, by, _, _) = pieces_dict
                     .get(b)
-                    .map(|ids| compute_piece_rect(ids, &bricks_by_id))
+                    .map(|ids| compute_piece_bbox(ids, &bricks_by_id))
                     .unwrap_or((i32::MAX, i32::MAX, 0, 0));
                 (ay, ax).cmp(&(by, bx))
             });
@@ -495,7 +495,7 @@ pub fn merge_bricks(
                     .chain(pieces_dict[npid].iter())
                     .cloned()
                     .collect();
-                let (_, _, bw, bh) = compute_piece_rect(&merged_ids, &bricks_by_id);
+                let (_, _, bw, bh) = compute_piece_bbox(&merged_ids, &bricks_by_id);
                 let aspect = bw.max(bh) as f64 / bw.min(bh).max(1) as f64;
                 score += target_area * (aspect - 1.0) * 0.3;
 
@@ -576,12 +576,12 @@ pub fn merge_bricks(
     // Merged pieces. Sort by geometric top-left too.
     let mut merged_entries: Vec<(&String, &Vec<String>)> = pieces_dict.iter().collect();
     merged_entries.sort_by(|a, b| {
-        let (ax, ay, _, _) = compute_piece_rect(a.1, &bricks_by_id);
-        let (bx, by, _, _) = compute_piece_rect(b.1, &bricks_by_id);
+        let (ax, ay, _, _) = compute_piece_bbox(a.1, &bricks_by_id);
+        let (bx, by, _, _) = compute_piece_bbox(b.1, &bricks_by_id);
         (ay, ax).cmp(&(by, bx))
     });
     for (_, brick_ids) in merged_entries {
-        let (x, y, w, h) = compute_piece_rect(brick_ids, &bricks_by_id);
+        let (x, y, w, h) = compute_piece_bbox(brick_ids, &bricks_by_id);
         result.push(PuzzlePiece {
             id: uuid::Uuid::new_v4().to_string()[..8].to_string(),
             brick_ids: brick_ids.clone(),

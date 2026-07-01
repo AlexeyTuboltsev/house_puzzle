@@ -1208,7 +1208,7 @@ mod tests {
         }
     }
 
-    fn ring_rect(pts: &[[f64; 2]]) -> (f64, f64, f64, f64) {
+    fn ring_bbox(pts: &[[f64; 2]]) -> (f64, f64, f64, f64) {
         let mut x0 = f64::INFINITY;
         let mut y0 = f64::INFINITY;
         let mut x1 = f64::NEG_INFINITY;
@@ -1230,7 +1230,7 @@ mod tests {
         let r = rect(0.0, 0.0, 10.0, 10.0);
         let merged = merge_piece_bezier(&[r]);
         assert_eq!(merged.len(), 1, "single brick should produce one outline path");
-        let (x0, y0, x1, y1) = ring_rect(&merged[0].tessellate(8));
+        let (x0, y0, x1, y1) = ring_bbox(&merged[0].tessellate(8));
         assert!((x0 - 0.0).abs() < 0.5);
         assert!((y0 - 0.0).abs() < 0.5);
         assert!((x1 - 10.0).abs() < 0.5);
@@ -1250,7 +1250,7 @@ mod tests {
             merged.len(), 1,
             "two adjacent rectangles should merge into a single outline path, got {}", merged.len()
         );
-        let (x0, y0, x1, y1) = ring_rect(&merged[0].tessellate(8));
+        let (x0, y0, x1, y1) = ring_bbox(&merged[0].tessellate(8));
         assert!((x0 - 0.0).abs() < 0.5, "bbox left should be 0, got {x0}");
         assert!((x1 - 20.0).abs() < 0.5, "bbox right should be 20, got {x1}");
         assert!((y0 - 0.0).abs() < 0.5);

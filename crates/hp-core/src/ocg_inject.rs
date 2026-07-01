@@ -123,7 +123,7 @@ pub struct BrickBlock {
     /// pymu space (after the constant bleed shift). Used for sub-pixel
     /// bleed detection, free of alpha-bleed asymmetry bias.
     /// Layout: `(min_x, min_y, max_x, max_y)`.
-    pub path_endpoint_rect: Option<(f64, f64, f64, f64)>,
+    pub path_endpoint_bbox: Option<(f64, f64, f64, f64)>,
     /// If the q…Q crossed an OCG boundary (e.g. /OC /bricks EMC'd
     /// inside the block and then /OC /lights BDC pushed before Q), the
     /// indices of those BDC/EMC operators so the rewrite layer can
@@ -255,7 +255,7 @@ pub fn walk_page_bricks(doc: &Document, page_id: ObjectId) -> Result<Vec<BrickBl
                         inner_ctm_at_content: prev,
                         content: BrickContent::Inlined,
                         path_centroid: None,
-                        path_endpoint_rect: None,
+                        path_endpoint_bbox: None,
                         straddle_split: None,
                         layer_ocg_name,
                     });
@@ -308,7 +308,7 @@ pub fn walk_page_bricks(doc: &Document, page_id: ObjectId) -> Result<Vec<BrickBl
                                 if *y < min_y { min_y = *y; }
                                 if *y > max_y { max_y = *y; }
                             }
-                            block.path_endpoint_rect = Some((min_x, min_y, max_x, max_y));
+                            block.path_endpoint_bbox = Some((min_x, min_y, max_x, max_y));
                         }
                         // Straddle split if BDC nesting changed and we
                         // saw exactly one EMC + one BDC inside.
@@ -842,7 +842,7 @@ pub fn match_blocks_to_bricks(
     // clearly owns. The bbox is a safe envelope: every part of the
     // brick is inside the bbox by definition.
     // NO BBOX. Polygon-centroid matching for the follow-up passes
-    // below — same-centroid means same drawing; a `path_endpoint_rect`-
+    // below — same-centroid means same drawing; a `path_endpoint_bbox`-
     // equality test would collapse Berlin-01's triangle pairs (which
     // share bbox but not centroid).
     let poly_centroids: Vec<Option<(f64, f64)>> = polygons
@@ -1974,8 +1974,8 @@ pub fn build_modified_pdf(
                     bi, b.inner_ctm_at_content.e, b.inner_ctm_at_content.f,
                     b.inner_ctm_at_content.a, b.inner_ctm_at_content.d,
                     b.content.kind_str(), b.straddle_split);
-                if let Some((mnx, mny, mxx, mxy)) = b.path_endpoint_rect {
-                    eprintln!("    path_endpoint_rect: x=[{:.3}..{:.3}] y_up=[{:.3}..{:.3}] (w={:.3} h={:.3})",
+                if let Some((mnx, mny, mxx, mxy)) = b.path_endpoint_bbox {
+                    eprintln!("    path_endpoint_bbox: x=[{:.3}..{:.3}] y_up=[{:.3}..{:.3}] (w={:.3} h={:.3})",
                         mnx, mxx, mny, mxy, mxx - mnx, mxy - mny);
                     let img_right = b.inner_ctm_at_content.e + b.inner_ctm_at_content.a;
                     let img_top = b.inner_ctm_at_content.f + b.inner_ctm_at_content.d;
@@ -2038,7 +2038,7 @@ pub fn build_modified_pdf(
                     continue;
                 }
                 // Prefer the path-endpoint bbox (geometric clip).
-                let block_bbox_up = match block.path_endpoint_rect {
+                let block_bbox_up = match block.path_endpoint_bbox {
                     Some(b) => b,
                     None => {
                         // Image with no clip path — use ctm.e/f and

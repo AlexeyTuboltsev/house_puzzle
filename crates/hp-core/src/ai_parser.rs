@@ -1029,7 +1029,7 @@ pub fn parse_ai(
     let t0 = std::time::Instant::now();
     struct RawPlacement<'a> {
         child: &'a LayerBlock,
-        pymu_rect: (f64, f64, f64, f64), // x0, y_top, x1, y_bottom
+        pymu_bbox: (f64, f64, f64, f64), // x0, y_top, x1, y_bottom
         layer_type: String,
     }
 
@@ -1056,7 +1056,7 @@ pub fn parse_ai(
                     let ltype = if has_vector { "mixed_brick" } else { "brick" };
                     return Some(RawPlacement {
                         child,
-                        pymu_rect: (pymu_x0, pymu_y_top, pymu_x1, pymu_y_bottom),
+                        pymu_bbox: (pymu_x0, pymu_y_top, pymu_x1, pymu_y_bottom),
                         layer_type: ltype.to_string(),
                     });
                 }
@@ -1071,7 +1071,7 @@ pub fn parse_ai(
                 let pymu_y_bottom = y_base - ai_ymin;
                 return Some(RawPlacement {
                     child,
-                    pymu_rect: (pymu_x0, pymu_y_top, pymu_x1, pymu_y_bottom),
+                    pymu_bbox: (pymu_x0, pymu_y_top, pymu_x1, pymu_y_bottom),
                     layer_type: "vector_brick".to_string(),
                 });
             }
@@ -1094,10 +1094,10 @@ pub fn parse_ai(
     eprintln!("[parse_ai] placements: {:?} ({} bricks)", t0.elapsed(), placements.len());
 
     // Compute clip rect and scale
-    let all_x0: Vec<f64> = placements.iter().map(|p| p.pymu_rect.0).collect();
-    let all_y0: Vec<f64> = placements.iter().map(|p| p.pymu_rect.1).collect();
-    let all_x1: Vec<f64> = placements.iter().map(|p| p.pymu_rect.2).collect();
-    let all_y1: Vec<f64> = placements.iter().map(|p| p.pymu_rect.3).collect();
+    let all_x0: Vec<f64> = placements.iter().map(|p| p.pymu_bbox.0).collect();
+    let all_y0: Vec<f64> = placements.iter().map(|p| p.pymu_bbox.1).collect();
+    let all_x1: Vec<f64> = placements.iter().map(|p| p.pymu_bbox.2).collect();
+    let all_y1: Vec<f64> = placements.iter().map(|p| p.pymu_bbox.3).collect();
 
     let page_rect = mupdf_ffi::page_mediabox(&page);
     let clip_x0 = all_x0.iter().cloned().fold(f64::INFINITY, f64::min).max(0.0);
@@ -1169,10 +1169,10 @@ pub fn parse_ai(
     let keep_idx: Vec<usize> = (0..placements.len()).collect();
     let mut bbox_px: Vec<(i32, i32, i32, i32)> = Vec::with_capacity(placements.len());
     for p in &placements {
-        let px = ((p.pymu_rect.0 - clip_x0) * scale).round() as i32;
-        let py = ((p.pymu_rect.1 - clip_y0) * scale).round() as i32;
-        let pw = ((p.pymu_rect.2 - p.pymu_rect.0) * scale).round().max(1.0) as i32;
-        let ph = ((p.pymu_rect.3 - p.pymu_rect.1) * scale).round().max(1.0) as i32;
+        let px = ((p.pymu_bbox.0 - clip_x0) * scale).round() as i32;
+        let py = ((p.pymu_bbox.1 - clip_y0) * scale).round() as i32;
+        let pw = ((p.pymu_bbox.2 - p.pymu_bbox.0) * scale).round().max(1.0) as i32;
+        let ph = ((p.pymu_bbox.3 - p.pymu_bbox.1) * scale).round().max(1.0) as i32;
         bbox_px.push((px, py, pw, ph));
     }
 
