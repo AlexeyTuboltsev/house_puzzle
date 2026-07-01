@@ -497,7 +497,6 @@ fn edges_of(paths: &[BezierPath]) -> Vec<Edge> {
 /// `to == start` point.
 fn dedup_subpaths(paths: &[BezierPath]) -> Vec<BezierPath> {
     // Tolerances for shape-signature matching.
-    const BBOX_TOL: f64 = 6.0;
     const AREA_REL_TOL: f64 = 0.05;
     const PERIMETER_REL_TOL: f64 = 0.05;
     // Drop sub-paths smaller than this — they are AI artifacts (zero-length
@@ -506,33 +505,47 @@ fn dedup_subpaths(paths: &[BezierPath]) -> Vec<BezierPath> {
     const MIN_AREA: f64 = 10.0;
     const TESS_SAMPLES: usize = 12;
 
+    // The centroid catches shape-identity where the bbox / area /
+    // perimeter can't — two triangles filling opposite halves of a
+    // square share bbox, area, and perimeter but not centroid.
+    // Tolerance small enough to distinguish the halves of a 21-px
+    // brick (centroid drift ~5 px between halves) but big enough to
+    // tolerate the sub-pixel float noise from `tessellate`.
+    const CENTROID_TOL: f64 = 1.5;
     struct Sig {
-        bbox: [f64; 4], // min_x, min_y, max_x, max_y
-        area: f64,      // unsigned tessellated polygon area
-        perimeter: f64, // tessellated polyline length
+        area: f64,       // unsigned tessellated polygon area
+        perimeter: f64,  // tessellated polyline length
+        centroid: [f64; 2],
     }
 
     let signature = |path: &BezierPath| -> Option<Sig> {
         let poly = path.tessellate(TESS_SAMPLES);
         if poly.len() < 3 { return None; }
-        let (mut x0, mut y0) = (f64::INFINITY, f64::INFINITY);
-        let (mut x1, mut y1) = (f64::NEG_INFINITY, f64::NEG_INFINITY);
-        for v in &poly {
-            x0 = x0.min(v[0]); y0 = y0.min(v[1]);
-            x1 = x1.max(v[0]); y1 = y1.max(v[1]);
-        }
+        // Signed shoelace area + weighted-centroid formula.
         let mut area2 = 0.0_f64;
+        let mut cx = 0.0_f64;
+        let mut cy = 0.0_f64;
         let mut perim = 0.0_f64;
         for i in 0..poly.len() {
             let a = poly[i];
             let b = poly[(i + 1) % poly.len()];
-            area2 += a[0] * b[1] - a[1] * b[0];
+            let cross = a[0] * b[1] - a[1] * b[0];
+            area2 += cross;
+            cx += (a[0] + b[0]) * cross;
+            cy += (a[1] + b[1]) * cross;
             let dx = b[0] - a[0]; let dy = b[1] - a[1];
             perim += (dx * dx + dy * dy).sqrt();
         }
         let area = area2.abs() * 0.5;
         if area < MIN_AREA { return None; }
-        Some(Sig { bbox: [x0, y0, x1, y1], area, perimeter: perim })
+        let (centroid_x, centroid_y) = if area2.abs() > 1e-9 {
+            (cx / (3.0 * area2), cy / (3.0 * area2))
+        } else {
+            // Degenerate: fall back to mean of tessellated points.
+            let (sx, sy) = poly.iter().fold((0.0, 0.0), |(sx, sy), v| (sx + v[0], sy + v[1]));
+            (sx / poly.len() as f64, sy / poly.len() as f64)
+        };
+        Some(Sig { area, perimeter: perim, centroid: [centroid_x, centroid_y] })
     };
 
     let mut seen: Vec<Sig> = Vec::new();
@@ -540,12 +553,14 @@ fn dedup_subpaths(paths: &[BezierPath]) -> Vec<BezierPath> {
     for path in paths {
         let Some(sig) = signature(path) else { continue; };
         let dup = seen.iter().any(|s| {
-            // bbox match: every corner within BBOX_TOL.
-            let bbox_match = (sig.bbox[0] - s.bbox[0]).abs() < BBOX_TOL
-                && (sig.bbox[1] - s.bbox[1]).abs() < BBOX_TOL
-                && (sig.bbox[2] - s.bbox[2]).abs() < BBOX_TOL
-                && (sig.bbox[3] - s.bbox[3]).abs() < BBOX_TOL;
-            if !bbox_match { return false; }
+            // Centroid distance rules first — two paths with the same
+            // area & perimeter but different centroids (Berlin's
+            // triangle halves) are DIFFERENT shapes.
+            let dcx = sig.centroid[0] - s.centroid[0];
+            let dcy = sig.centroid[1] - s.centroid[1];
+            if (dcx * dcx + dcy * dcy).sqrt() > CENTROID_TOL {
+                return false;
+            }
             let area_max = sig.area.max(s.area).max(1e-6);
             let area_match = (sig.area - s.area).abs() / area_max < AREA_REL_TOL;
             let perim_max = sig.perimeter.max(s.perimeter).max(1e-6);
@@ -618,13 +633,6 @@ fn edge_tangent_at_end(e: &Edge) -> [f64; 2] {
 fn normalize(v: [f64; 2]) -> [f64; 2] {
     let len = (v[0] * v[0] + v[1] * v[1]).sqrt();
     if len < 1e-12 { [1.0, 0.0] } else { [v[0] / len, v[1] / len] }
-}
-
-/// Counter-clockwise angle from `a` to `b`, in radians (−π, π].
-fn turn_ccw(a: [f64; 2], b: [f64; 2]) -> f64 {
-    let cross = a[0] * b[1] - a[1] * b[0];
-    let dot = a[0] * b[0] + a[1] * b[1];
-    cross.atan2(dot)
 }
 
 /// Find `t ∈ (0, 1)` at which the cubic is closest to `v`. Returns
@@ -888,7 +896,18 @@ pub fn merge_piece_bezier(brick_paths: &[BezierPath]) -> Vec<BezierPath> {
     // bricks store their outer outline twice; without this pre-pass every
     // edge appears ≥ 2× and gets dropped as "internal".
     let deduped = dedup_subpaths(brick_paths);
-    let brick_paths: &[BezierPath] = &deduped;
+
+    // Drop hole sub-paths — an inner "glass" ring inside a "window frame"
+    // ring, standard compound-path convention. AI encodes holes with
+    // opposite winding sign from the outer ring, but that convention is
+    // artist-drift-prone, so use pure geometric containment: any sub-path
+    // whose centroid lies strictly inside a larger sub-path is a hole.
+    // Without this, Berlin-01's window bricks (e.g. Layer 298) emit their
+    // GLASS ring as an outline because the frame's outer edges cancel
+    // with the neighbour bricks in the piece but the glass ring has
+    // nothing to cancel against.
+    let brick_paths_owned: Vec<BezierPath> = drop_hole_paths(&deduped);
+    let brick_paths: &[BezierPath] = &brick_paths_owned;
 
     let raw: Vec<Edge> = edges_of(brick_paths);
     if raw.is_empty() {
@@ -932,13 +951,45 @@ pub fn merge_piece_bezier(brick_paths: &[BezierPath]) -> Vec<BezierPath> {
         *entry.entry(e.source).or_insert(0) += direction_sign(e);
     }
 
+    // Detect duplicate SOURCES. Two sources are duplicates iff their
+    // edge-set signatures match (same canonical edges, same directions,
+    // once each). Berlin-01's 92 mixed_brick pairs land here — same
+    // rectangle bezier from both bricks in a pair. If we let both
+    // contribute to bucket accumulation, they double-count every edge
+    // and the sum-of-abs test drops all of them as internal, wiping
+    // out whole outline regions. Fix: keep exactly ONE representative
+    // per duplicate group; the others are ignored for the outer-edge
+    // decision. Adjacent bricks (opposite traversal directions on the
+    // shared edge) still cancel correctly.
+    use std::collections::BTreeSet as StdBTreeSet;
+    let mut source_sig: BTreeMap<u32, StdBTreeSet<(EdgeKey, i32)>> = BTreeMap::new();
+    for e in &all {
+        source_sig
+            .entry(e.source)
+            .or_insert_with(StdBTreeSet::new)
+            .insert((e.key(BEZIER_TOL), direction_sign(e)));
+    }
+    let mut sig_first_source: std::collections::HashMap<StdBTreeSet<(EdgeKey, i32)>, u32> =
+        std::collections::HashMap::new();
+    let mut dup_sources: StdBTreeSet<u32> = StdBTreeSet::new();
+    for (src, sig) in &source_sig {
+        if let Some(prev) = sig_first_source.get(sig) {
+            let _ = prev;
+            dup_sources.insert(*src);
+        } else {
+            sig_first_source.insert(sig.clone(), *src);
+        }
+    }
+
     // Per bucket, decide outer or shared and emit at most ONE
-    // representative edge per non-shared bucket. For a bucket with
-    // multiple contributions but effective=1 (e.g., NY7 b027 where
-    // b027's outer-bottom and notch-interior cancel within b027,
-    // leaving b022's contribution), we emit just one edge — the next
-    // walk needs a single canonical edge per geometric line, not the
-    // raw set of contributions from every source.
+    // representative edge per non-shared bucket. Sources marked as
+    // duplicates above are excluded from the sum: their brother is
+    // already accounted for. For a bucket with multiple non-duplicate
+    // contributions but effective=1 (e.g., NY7 b027 where b027's
+    // outer-bottom and notch-interior cancel within b027, leaving
+    // b022's contribution), we emit just one edge — the walk needs
+    // one canonical edge per geometric line, not the raw set of
+    // contributions from every source.
     let mut bucket_decision: BTreeMap<EdgeKey, bool /* keep as outer */> = BTreeMap::new();
     let mut all_keys: Vec<EdgeKey> = bucket_sources.keys().cloned().collect();
     all_keys.sort();
@@ -947,6 +998,7 @@ pub fn merge_piece_bezier(brick_paths: &[BezierPath]) -> Vec<BezierPath> {
         for kv in key_variants(k) {
             if let Some(srcs) = bucket_sources.get(&kv) {
                 for (src, net) in srcs {
+                    if dup_sources.contains(src) { continue; }
                     *combined.entry(*src).or_insert(0) += net;
                 }
             }
@@ -1052,10 +1104,8 @@ pub fn merge_piece_bezier(brick_paths: &[BezierPath]) -> Vec<BezierPath> {
     // path rather than two disjoint loops.
     let loops = merge_loops_at_shared_vertex(loops);
 
-    // Drop interior loops (compound-path holes / cut-outs). A loop whose
-    // bbox is strictly contained in another loop's bbox is treated as an
-    // inner loop. For disconnected-but-separate components, bboxes don't
-    // nest, so both are kept.
+    // Drop interior loops (compound-path holes / cut-outs) — pure
+    // point-in-polygon containment, no bbox.
     drop_contained_loops(loops)
 }
 
@@ -1128,58 +1178,67 @@ fn rotate_loop(loop_: &BezierPath, vertex_idx: usize) -> BezierPath {
     BezierPath { start: new_start, segments: new_segs }
 }
 
-/// Approximate signed area of a closed bezier path via the chord polygon.
-fn bezier_signed_area(bp: &BezierPath) -> f64 {
-    let mut pts: Vec<[f64; 2]> = Vec::with_capacity(bp.segments.len() + 1);
-    pts.push(bp.start);
-    for s in &bp.segments {
-        pts.push(s.end());
+/// Drop compound-path hole sub-paths from the INPUT to the piece merge.
+///
+/// For a window brick the artist typically stores two sub-paths in a
+/// compound path: the outer frame and the inner glass. Standard AI
+/// convention flips winding for the hole. We use pure containment
+/// (centroid inside another ring) rather than winding sign — cheaper
+/// than trusting the artist's winding, and correct on Berlin-01.
+///
+/// The check is O(N²) over sub-path count within a single piece —
+/// typically < 5 per brick and the piece has tens of bricks, so this
+/// is fine and doesn't need any spatial index.
+fn drop_hole_paths(paths: &[BezierPath]) -> Vec<BezierPath> {
+    if paths.len() < 2 { return paths.to_vec(); }
+    // Pre-tessellate every ring + its centroid.
+    let tessellations: Vec<Vec<[f64; 2]>> = paths.iter().map(|bp| bp.tessellate(16)).collect();
+    let areas: Vec<f64> = tessellations.iter().map(|ring| {
+        if ring.len() < 3 { return 0.0; }
+        let mut a2 = 0.0_f64;
+        let n = ring.len();
+        for i in 0..n {
+            let (xa, ya) = (ring[i][0], ring[i][1]);
+            let (xb, yb) = (ring[(i + 1) % n][0], ring[(i + 1) % n][1]);
+            a2 += xa * yb - xb * ya;
+        }
+        a2.abs() * 0.5
+    }).collect();
+    let centroids: Vec<[f64; 2]> = tessellations.iter().map(|ring| {
+        if ring.is_empty() { return [0.0, 0.0]; }
+        let (sx, sy) = ring.iter().fold((0.0, 0.0), |(sx, sy), v| (sx + v[0], sy + v[1]));
+        [sx / ring.len() as f64, sy / ring.len() as f64]
+    }).collect();
+    let mut is_hole = vec![false; paths.len()];
+    for j in 0..paths.len() {
+        if tessellations[j].len() < 3 { continue; }
+        for i in 0..paths.len() {
+            if i == j { continue; }
+            if tessellations[i].len() < 3 { continue; }
+            // Only larger rings can contain smaller ones.
+            if areas[i] <= areas[j] { continue; }
+            if point_in_ring(centroids[j], &tessellations[i]) {
+                is_hole[j] = true;
+                break;
+            }
+        }
     }
-    if pts.len() < 3 { return 0.0; }
-    let mut a = 0.0;
-    let n = pts.len();
-    for i in 0..n {
-        let j = (i + 1) % n;
-        a += pts[i][0] * pts[j][1] - pts[j][0] * pts[i][1];
-    }
-    a / 2.0
-}
-
-fn loop_bbox(bp: &BezierPath) -> [f64; 4] {
-    let mut mn = [f64::INFINITY; 2];
-    let mut mx = [f64::NEG_INFINITY; 2];
-    let mut upd = |p: [f64; 2]| {
-        if p[0] < mn[0] { mn[0] = p[0]; }
-        if p[1] < mn[1] { mn[1] = p[1]; }
-        if p[0] > mx[0] { mx[0] = p[0]; }
-        if p[1] > mx[1] { mx[1] = p[1]; }
-    };
-    upd(bp.start);
-    for s in &bp.segments { upd(s.end()); }
-    [mn[0], mn[1], mx[0], mx[1]]
+    paths.iter().zip(is_hole.into_iter())
+        .filter_map(|(bp, hole)| if hole { None } else { Some(bp.clone()) })
+        .collect()
 }
 
 /// Drop interior-hole loops via point-in-polygon containment.
 ///
 /// A loop `j` is dropped if a representative point on `j` (its average
-/// vertex) lies strictly inside some other loop `i`. This is the right
-/// check for compound bricks where an inner frame's bbox is almost equal
-/// to the outer's bbox (so a strict-bbox-inside test would miss it) yet
-/// the inner shape sits geometrically within the outer.
-///
-/// The polygon containment uses ray casting against a tessellation of the
-/// reference loop. Bezier curves are sampled densely enough (16 points per
-/// cubic) for the ray cast to be accurate to ≪ 1 pymu — way below the
-/// scale of any feature that matters.
+/// vertex) lies strictly inside some other loop `i` — a pure polygon
+/// ray-cast test, NO bbox pre-filter (bbox is verboten in this
+/// codebase; the tessellated ring is already cheap enough to test
+/// against directly).
 fn drop_contained_loops(loops: Vec<BezierPath>) -> Vec<BezierPath> {
     if loops.len() < 2 { return loops; }
 
-    // Pre-compute one tessellated polygon and one representative interior
-    // point per loop. The "representative" is the centroid of the
-    // tessellation, which lands inside any simple non-self-intersecting
-    // polygon for our purposes (brick outlines + inner frames).
     let polys: Vec<Vec<[f64; 2]>> = loops.iter().map(|l| l.tessellate(16)).collect();
-    let bboxes: Vec<[f64; 4]> = loops.iter().map(loop_bbox).collect();
     let reps: Vec<[f64; 2]> = polys
         .iter()
         .map(|pts| {
@@ -1195,17 +1254,8 @@ fn drop_contained_loops(loops: Vec<BezierPath>) -> Vec<BezierPath> {
     for j in 0..loops.len() {
         if !keep[j] { continue; }
         let pt = reps[j];
-        let bj = &bboxes[j];
         for i in 0..loops.len() {
             if i == j || !keep[i] { continue; }
-            // A loop can only contain another whose bbox is fully inside
-            // its own — cheap reject before the ray cast.
-            let bi = &bboxes[i];
-            if bj[0] < bi[0] - BEZIER_TOL || bj[1] < bi[1] - BEZIER_TOL
-                || bj[2] > bi[2] + BEZIER_TOL || bj[3] > bi[3] + BEZIER_TOL
-            {
-                continue;
-            }
             if point_in_ring(pt, &polys[i]) {
                 keep[j] = false;
                 break;

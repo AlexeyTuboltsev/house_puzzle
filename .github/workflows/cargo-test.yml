@@ -1,0 +1,45 @@
+name: Rust tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Canary tests in `crates/hp-core/tests/canary_composite.rs`
+          # need the proprietary `in/_NY*.ai` source files, which live
+          # in git-LFS.
+          lfs: true
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      # mupdf-sys needs a C toolchain + a couple of dev libs; the Tauri
+      # build workflow installs the same set for the desktop app.
+      - name: Install Linux deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libclang-dev libfontconfig1-dev libfreetype6-dev pkg-config
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ./
+
+      # Canary composite tests in `crates/hp-core/tests/canary_*.rs`
+      # render real `in/_NY*.ai` files and assert pixel fingerprints
+      # of the resulting `composite.png`. Their inputs come from
+      # git-LFS (see the LFS-aware checkout above) and auto-skip if
+      # the AI file isn't present, so the workflow stays green on a
+      # forked checkout where the user hasn't enabled LFS.
+      - name: cargo test (hp-core)
+        run: cargo test --release -p hp-core --lib --tests

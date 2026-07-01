@@ -166,8 +166,6 @@ pub fn render_brick_images_hybrid(
     ocg_fallback: &RgbaImage,
 ) -> HashMap<String, RgbaImage> {
     let result = Mutex::new(HashMap::new());
-    let mut raster_count = 0u32;
-    let mut vector_count = 0u32;
 
     bricks.par_iter().for_each(|(id, bp)| {
         // Try direct raster extraction first
@@ -205,8 +203,7 @@ pub fn render_brick_images_hybrid(
     });
 
     let r = result.into_inner().unwrap();
-    let rc = r.values().filter(|_| true).count(); // just to count
-    eprintln!("[hybrid] {} bricks total ({} would be raster-direct)", r.len(), r.len());
+    eprintln!("[hybrid] {} bricks rendered", r.len());
     r
 }
 
@@ -215,71 +212,12 @@ pub fn save_composite(bricks_layer_img: &RgbaImage, out_path: &Path) {
     bricks_layer_img.save(out_path).ok();
 }
 
-/// Find covered bricks using in-memory images (no disk I/O).
-/// Find bricks that are covered by another (>= 80% alpha overlap).
-/// `protected_ids`: bricks that should never be removed (e.g., vector bricks).
-pub fn find_covered_bricks(
-    bricks: &[crate::types::Brick],
-    brick_images: &HashMap<String, RgbaImage>,
-    protected_ids: &std::collections::HashSet<String>,
-) -> std::collections::HashSet<String> {
-    let mut covered = std::collections::HashSet::new();
-
-    for i in 0..bricks.len() {
-        let a = &bricks[i];
-        if covered.contains(&a.id) { continue; }
-
-        for j in (i + 1)..bricks.len() {
-            let b = &bricks[j];
-            if covered.contains(&b.id) { continue; }
-
-            // Bbox overlap check
-            if a.x >= b.right() || b.x >= a.right() || a.y >= b.bottom() || b.y >= a.bottom() {
-                continue;
-            }
-
-            let (small, big) = if a.area() <= b.area() { (a, b) } else { (b, a) };
-
-            let img_s = match brick_images.get(&small.id) { Some(i) => i, None => continue };
-            let img_b = match brick_images.get(&big.id) { Some(i) => i, None => continue };
-
-            let mut overlap = 0u64;
-            let mut total_s = 0u64;
-
-            // Only check the overlap region
-            let ox0 = small.x.max(big.x) as u32;
-            let oy0 = small.y.max(big.y) as u32;
-            let ox1 = small.right().min(big.right()) as u32;
-            let oy1 = small.bottom().min(big.bottom()) as u32;
-
-            // Also count total opaque in small
-            for y in small.y as u32..small.bottom() as u32 {
-                for x in small.x as u32..small.right() as u32 {
-                    if x < img_s.width() && y < img_s.height() && img_s.get_pixel(x, y)[3] > 30 {
-                        total_s += 1;
-                        if x >= ox0 && x < ox1 && y >= oy0 && y < oy1 {
-                            if x < img_b.width() && y < img_b.height() && img_b.get_pixel(x, y)[3] > 30 {
-                                overlap += 1;
-                            }
-                        }
-                    }
-                }
-            }
-
-            if total_s > 0 {
-                let pct = overlap as f64 / total_s as f64;
-                // Skip small bricks — rendering differences between image crate
-                // and PIL can cause false 100% overlap for small details
-                let is_small = total_s < 300;
-                if pct >= 0.98 && !is_small && !protected_ids.contains(&small.id) {
-                    covered.insert(small.id.clone());
-                }
-            }
-        }
-    }
-
-    covered
-}
+// `find_covered_bricks` was removed. Its purpose was to hide bricks
+// whose visible pixels sat entirely under another brick — the artist-
+// duplicate pattern. That case is now caught upstream by the AI
+// validator (`tools/ai-validate`), and the runtime cost (O(N²) with a
+// full pixel scan per pair — ~120 M pixel probes on Berlin) wasn't
+// worth it.
 
 
 /// Expand a polygon by `amount` pixels using geo-clipper offset.
@@ -315,48 +253,1151 @@ fn expand_polygon(pts: &[[f64; 2]], amount: f64) -> Vec<[f64; 2]> {
 pub fn render_piece_pngs_from_composite(
     pieces: &[crate::types::PuzzlePiece],
     composite: &RgbaImage,
-    piece_polygons: &HashMap<String, Vec<[f64; 2]>>,
+    piece_polygons: &HashMap<String, Vec<Vec<[f64; 2]>>>,
     extract_dir: &Path,
-) {
+) -> Vec<crate::types::PuzzlePiece> {
     std::fs::create_dir_all(extract_dir).ok();
-    pieces.par_iter().for_each(|piece| {
-        let pw = piece.width.max(1) as u32;
-        let ph = piece.height.max(1) as u32;
-        let mut piece_img = RgbaImage::new(pw, ph);
+    pieces
+        .par_iter()
+        .map(|piece| {
+            let pw = piece.width.max(1) as u32;
+            let ph = piece.height.max(1) as u32;
+            let mut piece_img = RgbaImage::new(pw, ph);
 
-        // Get piece polygon (union of brick polygons) and expand by 0.5px
-        // so boundary pixels are included by both adjacent pieces.
-        let poly = piece_polygons.get(&piece.id);
-        let expanded = poly.and_then(|pts| {
-            if pts.len() >= 3 { Some(expand_polygon(pts, 0.5)) } else { None }
-        });
+            // Multi-ring piece polygon (one ring per disconnected
+            // component of the brick union). Expand each ring by 0.5px
+            // so boundary pixels are included on both sides of the
+            // shared edge between adjacent pieces.
+            let rings: Option<Vec<Vec<[f64; 2]>>> = piece_polygons.get(&piece.id)
+                .map(|ring_list| ring_list.iter()
+                    .filter(|r| r.len() >= 3)
+                    .map(|r| expand_polygon(r, 0.5))
+                    .collect());
 
-        // Crop composite through the piece polygon mask
-        for dy in 0..ph {
-            for dx in 0..pw {
-                let cx = piece.x + dx as i32;
-                let cy = piece.y + dy as i32;
-                if cx < 0 || cy < 0 { continue; }
-                let sx = cx as u32;
-                let sy = cy as u32;
-                if sx >= composite.width() || sy >= composite.height() { continue; }
+            // Crop composite through the piece polygon mask
+            for dy in 0..ph {
+                for dx in 0..pw {
+                    let cx = piece.x + dx as i32;
+                    let cy = piece.y + dy as i32;
+                    if cx < 0 || cy < 0 {
+                        continue;
+                    }
+                    let sx = cx as u32;
+                    let sy = cy as u32;
+                    if sx >= composite.width() || sy >= composite.height() {
+                        continue;
+                    }
 
-                let in_poly = match &expanded {
-                    Some(pts) => point_in_polygon(cx as f64 + 0.5, cy as f64 + 0.5, pts),
-                    None => true,
-                };
-                if !in_poly { continue; }
+                    let in_poly = match &rings {
+                        Some(rs) if !rs.is_empty() => {
+                            let px = cx as f64 + 0.5;
+                            let py = cy as f64 + 0.5;
+                            rs.iter().any(|r| point_in_polygon(px, py, r))
+                        }
+                        _ => true,
+                    };
+                    if !in_poly {
+                        continue;
+                    }
 
-                let px = composite.get_pixel(sx, sy);
-                if px[3] > 0 {
-                    piece_img.put_pixel(dx, dy, *px);
+                    let px = composite.get_pixel(sx, sy);
+                    if px[3] > 0 {
+                        piece_img.put_pixel(dx, dy, *px);
+                    }
+                }
+            }
+
+            // Trim the canvas to the alpha bbox of what we just painted.
+            //
+            // The input `piece.width × piece.height` is the union of the
+            // piece's brick bboxes. AI layer polygons routinely overshoot
+            // the visible pixels (anchor points outside the rendered shape,
+            // bricks at the edges of the cluster that don't fully tile),
+            // so the union bbox can be 2-3× the size of the actual
+            // content. Untrimmed sprites end up with a large transparent
+            // overhang — visible in the per-piece preview and worst
+            // of all in Unity (the sprite anchor lands on dead
+            // pixels). Cropping to the alpha bbox here makes the PNG
+            // tight to the content, and returning a `PuzzlePiece` with
+            // the same tight bbox lets downstream consumers
+            // (build_house_data) recompute the sprite's centre/anchor
+            // from the trimmed rect — so the sprite stays visually in
+            // the same place.
+            let trimmed_bbox = alpha_bbox(&piece_img);
+
+            let (out_img, new_x, new_y, new_w, new_h) = match trimmed_bbox {
+                Some((tx, ty, tw, th)) if tw > 0 && th > 0 => {
+                    let cropped =
+                        image::imageops::crop_imm(&piece_img, tx, ty, tw, th).to_image();
+                    (
+                        cropped,
+                        piece.x + tx as i32,
+                        piece.y + ty as i32,
+                        tw as i32,
+                        th as i32,
+                    )
+                }
+                // Empty piece — keep the original bbox so downstream
+                // logic still has something coherent to place. The
+                // saved PNG is fully transparent in that case.
+                _ => (piece_img, piece.x, piece.y, pw as i32, ph as i32),
+            };
+
+            out_img
+                .save(extract_dir.join(format!("piece_{}.png", piece.id)))
+                .ok();
+            render_piece_outline(
+                &out_img,
+                &extract_dir.join(format!("piece_outline_{}.png", piece.id)),
+            );
+
+            crate::types::PuzzlePiece {
+                id: piece.id.clone(),
+                brick_ids: piece.brick_ids.clone(),
+                x: new_x,
+                y: new_y,
+                width: new_w,
+                height: new_h,
+            }
+        })
+        .collect()
+}
+
+/// Wrap a canvas-sized image inside a larger transparent canvas of
+/// `(target_w, target_h)`, placing the source at `(offset_x, offset_y)`.
+/// Used by the export to unify the dimensions of every non-piece
+/// asset to a single padded canvas size (the highlight's bounds),
+/// so downstream consumers can layer them without per-asset
+/// placement math.
+fn place_into_padded(
+    src: &RgbaImage,
+    target_w: i32,
+    target_h: i32,
+    offset_x: i32,
+    offset_y: i32,
+) -> RgbaImage {
+    let mut out = RgbaImage::new(target_w.max(1) as u32, target_h.max(1) as u32);
+    image::imageops::overlay(&mut out, src, offset_x as i64, offset_y as i64);
+    out
+}
+
+/// Pixel bbox `(x0, y0, x1, y1)` that contains every vertex of every
+/// ring in `rings`, padded outward by `bleed_px` (for raster soft-mask
+/// alpha overhangs), clamped to `[0, canvas_w] × [0, canvas_h]`.
+///
+/// Falls back to the piece's geometric bbox if no rings are available —
+/// degenerate but safe (the polygon mask later zeros anything outside
+/// the polygon anyway, so a too-wide bbox just costs a few extra ms).
+fn piece_pixel_bbox(
+    rings: Option<&Vec<Vec<[f64; 2]>>>,
+    piece: &crate::types::PuzzlePiece,
+    canvas_w: i32,
+    canvas_h: i32,
+    bleed_px: i32,
+) -> (i32, i32, i32, i32) {
+    let (mut mn_x, mut mn_y, mut mx_x, mut mx_y) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
+    let mut have_any = false;
+    if let Some(rs) = rings {
+        for r in rs {
+            for p in r {
+                if p[0] < mn_x { mn_x = p[0]; }
+                if p[1] < mn_y { mn_y = p[1]; }
+                if p[0] > mx_x { mx_x = p[0]; }
+                if p[1] > mx_y { mx_y = p[1]; }
+                have_any = true;
+            }
+        }
+    }
+    if !have_any {
+        // Fall back to the piece's own bbox.
+        mn_x = piece.x as f64;
+        mn_y = piece.y as f64;
+        mx_x = (piece.x + piece.width) as f64;
+        mx_y = (piece.y + piece.height) as f64;
+    }
+    let x0 = ((mn_x.floor() as i32) - bleed_px).max(0);
+    let y0 = ((mn_y.floor() as i32) - bleed_px).max(0);
+    let x1 = ((mx_x.ceil() as i32) + bleed_px).min(canvas_w);
+    let y1 = ((mx_y.ceil() as i32) + bleed_px).min(canvas_h);
+    (x0, y0, x1.max(x0), y1.max(y0))
+}
+
+/// Tight bounding box of all pixels with non-zero alpha. Returns
+/// `(x, y, width, height)` in image-local coords, or `None` when the
+/// image is fully transparent.
+fn alpha_bbox(img: &RgbaImage) -> Option<(u32, u32, u32, u32)> {
+    let w = img.width();
+    let h = img.height();
+    if w == 0 || h == 0 {
+        return None;
+    }
+    let mut min_x = w;
+    let mut min_y = h;
+    let mut max_x = 0_u32;
+    let mut max_y = 0_u32;
+    for y in 0..h {
+        for x in 0..w {
+            if img.get_pixel(x, y)[3] > 0 {
+                if x < min_x {
+                    min_x = x;
+                }
+                if y < min_y {
+                    min_y = y;
+                }
+                if x + 1 > max_x {
+                    max_x = x + 1;
+                }
+                if y + 1 > max_y {
+                    max_y = y + 1;
                 }
             }
         }
+    }
+    if max_x <= min_x || max_y <= min_y {
+        None
+    } else {
+        Some((min_x, min_y, max_x - min_x, max_y - min_y))
+    }
+}
 
-        piece_img.save(extract_dir.join(format!("piece_{}.png", piece.id))).ok();
-        render_piece_outline(&piece_img, &extract_dir.join(format!("piece_outline_{}.png", piece.id)));
-    });
+/// Render each piece by selectively enabling only its bricks' OCGs in
+/// a one-time-injected copy of the source PDF. Output is byte-identical
+/// in format to `render_piece_pngs_from_composite` — same piece_<id>.png
+/// file at the same path, same canvas-relative cropping — but the
+/// pixels come from a clean re-render rather than a polygon-masked
+/// slice of the composite, so adjacent bricks' soft-mask alpha cannot
+/// bleed into a piece's PNG.
+///
+/// Steps:
+///   1. Re-parse the AI to recover the document-order list of parser
+///      bricks (their order is what the matcher uses to bind PDF
+///      blocks to bricks; the in-session `bricks_by_id` is a HashMap
+///      and has lost that order). The parse is cheap relative to the
+///      render that follows.
+///   2. Walk + match + inject — produces a sibling PDF on disk with
+///      one `hp_brick_NNNN` OCG per parser brick + a shared
+///      `hp_decoration` OCG, all defaulting ON so the modified PDF
+///      visually matches the original until we toggle.
+///   3. For each piece, look up the OCG name for every brick id in
+///      its `brick_ids`, then call the MuPDF clipped renderer with
+///      that set of OCGs + `bricks` enabled, every other injected
+///      OCG off. Crop the resulting clip pixmap to the piece's
+///      canvas-relative bbox.
+///
+/// `ai_path` is the original AI; the modified copy is written next to
+/// `extract_dir` and removed before return (live preview keeps using
+/// the original).
+fn render_piece_pngs_via_ocg_isolation(
+    pieces: &[crate::types::PuzzlePiece],
+    piece_polygons: &HashMap<String, Vec<Vec<[f64; 2]>>>,
+    brick_layer_names: &HashMap<String, String>,
+    pieces_dpi: f64,
+    shifted_clip_pts: (f64, f64, f64, f64),
+    new_canvas_w: u32,
+    new_canvas_h: u32,
+    out_dir: &Path,
+    // Pre-loaded by `render_export_pieces` once for the whole export.
+    // Eliminates the duplicate parse_ai + build_modified_pdf + walk +
+    // match the per-piece function used to do on its own.
+    placements: &[crate::ai_parser::BrickPlacement],
+    meta: &crate::ai_parser::ParsedAiMetadata,
+    artifact: &crate::ocg_inject::ModifiedPdfArtifact,
+    doc: &lopdf::Document,
+    blocks: &[crate::ocg_inject::BrickBlock],
+    map: &crate::ocg_inject::BrickBlockMap,
+    page_h_pt: f64,
+) -> anyhow::Result<Vec<crate::types::PuzzlePiece>> {
+    let brick_name_to_idx: HashMap<String, usize> = placements
+        .iter()
+        .enumerate()
+        .map(|(i, p)| (p.name.clone(), i))
+        .collect();
+
+    let modified_pdf_str = artifact
+        .pdf_path
+        .to_str()
+        .ok_or_else(|| anyhow::anyhow!("non-utf8 modified PDF path"))?
+        .to_string();
+
+    // ── Render the whole-house NON-IMAGE content ONCE via MuPDF. We
+    //    enable every per-brick OCG + the inline + decoration OCGs
+    //    but DISABLE `hp_image` — so Image XObject blocks (which sit
+    //    inside both their `hp_brick_NNNN` and the global `hp_image`
+    //    OCGs) hide via PDF's intersection visibility rule, while
+    //    every vector-only block paints normally. The result is the
+    //    full house's vector overlays — window panes, decorations,
+    //    Form blocks — drawn once into a canvas-sized image we can
+    //    crop per piece. This replaces 60 per-piece MuPDF renders
+    //    with one (~15× faster at NY5 export DPI).
+    let mut enabled_non_image: Vec<&str> =
+        Vec::with_capacity(artifact.brick_ocg_names.len() + 3);
+    enabled_non_image.push("bricks");
+    enabled_non_image.push(artifact.inline_ocg_name.as_str());
+    enabled_non_image.push(artifact.decoration_ocg_name.as_str());
+    for n in &artifact.brick_ocg_names {
+        enabled_non_image.push(n.as_str());
+    }
+    let non_image_canvas: Option<RgbaImage> = crate::mupdf_ffi::render_page_with_ocg_set_clipped(
+        &modified_pdf_str, &enabled_non_image, pieces_dpi, Some(shifted_clip_pts),
+    )
+    .and_then(|(rgba, pw, ph)| RgbaImage::from_raw(pw, ph, rgba))
+    .map(|raw| compose_clipped_canvas(&raw, "non-image-all", new_canvas_w, new_canvas_h, (0, 0)));
+
+    // Per-piece work is Image-only: extract this piece's Image blocks
+    // via raster_extract (no MuPDF), crop the global vector canvas to
+    // the piece's pixel bbox, compose, mask, trim.
+    //
+    // Performance: we allocate ONLY a piece-bbox-sized local canvas
+    // instead of cloning the full export canvas per piece. For a
+    // 60-piece NY5 at 300 DPI that's the difference between
+    // 60 × 100 MB = 6 GB and 60 × ~2 MB = 120 MB of allocations.
+    // The mask + alpha_bbox loops scale with bbox area too, so the
+    // per-pixel work drops by 30–50× per piece.
+    let trimmed: Vec<crate::types::PuzzlePiece> = pieces
+        .par_iter()
+        .map(|piece| {
+            // Resolve this piece's parser-brick indices.
+            let piece_brick_idxs: Vec<usize> = piece
+                .brick_ids
+                .iter()
+                .filter_map(|bid| brick_layer_names.get(bid))
+                .filter_map(|name| brick_name_to_idx.get(name).copied())
+                .collect();
+            if piece_brick_idxs.is_empty() {
+                let blank = RgbaImage::new(piece.width.max(1) as u32, piece.height.max(1) as u32);
+                let _ = blank.save(out_dir.join(format!("piece_{}.png", piece.id)));
+                render_piece_outline(
+                    &blank,
+                    &out_dir.join(format!("piece_outline_{}.png", piece.id)),
+                );
+                return piece.clone();
+            }
+
+            // Compute the piece's pixel bbox from its polygon rings,
+            // padded by `BLEED_PX` to capture raster soft-mask alpha
+            // overhangs that extend past the geometric outline. Clamp
+            // to the canvas. Empty/missing polygon falls back to the
+            // piece's own bbox (still polygon-mask-safe — the mask
+            // step zeros everything outside the polygon anyway).
+            const BLEED_PX: i32 = 64;
+            let (bx0, by0, bx1, by1) = piece_pixel_bbox(
+                piece_polygons.get(&piece.id),
+                piece,
+                new_canvas_w as i32,
+                new_canvas_h as i32,
+                BLEED_PX,
+            );
+            let local_w = (bx1 - bx0) as u32;
+            let local_h = (by1 - by0) as u32;
+            if local_w == 0 || local_h == 0 {
+                // Degenerate piece: emit an empty PNG sized to the
+                // piece's geometric bbox, keep coords coherent.
+                let pw = piece.width.max(1) as u32;
+                let ph = piece.height.max(1) as u32;
+                let blank = RgbaImage::new(pw, ph);
+                let _ = blank.save(out_dir.join(format!("piece_{}.png", piece.id)));
+                render_piece_outline(&blank, &out_dir.join(format!("piece_outline_{}.png", piece.id)));
+                return piece.clone();
+            }
+
+            // Start from the bbox-cropped slice of the global non-Image
+            // canvas. `crop_imm` returns a SubImage (no allocation);
+            // `to_image()` copies just those pixels.
+            let mut canvas = match non_image_canvas.as_ref() {
+                Some(global) => image::imageops::crop_imm(global, bx0 as u32, by0 as u32, local_w, local_h)
+                    .to_image(),
+                None => RgbaImage::new(local_w, local_h),
+            };
+
+            // Compose this piece's Image blocks on top, with the local
+            // canvas's absolute-coord offset = (bx0, by0).
+            let block_idxs: Vec<usize> = piece_brick_idxs.iter()
+                .flat_map(|&bi| map.brick_to_blocks[bi].iter().copied())
+                .collect();
+            crate::raster_extract::compose_image_blocks_onto_canvas_at(
+                doc, blocks, block_idxs,
+                &mut canvas, meta.clip_rect, page_h_pt, artifact.bleed_pts,
+                pieces_dpi, true, (bx0, by0),
+            );
+            let _ = &shifted_clip_pts; // accepted for API compat; the
+                // shifted-clip math is now handled inside
+                // `compose_image_blocks_onto_canvas_at` via bleed_pts.
+
+            // Multi-ring mask in LOCAL coords. Translate each ring by
+            // (-bx0, -by0). Iterating only the local canvas means we
+            // touch ~2–5 % of the previous pixel count per piece.
+            if let Some(ring_list) = piece_polygons.get(&piece.id) {
+                let expanded: Vec<Vec<[f64; 2]>> = ring_list.iter()
+                    .filter(|r| r.len() >= 3)
+                    .map(|r| {
+                        let exp = expand_polygon(r, 0.5);
+                        exp.into_iter()
+                            .map(|p| [p[0] - bx0 as f64, p[1] - by0 as f64])
+                            .collect()
+                    })
+                    .collect();
+                if !expanded.is_empty() {
+                    for (x, y, pixel) in canvas.enumerate_pixels_mut() {
+                        if pixel[3] == 0 { continue; }
+                        let px = x as f64 + 0.5;
+                        let py = y as f64 + 0.5;
+                        let inside = expanded.iter()
+                            .any(|r| point_in_polygon(px, py, r));
+                        if !inside { pixel[3] = 0; }
+                    }
+                }
+            }
+
+            // The bricks in our AI files are raster images with
+            // soft-mask alpha that bakes 3-D effects (drop shadows,
+            // gradient glows, highlights) into the source pixels.
+            // The alpha extends past the geometric brick outline
+            // intentionally — that's the visual style.
+            //
+            // In the live house composite those overhangs get
+            // covered by neighbour bricks' opaque pixels and are
+            // invisible. But when we isolate one piece via OCG
+            // toggling, neighbours never paint, so the overhangs
+            // are exposed at the OUTER edges of the piece. We
+            // **keep** them: the piece PNG is the alpha bbox of
+            // everything painted by this piece's OCGs — no polygon
+            // mask, no crop to the piece's geometric bbox.
+            //
+            // Internal edges (between two bricks inside the same
+            // piece) are unaffected because both bricks paint and
+            // their overhangs overlap with the neighbour brick's
+            // body, same as in the composite. Only the piece's
+            // OUTER boundary keeps its bleed.
+            // alpha_bbox is in LOCAL canvas coords; translate by
+            // (bx0, by0) to get the piece's absolute position.
+            let (out_img, new_x, new_y, new_w, new_h) = match alpha_bbox(&canvas) {
+                Some((tx, ty, tw, th)) if tw > 0 && th > 0 => {
+                    let cropped =
+                        image::imageops::crop_imm(&canvas, tx, ty, tw, th).to_image();
+                    (cropped, bx0 + tx as i32, by0 + ty as i32, tw as i32, th as i32)
+                }
+                _ => {
+                    // No painted pixels at all — emit an empty PNG
+                    // sized to the piece's geometric bbox and keep
+                    // the rect unchanged so downstream coords stay
+                    // coherent.
+                    let pw_i = piece.width.max(1) as u32;
+                    let ph_i = piece.height.max(1) as u32;
+                    (
+                        RgbaImage::new(pw_i, ph_i),
+                        piece.x,
+                        piece.y,
+                        pw_i as i32,
+                        ph_i as i32,
+                    )
+                }
+            };
+
+            let _ = out_img.save(out_dir.join(format!("piece_{}.png", piece.id)));
+            render_piece_outline(
+                &out_img,
+                &out_dir.join(format!("piece_outline_{}.png", piece.id)),
+            );
+
+            crate::types::PuzzlePiece {
+                id: piece.id.clone(),
+                brick_ids: piece.brick_ids.clone(),
+                x: new_x,
+                y: new_y,
+                width: new_w,
+                height: new_h,
+            }
+        })
+        .collect();
+
+    // Note: the sidecar modified PDF is now owned by the caller
+    // (`render_export_pieces`) and gets cleaned up there.
+    Ok(trimmed)
+}
+
+/// Render all export-time assets at the requested DPI:
+///   - `piece_<id>.png` — per-piece sprite, polygon-masked
+///   - `composite.png`  — the full house bricks composite
+///   - `background.png` — the blueprint backdrop (when the AI
+///     declares a `background` OCG layer)
+///   - `outlines.png`   — single canvas-sized transparent image
+///     with every piece's outline stroked from its vector polygon
+///     so curves stay smooth at any DPI
+///
+/// Two independent DPIs:
+///   - `assets_dpi`  drives composite/background/highlight/lights/
+///     outlines. All five are saved as a single unified pixel size
+///     (canvas + 2·pad_px), so consumers layer them at a fixed
+///     `(-pad_px, -pad_px)` offset without per-asset math.
+///   - `pieces_dpi` drives per-piece sprite PNGs (their own MuPDF
+///     non-image render and their own canvas).
+///
+/// Pieces and polygons are scaled by `pieces_dpi / meta.render_dpi`
+/// so they line up with the per-piece canvas. Live-preview state
+/// under `session.extract_dir` is untouched — `out_dir` is expected
+/// to be a sub-directory the caller created.
+/// Returns the per-piece trimmed `PuzzlePiece` records in
+/// **pieces-DPI canvas coords** — the same coord space the rendered
+/// piece PNGs live in. Downstream encoders should use these (not
+/// the original loaded-DPI pieces) so the sprite rect they place
+/// into the Unity ZIP matches the cropped PNG: tight to the visible
+/// content rather than
+/// padded out to the union of the piece's brick bboxes. See
+/// `render_piece_pngs_from_composite` for the trim rationale.
+pub fn render_export_pieces(
+    ai_path: &Path,
+    // Already-parsed placements + AI metadata — the caller (Tauri
+    // command or CLI example) has these from its earlier parse_ai
+    // call for puzzle generation, so we re-use them instead of
+    // parsing the AI a second time inside the export path. Saves
+    // ~1.5–2 s on NY-sized inputs.
+    placements: &[crate::ai_parser::BrickPlacement],
+    meta: &crate::ai_parser::ParsedAiMetadata,
+    pieces: &[crate::types::PuzzlePiece],
+    bricks: &HashMap<String, crate::types::Brick>,
+    brick_polygons: &HashMap<String, Vec<[f64; 2]>>,
+    // Per-brick bezier outlines in PyMuPDF point coords (the form the AI
+    // parser emits and the session keeps). Used at export DPI to produce
+    // `outlines.png` — same bezier-merge path the live UI uses, so the
+    // exported outline matches what the user sees in the editor.
+    brick_beziers: &HashMap<String, Vec<crate::bezier::BezierPath>>,
+    // Maps hashed brick ID → AI layer name. Required for OCG isolation to
+    // translate the hashed IDs stored in `piece.brick_ids` back to the
+    // layer names that `brick_name_to_idx` is keyed by.
+    brick_layer_names: &HashMap<String, String>,
+    // All non-piece assets (composite, background, background_highlight,
+    // lights, outlines) render at this DPI and are padded to a unified
+    // canvas size = (canvas + 2·PAD_PX). The padding is sized to
+    // capture the background_highlight's Gaussian halo bleed at this
+    // DPI; everyone else gets transparent margin.
+    assets_dpi: f64,
+    // Per-piece sprites render at this DPI independently of the
+    // non-piece assets. Lets the user dial piece resolution
+    // separately from the overlay assets.
+    pieces_dpi: f64,
+    // Outlines.png stroke width in pixels (at `assets_dpi`). Clamped
+    // to ≥1. Used to be derived from `assets_dpi / 96` automatically
+    // but is now an explicit user input — the export panel exposes it
+    // so clients can tune outline thickness for their composite.
+    outline_stroke_px: i32,
+    out_dir: &Path,
+) -> anyhow::Result<Vec<crate::types::PuzzlePiece>> {
+    if meta.render_dpi <= 0.0 {
+        anyhow::bail!("meta.render_dpi must be > 0");
+    }
+    if assets_dpi <= 0.0 {
+        anyhow::bail!("assets_dpi must be > 0");
+    }
+    if pieces_dpi <= 0.0 {
+        anyhow::bail!("pieces_dpi must be > 0");
+    }
+
+    let t_total = std::time::Instant::now();
+    let t_step = std::cell::Cell::new(std::time::Instant::now());
+    let log_step = |label: &str| {
+        eprintln!("[export]   {} +{:.2}s", label, t_step.get().elapsed().as_secs_f64());
+        t_step.set(std::time::Instant::now());
+    };
+
+    // Asset canvas dims (composite, background, lights, outlines).
+    // pieces_dpi gets its own scale further below.
+    let assets_scale = assets_dpi / meta.render_dpi;
+    let new_canvas_w = ((meta.canvas_width as f64) * assets_scale).round().max(1.0) as u32;
+    let new_canvas_h = ((meta.canvas_height as f64) * assets_scale).round().max(1.0) as u32;
+
+    // Padding around the asset canvas. Sized so the highlight's
+    // Gaussian halo (sigma_px = assets_dpi · 3.5/72) bleeds cleanly
+    // — 80 px at the reference 300 DPI, scaled linearly with DPI
+    // so the relative bleed (~5.5σ headroom) is preserved.
+    let pad_px = (80.0 * assets_dpi / 300.0).round().max(1.0) as i32;
+    let unified_w = new_canvas_w as i32 + 2 * pad_px;
+    let unified_h = new_canvas_h as i32 + 2 * pad_px;
+
+    std::fs::create_dir_all(out_dir)
+        .map_err(|e| anyhow::anyhow!("create_dir_all({}): {e}", out_dir.display()))?;
+
+    // ── Up-front: inject per-brick OCGs, walk + match blocks. The
+    //     parser has already produced `placements` + `meta` for us
+    //     (the caller passed them in). We reuse them plus the modified
+    //     PDF artifact (carries bleed_pts), the lopdf Document (for
+    //     direct image extraction), and the matched brick→blocks map
+    //     across both the composite step and the per-piece rendering
+    //     loop.
+    let modified_pdf_path = out_dir.join("_hp_ocg_modified.pdf");
+    let artifact = crate::ocg_inject::build_modified_pdf(
+        ai_path, placements, meta, &modified_pdf_path,
+    ).map_err(|e| anyhow::anyhow!("building modified PDF (for export): {e}"))?;
+    log_step("build_modified_pdf");
+    let doc = lopdf::Document::load(ai_path)
+        .map_err(|e| anyhow::anyhow!("loading PDF for direct extract: {e}"))?;
+    let page_id = doc.page_iter().next()
+        .ok_or_else(|| anyhow::anyhow!("PDF has no pages"))?;
+    let blocks = crate::ocg_inject::walk_page_bricks(&doc, page_id)
+        .map_err(|e| anyhow::anyhow!("walk_page_bricks: {e}"))?;
+    log_step("lopdf load + walk");
+    let page_h_pt = {
+        let p = doc.get_object(page_id)
+            .and_then(|o| o.as_dict())
+            .map_err(|e| anyhow::anyhow!("page dict: {e}"))?;
+        let media = p.get(b"MediaBox").ok().and_then(|o| o.as_array().ok())
+            .ok_or_else(|| anyhow::anyhow!("no MediaBox"))?;
+        match media.get(3) {
+            Some(lopdf::Object::Real(r)) => *r as f64,
+            Some(lopdf::Object::Integer(i)) => *i as f64,
+            _ => anyhow::bail!("MediaBox[3] not numeric"),
+        }
+    };
+    let geo = crate::ocg_inject::PageGeometry {
+        clip_x0: meta.clip_rect.0, clip_y0: meta.clip_rect.1,
+        render_dpi: meta.render_dpi, page_height_pt: page_h_pt,
+        bleed_x: artifact.bleed_pts.0, bleed_y: artifact.bleed_pts.1,
+    };
+    let map = crate::ocg_inject::match_blocks_to_bricks(
+        &blocks, placements, geo, crate::ocg_inject::DEFAULT_OVERLAY_RADIUS_PT,
+    );
+    log_step("match_blocks_to_bricks");
+
+    // Refined bleed → sub-pixel-precise shifted clip.
+    let shifted_clip = (
+        meta.clip_rect.0 + artifact.bleed_pts.0,
+        meta.clip_rect.1 + artifact.bleed_pts.1,
+        meta.clip_rect.2 + artifact.bleed_pts.0,
+        meta.clip_rect.3 + artifact.bleed_pts.1,
+    );
+
+    // Three independent render+save tasks: composite (bricks layer +
+    // raster overlay), background (+ highlight halo), and lights.
+    // MuPDF's global FFI lock serializes the actual renders, but the
+    // post-processing — composite raster overlay, distance transform +
+    // Gaussian halo for the highlight — runs concurrently with other
+    // tasks' renders. On NY8 (300 DPI) the highlight halo alone is
+    // ~22 s of pure-CPU work that used to block the lights render;
+    // overlapping them with the next renders saves ~15–25 s.
+    let t_parallel = std::time::Instant::now();
+    let doc_ref = &doc;
+    let blocks_ref = &blocks;
+    let artifact_ref = &artifact;
+    let meta_ref = &meta;
+    std::thread::scope(|scope| -> anyhow::Result<()> {
+        // Composite — bricks MuPDF + direct raster overlay + pad to
+        // unified size + save.
+        let composite_h = scope.spawn(move || -> anyhow::Result<()> {
+            let t0 = std::time::Instant::now();
+            let (bricks_pixmap, _, _) = render_ocg_layer_pixmap_clipped(
+                ai_path, "bricks", assets_dpi, shifted_clip,
+            )
+            .ok_or_else(|| anyhow::anyhow!("Failed to render bricks layer at assets DPI"))?;
+            let mut composite = compose_clipped_canvas(
+                &bricks_pixmap, "bricks", new_canvas_w, new_canvas_h, (0, 0),
+            );
+            crate::raster_extract::compose_image_blocks_onto_canvas(
+                doc_ref, blocks_ref, 0..blocks_ref.len(),
+                &mut composite, meta_ref.clip_rect, page_h_pt, artifact_ref.bleed_pts,
+                assets_dpi, true,
+            );
+            let padded = place_into_padded(&composite, unified_w, unified_h, pad_px, pad_px);
+            padded
+                .save(out_dir.join("composite.png"))
+                .map_err(|e| anyhow::anyhow!("saving composite.png: {e}"))?;
+            eprintln!(
+                "[export]   composite.png (parallel) +{:.2}s",
+                t0.elapsed().as_secs_f64(),
+            );
+            Ok(())
+        });
+        // Background — MuPDF + save + run highlight halo on the same
+        // pixmap. Missing background OCG is non-fatal — not every AI
+        // defines one.
+        let bg_h = scope.spawn(move || -> anyhow::Result<()> {
+            let t0 = std::time::Instant::now();
+            let Some((bg_pixmap, _, _)) =
+                render_ocg_layer_pixmap_clipped(ai_path, "background", assets_dpi, shifted_clip)
+            else {
+                eprintln!(
+                    "[export]   background (parallel) +{:.2}s (no background OCG)",
+                    t0.elapsed().as_secs_f64(),
+                );
+                return Ok(());
+            };
+            let bg_canvas =
+                compose_clipped_canvas(&bg_pixmap, "background", new_canvas_w, new_canvas_h, (0, 0));
+            let bg_padded = place_into_padded(&bg_canvas, unified_w, unified_h, pad_px, pad_px);
+            bg_padded
+                .save(out_dir.join("background.png"))
+                .map_err(|e| anyhow::anyhow!("saving background.png: {e}"))?;
+
+            // ── background_highlight.png ──────────────────────────
+            // White Gaussian-falloff halo centred on the alpha
+            // boundary of the house silhouette (incl. each
+            // window/door opening). `α(d) = 255 · exp(−d²/(2σ²))`
+            // via a real Euclidean distance transform — rotationally
+            // symmetric, no corner artifacts. Padded canvas lets the
+            // halo bleed past the bricks' external edges; the sidecar
+            // `background_highlight.json` records the (−PAD, −PAD)
+            // placement offset for consumers. The padding here is
+            // the same `pad_px` that all other non-piece assets use,
+            // so every saved asset is exactly `unified_w × unified_h`
+            // and lines up at (−pad_px, −pad_px) on the canvas.
+
+            // Binary mask: 255 inside silhouette, 0 outside. Every
+            // non-silhouette pixel (incl. padded margin) is tagged as
+            // "outside" so the distance transform has a meaningful
+            // boundary along canvas edges that the silhouette touches.
+            let mut mask_in = image::GrayImage::new(unified_w as u32, unified_h as u32);
+            let mut mask_out = image::ImageBuffer::from_pixel(
+                unified_w as u32, unified_h as u32, image::Luma([255u8]),
+            );
+            for (x, y, p) in bg_canvas.enumerate_pixels() {
+                let nx = x as i32 + pad_px;
+                let ny = y as i32 + pad_px;
+                if nx < 0 || ny < 0 || nx >= unified_w || ny >= unified_h { continue; }
+                if p[3] > 8 {
+                    mask_in.put_pixel(nx as u32, ny as u32, image::Luma([255]));
+                    mask_out.put_pixel(nx as u32, ny as u32, image::Luma([0]));
+                }
+            }
+            let d2_in = imageproc::distance_transform::euclidean_squared_distance_transform(&mask_in);
+            let d2_out = imageproc::distance_transform::euclidean_squared_distance_transform(&mask_out);
+
+            // σ in pixels — ~7 pt FWHM-ish at any assets DPI.
+            let sigma_px = assets_dpi * (3.5 / 72.0);
+            let two_sigma_sq = 2.0 * sigma_px * sigma_px;
+
+            let mut highlight = RgbaImage::new(unified_w as u32, unified_h as u32);
+            for y in 0..unified_h {
+                for x in 0..unified_w {
+                    let d2 = d2_in.get_pixel(x as u32, y as u32)[0]
+                           + d2_out.get_pixel(x as u32, y as u32)[0];
+                    let intensity = (-d2 / two_sigma_sq).exp();
+                    let a = (255.0 * intensity).round().clamp(0.0, 255.0) as u8;
+                    if a > 0 {
+                        highlight.put_pixel(x as u32, y as u32, Rgba([255, 255, 255, a]));
+                    }
+                }
+            }
+            highlight
+                .save(out_dir.join("background_highlight.png"))
+                .map_err(|e| anyhow::anyhow!("saving background_highlight.png: {e}"))?;
+            let _ = std::fs::write(
+                out_dir.join("background_highlight.json"),
+                format!(
+                    "{{\"padding\": {}, \"width\": {}, \"height\": {}, \"x\": {}, \"y\": {}}}\n",
+                    pad_px, unified_w, unified_h, -pad_px, -pad_px
+                ),
+            );
+            eprintln!(
+                "[export]   background + highlight (parallel) +{:.2}s",
+                t0.elapsed().as_secs_f64(),
+            );
+            Ok(())
+        });
+        // Lights — warm window-pane overlay (window glow).
+        let lights_h = scope.spawn(move || -> anyhow::Result<()> {
+            let t0 = std::time::Instant::now();
+            let Some((lt_pixmap, _, _)) =
+                render_ocg_layer_pixmap_clipped(ai_path, "lights", assets_dpi, shifted_clip)
+            else {
+                eprintln!(
+                    "[export]   lights (parallel) +{:.2}s (no lights OCG)",
+                    t0.elapsed().as_secs_f64(),
+                );
+                return Ok(());
+            };
+            let lt_canvas =
+                compose_clipped_canvas(&lt_pixmap, "lights", new_canvas_w, new_canvas_h, (0, 0));
+            let lt_padded = place_into_padded(&lt_canvas, unified_w, unified_h, pad_px, pad_px);
+            lt_padded
+                .save(out_dir.join("lights.png"))
+                .map_err(|e| anyhow::anyhow!("saving lights.png: {e}"))?;
+            eprintln!(
+                "[export]   lights.png (parallel) +{:.2}s",
+                t0.elapsed().as_secs_f64(),
+            );
+            Ok(())
+        });
+        composite_h.join().expect("composite thread panicked")?;
+        bg_h.join().expect("background thread panicked")?;
+        lights_h.join().expect("lights thread panicked")?;
+        Ok(())
+    })?;
+    eprintln!(
+        "[export]   composite/background/lights (parallel total) +{:.2}s",
+        t_parallel.elapsed().as_secs_f64(),
+    );
+    t_step.set(std::time::Instant::now()); // reset for the next log_step call
+
+    // assets.json is written near the end of this function (after
+    // outlines.png) so it can record every asset present.
+
+    // 3. Pieces live in their OWN canvas space (at pieces_dpi).
+    //    Scale every piece + brick + brick polygon by pieces_scale.
+    let pieces_scale = pieces_dpi / meta.render_dpi;
+    let pieces_canvas_w = ((meta.canvas_width as f64) * pieces_scale).round().max(1.0) as u32;
+    let pieces_canvas_h = ((meta.canvas_height as f64) * pieces_scale).round().max(1.0) as u32;
+    let scaled_pieces: Vec<crate::types::PuzzlePiece> = pieces
+        .iter()
+        .map(|p| crate::types::PuzzlePiece {
+            id: p.id.clone(),
+            brick_ids: p.brick_ids.clone(),
+            x: ((p.x as f64) * pieces_scale).round() as i32,
+            y: ((p.y as f64) * pieces_scale).round() as i32,
+            width: ((p.width as f64) * pieces_scale).round().max(1.0) as i32,
+            height: ((p.height as f64) * pieces_scale).round().max(1.0) as i32,
+        })
+        .collect();
+
+    let scaled_bricks: HashMap<String, crate::types::Brick> = bricks
+        .iter()
+        .map(|(id, b)| {
+            let mut nb = b.clone();
+            nb.x = ((b.x as f64) * pieces_scale).round() as i32;
+            nb.y = ((b.y as f64) * pieces_scale).round() as i32;
+            nb.width = ((b.width as f64) * pieces_scale).round().max(1.0) as i32;
+            nb.height = ((b.height as f64) * pieces_scale).round().max(1.0) as i32;
+            (id.clone(), nb)
+        })
+        .collect();
+
+    let scaled_brick_polys: HashMap<String, Vec<[f64; 2]>> = brick_polygons
+        .iter()
+        .map(|(id, pts)| {
+            let scaled: Vec<[f64; 2]> = pts.iter().map(|p| [p[0] * pieces_scale, p[1] * pieces_scale]).collect();
+            (id.clone(), scaled)
+        })
+        .collect();
+
+    // 4. Compute piece polygons at the new scale.
+    let piece_polys =
+        crate::puzzle::compute_piece_polygons(&scaled_pieces, &scaled_bricks, &scaled_brick_polys);
+
+    // 5. Per-piece sprite PNGs.
+    //
+    // Preferred path: OCG-isolated re-render. The PDF is rewritten
+    // with one OCG per parser brick, then each piece is rasterised
+    // with only its own bricks' OCGs enabled. Neighbour bricks are
+    // never invoked by MuPDF, so the soft-mask alpha (Illustrator's
+    // baked 3-D shadows/glows) cannot bleed across piece boundaries.
+    //
+    // Fallback: composite-slice. If any step of the OCG pipeline
+    // fails (parse, inject, save, render), we slice the per-piece
+    // PNG out of the bricks composite the old way. That bleeds, but
+    // it's still a usable export — better than crashing.
+    //
+    // Both paths trim each PNG to its alpha bbox and return updated
+    // `PuzzlePiece` rects in export-DPI canvas coords; downstream
+    // encoders read those rects to place the sprite at its true
+    // visible centre. See `render_piece_pngs_from_composite` for the
+    // trim rationale.
+    let trimmed_pieces = match render_piece_pngs_via_ocg_isolation(
+        &scaled_pieces,
+        &piece_polys,
+        brick_layer_names,
+        pieces_dpi,
+        shifted_clip,
+        pieces_canvas_w,
+        pieces_canvas_h,
+        out_dir,
+        &placements,
+        &meta,
+        &artifact,
+        &doc,
+        &blocks,
+        &map,
+        page_h_pt,
+    ) {
+        Ok(trimmed) => {
+            log_step("per-piece pngs (OCG-isolated)");
+            trimmed
+        }
+        Err(e) => {
+            eprintln!(
+                "[render_export_pieces] OCG-isolation path failed ({e}); \
+                 falling back to composite-slice path for piece PNGs"
+            );
+            // `composite` is no longer a live variable — it was moved
+            // into the parallel scope above. Re-load from disk for the
+            // fallback path. Slightly wasteful but only on the (rare)
+            // OCG-failure branch.
+            let composite = image::open(out_dir.join("composite.png"))
+                .map_err(|e2| anyhow::anyhow!("re-opening composite.png for fallback: {e2}"))?
+                .to_rgba8();
+            render_piece_pngs_from_composite(&scaled_pieces, &composite, &piece_polys, out_dir)
+        }
+    };
+
+    // 6. Trace every piece outline onto a single canvas-sized
+    //    transparent image — one `outlines.png` overlay that the
+    //    Unity importer (or any consumer) can layer over the
+    //    composite or background.
+    //
+    // Outlines come from the SAME bezier-merge code (`merge_piece_bezier`)
+    // that the live editor UI uses, so the exported outline matches
+    // the one the user sees on screen — cubic curves preserved, every
+    // brick edge that isn't cancelled by an adjacent brick drawn,
+    // including outer silhouette edges.
+    let stroke_thickness = outline_stroke_px.max(1);
+    // Samples per cubic — at higher DPI we need more samples so a
+    // brick's arch stays visibly smooth after stroking. 1 sample per
+    // ~6 pixels of bezier extent is enough; capped at 64.
+    let samples_per_curve = ((assets_dpi / 8.0).round() as usize).clamp(16, 64);
+    let export_pt_to_canvas = assets_dpi / 72.0;
+    // Outlines render straight into the unified canvas. The same
+    // `pad_px` headroom that protects the highlight halo also
+    // protects strokes coinciding with the canvas edge from being
+    // clipped to half their width.
+    let canvas_shift = [
+        -meta.clip_rect.0 + (pad_px as f64) / export_pt_to_canvas,
+        -meta.clip_rect.1 + (pad_px as f64) / export_pt_to_canvas,
+    ];
+    // Rasterise every polygon edge as a 1-px line into a binary
+    // mask, then dilate to the stroke thickness via a single
+    // distance transform pass. Cost is O(canvas area), independent
+    // of stroke thickness — the brute-force per-Bresenham-step
+    // square-brush stamp it replaces was O(canvas area × thickness²)
+    // and dominated outlines.png at thicker strokes. Side benefit:
+    // round caps and joins instead of square.
+    //
+    // Convention for `euclidean_squared_distance_transform`:
+    //   d2[x,y] = squared distance from (x,y) to the nearest 0 pixel.
+    // So we INVERT the mask — 0 marks the polygon line, 255 marks
+    // empty pixels — and the distance transform then gives us
+    // "distance to the nearest stroke pixel" at every cell. Pixels
+    // within `half²` of a line get the stroke colour.
+    let mut stroke_mask = image::ImageBuffer::from_pixel(
+        unified_w as u32, unified_h as u32, image::Luma([255u8]),
+    );
+    for piece in pieces {
+        let mut input: Vec<crate::bezier::BezierPath> = Vec::new();
+        for bid in &piece.brick_ids {
+            if let Some(paths) = brick_beziers.get(bid) {
+                input.extend(paths.iter().cloned());
+            }
+        }
+        if input.is_empty() {
+            continue;
+        }
+        let merged = crate::bezier_merge::merge_piece_bezier(&input);
+        for bp in &merged {
+            let bp_canvas = bp.transform(canvas_shift, export_pt_to_canvas);
+            let polyline = bp_canvas.tessellate(samples_per_curve);
+            if polyline.len() < 2 {
+                continue;
+            }
+            rasterise_polyline_into_mask(&mut stroke_mask, &polyline);
+        }
+    }
+    let mut outlines = RgbaImage::new(unified_w as u32, unified_h as u32);
+    let half = ((stroke_thickness - 1) / 2).max(0);
+    let stroke_color = Rgba([255, 255, 255, 230]);
+    if half <= 4 {
+        // Thin stroke — fall back to a brute-force square brush
+        // stamped along the rasterised mask pixels. Cheaper than
+        // running a full canvas-area distance transform when the
+        // brush is small (~ thickness² ≪ canvas area). The threshold
+        // half ≤ 4 (= stroke ≤ 9) is a heuristic break-even on the
+        // NY-sized canvases.
+        let mask_w = unified_w as u32;
+        let mask_h = unified_h as u32;
+        for my in 0..mask_h {
+            for mx in 0..mask_w {
+                if stroke_mask.get_pixel(mx, my)[0] != 0 { continue; }
+                let mx = mx as i32;
+                let my = my as i32;
+                for dy in -half..=half {
+                    let ny = my + dy;
+                    if ny < 0 || ny >= unified_h { continue; }
+                    for dx in -half..=half {
+                        let nx = mx + dx;
+                        if nx < 0 || nx >= unified_w { continue; }
+                        outlines.put_pixel(nx as u32, ny as u32, stroke_color);
+                    }
+                }
+            }
+        }
+    } else {
+        // Thicker stroke — use the Euclidean distance transform on
+        // the inverted mask (line=0, background=255). For NY-sized
+        // canvases at stroke ≥ 10 this is faster than the per-pixel
+        // square-brush stamp; for stroke ≥ 30 it's much faster.
+        let d2 = imageproc::distance_transform::euclidean_squared_distance_transform(&stroke_mask);
+        let half_sq = (half as u32 * half as u32) as f64;
+        let d2_raw = d2.as_raw();
+        let out_raw = outlines.as_mut();
+        let stride = unified_w as usize * 4;
+        for y in 0..unified_h as usize {
+            for x in 0..unified_w as usize {
+                let idx = y * (unified_w as usize) + x;
+                if d2_raw[idx] <= half_sq {
+                    let p = y * stride + x * 4;
+                    out_raw[p] = 255;
+                    out_raw[p + 1] = 255;
+                    out_raw[p + 2] = 255;
+                    out_raw[p + 3] = 230;
+                }
+            }
+        }
+    }
+    outlines
+        .save(out_dir.join("outlines.png"))
+        .map_err(|e| anyhow::anyhow!("saving outlines.png: {e}"))?;
+    log_step("outlines.png");
+
+    // ── assets.json ────────────────────────────────────────────────
+    // Every non-piece asset is `unified_w × unified_h` pixels at
+    // `assets_dpi`, placed at the SAME (-pad_px, -pad_px) offset on
+    // the (unpadded) base canvas. The base canvas dimensions are
+    // also at `assets_dpi`. Pieces (in pieces/piece_*.png) live on
+    // their own canvas at `pieces_dpi` — their rects are reported
+    // in house_data.json, not here.
+    let canvas_assets: Vec<&str> = vec![
+        "composite.png",
+        "background.png",
+        "background_highlight.png",
+        "outlines.png",
+        "lights.png",
+    ];
+    let mut assets_json = String::from("{\n");
+    assets_json.push_str(&format!(
+        "  \"canvas_w\": {},\n  \"canvas_h\": {},\n  \"assets_dpi\": {},\n  \"pieces_dpi\": {},\n",
+        new_canvas_w, new_canvas_h, assets_dpi, pieces_dpi,
+    ));
+    assets_json.push_str("  \"assets\": {\n");
+    let mut first_asset = true;
+    for fname in &canvas_assets {
+        if !out_dir.join(fname).exists() { continue; }
+        if !first_asset { assets_json.push_str(",\n"); }
+        first_asset = false;
+        assets_json.push_str(&format!(
+            "    \"{}\": {{\"file\": \"{}\", \"x\": {}, \"y\": {}, \"w\": {}, \"h\": {}}}",
+            fname, fname, -pad_px, -pad_px, unified_w, unified_h
+        ));
+    }
+    assets_json.push_str("\n  }\n}\n");
+    let _ = std::fs::write(out_dir.join("assets.json"), assets_json);
+
+    // Clean up the sidecar modified PDF the OCG-isolation pass wrote
+    // next to the export outputs. Failure to delete is non-fatal — the
+    // file just sits unused next to the export. Set
+    // HP_KEEP_MODIFIED_PDF=1 to retain it for debugging.
+    if std::env::var("HP_KEEP_MODIFIED_PDF").is_err() {
+        let _ = std::fs::remove_file(&modified_pdf_path);
+    }
+
+    eprintln!(
+        "[export] render_export_pieces total: {:.2}s",
+        t_total.elapsed().as_secs_f64()
+    );
+
+    Ok(trimmed_pieces)
+}
+
+/// Rasterise the closed polyline `polygon` into `mask` as a 1-px-wide
+/// line, setting touched pixels to 0 (the rest of the mask should
+/// start at 255). The output is then fed to a Euclidean distance
+/// transform to produce strokes of any width in O(canvas area)
+/// instead of O(canvas area × thickness²).
+///
+/// Uses the same Bresenham walk as `stroke_polygon_on_canvas` but
+/// without the square-brush stamping — the dilation step covers
+/// thickness for us.
+fn rasterise_polyline_into_mask(
+    mask: &mut image::ImageBuffer<image::Luma<u8>, Vec<u8>>,
+    polygon: &[[f64; 2]],
+) {
+    if polygon.len() < 2 {
+        return;
+    }
+    let w = mask.width() as i32;
+    let h = mask.height() as i32;
+    for i in 0..polygon.len() {
+        let a = polygon[i];
+        let b = polygon[(i + 1) % polygon.len()];
+        let x0 = a[0].round() as i32;
+        let y0 = a[1].round() as i32;
+        let x1 = b[0].round() as i32;
+        let y1 = b[1].round() as i32;
+        let dx_abs = (x1 - x0).abs();
+        let dy_abs = -(y1 - y0).abs();
+        let sx = if x0 < x1 { 1 } else { -1 };
+        let sy = if y0 < y1 { 1 } else { -1 };
+        let mut err = dx_abs + dy_abs;
+        let mut x = x0;
+        let mut y = y0;
+        loop {
+            if x >= 0 && y >= 0 && x < w && y < h {
+                mask.put_pixel(x as u32, y as u32, image::Luma([0]));
+            }
+            if x == x1 && y == y1 { break; }
+            let e2 = 2 * err;
+            if e2 >= dy_abs { err += dy_abs; x += sx; }
+            if e2 <= dx_abs { err += dx_abs; y += sy; }
+        }
+    }
+}
+
+/// Draw a closed polygon as a stroked outline onto `canvas`. Each
+/// vertex is translated by `(-offset_x, -offset_y)` so a piece-local
+/// canvas can be filled directly from a canvas-coords polygon.
+/// `thickness` is in pixels (clamped to ≥1).
+#[allow(dead_code)]
+fn stroke_polygon_on_canvas(
+    canvas: &mut RgbaImage,
+    polygon: &[[f64; 2]],
+    offset_x: f64,
+    offset_y: f64,
+    color: Rgba<u8>,
+    thickness: i32,
+) {
+    if polygon.len() < 2 {
+        return;
+    }
+    let half = (thickness.max(1) - 1) / 2;
+    let w = canvas.width() as i32;
+    let h = canvas.height() as i32;
+    let put = |canvas: &mut RgbaImage, x: i32, y: i32| {
+        for dy in -half..=half {
+            for dx in -half..=half {
+                let nx = x + dx;
+                let ny = y + dy;
+                if nx >= 0 && ny >= 0 && nx < w && ny < h {
+                    canvas.put_pixel(nx as u32, ny as u32, color);
+                }
+            }
+        }
+    };
+
+    for i in 0..polygon.len() {
+        let a = polygon[i];
+        let b = polygon[(i + 1) % polygon.len()];
+        let x0 = (a[0] - offset_x).round() as i32;
+        let y0 = (a[1] - offset_y).round() as i32;
+        let x1 = (b[0] - offset_x).round() as i32;
+        let y1 = (b[1] - offset_y).round() as i32;
+
+        // Bresenham
+        let dx_abs = (x1 - x0).abs();
+        let dy_abs = -(y1 - y0).abs();
+        let sx = if x0 < x1 { 1 } else { -1 };
+        let sy = if y0 < y1 { 1 } else { -1 };
+        let mut err = dx_abs + dy_abs;
+        let mut x = x0;
+        let mut y = y0;
+        loop {
+            put(canvas, x, y);
+            if x == x1 && y == y1 {
+                break;
+            }
+            let e2 = 2 * err;
+            if e2 >= dy_abs {
+                err += dy_abs;
+                x += sx;
+            }
+            if e2 <= dx_abs {
+                err += dx_abs;
+                y += sy;
+            }
+        }
+    }
 }
 
 /// Render piece outline PNG.

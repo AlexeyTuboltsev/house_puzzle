@@ -5,7 +5,6 @@
 //! a specified piece count.
 
 use geo::algorithm::area::Area;
-use geo::algorithm::bounding_rect::BoundingRect;
 use geo::{Coord, LineString, Polygon};
 use rand::seq::SliceRandom;
 use rand::SeedableRng;
@@ -13,9 +12,6 @@ use rand_chacha::ChaCha8Rng;
 use std::collections::{HashMap, HashSet};
 
 use crate::types::{Brick, PuzzlePiece};
-
-/// Adjacency threshold: bricks within this many pixels are candidates.
-const ADJACENCY_THRESHOLD: f64 = 15.0;
 
 /// Build a Shapely-equivalent polygon from brick-local point coordinates.
 fn brick_polygon(brick: &Brick, polygon: &[[f64; 2]]) -> Option<Polygon<f64>> {
@@ -44,12 +40,22 @@ fn brick_polygon(brick: &Brick, polygon: &[[f64; 2]]) -> Option<Polygon<f64>> {
 pub fn build_adjacency_vector(
     bricks: &[Brick],
     brick_polygons: &HashMap<String, Vec<[f64; 2]>>,
-    gap: f64,
+    _gap: f64,  // legacy pre-filter tolerance — no longer used, kept for callsite compat
     min_border: f64,
     border_gap: f64,
 ) -> HashMap<String, HashSet<String>> {
-    // Build Shapely-equivalent polygons
-    let polys: HashMap<&str, Polygon<f64>> = bricks
+    use geo_clipper::Clipper;
+    use rayon::prelude::*;
+    use rstar::{RTree, AABB, PointDistance, RTreeObject};
+
+    let factor = 1000.0;
+
+    // 1. Build the base polygon per brick and, more importantly, the
+    //    OFFSET (buffered-by-border_gap) polygon per brick — once. The
+    //    old code called `.offset()` for BOTH bricks on every pair, so
+    //    each buffered polygon was recomputed ~N times. This alone
+    //    is a ~2× speedup.
+    let bricks_with_polys: Vec<(&str, Polygon<f64>)> = bricks
         .iter()
         .filter_map(|b| {
             let pts = brick_polygons.get(&b.id)?;
@@ -58,64 +64,111 @@ pub fn build_adjacency_vector(
         })
         .collect();
 
-    let mut adj: HashMap<String, HashSet<String>> = HashMap::new();
-    let n = bricks.len();
+    let buffered: Vec<(&str, geo::MultiPolygon<f64>)> = bricks_with_polys
+        .par_iter()
+        .map(|(id, poly)| {
+            let mp = poly.offset(
+                border_gap,
+                geo_clipper::JoinType::Round(0.25),
+                geo_clipper::EndType::ClosedPolygon,
+                factor,
+            );
+            (*id, mp)
+        })
+        .collect();
 
-    for i in 0..n {
-        let a = &bricks[i];
-        let pa = match polys.get(a.id.as_str()) {
-            Some(p) => p,
-            None => continue,
-        };
-
-        for j in (i + 1)..n {
-            let b = &bricks[j];
-            let pb = match polys.get(b.id.as_str()) {
-                Some(p) => p,
-                None => continue,
-            };
-
-            // Bbox pre-filter
-            if !((a.x as f64 - gap) < b.right() as f64
-                && (a.right() as f64 + gap) > b.x as f64
-                && (a.y as f64 - gap) < b.bottom() as f64
-                && (a.bottom() as f64 + gap) > b.y as f64)
-            {
-                continue;
-            }
-
-            // Match Python: buffer both polygons by border_gap, intersect,
-            // measure border_length = intersection.area / (2 * border_gap)
-            use geo_clipper::Clipper;
-            let factor = 1000.0;
-            let buf_a = pa.offset(border_gap, geo_clipper::JoinType::Round(0.25), geo_clipper::EndType::ClosedPolygon, factor);
-            let buf_b = pb.offset(border_gap, geo_clipper::JoinType::Round(0.25), geo_clipper::EndType::ClosedPolygon, factor);
-
-            if buf_a.0.is_empty() || buf_b.0.is_empty() {
-                continue;
-            }
-
-            let intersection = Clipper::intersection(&buf_a, &buf_b, factor);
-            if intersection.0.is_empty() {
-                continue;
-            }
-
-            let inter_area: f64 = intersection.0.iter().map(|p| p.unsigned_area()).sum();
-            let border_length = if border_gap > 0.0 {
-                inter_area / (2.0 * border_gap)
-            } else {
-                0.0
-            };
-
-            if border_length >= min_border {
-                adj.entry(a.id.clone()).or_default().insert(b.id.clone());
-                adj.entry(b.id.clone()).or_default().insert(a.id.clone());
-            }
+    // 2. Spatial index over each buffered polygon's ENVELOPE. This is
+    //    NOT bbox-as-identity — the R-tree only tells us which pairs
+    //    are close enough in canvas space to POSSIBLY intersect; the
+    //    actual overlap area still comes from the polygon-clipper
+    //    math below on every candidate pair.
+    #[derive(Clone)]
+    struct Entry<'a> {
+        idx: usize,       // index into `buffered`
+        envelope: AABB<[f64; 2]>,
+        _phantom: std::marker::PhantomData<&'a ()>,
+    }
+    impl<'a> RTreeObject for Entry<'a> {
+        type Envelope = AABB<[f64; 2]>;
+        fn envelope(&self) -> Self::Envelope { self.envelope }
+    }
+    impl<'a> PointDistance for Entry<'a> {
+        fn distance_2(&self, p: &[f64; 2]) -> f64 {
+            self.envelope.distance_2(p)
         }
     }
 
+    let entries: Vec<Entry> = buffered
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, (_id, mp))| {
+            if mp.0.is_empty() { return None; }
+            // Union of every polygon envelope in the MultiPolygon.
+            let mut xmin = f64::INFINITY;
+            let mut ymin = f64::INFINITY;
+            let mut xmax = f64::NEG_INFINITY;
+            let mut ymax = f64::NEG_INFINITY;
+            for p in &mp.0 {
+                for c in p.exterior().0.iter() {
+                    if c.x < xmin { xmin = c.x; }
+                    if c.y < ymin { ymin = c.y; }
+                    if c.x > xmax { xmax = c.x; }
+                    if c.y > ymax { ymax = c.y; }
+                }
+            }
+            if !xmin.is_finite() { return None; }
+            Some(Entry {
+                idx,
+                envelope: AABB::from_corners([xmin, ymin], [xmax, ymax]),
+                _phantom: std::marker::PhantomData,
+            })
+        })
+        .collect();
+
+    let tree: RTree<Entry> = RTree::bulk_load(entries.clone());
+
+    // 3. For each brick, query the R-tree for envelope-overlapping
+    //    candidates, then run the real Clipper intersection only on
+    //    those candidates. Parallel per outer brick.
+    let pairs: Vec<(String, String)> = entries
+        .par_iter()
+        .flat_map_iter(|entry_a| {
+            let (a_id, buf_a) = &buffered[entry_a.idx];
+            let mut local: Vec<(String, String)> = Vec::new();
+            for entry_b in tree.locate_in_envelope_intersecting(&entry_a.envelope) {
+                if entry_b.idx <= entry_a.idx { continue; }  // (i, j > i) — dedup
+                let (b_id, buf_b) = &buffered[entry_b.idx];
+                if buf_a.0.is_empty() || buf_b.0.is_empty() { continue; }
+
+                let intersection = Clipper::intersection(buf_a, buf_b, factor);
+                if intersection.0.is_empty() { continue; }
+
+                let inter_area: f64 = intersection.0.iter().map(|p| p.unsigned_area()).sum();
+                let border_length = if border_gap > 0.0 {
+                    inter_area / (2.0 * border_gap)
+                } else {
+                    0.0
+                };
+                if border_length >= min_border {
+                    local.push((a_id.to_string(), b_id.to_string()));
+                }
+            }
+            local
+        })
+        .collect();
+
+    // 4. Fold parallel results into the adjacency map (undirected).
+    let mut adj: HashMap<String, HashSet<String>> = HashMap::new();
+    for (a, b) in pairs {
+        adj.entry(a.clone()).or_default().insert(b.clone());
+        adj.entry(b).or_default().insert(a);
+    }
     adj
 }
+
+// build_adjacency_bbox() was removed — bbox is verboten in this
+// codebase. Use build_adjacency_vector (polygon buffer + intersect)
+// or build_adjacency_bezier (bezier edge sharing).
 
 /// Build adjacency graph directly from AI-native bezier paths — no
 /// polygon buffering. Two bricks are adjacent iff their combined shared
@@ -161,25 +214,6 @@ pub fn build_adjacency_bezier(
             }
         }
         out
-    }
-
-    // Bbox per brick for a cheap pre-filter.
-    fn bbox(paths: &[crate::bezier::BezierPath]) -> (f64, f64, f64, f64) {
-        let mut x0 = f64::INFINITY;
-        let mut y0 = f64::INFINITY;
-        let mut x1 = f64::NEG_INFINITY;
-        let mut y1 = f64::NEG_INFINITY;
-        let mut consume = |p: [f64; 2]| {
-            if p[0] < x0 { x0 = p[0]; }
-            if p[1] < y0 { y0 = p[1]; }
-            if p[0] > x1 { x1 = p[0]; }
-            if p[1] > y1 { y1 = p[1]; }
-        };
-        for p in paths {
-            consume(p.start);
-            for s in &p.segments { consume(s.end()); }
-        }
-        (x0, y0, x1, y1)
     }
 
     fn cubic_mid(p0: [f64; 2], c1: [f64; 2], c2: [f64; 2], p3: [f64; 2]) -> [f64; 2] {
@@ -256,41 +290,69 @@ pub fn build_adjacency_bezier(
         (dx * dx + dy * dy).sqrt()
     }
 
-    // Pre-compute edges and bboxes.
+    // Pre-compute per-brick edges + per-brick canvas-X extent [xmin, xmax].
+    // The extent drives a sweep-line pass so we only compare pairs whose
+    // horizontal projections overlap — the vast majority of pairs across a
+    // 700-brick house don't. This is a spatial-query optimisation, NOT
+    // bbox-as-identity: the shared-edge math still runs on every pair the
+    // sweep admits.
     let mut brick_edges: HashMap<&str, Vec<Ed>> = HashMap::new();
-    let mut brick_bbox: HashMap<&str, (f64, f64, f64, f64)> = HashMap::new();
+    let mut brick_span: HashMap<&str, (f64, f64)> = HashMap::new();
     for b in bricks {
         if let Some(paths) = brick_beziers.get(&b.id) {
+            let (mut xmin, mut xmax) = (f64::INFINITY, f64::NEG_INFINITY);
+            for p in paths {
+                if p.start[0] < xmin { xmin = p.start[0]; }
+                if p.start[0] > xmax { xmax = p.start[0]; }
+                for s in &p.segments {
+                    let e = s.end();
+                    if e[0] < xmin { xmin = e[0]; }
+                    if e[0] > xmax { xmax = e[0]; }
+                }
+            }
+            if xmin.is_finite() {
+                brick_span.insert(b.id.as_str(), (xmin, xmax));
+            }
             brick_edges.insert(b.id.as_str(), edges_of(paths));
-            brick_bbox.insert(b.id.as_str(), bbox(paths));
         }
     }
 
+    // Sweep-line: sort brick indices by min-X. For each brick, only compare
+    // against later bricks whose min-X ≤ this brick's max-X. On a large
+    // house (Berlin: 787 bricks) this cuts the pair count from ~309k to
+    // the actual O(N) overlapping ones.
+    let mut order: Vec<usize> = (0..bricks.len()).collect();
+    order.sort_by(|&a, &b| {
+        let ax = brick_span.get(bricks[a].id.as_str()).map(|(x, _)| *x).unwrap_or(f64::INFINITY);
+        let bx = brick_span.get(bricks[b].id.as_str()).map(|(x, _)| *x).unwrap_or(f64::INFINITY);
+        ax.partial_cmp(&bx).unwrap_or(std::cmp::Ordering::Equal)
+    });
+
     use rayon::prelude::*;
-    let n = bricks.len();
-    // Parallel sweep: each row (i) computes its set of neighbours j > i,
-    // then we sequentially fold the results into the adjacency map.
-    let pairs: Vec<(String, String)> = (0..n)
+    let pairs: Vec<(String, String)> = (0..order.len())
         .into_par_iter()
-        .flat_map_iter(|i| {
+        .flat_map_iter(|order_i| {
+            let i = order[order_i];
             let a_id = bricks[i].id.as_str();
             let a_edges = brick_edges.get(a_id);
-            let abb = brick_bbox.get(a_id).copied().unwrap_or((0.0, 0.0, 0.0, 0.0));
+            let a_max_x = brick_span.get(a_id).map(|(_, x)| *x).unwrap_or(f64::INFINITY);
             let mut local: Vec<(String, String)> = Vec::new();
             if let Some(a_edges) = a_edges {
-                for j in (i + 1)..n {
+                for order_j in (order_i + 1)..order.len() {
+                    let j = order[order_j];
                     let b_id = bricks[j].id.as_str();
+                    let b_min_x = brick_span.get(b_id).map(|(x, _)| *x).unwrap_or(f64::NEG_INFINITY);
+                    // Sweep-line prune: once b's min-X exceeds a's max-X (plus
+                    // ENDPOINT_TOL slack for closing-vertex wobble), no later
+                    // brick in the sorted order can possibly share an edge
+                    // with a either.
+                    if b_min_x > a_max_x + ENDPOINT_TOL {
+                        break;
+                    }
                     let b_edges = match brick_edges.get(b_id) {
                         Some(v) => v,
                         None => continue,
                     };
-                    let bbb = brick_bbox.get(b_id).copied().unwrap_or((0.0, 0.0, 0.0, 0.0));
-                    let slack = ENDPOINT_TOL;
-                    if abb.2 + slack < bbb.0 || bbb.2 + slack < abb.0
-                        || abb.3 + slack < bbb.1 || bbb.3 + slack < abb.1
-                    {
-                        continue;
-                    }
                     let mut total_shared = 0.0;
                     for ea in a_edges {
                         for eb in b_edges {
@@ -466,19 +528,25 @@ pub fn merge_bricks(
     let mut merge_iter = 0usize;
     while pieces_dict.len() > target_mergeable {
         let mut candidates: Vec<String> = pieces_dict.keys().cloned().collect();
-        // Sort by area, breaking ties on the piece id so the order is
-        // deterministic. `pieces_dict.keys()` iterates the HashMap in
-        // a per-process-random order, and `sort_by` is stable, so without
-        // the id tiebreaker, two pieces with identical area would keep
-        // their (random) input order and the merge would pick different
-        // neighbours each run.
+        // Sort by area, breaking ties on the piece's top-left canvas
+        // position — pure geometry, no ID involvement. IDs are random
+        // UUIDs so sorting by them would randomise iteration order and
+        // the merge would pick different neighbours each run.
+        // `pieces_dict.keys()` iterates the HashMap in a per-process-
+        // random order, and `sort_by` is stable; without a geometric
+        // tiebreak two equal-area pieces would keep their random input
+        // order.
         candidates.sort_by(|a, b| {
-            piece_area
+            let cmp_area = piece_area
                 .get(a)
                 .unwrap_or(&0.0)
                 .partial_cmp(piece_area.get(b).unwrap_or(&0.0))
-                .unwrap_or(std::cmp::Ordering::Equal)
-                .then_with(|| a.cmp(b))
+                .unwrap_or(std::cmp::Ordering::Equal);
+            cmp_area.then_with(|| {
+                let (ax, ay, _, _) = compute_piece_bbox(&pieces_dict[a], &bricks_by_id);
+                let (bx, by, _, _) = compute_piece_bbox(&pieces_dict[b], &bricks_by_id);
+                (ay, ax).cmp(&(by, bx))
+            })
         });
 
         let mut merged = false;
@@ -490,12 +558,22 @@ pub fn merge_bricks(
 
             let cur_area = piece_area.get(smallest_pid).copied().unwrap_or(0.0);
             // `neighbors` is a HashSet — its iteration order is
-            // per-process-random. Sort before the seeded shuffle so
-            // the shuffle input is deterministic; otherwise the same
-            // (seed, brick set, adjacency) trio produces different
-            // merges across runs.
+            // per-process-random. Sort by GEOMETRY (top-left of each
+            // neighbour piece's bbox) before the seeded shuffle so the
+            // shuffle input is deterministic. IDs are random UUIDs so
+            // sorting by them would randomise things again.
             let mut nbr_list: Vec<String> = neighbors.into_iter().collect();
-            nbr_list.sort();
+            nbr_list.sort_by(|a, b| {
+                let (ax, ay, _, _) = pieces_dict
+                    .get(a)
+                    .map(|ids| compute_piece_bbox(ids, &bricks_by_id))
+                    .unwrap_or((i32::MAX, i32::MAX, 0, 0));
+                let (bx, by, _, _) = pieces_dict
+                    .get(b)
+                    .map(|ids| compute_piece_bbox(ids, &bricks_by_id))
+                    .unwrap_or((i32::MAX, i32::MAX, 0, 0));
+                (ay, ax).cmp(&(by, bx))
+            });
             nbr_list.shuffle(&mut rng);
 
             let mut best_nbr: Option<String> = None;
@@ -573,13 +651,19 @@ pub fn merge_bricks(
     // Build result
     let mut result: Vec<PuzzlePiece> = Vec::new();
 
-    // Fixed solo pieces first
+    // Fixed solo pieces first. Sort by top-left canvas position
+    // (geometric, not by ID) so iteration order is deterministic
+    // within a session AND across sessions given the same brick set.
     let mut sorted_fixed: Vec<&String> = fixed_ids.iter().collect();
-    sorted_fixed.sort();
+    sorted_fixed.sort_by(|a, b| {
+        let ba = bricks_by_id[a.as_str()];
+        let bb = bricks_by_id[b.as_str()];
+        (ba.y, ba.x).cmp(&(bb.y, bb.x))
+    });
     for bid in sorted_fixed {
         let b = bricks_by_id[bid.as_str()];
         result.push(PuzzlePiece {
-            id: format!("p{}", result.len()),
+            id: uuid::Uuid::new_v4().to_string()[..8].to_string(),
             brick_ids: vec![bid.clone()],
             x: b.x,
             y: b.y,
@@ -588,22 +672,23 @@ pub fn merge_bricks(
         });
     }
 
-    // Merged pieces
-    for (_, brick_ids) in &pieces_dict {
+    // Merged pieces. Sort by geometric top-left too.
+    let mut merged_entries: Vec<(&String, &Vec<String>)> = pieces_dict.iter().collect();
+    merged_entries.sort_by(|a, b| {
+        let (ax, ay, _, _) = compute_piece_bbox(a.1, &bricks_by_id);
+        let (bx, by, _, _) = compute_piece_bbox(b.1, &bricks_by_id);
+        (ay, ax).cmp(&(by, bx))
+    });
+    for (_, brick_ids) in merged_entries {
         let (x, y, w, h) = compute_piece_bbox(brick_ids, &bricks_by_id);
         result.push(PuzzlePiece {
-            id: format!("p{}", result.len()),
+            id: uuid::Uuid::new_v4().to_string()[..8].to_string(),
             brick_ids: brick_ids.clone(),
             x,
             y,
             width: w,
             height: h,
         });
-    }
-
-    // Re-assign IDs
-    for (i, piece) in result.iter_mut().enumerate() {
-        piece.id = format!("p{i}");
     }
 
     eprintln!("[puzzle] final result: {} pieces (target was {target_count})", result.len());
@@ -700,14 +785,21 @@ pub fn make_bridge_rect(a: Coord<f64>, b: Coord<f64>, width: f64) -> Polygon<f64
 /// Unions the original brick polygons (unbuffered) to preserve exact vector shapes.
 /// Bridges gaps between disconnected components with thin rectangles.
 /// Fills small interior holes.
+/// Per-piece polygon outline used as a mask for piece PNG rendering.
+///
+/// Returns one ENTRY per piece keyed by `piece.id`. The value is a list
+/// of rings (exterior loops, no holes); the union of all rings is the
+/// piece's masked area. The vast majority of pieces produce a single
+/// ring, but bricks within the same piece that don't quite touch
+/// (sub-pixel gaps between adjacent rows, etc.) leave the union with
+/// multiple components — we preserve all of them so every brick the
+/// merge assigned to the piece actually paints in the rendered PNG.
 pub fn compute_piece_polygons(
     pieces: &[PuzzlePiece],
     bricks_by_id: &HashMap<String, Brick>,
     brick_polygons: &HashMap<String, Vec<[f64; 2]>>,
-) -> HashMap<String, Vec<[f64; 2]>> {
-    use geo::algorithm::bool_ops::BooleanOps;
-
-    let mut result: HashMap<String, Vec<[f64; 2]>> = HashMap::new();
+) -> HashMap<String, Vec<Vec<[f64; 2]>>> {
+    let mut result: HashMap<String, Vec<Vec<[f64; 2]>>> = HashMap::new();
 
     for piece in pieces {
         let mut polys: Vec<Polygon<f64>> = Vec::new();
@@ -749,10 +841,8 @@ pub fn compute_piece_polygons(
                 continue;
             }
             if debug_piece {
-                let bb = poly.bounding_rect();
-                eprintln!("[piece-debug] {} brick {} area={:.0} pts={} bbox={:?}",
-                    piece.id, bid, poly.unsigned_area(), poly.exterior().0.len(),
-                    bb.map(|r| (r.min().x as i32, r.min().y as i32, r.max().x as i32, r.max().y as i32)));
+                eprintln!("[piece-debug] {} brick {} area={:.0} pts={}",
+                    piece.id, bid, poly.unsigned_area(), poly.exterior().0.len());
                 // Dump all vertices
                 for (vi, c) in poly.exterior().0.iter().enumerate() {
                     eprintln!("[piece-debug]   v{}: ({:.1}, {:.1})", vi, c.x, c.y);
@@ -766,7 +856,7 @@ pub fn compute_piece_polygons(
         }
 
         if polys.is_empty() {
-            result.insert(piece.id.clone(), vec![]);
+            result.insert(piece.id.clone(), Vec::new());
             continue;
         }
 
@@ -818,10 +908,8 @@ pub fn compute_piece_polygons(
         if debug_piece {
             eprintln!("[piece-debug] {} union produced {} components", piece.id, union.0.len());
             for (ci, comp) in union.0.iter().enumerate() {
-                let bb = comp.bounding_rect();
-                eprintln!("[piece-debug]   component {} area={:.0} pts={} holes={} bbox={:?}",
-                    ci, comp.unsigned_area(), comp.exterior().0.len(), comp.interiors().len(),
-                    bb.map(|r| (r.min().x as i32, r.min().y as i32, r.max().x as i32, r.max().y as i32)));
+                eprintln!("[piece-debug]   component {} area={:.0} pts={} holes={}",
+                    ci, comp.unsigned_area(), comp.exterior().0.len(), comp.interiors().len());
             }
         }
 
@@ -830,32 +918,21 @@ pub fn compute_piece_polygons(
             continue;
         }
 
-        // Log if still disconnected after epsilon union (shouldn't happen normally)
-        if union.0.len() > 1 {
-            eprintln!("[piece-gap] {} still has {} components after epsilon union ({} bricks)",
-                piece.id, union.0.len(), piece.brick_ids.len());
-        }
-
-        // Take the largest polygon
-        let mut final_poly = union.0.into_iter()
-            .max_by(|a, b| a.unsigned_area().partial_cmp(&b.unsigned_area())
-                .unwrap_or(std::cmp::Ordering::Equal))
-            .expect("union is non-empty");
-
-        // Fill small interior holes
-        let (exterior, interiors) = final_poly.into_inner();
-        let kept_holes: Vec<LineString<f64>> = interiors.into_iter()
-            .filter(|hole| {
-                let hole_poly = Polygon::new(hole.clone(), vec![]);
-                hole_poly.unsigned_area() >= HOLE_AREA_THRESHOLD
-            })
+        // Keep ALL components. Previously this dropped everything but
+        // the largest, which silently lost bricks the merge had assigned
+        // to the piece whenever neighbour bricks didn't quite touch (the
+        // common case: rows of bricks separated by visible mortar gaps
+        // larger than the EPSILON we use to fuse vertex contacts).
+        // Outline rendering is the source of truth for piece shape —
+        // it preserves every brick — so masking has to keep them too.
+        let _ = HOLE_AREA_THRESHOLD; // holes-vs-area filtering removed
+                                      // for multi-component case; the
+                                      // ring list is a flat list of
+                                      // exteriors only (no inner holes).
+        let rings: Vec<Vec<[f64; 2]>> = union.0.iter()
+            .map(|p| p.exterior().0.iter().map(|c| [c.x, c.y]).collect())
             .collect();
-        final_poly = Polygon::new(exterior, kept_holes);
-
-        let coords: Vec<[f64; 2]> = final_poly.exterior().0.iter()
-            .map(|c| [c.x, c.y])
-            .collect();
-        result.insert(piece.id.clone(), coords);
+        result.insert(piece.id.clone(), rings);
     }
 
     result
@@ -880,8 +957,8 @@ mod tests {
         // Convert to Brick + polygons
         let mut bricks: Vec<Brick> = Vec::new();
         let mut polygons: HashMap<String, Vec<[f64; 2]>> = HashMap::new();
-        for (i, p) in placements.iter().enumerate() {
-            let id = format!("b{i}");
+        for p in placements.iter() {
+            let id = uuid::Uuid::new_v4().to_string()[..8].to_string();
             bricks.push(Brick {
                 id: id.clone(),
                 x: p.x,
@@ -895,7 +972,7 @@ mod tests {
             }
         }
 
-        let adj = build_adjacency_vector(&bricks, &polygons, ADJACENCY_THRESHOLD, 10.0, 2.0);
+        let adj = build_adjacency_vector(&bricks, &polygons, 15.0, 10.0, 2.0);
         let areas = compute_polygon_areas(&bricks, &polygons);
 
         eprintln!("Adjacency: {} bricks have neighbors", adj.len());
@@ -1006,5 +1083,117 @@ mod tests {
         let areas = compute_bezier_areas(&bricks, &beziers);
         // 10 × 10 = 100 (b.area() returns w*h).
         assert_eq!(areas.get("ghost").copied(), Some(100.0));
+    }
+
+    // ── compute_piece_polygons (multi-component) ────────────────────────
+
+    /// Square polygon in brick-local coords, side `side`.
+    fn square_local(side: f64) -> Vec<[f64; 2]> {
+        vec![[0.0, 0.0], [side, 0.0], [side, side], [0.0, side]]
+    }
+
+    #[test]
+    fn compute_piece_polygons_keeps_every_disconnected_component() {
+        // A piece can legitimately own two bricks whose polygons don't
+        // touch — when merge bridged them across a thin neighbour, or
+        // when the mortar gap between adjacent rows exceeds the EPSILON
+        // we use to fuse vertex contacts. The earlier "largest component
+        // only" filter silently dropped the smaller brick from the mask;
+        // the outline-as-source-of-truth fix returns every component.
+        let bricks = vec![
+            brick("a", 0, 0, 10, 10),
+            brick("b", 100, 100, 10, 10), // far away, no possible union
+        ];
+        let bricks_by_id: HashMap<String, Brick> =
+            bricks.iter().map(|b| (b.id.clone(), b.clone())).collect();
+        let mut polys: HashMap<String, Vec<[f64; 2]>> = HashMap::new();
+        polys.insert("a".into(), square_local(10.0));
+        polys.insert("b".into(), square_local(10.0));
+
+        let piece = PuzzlePiece {
+            id: "p0".into(),
+            brick_ids: vec!["a".into(), "b".into()],
+            x: 0, y: 0, width: 110, height: 110,
+        };
+
+        let result = compute_piece_polygons(&[piece], &bricks_by_id, &polys);
+        let rings = result.get("p0").expect("piece p0 missing");
+        assert_eq!(
+            rings.len(), 2,
+            "disconnected bricks must produce 2 rings, got {}: {:?}",
+            rings.len(), rings,
+        );
+
+        // Each ring should be a closed loop with ≥4 vertices (square+close).
+        for (i, r) in rings.iter().enumerate() {
+            assert!(r.len() >= 4, "ring {} too short: {} pts", i, r.len());
+        }
+    }
+
+    #[test]
+    fn compute_piece_polygons_fuses_touching_bricks_into_single_component() {
+        // Adjacent squares sharing the x=10 edge should merge into a
+        // single 20×10 component thanks to the EPSILON expansion.
+        let bricks = vec![
+            brick("a", 0, 0, 10, 10),
+            brick("b", 10, 0, 10, 10),
+        ];
+        let bricks_by_id: HashMap<String, Brick> =
+            bricks.iter().map(|b| (b.id.clone(), b.clone())).collect();
+        let mut polys: HashMap<String, Vec<[f64; 2]>> = HashMap::new();
+        polys.insert("a".into(), square_local(10.0));
+        polys.insert("b".into(), square_local(10.0));
+
+        let piece = PuzzlePiece {
+            id: "p0".into(), brick_ids: vec!["a".into(), "b".into()],
+            x: 0, y: 0, width: 20, height: 10,
+        };
+        let result = compute_piece_polygons(&[piece], &bricks_by_id, &polys);
+        let rings = result.get("p0").expect("piece p0 missing");
+        assert_eq!(
+            rings.len(), 1,
+            "edge-sharing bricks must fuse into 1 component, got {}",
+            rings.len(),
+        );
+    }
+
+    #[test]
+    fn compute_piece_polygons_skips_brick_without_polygon() {
+        // A brick missing from `brick_polygons` should just be dropped
+        // from the union — no panic, no spurious component. (Bricks
+        // without vector polygons can happen for synthetic/raster-only
+        // placements that the parser couldn't trace.)
+        let bricks = vec![
+            brick("a", 0, 0, 10, 10),
+            brick("ghost", 50, 50, 10, 10),
+        ];
+        let bricks_by_id: HashMap<String, Brick> =
+            bricks.iter().map(|b| (b.id.clone(), b.clone())).collect();
+        let mut polys: HashMap<String, Vec<[f64; 2]>> = HashMap::new();
+        polys.insert("a".into(), square_local(10.0));
+        // intentionally no entry for "ghost"
+
+        let piece = PuzzlePiece {
+            id: "p0".into(), brick_ids: vec!["a".into(), "ghost".into()],
+            x: 0, y: 0, width: 60, height: 60,
+        };
+        let result = compute_piece_polygons(&[piece], &bricks_by_id, &polys);
+        let rings = result.get("p0").expect("piece p0 missing");
+        assert_eq!(rings.len(), 1, "ghost brick must be silently skipped");
+    }
+
+    #[test]
+    fn compute_piece_polygons_empty_piece_yields_empty_rings() {
+        // No matching bricks (all missing polygons) → empty ring list,
+        // not None. Callers iterate rings unconditionally; an absent
+        // map entry would mask a real bug.
+        let bricks_by_id: HashMap<String, Brick> = HashMap::new();
+        let polys: HashMap<String, Vec<[f64; 2]>> = HashMap::new();
+        let piece = PuzzlePiece {
+            id: "p0".into(), brick_ids: vec!["nope".into()],
+            x: 0, y: 0, width: 0, height: 0,
+        };
+        let result = compute_piece_polygons(&[piece], &bricks_by_id, &polys);
+        assert_eq!(result.get("p0").map(|r| r.len()), Some(0));
     }
 }

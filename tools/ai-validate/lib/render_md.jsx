@@ -308,7 +308,11 @@ function kindBlurb(kind) {
         missing_top_layer:
             "Expected top-level layer is absent from the document.",
         empty_top_layer:
-            "Expected top-level layer exists but is empty."
+            "Expected top-level layer exists but is empty.",
+        orphan_raster:
+            "A RasterItem / PlacedItem lives outside any valid `bricks/Layer NNN/` leaf. The composite renders it but the Rust parser doesn't see a brick at that spot, so the puzzle generation will leave a hole there.",
+        screen_frame_height:
+            "The `screen` top-level layer's path bbox is not the conventional 2200 pt tall. The parser uses that height to set the rendering DPI, so a drifted screen makes the rendered house and the editor grid out of scale. Redraw the screen rectangle to 2200 pt."
     };
     return blurbs[kind] || "_(no description)_";
 }
@@ -448,6 +452,19 @@ TABLE_RENDERERS.missing_top_layer = function (lines, arr) {
     }
 };
 TABLE_RENDERERS.empty_top_layer = TABLE_RENDERERS.missing_top_layer;
+
+TABLE_RENDERERS.screen_frame_height = function (lines, arr) {
+    lines.push("| Actual height (pt) | Expected (pt) | Drift (pt) | Implied DPI |");
+    lines.push("|---|---|---|---|");
+    for (var i = 0; i < arr.length; i++) {
+        var f = arr[i];
+        var dpi = (f.actual_height_pt > 0) ? (900 / f.actual_height_pt * 72) : 0;
+        lines.push("| " + (f.actual_height_pt || 0).toFixed(1) +
+                   " | " + (f.expected_height_pt || 0) +
+                   " | " + (f.delta_pt || 0).toFixed(1) +
+                   " | " + dpi.toFixed(2) + " |");
+    }
+};
 
 function renderGenericTable(lines, arr) {
     lines.push("| Brick | Sub-path | Message |");

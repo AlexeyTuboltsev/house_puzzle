@@ -25,10 +25,6 @@ pub fn build_house_data(
     waves: &[serde_json::Value],
     ppu: f64,
     scale: f64,
-    location: &str,
-    position_in_location: i32,
-    house_name: &str,
-    spacing: f64,
     groups: &[serde_json::Value],
 ) -> serde_json::Value {
     let scaled_w = (canvas_width as f64 * scale).round();
@@ -116,10 +112,6 @@ pub fn build_house_data(
     let ground_offset = json!({"x": 0.0, "y": 0.0, "z": 0.0});
 
     json!({
-        "Name": house_name,
-        "Location": location,
-        "PositionInLocation": position_in_location,
-        "Spacing": spacing,
         "ScalingFactor": scaling_factor,
         "GroundOffset": ground_offset,
         "Blocks": blocks,
@@ -129,6 +121,16 @@ pub fn build_house_data(
 }
 
 /// Generate export ZIP with piece sprites + house_data.json.
+///
+/// The caller is expected to have ALREADY rendered piece PNGs at
+/// `export_dpi` under `extract_dir`. We don't rescale here — bytes
+/// from disk go straight into the ZIP. `loaded_dpi` + `export_dpi`
+/// are still needed for two things:
+///   - deriving `target_ppu` so house_data.json's coordinates match
+///     the sprite resolution Unity will import;
+///   - the `scale` factor build_house_data uses to convert
+///     loaded-canvas piece coordinates to output-canvas Unity coords
+///     (it's a pure number, no images involved).
 pub fn generate_export_zip(
     pieces: &[PuzzlePiece],
     bricks_by_id: &HashMap<String, Brick>,
@@ -136,24 +138,30 @@ pub fn generate_export_zip(
     canvas_width: i32,
     canvas_height: i32,
     screen_frame_height_px: f64,
+    loaded_dpi: f64,
+    export_dpi: f64,
     waves: &[serde_json::Value],
     groups: &[serde_json::Value],
-    location: &str,
-    position: i32,
-    house_name: &str,
-    spacing: f64,
 ) -> Result<Vec<u8>> {
-    let target_ppu = 50.0;
-    let scale = if screen_frame_height_px > 0.0 {
-        target_ppu * 15.5 / screen_frame_height_px
+    // target_ppu = export_dpi × screen_frame_h_pts / (72 × HOUSE_UNITS_HIGH).
+    // We have screen_frame_height_px (loaded pixels), convert to PDF
+    // points via loaded_dpi: h_pts = h_px × 72 / loaded_dpi.
+    let (target_ppu, scale) = if screen_frame_height_px > 0.0 && loaded_dpi > 0.0 {
+        let screen_frame_h_pts = screen_frame_height_px * 72.0 / loaded_dpi;
+        let target_ppu = export_dpi * screen_frame_h_pts / (72.0 * 15.5);
+        let scale = export_dpi / loaded_dpi;
+        (target_ppu, scale)
     } else {
-        let target_canvas_h = target_ppu * 15.5;
-        target_canvas_h / canvas_height as f64
+        // Degenerate AI (no `screen` layer) — fall back to the legacy
+        // 50 PPU default. Better than divide-by-zero.
+        let target_ppu = 50.0;
+        let scale = target_ppu * 15.5 / canvas_height as f64;
+        (target_ppu, scale)
     };
 
     let house_data = build_house_data(
         pieces, bricks_by_id, canvas_width, canvas_height,
-        waves, target_ppu, scale, location, position, house_name, spacing, groups,
+        waves, target_ppu, scale, groups,
     );
 
     let buf = Vec::new();
@@ -167,34 +175,62 @@ pub fn generate_export_zip(
     let json_bytes = serde_json::to_string_pretty(&house_data).context("serialising house_data to JSON")?;
     zip.write_all(json_bytes.as_bytes()).context("writing house_data.json bytes")?;
 
-    // Write piece PNGs (read from extract_dir, scale for Unity PPU)
-    for piece in pieces {
-        let piece_path = extract_dir.join(format!("piece_{}.png", piece.id));
-        if !piece_path.exists() {
-            continue;
+    // Helper — copy a file from `extract_dir` straight into the ZIP
+    // at the given archive path. By contract the caller has already
+    // produced everything at `export_dpi` (via
+    // `render_export_pieces`), so we don't rescale here.
+    let mut put_file = |zip_path: &str, src: &Path| -> Result<()> {
+        if !src.exists() {
+            return Ok(());
         }
-        let img = match image::open(&piece_path) {
-            Ok(img) => img.to_rgba8(),
-            Err(_) => continue,
-        };
+        let bytes = std::fs::read(src).with_context(|| format!("reading {}", src.display()))?;
+        zip.start_file(zip_path, options)
+            .with_context(|| format!("starting {zip_path} in ZIP"))?;
+        zip.write_all(&bytes)
+            .with_context(|| format!("writing {zip_path} bytes"))?;
+        Ok(())
+    };
 
-        // Scale piece for Unity PPU
-        let new_w = ((img.width() as f64 * scale).round() as u32).max(1);
-        let new_h = ((img.height() as f64 * scale).round() as u32).max(1);
-        let scaled = image::imageops::resize(&img, new_w, new_h, image::imageops::Lanczos3);
-
-        let mut png_buf = Vec::new();
-        {
-            let mut cursor = std::io::Cursor::new(&mut png_buf);
-            scaled.write_to(&mut cursor, image::ImageOutputFormat::Png)
-                .context("encoding piece PNG")?;
+    // Full-house composite + blueprint background + composite vector
+    // outlines sit at the archive root next to house_data.json. All
+    // three come from `render_export_pieces`.
+    put_file("composite.png", &extract_dir.join("composite.png"))?;
+    put_file("background.png", &extract_dir.join("background.png"))?;
+    put_file("outlines.png", &extract_dir.join("outlines.png"))?;
+    // Soft white house-silhouette glow. Optional — only present when
+    // the AI declared a `background` OCG layer (same as
+    // `background.png`). The sidecar JSON carries its placement
+    // offset (padded to let the blur halo bleed past the canvas).
+    let bg_highlight = extract_dir.join("background_highlight.png");
+    if bg_highlight.exists() {
+        put_file("background_highlight.png", &bg_highlight)?;
+        let bg_highlight_meta = extract_dir.join("background_highlight.json");
+        if bg_highlight_meta.exists() {
+            put_file("background_highlight.json", &bg_highlight_meta)?;
         }
-
-        let fname = format!("pieces/piece_{}.png", piece.id);
-        zip.start_file(&fname, options).context("starting piece PNG in ZIP")?;
-        zip.write_all(&png_buf).context("writing piece PNG bytes")?;
+    }
+    // Lights overlay (warm window-pane glow). Optional.
+    let lights = extract_dir.join("lights.png");
+    if lights.exists() {
+        put_file("lights.png", &lights)?;
+    }
+    // Compact placement metadata for every canvas-aligned asset.
+    let assets_json = extract_dir.join("assets.json");
+    if assets_json.exists() {
+        put_file("assets.json", &assets_json)?;
     }
 
+    // Per-piece sprite only — outlines are bundled into a single
+    // `outlines.png` overlay above instead of per-piece files.
+    for piece in pieces {
+        put_file(
+            &format!("pieces/piece_{}.png", piece.id),
+            &extract_dir.join(format!("piece_{}.png", piece.id)),
+        )?;
+    }
+
+    drop(put_file);
     let cursor = zip.finish().context("finalising ZIP archive")?;
     Ok(cursor.into_inner())
 }
+

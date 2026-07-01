@@ -21,7 +21,14 @@ node_modules/
 Thumbs.db
 
 # Data files
-in/
+# Use `in/*` (not `in/`) so the parent directory stays unignored —
+# files inside can't be selectively un-ignored otherwise.
+in/*
+# Canary subjects: checked into git-LFS so the cargo-test workflow
+# can render + fingerprint them. Add other AI files here as the
+# canary set grows.
+!in/_NY5.ai
+!in/_NY8.ai
 
 # Debug/test artifacts
 *.png

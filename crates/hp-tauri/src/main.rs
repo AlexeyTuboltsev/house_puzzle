@@ -97,7 +97,7 @@ fn main() {
 
                             } else if let Some(tid) = cmd.strip_prefix("get-text:") {
                                 // Get text content of element by data-testid, write to result file
-                                let rp = result_path.display().to_string().replace('\\', "\\\\");
+                                let _rp = result_path.display().to_string().replace('\\', "\\\\");
                                 let js = format!(
                                     r#"(function(){{
                                         var el = document.querySelector('[data-testid="{tid}"]');
@@ -170,6 +170,7 @@ fn main() {
             commands::check_for_updates,
             commands::save_screenshot,
             commands::log_to_stderr,
+            commands::get_test_mode,
             settings::load_settings,
             settings::save_settings,
         ]);

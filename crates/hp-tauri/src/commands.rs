@@ -5,7 +5,7 @@ use hp_core::{ai_parser, bezier::BezierPath, bezier_merge, puzzle, render, types
 use rayon::prelude::*;
 use serde_json::{json, Value};
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::session::{Session, SessionStore};
@@ -22,6 +22,15 @@ pub fn get_version() -> String {
 #[tauri::command]
 pub fn log_to_stderr(msg: String) {
     eprintln!("[webview] {msg}");
+}
+
+/// Whether the binary was launched with `--test-mode`. The frontend
+/// reads this at startup and shows the test-only `in/` file list
+/// (used by the E2E driver to click a fixture button). Production
+/// builds never pass `--test-mode`, so end users never see it.
+#[tauri::command]
+pub fn get_test_mode() -> bool {
+    std::env::args().any(|a| a == "--test-mode")
 }
 
 // ---------------------------------------------------------------------------
@@ -138,12 +147,36 @@ fn last_dir_path(app: &tauri::AppHandle) -> Option<PathBuf> {
     app.path().app_data_dir().ok().map(|d| d.join("last_open_dir.txt"))
 }
 
+/// Path to the file we use to remember the last directory the user
+/// saved an export ZIP to. Same sidecar pattern as `last_dir_path`.
+fn last_export_dir_path(app: &tauri::AppHandle) -> Option<PathBuf> {
+    use tauri::Manager;
+    app.path().app_data_dir().ok().map(|d| d.join("last_export_dir.txt"))
+}
+
+fn read_last_dir(p: &Path) -> Option<PathBuf> {
+    std::fs::read_to_string(p)
+        .ok()
+        .map(|s| PathBuf::from(s.trim().to_string()))
+        .filter(|p| p.is_dir())
+}
+
+fn write_last_dir(stored: &Path, picked_file: &Path) {
+    if let Some(parent) = picked_file.parent() {
+        if let Some(stored_parent) = stored.parent() {
+            let _ = std::fs::create_dir_all(stored_parent);
+        }
+        let _ = std::fs::write(stored, parent.to_string_lossy().as_bytes());
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Load PDF — mirrors do_load in routes.rs
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
 pub async fn load_pdf(
+    window: tauri::WebviewWindow,
     sessions: tauri::State<'_, SessionStore>,
     path: String,
     canvas_height: Option<i32>,
@@ -231,48 +264,172 @@ pub async fn load_pdf(
         res
     });
 
-    let fp_bricks = file_path.clone();
-    let clip_for_bricks = clip;
-    let bricks_render_fut = tokio::task::spawn_blocking(move || {
+    // Analyse the AI's brick content stream — walk q...Q blocks, match
+    // them to parser placements, derive the sub-pixel-precise pymu→PDF
+    // bleed. The export pipeline already does this; the editor now uses
+    // the same `bleed_pts` for both:
+    //   - shifted MuPDF clip → bricks layer pixmap lands canvas-aligned
+    //   - direct-extract overlay → raster bricks paint exactly where
+    //     the parser polygons say they should
+    //
+    // This replaces the legacy `compute_pdf_offset` + shifted-re-render
+    // path that broke on AI files with malformed OCG metadata (Sand9
+    // returned blank; Sand10 ended up with the composite shifted vs
+    // outlines).
+    let fp_analyse = file_path.clone();
+    let placements_for_analyse = placements.clone();
+    let metadata_for_analyse = metadata.clone();
+    let analyse_fut = tokio::task::spawn_blocking(move || {
         let t0 = std::time::Instant::now();
-        let res = render::render_ocg_layer_pixmap_clipped(
-            &fp_bricks, "bricks", dpi, clip_for_bricks,
-        );
-        eprintln!("[profile] OCG bricks pixmap render (clipped): {:?}", t0.elapsed());
-        res
+        let doc = hp_core::lopdf::Document::load(&fp_analyse)
+            .map_err(|e| format!("hp_core::lopdf::Document::load: {e}"))?;
+        let page_id = doc.page_iter().next()
+            .ok_or_else(|| "PDF has no pages".to_string())?;
+        let analysis = hp_core::ocg_inject::analyse_brick_blocks(
+            &doc, page_id, &fp_analyse, &placements_for_analyse, &metadata_for_analyse,
+        ).map_err(|e| format!("analyse_brick_blocks: {e}"))?;
+        eprintln!("[profile] analyse_brick_blocks (walk + probe + bleed): {:?}", t0.elapsed());
+        Ok::<(hp_core::lopdf::Document, hp_core::ocg_inject::BrickBlockAnalysis), String>((doc, analysis))
     });
 
-    let (bezier_per_brick, bricks_res) = tokio::join!(bezier_fut, bricks_render_fut);
+    let (bezier_per_brick, analyse_res) = tokio::join!(bezier_fut, analyse_fut);
     let bezier_per_brick = bezier_per_brick.map_err(|e| e.to_string())?;
-    let (bricks_pixmap, _, _) = bricks_res
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| "Failed to render bricks layer".to_string())?;
+    let (doc, analysis) = analyse_res.map_err(|e| e.to_string())??;
     eprintln!(
-        "[profile] bezier+bricks_OCG (overlapped): {:?}",
+        "[profile] bezier + analyse (overlapped): {:?}",
         t_parallel.elapsed()
     );
+    let bleed_pts = analysis.bleed_pts;
+    let page_height_pt = analysis.page_height_pt;
+    let blocks = analysis.blocks;
 
-    let bricks_no_offset = render::compose_clipped_canvas(
+    // Shifted clip — meta.clip_rect translated by bleed_pts so MuPDF
+    // renders the bricks layer aligned with the parser's pymu frame.
+    let shifted_clip = (
+        clip.0 + bleed_pts.0, clip.1 + bleed_pts.1,
+        clip.2 + bleed_pts.0, clip.3 + bleed_pts.1,
+    );
+
+    let t_render = std::time::Instant::now();
+    let fp_bricks = file_path.clone();
+    let (bricks_pixmap, _, _) = tokio::task::spawn_blocking(move || {
+        render::render_ocg_layer_pixmap_clipped(&fp_bricks, "bricks", dpi, shifted_clip)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .ok_or_else(|| "Failed to render bricks layer".to_string())?;
+    eprintln!("[profile] OCG bricks render (shifted clip): {:?}", t_render.elapsed());
+
+    let mut bricks_layer_img = render::compose_clipped_canvas(
         &bricks_pixmap, "bricks", cw, ch, (0, 0),
     );
+    // Count opaque pixels in the MuPDF-only layer to detect the
+    // "bricks OCG is empty" case (Sand9). Surface this as a warning
+    // below if it's far below what the parser expects.
+    let mupdf_alpha_pixels: u64 = bricks_pixmap.pixels().filter(|p| p[3] > 30).count() as u64;
     let bricks_pixmap = Some(bricks_pixmap);
 
-    // Assign brick IDs
+    // Direct-extract overlay: every Image XObject in the page's content
+    // stream is decoded via lopdf and composited on top of MuPDF's
+    // pixels — gives canvas-aligned raster bricks even when MuPDF's OCG
+    // render returns an empty or shifted result (Sand9, Sand10).
+    let t_overlay = std::time::Instant::now();
+    let image_block_count = blocks.iter()
+        .filter(|b| matches!(b.content, hp_core::ocg_inject::BrickContent::Image { .. }))
+        .count();
+    hp_core::raster_extract::compose_image_blocks_onto_canvas(
+        &doc, &blocks, 0..blocks.len(),
+        &mut bricks_layer_img, clip, page_height_pt, bleed_pts,
+        dpi, false,
+    );
+    eprintln!(
+        "[profile] direct-extract overlay ({} blocks): {:?}",
+        blocks.len(), t_overlay.elapsed()
+    );
+    drop(doc);
+
+    // ── Phantom polygon drop (E2) ─────────────────────────────────────
+    //
+    // Identify parser placements whose polygon-bbox region has ZERO
+    // opaque pixels in the rendered bricks_layer_img. These are
+    // "phantom bricks": the AI's private layer data listed them but
+    // no actual content renders there. They create floating outlines
+    // in the live preview, then empty holes after puzzle generation.
+    // Real culprits we've seen: Sand10 had ~50 % phantoms caused by
+    // wrong-coordinate layers in the AI private data.
+    //
+    // We sample the polygon-bbox interior (clipped to the canvas) and
+    // count alpha > 30. Threshold: zero opaque pixels → drop. Anything
+    // > 0 → keep (we err on the side of preserving real bricks; even
+    // a few pixels of soft alpha bleed is enough to vote "real").
+    let t_phantom = std::time::Instant::now();
+    let canvas_w_px = bricks_layer_img.width() as i32;
+    let canvas_h_px = bricks_layer_img.height() as i32;
+    let phantom_mask: Vec<bool> = placements.iter().map(|p| {
+        let poly = match p.polygon.as_ref() {
+            Some(poly) if poly.len() >= 3 => poly,
+            _ => return false, // no polygon → not phantom by this metric
+        };
+        let bx = p.pymu_x.max(0) as f64;
+        let by = p.pymu_y.max(0) as f64;
+        let mut x0 = f64::MAX; let mut y0 = f64::MAX;
+        let mut x1 = f64::MIN; let mut y1 = f64::MIN;
+        for v in poly {
+            let cx = v[0] + bx;
+            let cy = v[1] + by;
+            if cx < x0 { x0 = cx; } if cy < y0 { y0 = cy; }
+            if cx > x1 { x1 = cx; } if cy > y1 { y1 = cy; }
+        }
+        let ix0 = (x0.floor() as i32).clamp(0, canvas_w_px);
+        let iy0 = (y0.floor() as i32).clamp(0, canvas_h_px);
+        let ix1 = (x1.ceil()  as i32).clamp(0, canvas_w_px);
+        let iy1 = (y1.ceil()  as i32).clamp(0, canvas_h_px);
+        if ix1 <= ix0 || iy1 <= iy0 { return true; } // bbox outside canvas
+        for y in iy0..iy1 {
+            for x in ix0..ix1 {
+                if bricks_layer_img.get_pixel(x as u32, y as u32)[3] > 30 {
+                    return false; // found opaque content → real brick
+                }
+            }
+        }
+        true // no opaque content anywhere in the bbox → phantom
+    }).collect();
+    let phantom_count = phantom_mask.iter().filter(|&&p| p).count();
+    let placements_before = placements.len();
+    eprintln!(
+        "[profile] phantom polygon scan ({} placements, {} phantom): {:?}",
+        placements_before, phantom_count, t_phantom.elapsed(),
+    );
+
+    // Drop phantoms from placements + bezier_per_brick (same indices)
+    // so every downstream consumer (brick IDs, render_bricks, session,
+    // export) sees a consistent set with no ghosts.
+    let placements: Vec<hp_core::ai_parser::BrickPlacement> = placements
+        .into_iter()
+        .zip(phantom_mask.iter())
+        .filter_map(|(p, ph)| if *ph { None } else { Some(p) })
+        .collect();
+    let bezier_per_brick: Vec<Vec<BezierPath>> = bezier_per_brick
+        .into_iter()
+        .zip(phantom_mask.iter())
+        .filter_map(|(b, ph)| if *ph { None } else { Some(b) })
+        .collect();
+
+    // Assign brick IDs.
     let mut bricks: Vec<Brick> = Vec::new();
     let mut brick_polygons: HashMap<String, Vec<[f64; 2]>> = HashMap::new();
     let mut brick_beziers: HashMap<String, Vec<BezierPath>> = HashMap::new();
-    let layer_blocks: HashMap<String, ai_parser::LayerBlock> = HashMap::new();
     let mut brick_layer_names: HashMap<String, String> = HashMap::new();
+    let mut brick_pymu_bboxs: HashMap<String, (i32, i32, i32, i32)> = HashMap::new();
 
+    // Session-local UUIDs. IDs must NOT be derived from any property
+    // of the brick (position, size, layer name, index in the
+    // placements Vec, ...). Every ID is a fresh random string. If
+    // downstream tie-breaks in the merge algorithm need determinism,
+    // they must sort by geometry, not by ID.
+    let _ = deterministic;
     for (i, p) in placements.iter().enumerate() {
-        let id = if deterministic {
-            use std::hash::{Hash, Hasher};
-            let mut hasher = std::collections::hash_map::DefaultHasher::new();
-            (p.x, p.y, p.width, p.height).hash(&mut hasher);
-            format!("{:08x}", hasher.finish() & 0xFFFFFFFF)
-        } else {
-            uuid::Uuid::new_v4().to_string()[..8].to_string()
-        };
+        let id = uuid::Uuid::new_v4().to_string()[..8].to_string();
 
         bricks.push(Brick {
             id: id.clone(),
@@ -286,7 +443,8 @@ pub async fn load_pdf(
             brick_polygons.insert(id.clone(), poly.clone());
         }
         brick_beziers.insert(id.clone(), bezier_per_brick[i].clone());
-        brick_layer_names.insert(id, p.name.clone());
+        brick_layer_names.insert(id.clone(), p.name.clone());
+        brick_pymu_bboxs.insert(id, (p.pymu_x, p.pymu_y, p.pymu_w, p.pymu_h));
     }
 
     let extract_dir = std::env::temp_dir()
@@ -300,58 +458,19 @@ pub async fn load_pdf(
         .map(|(b, p)| (b.id.clone(), p.clone()))
         .collect();
 
-    let pdf_offset = render::compute_pdf_offset(
-        &bricks_no_offset,
-        expected_min.0,
-        expected_min.1,
-    );
+    // Legacy `pdf_offset` field — kept on the session for any other
+    // callers that still read it, but always zero now: shifted_clip
+    // above handles the pymu↔PDF alignment for the bricks render,
+    // so no further compose-time offset is needed.
+    let pdf_offset = (0i32, 0i32);
+    let _ = expected_min; // probe value, no longer consumed here
 
-    let bricks_layer_img = if pdf_offset != (0, 0) {
-        // The first render only rasterised pixels inside the artwork
-        // clip rect. With a non-zero detected offset we now want to
-        // *shift* the bricks layer right/down by `pdf_offset` pixels,
-        // which means we need pixels that lie OUTSIDE the original
-        // clip on the opposite side (left/top). The old full-page
-        // render had them; the clipped render doesn't, so re-rasterise
-        // with the clip shifted by `-pdf_offset / scale` PDF points
-        // and compose at canvas (0, 0). Costs one extra MuPDF render
-        // — but only on AI files where MuPDF's coordinate origin
-        // disagrees with the parser's, which is rare. The common
-        // offset == (0, 0) path stays single-render fast.
-        let scale_f = dpi / 72.0;
-        let dx_pts = pdf_offset.0 as f64 / scale_f;
-        let dy_pts = pdf_offset.1 as f64 / scale_f;
-        let shifted_clip = (
-            clip.0 - dx_pts, clip.1 - dy_pts,
-            clip.2 - dx_pts, clip.3 - dy_pts,
-        );
-        let t_rerender = std::time::Instant::now();
-        let fp_rerender = file_path.clone();
-        let img = match render::render_ocg_layer_pixmap_clipped(
-            &fp_rerender, "bricks", dpi, shifted_clip,
-        ) {
-            Some((shifted_pixmap, _, _)) => render::compose_clipped_canvas(
-                &shifted_pixmap, "bricks", cw, ch, (0, 0),
-            ),
-            None => bricks_no_offset,
-        };
-        eprintln!(
-            "[profile] OCG bricks re-render with shifted clip (offset={:?}): {:?}",
-            pdf_offset,
-            t_rerender.elapsed()
-        );
-        img
-    } else {
-        bricks_no_offset
-    };
-    // Drop the pixmap once we're done re-composing — it's the largest
-    // intermediate buffer and we don't need it past this point.
     drop(bricks_pixmap);
     eprintln!(
-        "[profile] bricks_layer ready: {}x{}, offset={:?}",
+        "[profile] bricks_layer ready: {}x{}, bleed_pts=({:.2}, {:.2})",
         bricks_layer_img.width(),
         bricks_layer_img.height(),
-        pdf_offset,
+        bleed_pts.0, bleed_pts.1,
     );
 
     // Hybrid brick rendering
@@ -375,46 +494,57 @@ pub async fn load_pdf(
             .map(|n| format!("SKIPPED: '{n}' has no vector polygon")),
     );
 
-    let protected: std::collections::HashSet<String> = render_bricks
-        .iter()
-        .filter(|(_, bp)| bp.layer_type == "vector_brick")
-        .map(|(id, _)| id.clone())
-        .collect();
-
-    let t0 = std::time::Instant::now();
-    let covered_ids = render::find_covered_bricks(&bricks, &brick_images_map, &protected);
-    eprintln!("[profile] covered_bricks: {:?}", t0.elapsed());
-
-    if !covered_ids.is_empty() {
-        eprintln!("[load] Removing {} covered bricks", covered_ids.len());
-        for id in &covered_ids {
-            let layer_name = brick_layer_names.get(id).cloned().unwrap_or_default();
-            all_warnings.push(format!(
-                "COVERED: '{}' removed (hidden under another brick)",
-                layer_name
-            ));
-        }
-        bricks.retain(|b| !covered_ids.contains(&b.id));
-        render_bricks.retain(|(id, _)| !covered_ids.contains(id));
-        for id in &covered_ids {
-            brick_polygons.remove(id);
-            brick_beziers.remove(id);
-        }
+    // E3 — surface E1 / E2 findings so the artist can see when the
+    // AI file's OCG metadata is incomplete.
+    //
+    // OCG mismatch heuristic: MuPDF's bricks-OCG render came back
+    // nearly empty (< 1000 alpha pixels — essentially blank) but the
+    // content stream contains ≥ 10 raster bricks that the direct-
+    // extract path had to paint anyway. Sand9 is the canonical case
+    // (0 alpha pixels, 163 image blocks). NY-class well-authored
+    // files end up well above this floor.
+    if mupdf_alpha_pixels < 1000 && image_block_count >= 10 {
+        all_warnings.push(format!(
+            "OCG mismatch: bricks OCG render is nearly empty ({} alpha pixels) — \
+             {} raster bricks loaded via direct extract instead. \
+             In Illustrator, verify every brick path is inside the `bricks` layer.",
+            mupdf_alpha_pixels, image_block_count,
+        ));
+    }
+    if phantom_count > 0 {
+        all_warnings.push(format!(
+            "Phantom polygons dropped: {} of {} parser bricks had no rendered content. \
+             Likely caused by stale layer entries in the AI's private data — \
+             open the file in Illustrator and check for empty bricks/Layer NNN/ sub-layers.",
+            phantom_count, placements_before,
+        ));
     }
 
-    // Bezier-native adjacency + areas. `min_border` is in canvas pixels
-    // for UI consistency; convert to PyMu units for `build_adjacency_bezier`.
+    // `find_covered_bricks` was removed. Its purpose was to hide bricks
+    // whose visible pixels sat entirely under another brick — the
+    // artist-duplicate pattern. That case is now caught upstream by
+    // the AI validator (`tools/ai-validate`), and the runtime cost
+    // (O(N² × pixels-per-brick), ~120 M pixel probes on Berlin)
+    // wasn't paying its way. Duplicates that slip through render
+    // twice at the same spot, which is visually invisible and doesn't
+    // cause holes.
+    let _ = &render_bricks;
+    let _ = &brick_polygons;
+    let _ = &brick_beziers;
+    let _ = &brick_layer_names;
+
+    // Polygon-based adjacency (brick_polygons are correctly filtered by extract_vector_path;
+    // brick_beziers may include spurious clip-mask paths that cause false adjacency).
     let scale = if metadata.render_dpi > 0.0 { metadata.render_dpi / 72.0 } else { 1.0 };
     let min_border_px = 5.0;
-    let min_border_pymu = min_border_px / scale;
-    let adj = puzzle::build_adjacency_bezier(&bricks, &brick_beziers, min_border_pymu);
-    let brick_areas = puzzle::compute_bezier_areas(&bricks, &brick_beziers);
+    let _ = &brick_pymu_bboxs; // kept for diagnostics / future raster adjacency
+    let adj = puzzle::build_adjacency_vector(&bricks, &brick_polygons, 15.0, min_border_px, 2.0);
+    let brick_areas = puzzle::compute_polygon_areas(&bricks, &brick_polygons);
 
     let bricks_layer_arc = Arc::new(bricks_layer_img);
 
     let brick_rgba: HashMap<String, Arc<image::RgbaImage>> = brick_images_map
         .into_iter()
-        .filter(|(id, _)| !covered_ids.contains(id))
         .map(|(id, img)| (id, Arc::new(img)))
         .collect();
 
@@ -483,7 +613,6 @@ pub async fn load_pdf(
     };
 
     // Store session
-    let ai_data = Arc::new(ai_data);
     {
         let mut store = sessions.lock();
         store.insert(
@@ -497,13 +626,14 @@ pub async fn load_pdf(
                 pieces: Vec::new(),
                 metadata: metadata.clone(),
                 extract_dir: extract_dir.clone(),
-                ai_data,
-                layer_blocks,
                 bricks_layer_img: bricks_layer_arc,
                 brick_images: HashMap::new(),
                 brick_rgba,
                 ai_path: file_path.clone(),
                 pdf_offset,
+                bleed_pts,
+                shifted_clip,
+                brick_layer_names,
             },
         );
     }
@@ -515,6 +645,13 @@ pub async fn load_pdf(
     // the frontend invokes `ensure_lights_image` / `ensure_background_image`
     // when it actually needs them and gets a path back then.
     let composite_path = extract_dir.join("composite.png").to_string_lossy().to_string();
+
+    // Reflect the opened file in the window title so the user can see at
+    // a glance which AI they're editing — important when they're flipping
+    // between several files looking for source-side bugs.
+    if let Some(stem) = file_path.file_stem().and_then(|s| s.to_str()) {
+        let _ = window.set_title(&format!("House Puzzle Editor — {stem}"));
+    }
 
     Ok(json!({
         "key": key,
@@ -548,7 +685,7 @@ async fn ensure_ocg_layer_image(
     layer_name: &'static str,
     file_name: &str,
 ) -> Result<Option<String>, String> {
-    let (extract_dir, file_path, dpi, clip, cw, ch, pdf_offset) = {
+    let (extract_dir, file_path, dpi, shifted_clip, cw, ch) = {
         let store = sessions.lock();
         let session = store
             .get(key)
@@ -557,10 +694,9 @@ async fn ensure_ocg_layer_image(
             session.extract_dir.clone(),
             session.ai_path.clone(),
             session.metadata.render_dpi,
-            session.metadata.clip_rect,
+            session.shifted_clip,
             session.metadata.canvas_width as u32,
             session.metadata.canvas_height as u32,
-            session.pdf_offset,
         )
     };
 
@@ -571,9 +707,11 @@ async fn ensure_ocg_layer_image(
 
     let out = out_path.clone();
     let fp = file_path.clone();
+    // The bleed-shifted clip is built into `shifted_clip` (the bricks
+    // render uses it too) — no separate compose-time pdf_offset needed.
     let ok = tokio::task::spawn_blocking(move || {
         let t0 = std::time::Instant::now();
-        let r = render::render_ocg_layer(&fp, layer_name, &out, dpi, clip, cw, ch, pdf_offset);
+        let r = render::render_ocg_layer(&fp, layer_name, &out, dpi, shifted_clip, cw, ch, (0, 0));
         eprintln!(
             "[profile] lazy render_ocg_layer({}): {:?} -> {}",
             layer_name,
@@ -623,7 +761,7 @@ pub async fn merge_pieces(
     // Optional: recompute mode — array of { id, brick_ids } objects.
     pieces: Option<Vec<Value>>,
 ) -> Result<Value, String> {
-    let (bricks, polygons, beziers, areas, extract_dir, bricks_layer_img, brick_rgba, scale, clip_x0, clip_y0) = {
+    let (bricks, polygons, beziers, areas, extract_dir, bricks_layer_img, _brick_rgba, scale, clip_x0, clip_y0, brick_placements) = {
         let store = sessions.lock();
         let session = store
             .get(&key)
@@ -644,6 +782,7 @@ pub async fn merge_pieces(
             scale,
             session.metadata.clip_rect.0,
             session.metadata.clip_rect.1,
+            session.brick_placements.clone(),
         )
     };
 
@@ -690,19 +829,18 @@ pub async fn merge_pieces(
         // Normal merge
         let target = target_count.unwrap_or(60) as usize;
         let seed_val = seed.unwrap_or(42);
-        // Bezier adjacency takes a single tolerance (`min_border` in PyMu
-        // units). UI sends pixels for consistency with the canvas; convert.
-        // `border_gap` is no longer used by bezier adjacency — accepted as
-        // a parameter for backward compat with older Elm builds.
+        // Polygon-based adjacency (correctly filtered by extract_vector_path;
+        // beziers may include spurious clip-mask paths causing false adjacency).
+        // `border_gap` accepted for backward compat with older Elm builds.
         let _ = border_gap;
+        let _ = &brick_placements;
         let min_border_px = min_border.unwrap_or(5.0);
-        let min_border_pymu = min_border_px / scale;
         eprintln!(
             "[merge] target_count={target} seed={seed_val} min_border_px={min_border_px} \
-             (pymu={min_border_pymu:.4}) bricks={}",
+             bricks={}",
             bricks.len(),
         );
-        let adj = puzzle::build_adjacency_bezier(&bricks, &beziers, min_border_pymu);
+        let adj = puzzle::build_adjacency_vector(&bricks, &polygons, 15.0, min_border_px, 2.0);
         let pieces = puzzle::merge_bricks(&bricks, target, seed_val, &adj, &areas);
         eprintln!("[merge] result: {} pieces", pieces.len());
         pieces
@@ -771,9 +909,16 @@ pub async fn merge_pieces(
                     })
                 })
                 .collect();
+            // piece_polys is now a list of rings per piece (multi-
+            // component). Frontend `polygon` field stays single-ring
+            // for back-compat — emit the largest ring. `outline_paths`
+            // (already multi-component beziers below) is the source of
+            // truth for any consumer that needs the full shape.
             let poly = piece_polys
                 .get(&p.id)
-                .map(|pts| pts.iter().map(|pt| json!([pt[0], pt[1]])).collect::<Vec<_>>())
+                .and_then(|rings| rings.iter()
+                    .max_by_key(|r| r.len())
+                    .map(|pts| pts.iter().map(|pt| json!([pt[0], pt[1]])).collect::<Vec<_>>()))
                 .unwrap_or_default();
             let outline_paths: Vec<&String> = piece_outline_paths
                 .get(&p.id)
@@ -965,16 +1110,29 @@ pub fn get_piece_outline_image(
 // Export — mirrors do_export in routes.rs; returns base64-encoded ZIP
 // ---------------------------------------------------------------------------
 
+/// Build the export ZIP at `export_dpi` and write it straight to a
+/// user-picked path via the native save dialog. Returns:
+/// - `Some(path)` on a successful save,
+/// - `None` if the user cancelled the dialog,
+/// - `Err(msg)` for I/O / render failures.
+///
+/// The dialog opens at the last directory the user saved to (sidecar
+/// `last_export_dir.txt` under `app_data_dir`) and pre-fills the
+/// filename with the unique `export-<unix_secs>` id stamped onto
+/// this export's logs — so the user can match the saved file to
+/// the `[export <id>]` lines in stderr.
 #[tauri::command]
 pub async fn export_data(
+    app: tauri::AppHandle,
     sessions: tauri::State<'_, SessionStore>,
     key: String,
     waves: Option<Vec<Value>>,
     groups: Option<Vec<Value>>,
-    placement: Option<Value>,
-    export_canvas_height: Option<i32>,
-) -> Result<String, String> {
-    let (pieces, bricks, metadata, extract_dir) = {
+    assets_dpi: Option<f64>,
+    pieces_dpi: Option<f64>,
+    outline_stroke_px: Option<i32>,
+) -> Result<Option<String>, String> {
+    let (pieces, bricks, brick_polygons, brick_beziers, metadata, placements, extract_dir, ai_path, brick_layer_names) = {
         let store = sessions.lock();
         let session = store
             .get(&key)
@@ -982,8 +1140,13 @@ pub async fn export_data(
         (
             session.pieces.clone(),
             session.bricks.clone(),
+            session.brick_polygons.clone(),
+            session.brick_beziers.clone(),
             session.metadata.clone(),
+            session.brick_placements.clone(),
             session.extract_dir.clone(),
+            session.ai_path.clone(),
+            session.brick_layer_names.clone(),
         )
     };
 
@@ -994,50 +1157,182 @@ pub async fn export_data(
     let bricks_by_id: HashMap<String, Brick> =
         bricks.iter().map(|b| (b.id.clone(), b.clone())).collect();
 
-    let placement = placement.unwrap_or_else(|| json!({}));
-    let location = placement
-        .get("location")
-        .and_then(|v| v.as_str())
-        .unwrap_or("Rome")
-        .to_string();
-    let position = placement
-        .get("position")
-        .and_then(|v| v.as_i64())
-        .unwrap_or(0) as i32;
-    let house_name = placement
-        .get("houseName")
-        .and_then(|v| v.as_str())
-        .unwrap_or("NewHouse")
-        .to_string();
-    let spacing = placement
-        .get("spacing")
-        .and_then(|v| v.as_f64())
-        .unwrap_or(12.0);
-
     let waves_val = waves.unwrap_or_default();
     let groups_val = groups.unwrap_or_default();
 
-    let zip_data = tokio::task::spawn_blocking(move || {
+    // Default 300 DPI on both inputs when the frontend doesn't pick
+    // one. `assets_dpi` drives the non-piece assets (composite,
+    // background, highlight, lights, outlines); `pieces_dpi` drives
+    // the per-piece sprites — both can be set independently from
+    // the export panel. `outline_stroke_px` drives outlines.png
+    // stroke width (in pixels at assets_dpi); default 3.
+    let assets_dpi = assets_dpi.unwrap_or(300.0);
+    let pieces_dpi = pieces_dpi.unwrap_or(300.0);
+    // Outline stroke is clamped to [1, 50] px on the Rust side too —
+    // mirrors the on-blur cap the export panel enforces, so a
+    // misbehaving / out-of-date frontend (or anyone hitting the
+    // command directly) can't request a 1000-px stroke that would
+    // saturate outlines.png and take forever to render.
+    let outline_stroke_px = outline_stroke_px.unwrap_or(3).clamp(1, 50);
+    let loaded_dpi = metadata.render_dpi;
+
+    // A unique stamp for this export, used both as the default
+    // save-dialog filename AND prefixed onto the export log lines
+    // so the user can correlate a saved file back to its [export
+    // <id>] log block. Format: `export-<unix_secs>` — sortable,
+    // grep-able, and effectively collision-free at human cadence.
+    let export_id = format!("export-{}", uuid::Uuid::new_v4().to_string()[..8].to_string());
+    eprintln!(
+        "[{} ] starting (assets_dpi={}, pieces_dpi={}, outline_stroke={}px)",
+        export_id, assets_dpi, pieces_dpi, outline_stroke_px,
+    );
+
+    // ALWAYS re-render export assets into a dedicated sub-dir under
+    // `extract_dir`. We can't reuse the live-preview cache even when
+    // DPIs happen to match because the export bundle includes assets
+    // the preview doesn't produce (composite + background) and uses
+    // vector-traced piece outlines (preview outlines are pixel-edge
+    // traced from the rasterised mask, which stair-steps at high DPI).
+    let export_pieces_dir = extract_dir.join(format!(
+        "export_a{}_p{}",
+        assets_dpi.round() as i64,
+        pieces_dpi.round() as i64,
+    ));
+
+    // render_export_pieces returns the per-piece rects re-trimmed to
+    // the alpha bbox of each piece's actual rendered content (the
+    // input bbox is the union of brick bboxes and can overshoot the
+    // visible pixels by 2–3×, leaving large transparent overhangs in
+    // the sprite). These trimmed rects live in EXPORT-DPI canvas
+    // coords — same coord system as composite.png and the per-piece
+    // PNGs we just wrote. The ZIP/Unity path divides them back to
+    // loaded-DPI (the contract `generate_export_zip` was built around).
+    let trimmed_pieces_export_dpi: Vec<hp_core::types::PuzzlePiece> = {
+        let pieces_for_render = pieces.clone();
+        let bricks_for_render = bricks_by_id.clone();
+        let brick_polys_for_render = brick_polygons.clone();
+        let brick_beziers_for_render = brick_beziers.clone();
+        let meta_for_render = metadata.clone();
+        let placements_for_render = placements.clone();
+        let ai_path_for_render = ai_path.clone();
+        let out_dir_for_render = export_pieces_dir.clone();
+        let brick_layer_names_for_render = brick_layer_names.clone();
+        tokio::task::spawn_blocking(move || {
+            hp_core::render::render_export_pieces(
+                &ai_path_for_render,
+                &placements_for_render,
+                &meta_for_render,
+                &pieces_for_render,
+                &bricks_for_render,
+                &brick_polys_for_render,
+                &brick_beziers_for_render,
+                &brick_layer_names_for_render,
+                assets_dpi,
+                pieces_dpi,
+                outline_stroke_px,
+                &out_dir_for_render,
+            )
+        })
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())?
+    };
+
+    // Down-scale the trimmed pieces (in pieces_dpi coords) to
+    // loaded-DPI for the ZIP/Unity path. `generate_export_zip`
+    // re-applies `scale = pieces_dpi / loaded_dpi` internally when
+    // building house_data.json (so the sprite centre lands at the
+    // right Unity world position), so this path is sensitive to the
+    // input being loaded-DPI.
+    let trimmed_pieces_loaded_dpi: Vec<hp_core::types::PuzzlePiece> = {
+        let inv_scale = if pieces_dpi > 0.0 {
+            loaded_dpi / pieces_dpi
+        } else {
+            1.0
+        };
+        trimmed_pieces_export_dpi
+            .iter()
+            .map(|p| hp_core::types::PuzzlePiece {
+                id: p.id.clone(),
+                brick_ids: p.brick_ids.clone(),
+                x: ((p.x as f64) * inv_scale).round() as i32,
+                y: ((p.y as f64) * inv_scale).round() as i32,
+                width: ((p.width as f64) * inv_scale).round().max(1.0) as i32,
+                height: ((p.height as f64) * inv_scale).round().max(1.0) as i32,
+            })
+            .collect()
+    };
+
+    let bricks_for_encode = bricks_by_id.clone();
+    let metadata_for_encode = metadata.clone();
+    let extract_dir_for_encode = export_pieces_dir.clone();
+    let waves_for_encode = waves_val.clone();
+    let groups_for_encode = groups_val.clone();
+    let pieces_for_zip = trimmed_pieces_loaded_dpi;
+    let file_bytes = tokio::task::spawn_blocking(move || -> Result<Vec<u8>, String> {
         hp_core::export::generate_export_zip(
-            &pieces,
-            &bricks_by_id,
-            &extract_dir,
-            metadata.canvas_width,
-            metadata.canvas_height,
-            metadata.screen_frame_height_px,
-            &waves_val,
-            &groups_val,
-            &location,
-            position,
-            &house_name,
-            spacing,
+            &pieces_for_zip,
+            &bricks_for_encode,
+            &extract_dir_for_encode,
+            metadata_for_encode.canvas_width,
+            metadata_for_encode.canvas_height,
+            metadata_for_encode.screen_frame_height_px,
+            loaded_dpi,
+            pieces_dpi,
+            &waves_for_encode,
+            &groups_for_encode,
         )
+        .map_err(|e| e.to_string())
     })
     .await
-    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())??;
+
+    // Show the native save dialog. Default directory comes from the
+    // last-export sidecar; filename is `<picture-basename>.zip`
+    // (the AI file's stem, verbatim — the picture can sit
+    // anywhere, not just in `in/`, so we don't strip any leading
+    // characters). Falls back to `export-<id>.zip` if the basename
+    // can't be derived. User cancellation returns `Ok(None)` so
+    // the frontend can flip the export button back without showing
+    // an error.
+    let stored_path = last_export_dir_path(&app);
+    let default_dir = stored_path.as_deref().and_then(read_last_dir);
+    let default_name = ai_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .filter(|s| !s.is_empty())
+        .map(|stem| format!("{}.zip", stem))
+        .unwrap_or_else(|| format!("{}.zip", export_id));
+
+    let app_for_dialog = app.clone();
+    let dialog_path = tokio::task::spawn_blocking(move || {
+        use tauri_plugin_dialog::DialogExt;
+        let mut builder = app_for_dialog
+            .dialog()
+            .file()
+            .add_filter("ZIP archive", &["zip"])
+            .set_file_name(&default_name);
+        if let Some(dir) = default_dir {
+            builder = builder.set_directory(dir);
+        }
+        builder.blocking_save_file()
+    })
+    .await
     .map_err(|e| e.to_string())?;
 
-    Ok(BASE64.encode(&zip_data))
+    let save_path = match dialog_path {
+        None => return Ok(None),
+        Some(fp) => fp.into_path().map_err(|e| e.to_string())?,
+    };
+
+    std::fs::write(&save_path, &file_bytes)
+        .map_err(|e| format!("writing {}: {e}", save_path.display()))?;
+
+    if let Some(stored) = stored_path.as_deref() {
+        write_last_dir(stored, &save_path);
+    }
+
+    Ok(Some(save_path.to_string_lossy().into_owned()))
 }
 
 // ---------------------------------------------------------------------------

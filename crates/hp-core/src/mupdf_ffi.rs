@@ -225,22 +225,24 @@ pub fn render_page_with_ocg_clipped(
                 }
             }
 
-            // Clipped render: build a draw device on a pixmap whose
-            // bbox is the clip region in *device pixel coordinates*
-            // (i.e. the same pixel grid the full-page render would
-            // use), then run the page with the same scale-only CTM as
-            // the full path. The pixmap data buffer is just clip_w x
-            // clip_h bytes, but its bbox tells the rasteriser to write
-            // only the pixels inside [(cx_px, cy_px), (cx1_px, cy1_px))
-            // of the conceptual full-page grid — so output pixels
-            // align byte-for-byte with the unclipped render.
+            // Clipped render: render only the requested PDF rect to a
+            // tightly-sized pixmap. We put the pixmap's bbox at (0, 0,
+            // clip_w, clip_h) and embed the clip's pixel offset into
+            // the CTM as a translation. PDF coord (cx0, cy0) lands at
+            // pixmap (0, 0); PDF coord (cx1, cy1) lands at pixmap
+            // (clip_w, clip_h). Round the translation to integer
+            // pixels so the per-render pixel grid stays consistent
+            // across bricks (the brick's compose offset is also
+            // rounded with the same scale, so they cancel out).
             //
-            // An earlier version put bbox at (0, 0) and used a
-            // translated CTM `scale * translate(-cx0, -cy0)`. That
-            // works geometrically, but rasterises onto a shifted
-            // pixel grid (the fractional part of `cx0*scale` ends up
-            // as a sub-pixel offset), which produced ~5% pixel diff
-            // against the legacy render at every antialiased edge.
+            // An earlier version used non-zero pixmap.x/y in the hope
+            // MuPDF would auto-offset content writes, but empirically
+            // content ended up at pixmap (0, 0) regardless — content
+            // writes use device-space coords directly. The earlier
+            // sub-pixel-grid concern came from re-mapping to a
+            // hypothetical full-page grid for byte-equality, which we
+            // don't need: each per-brick render only has to align
+            // with its own polygon outline.
             //
             // Clear with `fz_clear_pixmap` (not `_with_value(0xff)`)
             // so the alpha=1 pixmap starts fully transparent — see
@@ -251,7 +253,7 @@ pub fn render_page_with_ocg_clipped(
                 let cy_px = (cy0 * scale as f64).round() as i32;
                 let cx1_px = (cx1 * scale as f64).round() as i32;
                 let cy1_px = (cy1 * scale as f64).round() as i32;
-                let bbox = fz_irect { x0: cx_px, y0: cy_px, x1: cx1_px, y1: cy1_px };
+                let bbox = fz_irect { x0: 0, y0: 0, x1: cx1_px - cx_px, y1: cy1_px - cy_px };
 
                 let pix = fz_new_pixmap_with_bbox(ctx(), cs, bbox, std::ptr::null_mut(), 1);
                 if pix.is_null() {
@@ -273,7 +275,7 @@ pub fn render_page_with_ocg_clipped(
                         let ctm = fz_matrix {
                             a: scale, b: 0.0,
                             c: 0.0, d: scale,
-                            e: 0.0, f: 0.0,
+                            e: -(cx_px as f32), f: -(cy_px as f32),
                         };
                         fz_run_page(ctx(), page, dev, ctm, std::ptr::null_mut());
                         fz_close_device(ctx(), dev);
@@ -325,6 +327,143 @@ pub fn render_page_with_ocg(
     dpi: f64,
 ) -> Option<(Vec<u8>, u32, u32)> {
     render_page_with_ocg_clipped(path, layer_name, dpi, None)
+}
+
+/// Like `render_page_with_ocg_clipped`, but the caller passes a *set*
+/// of layer names to enable instead of a single one. Everything else
+/// is deselected before rendering. Layer names that don't exist in the
+/// document are silently ignored (callers shouldn't rely on the
+/// `Some/None` distinction for that — it only signals whether the page
+/// or pixmap could be created).
+///
+/// This exists for the per-piece export pipeline, which needs to keep
+/// `bricks` plus a specific set of injected `hp_brick_NNNN` OCGs on
+/// while turning every other brick OCG off.
+pub fn render_page_with_ocg_set_clipped(
+    path: &str,
+    enabled_layer_names: &[&str],
+    dpi: f64,
+    clip_rect_pts: Option<(f64, f64, f64, f64)>,
+) -> Option<(Vec<u8>, u32, u32)> {
+    let _lock = ffi_lock();
+    unsafe {
+        use std::ffi::CString;
+        let c_path = CString::new(path).ok()?;
+        let doc = fz_open_document(ctx(), c_path.as_ptr());
+        if doc.is_null() {
+            return None;
+        }
+        let pdf_doc = doc as *mut pdf_document;
+
+        let layer_count = pdf_count_layer_config_ui(ctx(), pdf_doc);
+        for i in 0..layer_count {
+            pdf_deselect_layer_config_ui(ctx(), pdf_doc, i);
+        }
+        for i in 0..layer_count {
+            let mut info: pdf_layer_config_ui = std::mem::zeroed();
+            pdf_layer_config_ui_info(ctx(), pdf_doc, i, &mut info);
+            if info.text.is_null() {
+                continue;
+            }
+            let name = CStr::from_ptr(info.text).to_str().unwrap_or("");
+            if enabled_layer_names.iter().any(|s| *s == name) {
+                pdf_select_layer_config_ui(ctx(), pdf_doc, i);
+            }
+        }
+        pdf_set_layer_config_as_default(ctx(), pdf_doc);
+
+        let scale = dpi as f32 / 72.0;
+        let cs = fz_device_rgb(ctx());
+        let page = fz_load_page(ctx(), doc, 0);
+        if page.is_null() {
+            fz_drop_document(ctx(), doc);
+            return None;
+        }
+
+        let result = match clip_rect_pts {
+            None => {
+                let ctm = fz_matrix { a: scale, b: 0.0, c: 0.0, d: scale, e: 0.0, f: 0.0 };
+                let pix = fz_new_pixmap_from_page(ctx(), page, ctm, cs, 1);
+                if pix.is_null() {
+                    None
+                } else {
+                    let w = fz_pixmap_width(ctx(), pix) as u32;
+                    let h = fz_pixmap_height(ctx(), pix) as u32;
+                    let n = fz_pixmap_components(ctx(), pix) as u32;
+                    let samples_ptr = fz_pixmap_samples(ctx(), pix);
+                    let total = (w * h * n) as usize;
+                    let pixels = if !samples_ptr.is_null() && total > 0 {
+                        std::slice::from_raw_parts(samples_ptr, total).to_vec()
+                    } else {
+                        vec![0u8; total]
+                    };
+                    fz_drop_pixmap(ctx(), pix);
+                    Some((pixels, w, h, n))
+                }
+            }
+            Some((cx0, cy0, cx1, cy1)) => {
+                // Same approach as render_page_with_ocg_set_clipped: zero-
+                // origin pixmap + integer-pixel translated CTM. See the
+                // comment there for why.
+                let cx_px = (cx0 * scale as f64).round() as i32;
+                let cy_px = (cy0 * scale as f64).round() as i32;
+                let cx1_px = (cx1 * scale as f64).round() as i32;
+                let cy1_px = (cy1 * scale as f64).round() as i32;
+                let bbox = fz_irect { x0: 0, y0: 0, x1: cx1_px - cx_px, y1: cy1_px - cy_px };
+                let pix = fz_new_pixmap_with_bbox(ctx(), cs, bbox, std::ptr::null_mut(), 1);
+                if pix.is_null() {
+                    None
+                } else {
+                    fz_clear_pixmap(ctx(), pix);
+                    let dev = fz_new_draw_device(
+                        ctx(),
+                        fz_matrix { a: 1.0, b: 0.0, c: 0.0, d: 1.0, e: 0.0, f: 0.0 },
+                        pix,
+                    );
+                    if dev.is_null() {
+                        fz_drop_pixmap(ctx(), pix);
+                        None
+                    } else {
+                        let ctm = fz_matrix {
+                            a: scale, b: 0.0,
+                            c: 0.0, d: scale,
+                            e: -(cx_px as f32), f: -(cy_px as f32),
+                        };
+                        fz_run_page(ctx(), page, dev, ctm, std::ptr::null_mut());
+                        fz_close_device(ctx(), dev);
+                        fz_drop_device(ctx(), dev);
+                        let w = fz_pixmap_width(ctx(), pix) as u32;
+                        let h = fz_pixmap_height(ctx(), pix) as u32;
+                        let n = fz_pixmap_components(ctx(), pix) as u32;
+                        let samples_ptr = fz_pixmap_samples(ctx(), pix);
+                        let total = (w * h * n) as usize;
+                        let pixels = if !samples_ptr.is_null() && total > 0 {
+                            std::slice::from_raw_parts(samples_ptr, total).to_vec()
+                        } else {
+                            vec![0u8; total]
+                        };
+                        fz_drop_pixmap(ctx(), pix);
+                        Some((pixels, w, h, n))
+                    }
+                }
+            }
+        };
+
+        fz_drop_page(ctx(), page);
+        fz_drop_document(ctx(), doc);
+
+        let (pixels, w, h, n) = result?;
+        let mut rgba = vec![0u8; (w * h * 4) as usize];
+        for i in 0..(w * h) as usize {
+            let src = i * n as usize;
+            let dst = i * 4;
+            rgba[dst] = pixels[src];
+            rgba[dst + 1] = pixels[src + 1];
+            rgba[dst + 2] = pixels[src + 2];
+            rgba[dst + 3] = if n >= 4 { pixels[src + 3] } else { 255 };
+        }
+        Some((rgba, w, h))
+    }
 }
 
 

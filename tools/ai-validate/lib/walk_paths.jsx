@@ -20,7 +20,21 @@
 function walkPaths(doc) {
     var out = {
         layer_tree: [],
-        bricks: []
+        bricks: [],
+        // Every RasterItem / PlacedItem in the document, regardless of
+        // where it lives in the layer tree. The S1 orphan-raster check
+        // compares this list to `bricks` to find rasters that aren't
+        // inside a `bricks/Layer NNN/` leaf — the parser misses them
+        // and Sand3 had exactly one (the orphan that caused the hole).
+        rasters: [],
+        // The "screen" top-level layer's combined path bbox (geometric).
+        // Used by checkScreenFrameHeight: the artist convention is
+        // 2200 pt high (= 1 game screen = HOUSE_UNITS_HIGH units in
+        // the Unity puzzle). SF09 has it drawn at 2850, which scales
+        // the rendered house wrong relative to the grid. `bbox` is
+        // [x0, y0, x1, y1]; `height_pt` = |y1 - y0|. Both fields are
+        // null when the layer is missing or carries no paths.
+        screen_layer: null
     };
 
     for (var i = 0; i < doc.layers.length; i++) {
@@ -32,7 +46,107 @@ function walkPaths(doc) {
         collectBricks(doc.layers[j], "", out.bricks);
     }
 
+    // Collect every raster item across the entire layer tree. Each
+    // record carries the bbox in PYMU coords (geometricBounds; same
+    // frame the bricks use) and the parent layer path so the orphan
+    // check can decide whether it sits inside a valid bricks/Layer NNN.
+    for (var r = 0; r < doc.layers.length; r++) {
+        collectRasters(doc.layers[r], "", out.rasters);
+    }
+
+    // Capture the `screen` layer's combined path bbox so the height
+    // check can flag screens that drift from the 2200-pt convention.
+    for (var s = 0; s < doc.layers.length; s++) {
+        if (doc.layers[s].name === "screen") {
+            out.screen_layer = layerPathBbox(doc.layers[s]);
+            break;
+        }
+    }
+
     return out;
+}
+
+// Combined bbox of every pathItem inside `layer` (recursing into
+// sub-layers). Returns { bbox: [x0,y0,x1,y1], height_pt, width_pt }
+// or null if no path is found. Uses geometricBounds — same frame as
+// the parser's `extract_plain_path_bbox` on the screen layer.
+function layerPathBbox(layer) {
+    var minX =  Infinity, minY =  Infinity;
+    var maxX = -Infinity, maxY = -Infinity;
+    var seenAny = false;
+    function accumulate(L) {
+        try {
+            for (var i = 0; i < L.pathItems.length; i++) {
+                var p = L.pathItems[i];
+                var b = null;
+                try { b = p.geometricBounds; } catch (e) { b = null; }
+                if (b == null) continue;
+                var x0 = Math.min(b[0], b[2]);
+                var x1 = Math.max(b[0], b[2]);
+                var y0 = Math.min(b[1], b[3]);
+                var y1 = Math.max(b[1], b[3]);
+                if (x0 < minX) minX = x0;
+                if (y0 < minY) minY = y0;
+                if (x1 > maxX) maxX = x1;
+                if (y1 > maxY) maxY = y1;
+                seenAny = true;
+            }
+        } catch (e) { /* layer.pathItems may not exist on every doc version */ }
+        try {
+            for (var j = 0; j < L.layers.length; j++) {
+                accumulate(L.layers[j]);
+            }
+        } catch (e) { /* no sub-layers */ }
+    }
+    accumulate(layer);
+    if (!seenAny) return null;
+    return {
+        bbox: [minX, minY, maxX, maxY],
+        height_pt: maxY - minY,
+        width_pt: maxX - minX
+    };
+}
+
+function collectRasters(layer, parentPath, rasters) {
+    var path = parentPath ? (parentPath + "/" + layer.name) : layer.name;
+
+    // RasterItem.length / PlacedItem.length — both are valid AI item
+    // types for placed images. Some doc versions only have one of the
+    // two; tolerate either being absent.
+    try {
+        for (var i = 0; i < layer.rasterItems.length; i++) {
+            recordRaster(layer.rasterItems[i], path, "RasterItem", rasters);
+        }
+    } catch (e) { /* layer.rasterItems may not exist on every doc version */ }
+    try {
+        for (var j = 0; j < layer.placedItems.length; j++) {
+            recordRaster(layer.placedItems[j], path, "PlacedItem", rasters);
+        }
+    } catch (e) { /* placedItems may not exist */ }
+
+    for (var k = 0; k < layer.layers.length; k++) {
+        collectRasters(layer.layers[k], path, rasters);
+    }
+}
+
+function recordRaster(item, parentPath, kind, rasters) {
+    var name = "";
+    try { name = item.name || ""; } catch (e) { name = ""; }
+    var bbox = null;
+    try {
+        var b = item.geometricBounds;
+        var x0 = Math.min(b[0], b[2]);
+        var x1 = Math.max(b[0], b[2]);
+        var y0 = Math.min(b[1], b[3]);
+        var y1 = Math.max(b[1], b[3]);
+        bbox = [x0, y0, x1, y1];
+    } catch (e) { bbox = null; }
+    rasters.push({
+        name: name,
+        kind: kind,
+        parent_layer_path: parentPath,
+        bbox: bbox
+    });
 }
 
 function describeLayer(layer, depth) {

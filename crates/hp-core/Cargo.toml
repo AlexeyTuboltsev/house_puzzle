@@ -18,6 +18,19 @@ image = "0.24"
 rayon = "1"
 geo = "0.29"
 geo-clipper = "0.8"
+rstar = "0.12"
 rand = "0.9"
 rand_chacha = "0.9"
 zip = "0.6"
+# PDF content-stream parsing + rewriting for the per-piece OCG-injection
+# render pipeline. lopdf is pure Rust and gives us both the high-level
+# object model (for editing /OCProperties and /Resources) and the
+# tokenised content-stream API (for walking and re-emitting q/Q blocks
+# with injected BDC/EMC markers).
+lopdf = "0.32"
+flate2 = "1"
+# imageproc 0.23 is the last release that tracks `image = "0.24"`
+# (the workspace's pinned version). Newer imageproc pulls a second
+# `image` 0.25 into the dep graph which causes type mismatches when
+# we pass our `GrayImage` to `distance_transform`.
+imageproc = { version = "0.23", default-features = false }
