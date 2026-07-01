@@ -426,7 +426,14 @@ pub async fn load_pdf(
         let id = if deterministic {
             use std::hash::{Hash, Hasher};
             let mut hasher = std::collections::hash_map::DefaultHasher::new();
-            (p.x, p.y, p.width, p.height).hash(&mut hasher);
+            // Include the AI layer name in the hash input so that
+            // artist duplicates — two `Layer NNN` children drawn at
+            // the same spot with the same shape (Berlin-01 has 92) —
+            // still get distinct IDs. Bbox-only hashing collapsed
+            // them to a single key, so every HashMap keyed by ID
+            // silently lost one member of every pair and the pieces
+            // ended up with holes where the duplicate was.
+            (&p.name, p.x, p.y, p.width, p.height).hash(&mut hasher);
             format!("{:08x}", hasher.finish() & 0xFFFFFFFF)
         } else {
             uuid::Uuid::new_v4().to_string()[..8].to_string()
