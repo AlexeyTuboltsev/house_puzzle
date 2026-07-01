@@ -940,22 +940,45 @@ pub fn merge_piece_bezier(brick_paths: &[BezierPath]) -> Vec<BezierPath> {
         *entry.entry(e.source).or_insert(0) += direction_sign(e);
     }
 
-    // Per bucket, decide outer or shared. The right test is the SIGNED
-    // sum of contributions across all sources — not the sum-of-absolute-
-    // values. Two ADJACENT bricks sharing an edge traverse it in
-    // OPPOSITE directions (each brick's outline walks clockwise so the
-    // shared edge is on opposite sides), so their contributions
-    // are +1 and -1 → signed sum 0 → drop as internal. Two DUPLICATE
-    // bricks (Berlin-01's 92 mixed_brick pairs whose bezier outlines
-    // are the identical enclosing rectangle) traverse the same edge in
-    // the SAME direction, so both contribute +1 → signed sum ≥ 2 →
-    // KEEP. The old sum-of-abs test collapsed both cases, which killed
-    // whole outline regions where duplicates lived.
-    //
-    // For a bucket with multiple contributions but non-zero signed sum
-    // (e.g. NY7 b027 where b027's outer-bottom and notch-interior
-    // cancel within b027, leaving b022's contribution), we emit just
-    // one edge — the walk needs one canonical edge per geometric line.
+    // Detect duplicate SOURCES. Two sources are duplicates iff their
+    // edge-set signatures match (same canonical edges, same directions,
+    // once each). Berlin-01's 92 mixed_brick pairs land here — same
+    // rectangle bezier from both bricks in a pair. If we let both
+    // contribute to bucket accumulation, they double-count every edge
+    // and the sum-of-abs test drops all of them as internal, wiping
+    // out whole outline regions. Fix: keep exactly ONE representative
+    // per duplicate group; the others are ignored for the outer-edge
+    // decision. Adjacent bricks (opposite traversal directions on the
+    // shared edge) still cancel correctly.
+    use std::collections::BTreeSet as StdBTreeSet;
+    let mut source_sig: BTreeMap<u32, StdBTreeSet<(EdgeKey, i32)>> = BTreeMap::new();
+    for e in &all {
+        source_sig
+            .entry(e.source)
+            .or_insert_with(StdBTreeSet::new)
+            .insert((e.key(BEZIER_TOL), direction_sign(e)));
+    }
+    let mut sig_first_source: std::collections::HashMap<StdBTreeSet<(EdgeKey, i32)>, u32> =
+        std::collections::HashMap::new();
+    let mut dup_sources: StdBTreeSet<u32> = StdBTreeSet::new();
+    for (src, sig) in &source_sig {
+        if let Some(prev) = sig_first_source.get(sig) {
+            let _ = prev;
+            dup_sources.insert(*src);
+        } else {
+            sig_first_source.insert(sig.clone(), *src);
+        }
+    }
+
+    // Per bucket, decide outer or shared and emit at most ONE
+    // representative edge per non-shared bucket. Sources marked as
+    // duplicates above are excluded from the sum: their brother is
+    // already accounted for. For a bucket with multiple non-duplicate
+    // contributions but effective=1 (e.g., NY7 b027 where b027's
+    // outer-bottom and notch-interior cancel within b027, leaving
+    // b022's contribution), we emit just one edge — the walk needs
+    // one canonical edge per geometric line, not the raw set of
+    // contributions from every source.
     let mut bucket_decision: BTreeMap<EdgeKey, bool /* keep as outer */> = BTreeMap::new();
     let mut all_keys: Vec<EdgeKey> = bucket_sources.keys().cloned().collect();
     all_keys.sort();
@@ -964,12 +987,13 @@ pub fn merge_piece_bezier(brick_paths: &[BezierPath]) -> Vec<BezierPath> {
         for kv in key_variants(k) {
             if let Some(srcs) = bucket_sources.get(&kv) {
                 for (src, net) in srcs {
+                    if dup_sources.contains(src) { continue; }
                     *combined.entry(*src).or_insert(0) += net;
                 }
             }
         }
-        let signed_sum: i32 = combined.values().copied().sum();
-        bucket_decision.insert(*k, signed_sum != 0);
+        let effective: u32 = combined.values().map(|n| n.unsigned_abs()).sum();
+        bucket_decision.insert(*k, effective < 2);
     }
 
     let mut emitted_buckets: BTreeSet<EdgeKey> = BTreeSet::new();
