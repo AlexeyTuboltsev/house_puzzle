@@ -497,7 +497,6 @@ fn edges_of(paths: &[BezierPath]) -> Vec<Edge> {
 /// `to == start` point.
 fn dedup_subpaths(paths: &[BezierPath]) -> Vec<BezierPath> {
     // Tolerances for shape-signature matching.
-    const BBOX_TOL: f64 = 6.0;
     const AREA_REL_TOL: f64 = 0.05;
     const PERIMETER_REL_TOL: f64 = 0.05;
     // Drop sub-paths smaller than this — they are AI artifacts (zero-length
@@ -506,33 +505,47 @@ fn dedup_subpaths(paths: &[BezierPath]) -> Vec<BezierPath> {
     const MIN_AREA: f64 = 10.0;
     const TESS_SAMPLES: usize = 12;
 
+    // The centroid catches shape-identity where the bbox / area /
+    // perimeter can't — two triangles filling opposite halves of a
+    // square share bbox, area, and perimeter but not centroid.
+    // Tolerance small enough to distinguish the halves of a 21-px
+    // brick (centroid drift ~5 px between halves) but big enough to
+    // tolerate the sub-pixel float noise from `tessellate`.
+    const CENTROID_TOL: f64 = 1.5;
     struct Sig {
-        bbox: [f64; 4], // min_x, min_y, max_x, max_y
-        area: f64,      // unsigned tessellated polygon area
-        perimeter: f64, // tessellated polyline length
+        area: f64,       // unsigned tessellated polygon area
+        perimeter: f64,  // tessellated polyline length
+        centroid: [f64; 2],
     }
 
     let signature = |path: &BezierPath| -> Option<Sig> {
         let poly = path.tessellate(TESS_SAMPLES);
         if poly.len() < 3 { return None; }
-        let (mut x0, mut y0) = (f64::INFINITY, f64::INFINITY);
-        let (mut x1, mut y1) = (f64::NEG_INFINITY, f64::NEG_INFINITY);
-        for v in &poly {
-            x0 = x0.min(v[0]); y0 = y0.min(v[1]);
-            x1 = x1.max(v[0]); y1 = y1.max(v[1]);
-        }
+        // Signed shoelace area + weighted-centroid formula.
         let mut area2 = 0.0_f64;
+        let mut cx = 0.0_f64;
+        let mut cy = 0.0_f64;
         let mut perim = 0.0_f64;
         for i in 0..poly.len() {
             let a = poly[i];
             let b = poly[(i + 1) % poly.len()];
-            area2 += a[0] * b[1] - a[1] * b[0];
+            let cross = a[0] * b[1] - a[1] * b[0];
+            area2 += cross;
+            cx += (a[0] + b[0]) * cross;
+            cy += (a[1] + b[1]) * cross;
             let dx = b[0] - a[0]; let dy = b[1] - a[1];
             perim += (dx * dx + dy * dy).sqrt();
         }
         let area = area2.abs() * 0.5;
         if area < MIN_AREA { return None; }
-        Some(Sig { bbox: [x0, y0, x1, y1], area, perimeter: perim })
+        let (centroid_x, centroid_y) = if area2.abs() > 1e-9 {
+            (cx / (3.0 * area2), cy / (3.0 * area2))
+        } else {
+            // Degenerate: fall back to mean of tessellated points.
+            let (sx, sy) = poly.iter().fold((0.0, 0.0), |(sx, sy), v| (sx + v[0], sy + v[1]));
+            (sx / poly.len() as f64, sy / poly.len() as f64)
+        };
+        Some(Sig { area, perimeter: perim, centroid: [centroid_x, centroid_y] })
     };
 
     let mut seen: Vec<Sig> = Vec::new();
@@ -540,12 +553,14 @@ fn dedup_subpaths(paths: &[BezierPath]) -> Vec<BezierPath> {
     for path in paths {
         let Some(sig) = signature(path) else { continue; };
         let dup = seen.iter().any(|s| {
-            // bbox match: every corner within BBOX_TOL.
-            let bbox_match = (sig.bbox[0] - s.bbox[0]).abs() < BBOX_TOL
-                && (sig.bbox[1] - s.bbox[1]).abs() < BBOX_TOL
-                && (sig.bbox[2] - s.bbox[2]).abs() < BBOX_TOL
-                && (sig.bbox[3] - s.bbox[3]).abs() < BBOX_TOL;
-            if !bbox_match { return false; }
+            // Centroid distance rules first — two paths with the same
+            // area & perimeter but different centroids (Berlin's
+            // triangle halves) are DIFFERENT shapes.
+            let dcx = sig.centroid[0] - s.centroid[0];
+            let dcy = sig.centroid[1] - s.centroid[1];
+            if (dcx * dcx + dcy * dcy).sqrt() > CENTROID_TOL {
+                return false;
+            }
             let area_max = sig.area.max(s.area).max(1e-6);
             let area_match = (sig.area - s.area).abs() / area_max < AREA_REL_TOL;
             let perim_max = sig.perimeter.max(s.perimeter).max(1e-6);
