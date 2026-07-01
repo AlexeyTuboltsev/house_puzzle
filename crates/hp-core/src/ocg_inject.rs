@@ -1878,52 +1878,7 @@ pub fn analyse_brick_blocks(
         bleed_x,
         bleed_y,
     };
-    let mut map = match_blocks_to_bricks(&blocks, placements, geo, DEFAULT_OVERLAY_RADIUS_PT);
-
-    // Duplicate-propagation. The parser now KEEPS every `Layer NNN` in
-    // the AI source, including artist duplicates (two layers drawn on
-    // top of each other with the same shape at the same spot — Berlin
-    // has 92, Sand5 has 5). The matcher above assigns each q-block to
-    // exactly one brick (closest by centroid), so of every duplicate
-    // pair only ONE brick ends up with content — the other's export
-    // piece renders with a hole. Fix: group placements by their canvas
-    // bbox (identical bbox → same drawing) and copy any non-empty
-    // block set to every sibling in the group. If piece boundaries
-    // later split a duplicate group across pieces, both pieces render
-    // the shared content — the user sees the brick in every piece
-    // that claims it, instead of a hole.
-    {
-        use std::collections::HashMap;
-        let mut groups: HashMap<(i32, i32, i32, i32), Vec<usize>> = HashMap::new();
-        for (i, p) in placements.iter().enumerate() {
-            let key = (p.pymu_x, p.pymu_y, p.pymu_w, p.pymu_h);
-            groups.entry(key).or_default().push(i);
-        }
-        let mut propagated = 0usize;
-        for (_key, members) in &groups {
-            if members.len() < 2 { continue; }
-            // Union every member's block list, then write it back to
-            // every member. Order preserved for determinism.
-            let mut union: Vec<usize> = Vec::new();
-            let mut seen: std::collections::HashSet<usize> = std::collections::HashSet::new();
-            for &i in members {
-                for &bi in &map.brick_to_blocks[i] {
-                    if seen.insert(bi) { union.push(bi); }
-                }
-            }
-            if union.is_empty() { continue; }
-            for &i in members {
-                if map.brick_to_blocks[i].is_empty() { propagated += 1; }
-                map.brick_to_blocks[i] = union.clone();
-            }
-        }
-        if propagated > 0 {
-            eprintln!(
-                "[ocg_inject] duplicate-propagation: filled {} previously-unmatched bricks by sharing block assignments across bbox-identical groups",
-                propagated
-            );
-        }
-    }
+    let map = match_blocks_to_bricks(&blocks, placements, geo, DEFAULT_OVERLAY_RADIUS_PT);
 
     // Refined bleed from matched (Image block, polygon) centroids —
     // takes the median of `image_centre_pdf − polygon_centre_pymu` over
