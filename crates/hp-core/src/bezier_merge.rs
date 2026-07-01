@@ -896,7 +896,18 @@ pub fn merge_piece_bezier(brick_paths: &[BezierPath]) -> Vec<BezierPath> {
     // bricks store their outer outline twice; without this pre-pass every
     // edge appears ≥ 2× and gets dropped as "internal".
     let deduped = dedup_subpaths(brick_paths);
-    let brick_paths: &[BezierPath] = &deduped;
+
+    // Drop hole sub-paths — an inner "glass" ring inside a "window frame"
+    // ring, standard compound-path convention. AI encodes holes with
+    // opposite winding sign from the outer ring, but that convention is
+    // artist-drift-prone, so use pure geometric containment: any sub-path
+    // whose centroid lies strictly inside a larger sub-path is a hole.
+    // Without this, Berlin-01's window bricks (e.g. Layer 298) emit their
+    // GLASS ring as an outline because the frame's outer edges cancel
+    // with the neighbour bricks in the piece but the glass ring has
+    // nothing to cancel against.
+    let brick_paths_owned: Vec<BezierPath> = drop_hole_paths(&deduped);
+    let brick_paths: &[BezierPath] = &brick_paths_owned;
 
     let raw: Vec<Edge> = edges_of(brick_paths);
     if raw.is_empty() {
@@ -1165,6 +1176,56 @@ fn rotate_loop(loop_: &BezierPath, vertex_idx: usize) -> BezierPath {
         new_segs.push(loop_.segments[(vertex_idx + k) % n]);
     }
     BezierPath { start: new_start, segments: new_segs }
+}
+
+/// Drop compound-path hole sub-paths from the INPUT to the piece merge.
+///
+/// For a window brick the artist typically stores two sub-paths in a
+/// compound path: the outer frame and the inner glass. Standard AI
+/// convention flips winding for the hole. We use pure containment
+/// (centroid inside another ring) rather than winding sign — cheaper
+/// than trusting the artist's winding, and correct on Berlin-01.
+///
+/// The check is O(N²) over sub-path count within a single piece —
+/// typically < 5 per brick and the piece has tens of bricks, so this
+/// is fine and doesn't need any spatial index.
+fn drop_hole_paths(paths: &[BezierPath]) -> Vec<BezierPath> {
+    if paths.len() < 2 { return paths.to_vec(); }
+    // Pre-tessellate every ring + its centroid.
+    let tessellations: Vec<Vec<[f64; 2]>> = paths.iter().map(|bp| bp.tessellate(16)).collect();
+    let areas: Vec<f64> = tessellations.iter().map(|ring| {
+        if ring.len() < 3 { return 0.0; }
+        let mut a2 = 0.0_f64;
+        let n = ring.len();
+        for i in 0..n {
+            let (xa, ya) = (ring[i][0], ring[i][1]);
+            let (xb, yb) = (ring[(i + 1) % n][0], ring[(i + 1) % n][1]);
+            a2 += xa * yb - xb * ya;
+        }
+        a2.abs() * 0.5
+    }).collect();
+    let centroids: Vec<[f64; 2]> = tessellations.iter().map(|ring| {
+        if ring.is_empty() { return [0.0, 0.0]; }
+        let (sx, sy) = ring.iter().fold((0.0, 0.0), |(sx, sy), v| (sx + v[0], sy + v[1]));
+        [sx / ring.len() as f64, sy / ring.len() as f64]
+    }).collect();
+    let mut is_hole = vec![false; paths.len()];
+    for j in 0..paths.len() {
+        if tessellations[j].len() < 3 { continue; }
+        for i in 0..paths.len() {
+            if i == j { continue; }
+            if tessellations[i].len() < 3 { continue; }
+            // Only larger rings can contain smaller ones.
+            if areas[i] <= areas[j] { continue; }
+            if point_in_ring(centroids[j], &tessellations[i]) {
+                is_hole[j] = true;
+                break;
+            }
+        }
+    }
+    paths.iter().zip(is_hole.into_iter())
+        .filter_map(|(bp, hole)| if hole { None } else { Some(bp.clone()) })
+        .collect()
 }
 
 /// Drop interior-hole loops via point-in-polygon containment.
